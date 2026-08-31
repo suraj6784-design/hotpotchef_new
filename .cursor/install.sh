@@ -43,14 +43,23 @@ flutter precache --web >/dev/null 2>&1 || true
 #    supabase/.temp), so typically only SUPABASE_ANON_KEY needs to be provided.
 #    When no ANON key is available, a placeholder keeps analyze/test/build
 #    working (the UI renders but shows empty / "trouble connecting" states).
+# Strip one layer of surrounding single/double quotes and any stray
+# whitespace/newlines that can sneak in when a secret is pasted with quotes.
+_clean_secret() {
+  local v="$1"
+  v="${v#[\"\']}"
+  v="${v%[\"\']}"
+  printf '%s' "$v" | tr -d '\r\n'
+}
+
 DEFAULT_SUPABASE_URL="https://tpcykyaumvqtwhuiiomg.supabase.co"
 if [ -n "${SUPABASE_ANON_KEY:-}" ] || [ -n "${SUPABASE_URL:-}" ] || [ ! -f .env ]; then
   echo "Writing .env (credentials sourced from environment / Cursor Secrets when present)."
   cat > .env <<EOF
-SUPABASE_URL=${SUPABASE_URL:-$DEFAULT_SUPABASE_URL}
-SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-placeholder-anon-key}
-GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY:-}
-RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID:-}
+SUPABASE_URL=$(_clean_secret "${SUPABASE_URL:-$DEFAULT_SUPABASE_URL}")
+SUPABASE_ANON_KEY=$(_clean_secret "${SUPABASE_ANON_KEY:-placeholder-anon-key}")
+GOOGLE_MAPS_API_KEY=$(_clean_secret "${GOOGLE_MAPS_API_KEY:-}")
+RAZORPAY_KEY_ID=$(_clean_secret "${RAZORPAY_KEY_ID:-}")
 EOF
 fi
 
