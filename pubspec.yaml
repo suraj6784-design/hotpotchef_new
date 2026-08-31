@@ -1,0 +1,75 @@
+name: hotpotchef_new
+description: "A new Flutter project."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  go_router: ^14.0.0
+  cupertino_icons: ^1.0.8
+  supabase_flutter: ^2.16.0
+  image_picker: ^1.2.3
+  google_maps_flutter: ^2.18.0
+  razorpay_flutter: ^1.4.5
+  firebase_core: ^3.10.1
+  firebase_messaging: ^15.2.1
+  firebase_crashlytics: ^4.3.1
+  flutter_screenutil: ^5.9.3
+  geolocator: ^13.0.2
+  flutter_riverpod: ^3.4.2
+  url_launcher: ^6.3.2
+  intl: ^0.20.3
+  pdf: ^3.10.4
+  printing: ^5.11.1
+  path_provider: ^2.1.6
+  share_plus: ^13.3.0
+  flutter_dotenv: ^6.0.1
+  geocoding: ^3.0.0
+  open_file: ^4.0.0
+  freezed_annotation: ^3.1.0
+  json_annotation: ^4.12.0
+  shimmer: ^3.0.0
+  flutter_polyline_points: ^3.1.0
+  cached_network_image: ^3.3.1
+  fl_chart: ^0.68.0 # or latest compatible version
+  http: ^1.6.0
+  local_auth: ^3.0.2
+  flutter_secure_storage: ^11.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.13.1
+  flutter_native_splash: ^2.4.0
+  build_runner: ^2.15.1
+  freezed: ^3.2.5
+  json_serializable: ^6.14.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/
+    - .env
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/app_icon.png"
+  min_sdk_android: 21
+  web:
+    generate: false
+
+flutter_native_splash:
+  color: "#FAFAFA"
+  image: "assets/app_icon.png"
+  android_12:
+    color: "#FAFAFA"
+    image: "assets/app_icon.png"
+  fullscreen: true

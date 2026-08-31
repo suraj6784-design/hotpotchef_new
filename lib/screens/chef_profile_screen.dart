@@ -1,0 +1,801 @@
+// lib/screens/chef_profile_screen.dart
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:geocoding/geocoding.dart'; // 🌟 Added for reverse geocoding
+
+import 'map_picker_screen.dart';
+import '../utils/helpers.dart';
+import '../utils/app_theme.dart';
+import '../widgets/avatar_upload.dart';
+
+class ChefReviewModel {
+  final String id;
+  final int rating;
+  final String comment;
+  final String customerName;
+  final String mealTitle;
+  final DateTime createdAt;
+
+  const ChefReviewModel({
+    required this.id,
+    required this.rating,
+    required this.comment,
+    required this.customerName,
+    required this.mealTitle,
+    required this.createdAt,
+  });
+
+  factory ChefReviewModel.fromJson(Map<String, dynamic> json) {
+    final customerData = json['customer'] as Map<String, dynamic>?;
+    final mealData = json['meal'] as Map<String, dynamic>?;
+
+    return ChefReviewModel(
+      id: json['id']?.toString() ?? '',
+      rating: int.tryParse(json['rating']?.toString() ?? '5') ?? 5,
+      comment: json['comment']?.toString() ?? '',
+      customerName: customerData?['name'] ?? customerData?['full_name'] ?? 'Verified Customer',
+      mealTitle: mealData?['title'] ?? 'Menu Item',
+      createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ?? DateTime.now(),
+    );
+  }
+}
+
+class ChefProfileScreen extends StatefulWidget {
+  const ChefProfileScreen({super.key});
+
+  @override
+  State<ChefProfileScreen> createState() => _ChefProfileScreenState();
+}
+
+class _ChefProfileScreenState extends State<ChefProfileScreen> {
+  final _supabase = Supabase.instance.client;
+  final _formKey = GlobalKey<FormState>();
+
+  bool _isEditing = false;
+  bool _isLoading = true;
+  bool _isSaving = false;
+  bool _isSettingUpPayout = false;
+  bool _payoutEnabled = false;
+
+  // Controllers
+  final _nameController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _fssaiController = TextEditingController();
+  final _gatewayAccountController = TextEditingController();
+
+  final _bankAccountController = TextEditingController();
+  final _ifscController = TextEditingController();
+  final _beneficiaryNameController = TextEditingController();
+
+  final _houseController = TextEditingController();
+  final _streetController = TextEditingController();
+  final _cityController = TextEditingController();
+  final _stateController = TextEditingController();
+  final _pincodeController = TextEditingController();
+
+  String? _avatarUrl;
+  double? _latitude;
+  double? _longitude;
+  List<ChefReviewModel> _reviews = [];
+
+  // Strict Validation RegEx
+  static final _ifscRegex = RegExp(r'^[A-Z]{4}0[A-Z0-9]{6}$');
+  static final _fssaiRegex = RegExp(r'^[1-2][0-9]{13}$');
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfileAndReviews();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    _fssaiController.dispose();
+    _gatewayAccountController.dispose();
+    _bankAccountController.dispose();
+    _ifscController.dispose();
+    _beneficiaryNameController.dispose();
+    _houseController.dispose();
+    _streetController.dispose();
+    _cityController.dispose();
+    _stateController.dispose();
+    _pincodeController.dispose();
+    super.dispose();
+  }
+
+  // --- Optimized Data Loading with Single-Pass Relational Join ---
+
+  Future<void> _loadProfileAndReviews() async {
+    setState(() => _isLoading = true);
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user == null) return;
+
+      final results = await Future.wait([
+        // 1. Chef profile with structured columns
+        _supabase.from('users').select().eq('id', user.id).maybeSingle(),
+        // 2. Relational Reviews query (0 N+1 overhead)
+        _supabase
+            .from('reviews')
+            .select('*, customer:users(name, full_name), meal:meals(title)')
+            .eq('chef_id', user.id)
+            .order('created_at', ascending: false)
+            .limit(20),
+      ]);
+
+      final userData = results[0] as Map<String, dynamic>?;
+      final rawReviews = results[1] as List<dynamic>? ?? [];
+
+      if (userData != null && mounted) {
+        _nameController.text = userData['name'] ?? userData['full_name'] ?? user.userMetadata?['name'] ?? '';
+        _phoneController.text = userData['phone'] ?? user.userMetadata?['phone'] ?? '';
+        _fssaiController.text = userData['fssai_number'] ?? '';
+        _gatewayAccountController.text = userData['gateway_account_id']?.toString() ?? '';
+
+        _beneficiaryNameController.text = userData['beneficiary_name']?.toString() ?? '';
+        _bankAccountController.text = userData['bank_account_masked']?.toString() ??
+            userData['bank_account_number']?.toString() ?? '';
+        _ifscController.text = userData['bank_ifsc']?.toString() ?? '';
+
+        _avatarUrl = userData['avatar_url']?.toString();
+        _payoutEnabled = userData['payout_enabled'] == true || _gatewayAccountController.text.isNotEmpty;
+
+        _latitude = (userData['lat'] as num?)?.toDouble();
+        _longitude = (userData['lng'] as num?)?.toDouble();
+
+        // Load structured address fields directly
+        _houseController.text = userData['house_no']?.toString() ?? '';
+        _streetController.text = userData['street']?.toString() ?? userData['address']?.toString() ?? '';
+        _cityController.text = userData['city']?.toString() ?? '';
+        _stateController.text = userData['state']?.toString() ?? '';
+        _pincodeController.text = userData['pincode']?.toString() ?? userData['postal_code']?.toString() ?? '';
+      }
+
+      if (mounted) {
+        setState(() {
+          _reviews = rawReviews.map((r) => ChefReviewModel.fromJson(Map<String, dynamic>.from(r))).toList();
+          _isLoading = false;
+        });
+      }
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chef Profile Loading Error');
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // --- Secure Server-Side Payout Provisioning ---
+
+  Future<void> _setupChefPayout() async {
+    final ifsc = _ifscController.text.trim().toUpperCase();
+    final accNum = _bankAccountController.text.trim();
+    final beneficiary = _beneficiaryNameController.text.trim();
+
+    if (accNum.isEmpty || ifsc.isEmpty || beneficiary.isEmpty) {
+      _showSnackBar('Please provide Beneficiary Name, Account Number, and IFSC Code.', isError: true);
+      return;
+    }
+
+    if (!_ifscRegex.hasMatch(ifsc)) {
+      _showSnackBar('Invalid IFSC Code format (e.g. HDFC0001234)', isError: true);
+      return;
+    }
+
+    setState(() => _isSettingUpPayout = true);
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user == null) throw 'User session expired';
+
+      final response = await _supabase.functions.invoke(
+        'create-chef-account',
+        body: {
+          'chef_id': user.id,
+          'email': user.email,
+          'name': _nameController.text.trim().isEmpty ? beneficiary : _nameController.text.trim(),
+          'phone': _phoneController.text.trim(),
+          'bank_account': accNum,
+          'ifsc_code': ifsc,
+          'beneficiary_name': beneficiary,
+        },
+      );
+
+      if (response.status == 200 && response.data != null && response.data['success'] == true) {
+        setState(() {
+          _payoutEnabled = true;
+          if (response.data['account_id'] != null) {
+            _gatewayAccountController.text = response.data['account_id'].toString();
+          }
+        });
+        _showSnackBar('Payout account successfully linked & verified for settlements!');
+      } else {
+        throw Exception(response.data?['error'] ?? 'Settlement routing rejected');
+      }
+    } catch (e) {
+      _showSnackBar('Payout Setup Failed: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _isSettingUpPayout = false);
+    }
+  }
+
+  // --- Geolocation Map Pinning & Reverse Geocoding ---
+
+  Future<void> _openMapPicker() async {
+    if (!_isEditing) return;
+
+    final dynamic result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MapPickerScreen(
+          initialLat: _latitude,
+          initialLng: _longitude,
+        ),
+      ),
+    );
+
+    if (result != null) {
+      setState(() {
+        if (result is Map) {
+          _latitude = (result['latitude'] as num?)?.toDouble();
+          _longitude = (result['longitude'] as num?)?.toDouble();
+        } else {
+          _latitude = result.latitude;
+          _longitude = result.longitude;
+        }
+      });
+
+      // 🌟 Reverse Geocoding to automatically populate city, state, pin, and street/address fields
+      if (_latitude != null && _longitude != null) {
+        try {
+          List<Placemark> placemarks = await placemarkFromCoordinates(_latitude!, _longitude!);
+          if (placemarks.isNotEmpty) {
+            Placemark place = placemarks[0];
+            setState(() {
+              _streetController.text = [place.street, place.subLocality]
+                  .where((e) => e != null && e.isNotEmpty)
+                  .join(', ');
+              _cityController.text = place.locality ?? place.subAdministrativeArea ?? _cityController.text;
+              _stateController.text = place.administrativeArea ?? _stateController.text;
+              _pincodeController.text = place.postalCode ?? _pincodeController.text;
+            });
+          }
+        } catch (e) {
+          debugPrint('Geocoding failed: $e');
+        }
+      }
+
+      if (mounted) {
+        _showSnackBar('Location pin attached and address details auto-filled!');
+      }
+    }
+  }
+
+  // --- Profile Submission with Validation ---
+
+  Future<void> _saveProfile() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    if (_latitude == null || _longitude == null) {
+      _showSnackBar('Please pin your kitchen location on the map.', isError: true);
+      return;
+    }
+
+    final name = _nameController.text.trim();
+    final phone = _phoneController.text.trim();
+    final fssai = _fssaiController.text.trim();
+    final house = _houseController.text.trim();
+    final street = _streetController.text.trim();
+    final city = _cityController.text.trim();
+    final state = _stateController.text.trim();
+    final pin = _pincodeController.text.trim();
+
+    final formattedAddress = "$house, $street, $city, $state - $pin".trim();
+
+    setState(() => _isSaving = true);
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user == null) throw 'Session expired';
+
+      final updateData = {
+        'id': user.id,
+        'name': name,
+        'full_name': name,
+        'phone': phone,
+        'fssai_number': fssai,
+        'address': formattedAddress,
+        'house_no': house,
+        'street': street,
+        'city': city,
+        'state': state,
+        'pincode': pin,
+        'lat': _latitude,
+        'lng': _longitude,
+        if (_avatarUrl != null) 'avatar_url': _avatarUrl,
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+
+      await _supabase.from('users').upsert(updateData);
+      await _supabase.auth.updateUser(UserAttributes(data: {'name': name, 'phone': phone}));
+
+      if (mounted) {
+        setState(() => _isEditing = false);
+        _showSnackBar('Profile details saved successfully!');
+      }
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chef Profile Save Failure');
+      _showSnackBar('Failed to update profile: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  // --- Secure Password Update ---
+
+  void _showChangePasswordDialog() {
+    final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+    bool isSubmitting = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Change Password', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: newPasswordController,
+                obscureText: true,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(labelText: 'New Password (min 8 chars)', prefixIcon: Icon(Icons.lock_outline, color: Colors.deepOrange)),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: confirmPasswordController,
+                obscureText: true,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(labelText: 'Confirm New Password', prefixIcon: Icon(Icons.lock_reset, color: Colors.deepOrange)),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white),
+              onPressed: isSubmitting
+                  ? null
+                  : () async {
+                      final newPass = newPasswordController.text.trim();
+                      final confirmPass = confirmPasswordController.text.trim();
+
+                      if (newPass.length < 8) {
+                        _showSnackBar('Password must be at least 8 characters long.', isError: true);
+                        return;
+                      }
+                      if (newPass != confirmPass) {
+                        _showSnackBar('Passwords do not match.', isError: true);
+                        return;
+                      }
+
+                      setDialogState(() => isSubmitting = true);
+                      try {
+                        await _supabase.auth.updateUser(UserAttributes(password: newPass));
+                        if (ctx.mounted) {
+                          Navigator.pop(ctx);
+                          _showSnackBar('Password updated successfully!');
+                        }
+                      } catch (e) {
+                        _showSnackBar('Failed to change password: $e', isError: true);
+                      } finally {
+                        setDialogState(() => isSubmitting = false);
+                      }
+                    },
+              child: isSubmitting
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Text('Update'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showSnackBar(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.redAccent : Colors.green,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  // --- UI Layout ---
+
+  @override
+  Widget build(BuildContext context) {
+    final user = _supabase.auth.currentUser;
+    final email = user?.email ?? 'No Email';
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF121212),
+      appBar: AppBar(
+        title: const Text('Chef Profile & Settings', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        backgroundColor: const Color(0xFF1A1A1A),
+        elevation: 0,
+        actions: [
+          TextButton.icon(
+            icon: Icon(_isEditing ? Icons.close : Icons.edit, color: Colors.deepOrange, size: 18),
+            label: Text(_isEditing ? 'Cancel' : 'Edit', style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold)),
+            onPressed: () => setState(() => _isEditing = !_isEditing),
+          ),
+        ],
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator(color: Colors.deepOrange))
+          : Form(
+              key: _formKey,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  // Profile Identity Header Card
+                  Card(
+                    color: const Color(0xFF1E1E1E),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Row(
+                        children: [
+                          AvatarUploadWidget(
+                            initialAvatarUrl: _avatarUrl,
+                            isEditing: _isEditing,
+                            onUploadComplete: (newUrl) => setState(() => _avatarUrl = newUrl),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _nameController.text.isEmpty ? 'Home Kitchen Partner' : _nameController.text,
+                                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(email, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                                const SizedBox(height: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Text('Verified Food Partner',
+                                      style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Personal Information Section
+                  const Text('Kitchen & Business Credentials',
+                      style: TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold, fontSize: 15)),
+                  const SizedBox(height: 12),
+                  _buildValidatedTextField(
+                    controller: _nameController,
+                    label: 'Kitchen / Display Name *',
+                    prefixIcon: Icons.restaurant,
+                    validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildValidatedTextField(
+                    controller: _phoneController,
+                    label: 'Primary Phone Number *',
+                    prefixIcon: Icons.phone,
+                    keyboardType: TextInputType.phone,
+                    validator: (v) => v == null || v.trim().length < 10 ? 'Enter valid 10-digit number' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildValidatedTextField(
+                    controller: _fssaiController,
+                    label: '14-Digit FSSAI License Number *',
+                    prefixIcon: Icons.verified_user_outlined,
+                    keyboardType: TextInputType.number,
+                    maxLength: 14,
+                    validator: (v) {
+                      if (v == null || v.isEmpty) return 'FSSAI License is legally mandatory';
+                      if (!_fssaiRegex.hasMatch(v)) return 'Invalid 14-digit FSSAI format (Starts with 1 or 2)';
+                      return null;
+                    },
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () => launchUrl(Uri.parse('https://foscos.fssai.gov.in/'), mode: LaunchMode.externalApplication),
+                      child: const Text('Apply or Verify FSSAI License ↗',
+                          style: TextStyle(color: Colors.blueAccent, fontSize: 12, decoration: TextDecoration.underline)),
+                    ),
+                  ),
+                  const Divider(height: 32, color: Colors.white24),
+
+                  // Kitchen Dispatch Address Section
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Kitchen Pickup Address',
+                          style: TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold, fontSize: 15)),
+                      Row(
+                        children: [
+                          Icon(_latitude != null ? Icons.check_circle : Icons.warning_amber_rounded,
+                              size: 14, color: _latitude != null ? Colors.green : Colors.orange),
+                          const SizedBox(width: 4),
+                          Text(
+                            _latitude != null ? 'Coordinates Pinned' : 'Coordinates Missing',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _latitude != null ? Colors.green : Colors.orange),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  const Text('Drivers navigate to these coordinates for food collection.', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  const SizedBox(height: 12),
+
+                  if (_isEditing)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            side: BorderSide(color: _latitude == null ? Colors.deepOrange : Colors.green),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          icon: Icon(Icons.pin_drop, color: _latitude == null ? Colors.deepOrange : Colors.green),
+                          label: Text(
+                            _latitude == null ? 'Pin Exact Kitchen on Map *' : 'Location Pinned (Tap to update)',
+                            style: TextStyle(fontWeight: FontWeight.bold, color: _latitude == null ? Colors.deepOrange : Colors.green),
+                          ),
+                          onPressed: _openMapPicker,
+                        ),
+                      ),
+                    ),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: _buildValidatedTextField(controller: _houseController, label: 'House / Unit No.'),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 3,
+                        child: _buildValidatedTextField(
+                          controller: _cityController,
+                          label: 'City *',
+                          validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _buildValidatedTextField(
+                    controller: _streetController,
+                    label: 'Street / Landmark / Colony *',
+                    validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildValidatedTextField(
+                          controller: _stateController,
+                          label: 'State *',
+                          validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildValidatedTextField(
+                          controller: _pincodeController,
+                          label: 'PIN Code *',
+                          keyboardType: TextInputType.number,
+                          maxLength: 6,
+                          validator: (v) => v == null || v.trim().length != 6 ? '6-digit PIN' : null,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 36, color: Colors.white24),
+
+                  // Automated Settlements & Payout Section
+                  const Text('Automated Bank Payout Routing',
+                      style: TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold, fontSize: 15)),
+                  const SizedBox(height: 12),
+                  Card(
+                    color: const Color(0xFF1E1E1E),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        children: [
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(
+                              _payoutEnabled ? Icons.account_balance_wallet : Icons.account_balance,
+                              color: _payoutEnabled ? Colors.greenAccent : Colors.orangeAccent,
+                            ),
+                            title: Text(
+                              _payoutEnabled ? 'Direct Settlement Active' : 'Configure Settlement Account',
+                              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                            ),
+                            subtitle: Text(
+                              _payoutEnabled
+                                  ? 'Earnings settle automatically to your registered account.'
+                                  : 'Required for automated split payouts via Razorpay Route.',
+                              style: const TextStyle(color: Colors.grey, fontSize: 12),
+                            ),
+                            trailing: _payoutEnabled
+                                ? const Chip(backgroundColor: Colors.green, label: Text('Active', style: TextStyle(color: Colors.white, fontSize: 11)))
+                                : ElevatedButton(
+                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange),
+                                    onPressed: _isSettingUpPayout ? null : _setupChefPayout,
+                                    child: _isSettingUpPayout
+                                        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                        : const Text('Link', style: TextStyle(color: Colors.white, fontSize: 12)),
+                                  ),
+                          ),
+                          const Divider(color: Colors.white12),
+                          _buildValidatedTextField(controller: _beneficiaryNameController, label: 'Account Holder Name'),
+                          const SizedBox(height: 10),
+                          _buildValidatedTextField(controller: _bankAccountController, label: 'Bank Account Number', keyboardType: TextInputType.number),
+                          const SizedBox(height: 10),
+                          _buildValidatedTextField(
+                            controller: _ifscController,
+                            label: 'Bank IFSC Code',
+                            maxLength: 11,
+                            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]'))],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Account Security Card
+                  Card(
+                    color: const Color(0xFF1E1E1E),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    child: ListTile(
+                      leading: const Icon(Icons.security, color: Colors.white70),
+                      title: const Text('Security & Credentials', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                      subtitle: const Text('Update login password', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                      onTap: _showChangePasswordDialog,
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+
+                  // Customer Reviews Section
+                  const Text('Customer Reviews & Ratings',
+                      style: TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold, fontSize: 15)),
+                  const SizedBox(height: 12),
+                  if (_reviews.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      child: Center(child: Text('No reviews received yet.', style: TextStyle(color: Colors.grey, fontSize: 13))),
+                    )
+                  else
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: _reviews.length,
+                      itemBuilder: (context, index) {
+                        final rev = _reviews[index];
+                        return Card(
+                          color: const Color(0xFF1E1E1E),
+                          margin: const EdgeInsets.only(bottom: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          child: Padding(
+                            padding: const EdgeInsets.all(14),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Row(
+                                      children: List.generate(
+                                        5,
+                                        (i) => Icon(i < rev.rating ? Icons.star : Icons.star_border, color: Colors.amber, size: 15),
+                                      ),
+                                    ),
+                                    Text(formatOrderDate(rev.createdAt.toIso8601String()), style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Text('Dish: ${rev.mealTitle}',
+                                    style: const TextStyle(color: Colors.deepOrangeAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 2),
+                                Text(rev.customerName, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                                if (rev.comment.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text('"${rev.comment}"', style: const TextStyle(color: Colors.white70, fontSize: 12, fontStyle: FontStyle.italic)),
+                                ],
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+
+                  const SizedBox(height: 24),
+
+                  if (_isEditing)
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.deepOrange,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      icon: const Icon(Icons.save_outlined),
+                      label: _isSaving
+                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          : const Text('Save Profile Changes', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      onPressed: _isSaving ? null : _saveProfile,
+                    ),
+                  const SizedBox(height: 20),
+                ],
+              ),
+            ),
+    );
+  }
+
+  Widget _buildValidatedTextField({
+    required TextEditingController controller,
+    required String label,
+    IconData? prefixIcon,
+    TextInputType keyboardType = TextInputType.text,
+    int? maxLength,
+    String? Function(String?)? validator,
+    List<TextInputFormatter>? inputFormatters,
+  }) {
+    return TextFormField(
+      controller: controller,
+      enabled: _isEditing,
+      keyboardType: keyboardType,
+      maxLength: maxLength,
+      validator: validator,
+      inputFormatters: inputFormatters,
+      style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: Colors.grey, fontSize: 13),
+        floatingLabelStyle: const TextStyle(color: Colors.deepOrange, fontSize: 14, fontWeight: FontWeight.bold),
+        prefixIcon: prefixIcon != null ? Icon(prefixIcon, color: Colors.deepOrange, size: 20) : null,
+        filled: true,
+        fillColor: const Color(0xFF2A2A2A),
+        counterText: '',
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.white12)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.deepOrange, width: 2)),
+        disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+        errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.redAccent)),
+      ),
+    );
+  }
+}

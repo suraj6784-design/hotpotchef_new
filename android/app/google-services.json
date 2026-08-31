@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "379560909316",
+    "project_id": "hotpotchef-c53fa",
+    "storage_bucket": "hotpotchef-c53fa.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:379560909316:android:cae835b864441644cff351",
+        "android_client_info": {
+          "package_name": "com.hotpotchef.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCtic7MMrzyr8Tzx79ANA6ZRPhSZkkJiFg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
