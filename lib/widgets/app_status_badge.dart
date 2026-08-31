@@ -36,7 +36,10 @@ class AppStatusBadge extends StatelessWidget {
     }
 
     final bgColor = isDark ? baseColor.withValues(alpha: 0.2) : baseColor.withValues(alpha: 0.1);
-    final textColor = isDark ? baseColor.shade200 : baseColor.shade800;
+    final hsl = HSLColor.fromColor(baseColor);
+    final textColor = isDark
+        ? hsl.withLightness((hsl.lightness + 0.32).clamp(0.0, 1.0)).toColor()
+        : hsl.withLightness((hsl.lightness - 0.32).clamp(0.0, 1.0)).toColor();
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),

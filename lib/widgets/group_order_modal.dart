@@ -56,7 +56,7 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
       if (!mounted) return;
 
       for (var item in items) {
-        ref.read(cartProvider.notifier).addToCart(item.mealDetails, item.quantity);
+        ref.read(cartProvider.notifier).addToCart(item.rawMealDetails, item.quantity);
       }
 
       if (!mounted) return;
