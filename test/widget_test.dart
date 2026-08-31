@@ -1,30 +1,43 @@
-// This is a basic Flutter widget test.
+// Widget smoke test for a self-contained UI component.
 //
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+// The full app (`HotPotChefApp`) requires Firebase and Supabase to be
+// initialized in `main()`, so it is not suitable for a lightweight widget
+// test. Instead we verify a pure, dependency-free widget renders correctly.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:hotpotchef_new/main.dart';
+import 'package:hotpotchef_new/widgets/app_status_badge.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('AppStatusBadge renders its status label', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: AppStatusBadge(status: 'Pending'),
+          ),
+        ),
+      ),
+    );
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    expect(find.text('Pending'), findsOneWidget);
+    expect(find.byType(AppStatusBadge), findsOneWidget);
+  });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+  testWidgets('AppStatusBadge renders in dark theme without errors', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: const Scaffold(
+          body: Center(
+            child: AppStatusBadge(status: 'Out for delivery'),
+          ),
+        ),
+      ),
+    );
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('Out for delivery'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

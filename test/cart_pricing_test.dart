@@ -1,17 +1,30 @@
 // test/cart_pricing_test.dart
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hotpotchef_new/models/cart_state.dart';
+import 'package:hotpotchef_new/models/cart_enums.dart';
+
+CartItemModel _buildItem({
+  required int quantity,
+  required Map<String, dynamic> mealDetails,
+}) {
+  return CartItemModel(
+    id: '1',
+    mealId: 'm1',
+    chefId: 'c1',
+    title: 'Test Meal',
+    basePrice: (mealDetails['price'] as num?)?.toDouble() ?? 0.0,
+    quantity: quantity,
+    scheduledDate: DateTime.now(),
+    serviceType: ServiceType.deliveryPlatform,
+    rawMealDetails: mealDetails,
+  );
+}
 
 void main() {
   group('CartState Discount & Offer Tests', () {
     test('Calculates standard price when no offer is active', () {
-      final item = CartItemModel(
-        id: '1',
-        mealId: 'm1',
-        chefId: 'c1',
+      final item = _buildItem(
         quantity: 2,
-        selectedDate: 'Today',
-        selectedServiceType: 'Delivery',
         mealDetails: {'price': 100, 'offer_type': 'None'},
       );
 
@@ -20,13 +33,8 @@ void main() {
     });
 
     test('Calculates BOGO (Buy 1 Get 1) correctly for odd quantities', () {
-      final item = CartItemModel(
-        id: '1',
-        mealId: 'm1',
-        chefId: 'c1',
+      final item = _buildItem(
         quantity: 3, // Buy 2, Get 1 free (Pay for 2)
-        selectedDate: 'Today',
-        selectedServiceType: 'Delivery',
         mealDetails: {'price': 150, 'offer_type': 'BOGO (Buy 1 Get 1)'},
       );
 
@@ -36,13 +44,8 @@ void main() {
     });
 
     test('Calculates Percentage Discount correctly', () {
-      final item = CartItemModel(
-        id: '1',
-        mealId: 'm1',
-        chefId: 'c1',
+      final item = _buildItem(
         quantity: 2,
-        selectedDate: 'Today',
-        selectedServiceType: 'Delivery',
         mealDetails: {
           'price': 200,
           'offer_type': 'Percentage Discount (%)',
@@ -55,14 +58,10 @@ void main() {
     });
 
     test('Respects offer expiration correctly', () {
-      final expiredDate = DateTime.now().subtract(const Duration(hours: 1)).toIso8601String();
-      final item = CartItemModel(
-        id: '1',
-        mealId: 'm1',
-        chefId: 'c1',
+      final expiredDate =
+          DateTime.now().subtract(const Duration(hours: 1)).toIso8601String();
+      final item = _buildItem(
         quantity: 1,
-        selectedDate: 'Today',
-        selectedServiceType: 'Delivery',
         mealDetails: {
           'price': 100,
           'offer_type': 'Flat Discount (₹)',
