@@ -298,7 +298,6 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
         'promo_code': _promoController.text.trim().toUpperCase(),
         'accepts_hotpot_coins': _acceptsHotpotCoins,
         'offer_valid_until': offerExpiryIso,
-        'updated_at': DateTime.now().toIso8601String(),
       };
 
       if (widget.existingMeal != null && widget.existingMeal!['id'] != null) {
@@ -307,7 +306,6 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
             .update(mealPayload)
             .eq('id', widget.existingMeal!['id']);
       } else {
-        mealPayload['created_at'] = DateTime.now().toIso8601String();
         await _supabase.from('meals').insert(mealPayload);
       }
 
