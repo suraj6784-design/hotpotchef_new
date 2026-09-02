@@ -13,6 +13,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
 
 import '../utils/helpers.dart';
+import '../utils/support.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/app_status_badge.dart';
@@ -178,7 +179,10 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                       ],
                     ),
                     GestureDetector(
-                      onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Support chat coming soon!'))),
+                      onTap: () => showContactSupportSheet(
+                        ctx,
+                        orderRef: orderRecord['id']?.toString() ?? displayOrderIdStr,
+                      ),
                       child: const Text('Support', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 14)),
                     )
                   ],

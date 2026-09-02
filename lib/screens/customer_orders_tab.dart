@@ -13,6 +13,7 @@ import 'package:go_router/go_router.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'dart:convert';
 import '../utils/helpers.dart';
+import '../utils/support.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
 import '../services/order_lifecycle.dart';
@@ -488,7 +489,7 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                       ],
                     ),
                     GestureDetector(
-                      onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Support chat coming soon!'))),
+                      onTap: () => showContactSupportSheet(ctx, orderRef: items.first['order_id']?.toString() ?? items.first['id']?.toString()),
                       child: const Text('Support', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 14)),
                     )
                   ],

@@ -11,6 +11,8 @@ import 'referral_screen.dart';
 import 'customer_order_history_screen.dart';
 import '../services/auth_session.dart';
 import '../utils/helpers.dart';
+import '../utils/legal_content.dart';
+import '../utils/support.dart';
 import '../widgets/avatar_upload.dart';
 import '../widgets/loyalty_badge_card.dart';
 import '../widgets/app_widgets.dart';
@@ -695,10 +697,6 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
     );
   }
 
-  void _showPlaceholderSnack(String feature) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$feature is coming soon!')));
-  }
-
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -873,15 +871,40 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
                     ),
                     _buildListTile(icon: Icons.lock_outline, title: 'Change Password', onTap: _showChangePasswordDialog, isDark: isDark),
                     Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
-                    _buildListTile(icon: Icons.article_outlined, title: 'Terms & conditions', onTap: () => _showPlaceholderSnack('Terms & Conditions'), isDark: isDark),
+                    _buildListTile(
+                      icon: Icons.article_outlined,
+                      title: 'Terms & conditions',
+                      onTap: () => openLegalDocument(context, LegalDocumentType.terms),
+                      isDark: isDark,
+                    ),
                     Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
-                    _buildListTile(icon: Icons.help_outline, title: 'FAQs', onTap: () => _showPlaceholderSnack('FAQs'), isDark: isDark),
+                    _buildListTile(
+                      icon: Icons.help_outline,
+                      title: 'FAQs',
+                      onTap: () => openLegalDocument(context, LegalDocumentType.faq),
+                      isDark: isDark,
+                    ),
                     Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
-                    _buildListTile(icon: Icons.privacy_tip_outlined, title: 'Privacy policy', onTap: () => _showPlaceholderSnack('Privacy Policy'), isDark: isDark),
+                    _buildListTile(
+                      icon: Icons.privacy_tip_outlined,
+                      title: 'Privacy policy',
+                      onTap: () => openLegalDocument(context, LegalDocumentType.privacy),
+                      isDark: isDark,
+                    ),
                     Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
-                    _buildListTile(icon: Icons.chat_bubble_outline, title: 'Contact Us', onTap: () => _showPlaceholderSnack('Contact Support'), isDark: isDark),
+                    _buildListTile(
+                      icon: Icons.chat_bubble_outline,
+                      title: 'Contact Us',
+                      onTap: () => showContactSupportSheet(context),
+                      isDark: isDark,
+                    ),
                     Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
-                    _buildListTile(icon: Icons.notifications_none, title: 'Cancellation & Reschedule Policy', onTap: () => _showPlaceholderSnack('Cancellation Policy'), isDark: isDark),
+                    _buildListTile(
+                      icon: Icons.notifications_none,
+                      title: 'Cancellation & Reschedule Policy',
+                      onTap: () => openLegalDocument(context, LegalDocumentType.cancellation),
+                      isDark: isDark,
+                    ),
 
                     if (widget.onLogout != null)
                       Padding(
