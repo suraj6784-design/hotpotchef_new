@@ -477,30 +477,37 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
               Text('Transaction & Order History', style: TextStyle(color: isDark ? Colors.white : AppTheme.textMain, fontWeight: FontWeight.bold, fontSize: 14)),
               const SizedBox(height: 10),
               
-              // Dynamically fetch actual user orders/transactions from Supabase
+              // HotPot Coins ledger: credits (earned) and debits (redeemed).
               FutureBuilder<List<Map<String, dynamic>>>(
-                future: user != null 
-                    ? _supabase.from('orders').select().eq('customer_id', user.id).order('created_at', ascending: false).limit(10)
+                future: user != null
+                    ? _supabase.from('transactions').select().eq('user_id', user.id).order('created_at', ascending: false).limit(20)
                     : Future.value([]),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator(color: AppTheme.primary, strokeWidth: 2)));
                   }
-                  
-                  final orders = snapshot.data ?? [];
-                  if (orders.isEmpty) {
+
+                  final transactions = snapshot.data ?? [];
+                  if (transactions.isEmpty) {
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: Text('No recent order transactions found.', style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey, fontSize: 13)),
+                      child: Text('No coin activity yet.', style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey, fontSize: 13)),
                     );
                   }
 
                   return Column(
-                    children: orders.map((order) {
-                      final title = order['title'] ?? 'Food Order';
-                      final price = order['total_price'] ?? order['total_amount'] ?? 0;
-                      final status = order['status'] ?? 'Completed';
-                      final date = formatOrderDate(order['created_at']?.toString());
+                    children: transactions.map((txn) {
+                      final type = txn['transaction_type']?.toString() ?? '';
+                      final rawAmount = (txn['amount'] as num?)?.toDouble() ?? 0.0;
+                      // Treat known debit types (or an explicit negative amount) as spent.
+                      final isDebit = rawAmount < 0 ||
+                          RegExp('debit|spent|redeem|used|deduct', caseSensitive: false).hasMatch(type);
+                      final coins = rawAmount.abs();
+                      final title = (txn['description']?.toString().trim().isNotEmpty ?? false)
+                          ? txn['description'].toString()
+                          : (type.isNotEmpty ? type : 'Coin Transaction');
+                      final date = formatOrderDate(txn['created_at']?.toString());
+                      final color = isDebit ? Colors.redAccent : Colors.green;
 
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 8),
@@ -512,11 +519,12 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(title, style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 13, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                  Text('$status • $date', style: TextStyle(color: isDark ? Colors.grey.shade500 : Colors.grey, fontSize: 11)),
+                                  Text(date, style: TextStyle(color: isDark ? Colors.grey.shade500 : Colors.grey, fontSize: 11)),
                                 ],
                               ),
                             ),
-                            Text('₹$price', style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 13)),
+                            Text('${isDebit ? '-' : '+'}${coins.toInt()} 🪙',
+                                style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13)),
                           ],
                         ),
                       );
