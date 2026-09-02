@@ -13,9 +13,11 @@ import 'package:go_router/go_router.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'dart:convert';
 import '../utils/helpers.dart';
+import '../utils/network.dart';
 import '../utils/support.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
+import '../widgets/meal_review_dialog.dart';
 import '../services/order_lifecycle.dart';
 
 class CustomerOrdersTab extends StatefulWidget {
@@ -212,93 +214,39 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
     }
   }
 
-  void _showReviewDialog(BuildContext context, Map order) {
-    int selectedRating = 5;
-    final reviewController = TextEditingController();
-    bool isSubmitting = false;
-
-    showDialog(
+  Future<void> _showReviewDialog(Map order) async {
+    final submitted = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppTheme.surfaceDark,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Rate ${order['title']}', style: const TextStyle(color: Colors.white)),
-        content: StatefulBuilder(
-          builder: (context, setDialogState) {
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('How was the food from this home kitchen?', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(5, (index) {
-                    return IconButton(
-                      icon: Icon(index < selectedRating ? Icons.star : Icons.star_border, color: Colors.amber, size: 32),
-                      onPressed: () => setDialogState(() => selectedRating = index + 1),
-                    );
-                  }),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: reviewController,
-                  maxLines: 3,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(
-                    labelText: 'Leave a review (optional)',
-                    labelStyle: TextStyle(color: Colors.grey),
-                    alignLabelWithHint: true,
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Skip', style: TextStyle(color: Colors.grey))),
-          StatefulBuilder(
-            builder: (context, setBtnState) {
-              return ElevatedButton(
-                onPressed: isSubmitting
-                    ? null
-                    : () async {
-                        setBtnState(() => isSubmitting = true);
-                        try {
-                          final supabase = Supabase.instance.client;
-                          final user = supabase.auth.currentUser;
-                          if (user == null) throw Exception('Please log in to rate meals.');
+      builder: (dialogContext) => MealReviewDialog(
+        mealTitle: order['title']?.toString() ?? 'this meal',
+        onSubmit: (rating, comment) async {
+          final supabase = Supabase.instance.client;
+          final user = supabase.auth.currentUser;
+          if (user == null) throw Exception('Please log in to rate meals.');
 
-                          await supabase.from('reviews').insert({
-                            'meal_id': order['source_meal_id'] ?? order['id'],
-                            'customer_id': user.id,
-                            'chef_id': order['chef_id'],
-                            'rating': selectedRating,
-                            'comment': reviewController.text.trim(),
-                          });
-
-                          if (dialogContext.mounted) {
-                            Navigator.pop(dialogContext);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Review submitted!'), backgroundColor: Colors.green),
-                            );
-                          }
-                        } catch (e) {
-                          setBtnState(() => isSubmitting = false);
-                          if (dialogContext.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red),
-                            );
-                          }
-                        }
-                      },
-                child: isSubmitting
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : const Text('Submit'),
+          try {
+            await supabase.from('reviews').insert({
+              'meal_id': order['source_meal_id'] ?? order['id'],
+              'customer_id': user.id,
+              'chef_id': order['chef_id'],
+              'rating': rating,
+              'comment': comment,
+            });
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(networkErrorMessage(e)), backgroundColor: Colors.red),
               );
-            },
-          ),
-        ],
+            }
+            rethrow;
+          }
+        },
       ),
+    );
+
+    if (!mounted || submitted != true) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Review submitted!'), backgroundColor: Colors.green),
     );
   }
 
@@ -738,7 +686,8 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                               label: const Text('Rate this meal'),
                               onPressed: () {
                                 Navigator.pop(ctx);
-                                _showReviewDialog(context, items.first);
+                                if (!mounted) return;
+                                _showReviewDialog(items.first);
                               },
                             );
                           },

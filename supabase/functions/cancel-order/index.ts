@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts'
 import { refundPayment } from '../_shared/razorpay.ts'
+import { fireAndForgetAlert } from '../_shared/fire_alert.ts'
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return optionsResponse()
@@ -65,6 +66,12 @@ serve(async (req) => {
           refund_status: 'failed',
           updated_at: new Date().toISOString(),
         }).eq('id', orderId)
+        fireAndForgetAlert({
+          table: 'orders',
+          type: 'UPDATE',
+          record: { id: orderId },
+          old_record: { status: 'Pending Chef Approval' },
+        })
         return jsonResponse({
           success: true,
           restocked: true,
@@ -74,6 +81,13 @@ serve(async (req) => {
         })
       }
     }
+
+    fireAndForgetAlert({
+      table: 'orders',
+      type: 'UPDATE',
+      record: { id: orderId },
+      old_record: { status: 'Pending Chef Approval' },
+    })
 
     return jsonResponse({
       success: true,

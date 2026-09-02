@@ -6,6 +6,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../models/order_status.dart';
 import '../utils/network.dart';
+import 'alert_service.dart';
 
 Map<String, dynamic>? _functionData(dynamic data) {
   if (data is Map<String, dynamic>) return data;
@@ -45,6 +46,7 @@ class OrderRepository {
       } else {
         await _supabase.from('orders').update(updateData).eq('id', orderId);
       }
+      AlertService.notifyOrder(orderId: orderId, type: 'UPDATE');
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to update order status to $newStatus');
       if (kDebugMode) debugPrint('Order update error: $e');
@@ -66,7 +68,9 @@ class OrderRepository {
           .filter('driver_id', 'is', null)
           .select('id');
 
-      return List<dynamic>.from(response).isNotEmpty;
+      final claimed = List<dynamic>.from(response).isNotEmpty;
+      if (claimed) AlertService.notifyOrder(orderId: orderId, type: 'UPDATE');
+      return claimed;
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Driver order acceptance race condition loss');
       return false;

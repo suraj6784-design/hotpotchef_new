@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { jsonResponse } from '../_shared/cors.ts'
 import { fetchPayment, hmacSha256Hex, refundPayment } from '../_shared/razorpay.ts'
+import { fireAndForgetAlert } from '../_shared/fire_alert.ts'
 
 serve(async (req) => {
   try {
@@ -79,6 +80,11 @@ serve(async (req) => {
     })
 
     if (!error && placed?.success === true) {
+      fireAndForgetAlert({
+        table: 'orders',
+        type: 'INSERT',
+        record: { id: placed.order_id },
+      })
       return jsonResponse({ success: true, order_id: placed.order_id })
     }
 

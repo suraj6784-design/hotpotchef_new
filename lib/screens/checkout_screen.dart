@@ -12,6 +12,7 @@ import '../utils/helpers.dart';
 import '../utils/app_theme.dart';
 import '../utils/network.dart';
 import '../models/cart_enums.dart';
+import '../services/alert_service.dart';
 import '../widgets/app_widgets.dart';
 import 'address_form_screen.dart';
 
@@ -511,6 +512,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
       _orderRecorded = true;
       _heldRazorpayOrderId = null;
+      final orderId = placed['order_id']?.toString();
+      if (orderId != null && orderId.isNotEmpty) {
+        AlertService.notifyOrder(orderId: orderId, type: 'INSERT');
+      }
 
       if (mounted) {
         widget.onOrderPlacedSuccess();

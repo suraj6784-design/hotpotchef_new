@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts'
 import { fetchPayment, refundPayment, verifyCheckoutSignature } from '../_shared/razorpay.ts'
+import { fireAndForgetAlert } from '../_shared/fire_alert.ts'
 
 type PendingCheckout = {
   user_id: string
@@ -132,6 +133,11 @@ serve(async (req) => {
       signature,
     )
     if (!placeError && placed?.success === true) {
+      fireAndForgetAlert({
+        table: 'orders',
+        type: 'INSERT',
+        record: { id: placed.order_id },
+      })
       return jsonResponse({ success: true, order_id: placed.order_id, recovered: true })
     }
 

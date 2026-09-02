@@ -9,9 +9,9 @@ import 'package:geocoding/geocoding.dart'; // 🌟 Added for reverse geocoding
 
 import 'map_picker_screen.dart';
 import '../utils/helpers.dart';
-import '../utils/app_theme.dart';
 import '../utils/network.dart';
 import '../widgets/avatar_upload.dart';
+import '../widgets/change_password_dialog.dart';
 
 class ChefReviewModel {
   final String id;
@@ -337,75 +337,22 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
   // --- Secure Password Update ---
 
   void _showChangePasswordDialog() {
-    final newPasswordController = TextEditingController();
-    final confirmPasswordController = TextEditingController();
-    bool isSubmitting = false;
-
-    showDialog(
+    showDialog<bool>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: const Color(0xFF1E1E1E),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Change Password', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: newPasswordController,
-                obscureText: true,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(labelText: 'New Password (min 8 chars)', prefixIcon: Icon(Icons.lock_outline, color: Colors.deepOrange)),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: confirmPasswordController,
-                obscureText: true,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(labelText: 'Confirm New Password', prefixIcon: Icon(Icons.lock_reset, color: Colors.deepOrange)),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white),
-              onPressed: isSubmitting
-                  ? null
-                  : () async {
-                      final newPass = newPasswordController.text.trim();
-                      final confirmPass = confirmPasswordController.text.trim();
-
-                      if (newPass.length < 8) {
-                        _showSnackBar('Password must be at least 8 characters long.', isError: true);
-                        return;
-                      }
-                      if (newPass != confirmPass) {
-                        _showSnackBar('Passwords do not match.', isError: true);
-                        return;
-                      }
-
-                      setDialogState(() => isSubmitting = true);
-                      try {
-                        await _supabase.auth.updateUser(UserAttributes(password: newPass));
-                        if (ctx.mounted) {
-                          Navigator.pop(ctx);
-                          _showSnackBar('Password updated successfully!');
-                        }
-                      } catch (e) {
-                        _showSnackBar('Failed to change password: $e', isError: true);
-                      } finally {
-                        setDialogState(() => isSubmitting = false);
-                      }
-                    },
-              child: isSubmitting
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Text('Update'),
-            ),
-          ],
-        ),
+      builder: (ctx) => ChangePasswordDialog(
+        requireConfirm: true,
+        onSubmit: ({currentPassword, required newPassword}) async {
+          try {
+            await _supabase.auth.updateUser(UserAttributes(password: newPassword));
+          } catch (e) {
+            _showSnackBar('Failed to change password: $e', isError: true);
+            rethrow;
+          }
+        },
       ),
-    );
+    ).then((ok) {
+      if (ok == true) _showSnackBar('Password updated successfully!');
+    });
   }
 
   void _showSnackBar(String message, {bool isError = false}) {

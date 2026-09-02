@@ -1,4 +1,4 @@
-// lib/screens/driver_profile_screen.dart
+﻿// lib/screens/driver_profile_screen.dart
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -6,8 +6,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import 'map_picker_screen.dart';
-import '../utils/app_theme.dart';
 import '../widgets/avatar_upload.dart';
+import '../widgets/change_password_dialog.dart';
 
 class DriverProfileScreen extends StatefulWidget {
   const DriverProfileScreen({super.key});
@@ -23,7 +23,6 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
   bool _isEditing = false;
   bool _isLoading = true;
   bool _isSaving = false;
-  bool _isChangingPassword = false;
 
   // Controllers
   final _nameController = TextEditingController();
@@ -158,80 +157,34 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
 
   // --- Password Reset ---
 
-  Future<void> _changePassword() async {
-    final oldPass = _oldPasswordController.text.trim();
-    final newPass = _newPasswordController.text.trim();
-
-    if (oldPass.isEmpty || newPass.isEmpty || newPass.length < 8) {
-      _showSnackBar('Please enter your old password and a new password (min 8 chars).', isError: true);
-      return;
-    }
-
-    setState(() => _isChangingPassword = true);
-    try {
-      final user = _supabase.auth.currentUser;
-      if (user == null || user.email == null) throw Exception('Not logged in');
-
-      await _supabase.auth.signInWithPassword(email: user.email!, password: oldPass);
-      await _supabase.auth.updateUser(UserAttributes(password: newPass));
-
-      _oldPasswordController.clear();
-      _newPasswordController.clear();
-
-      if (!mounted) return;
-      Navigator.pop(context);
-      _showSnackBar('Password changed successfully!');
-    } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Driver password change failure');
-      _showSnackBar('Failed to update password. Incorrect old password or network error.', isError: true);
-    } finally {
-      if (mounted) setState(() => _isChangingPassword = false);
-    }
-  }
-
   void _showChangePasswordDialog() {
-    showDialog(
+    showDialog<bool>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: const Color(0xFF1E1E1E),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Change Password', style: TextStyle(color: Colors.white)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildTextField(
-                controller: _oldPasswordController,
-                label: 'Old Password',
-                prefixIcon: Icons.lock_outline,
-              ),
-              const SizedBox(height: 12),
-              _buildTextField(
-                controller: _newPasswordController,
-                label: 'New Password (min 8 chars)',
-                prefixIcon: Icons.lock_reset,
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white),
-              onPressed: _isChangingPassword
-                  ? null
-                  : () async {
-                      setDialogState(() => _isChangingPassword = true);
-                      await _changePassword();
-                      if (ctx.mounted) setDialogState(() => _isChangingPassword = false);
-                    },
-              child: _isChangingPassword
-                  ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Text('Update'),
-            )
-          ],
-        ),
+      builder: (ctx) => ChangePasswordDialog(
+        requireCurrentPassword: true,
+        onSubmit: ({currentPassword, required newPassword}) async {
+          final user = _supabase.auth.currentUser;
+          if (user == null || user.email == null) {
+            throw Exception('Not logged in');
+          }
+          try {
+            await _supabase.auth.signInWithPassword(
+              email: user.email!,
+              password: currentPassword ?? '',
+            );
+            await _supabase.auth.updateUser(UserAttributes(password: newPassword));
+            _oldPasswordController.clear();
+            _newPasswordController.clear();
+          } catch (e, stack) {
+            FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Driver password change failure');
+            _showSnackBar('Failed to update password. Incorrect old password or network error.', isError: true);
+            rethrow;
+          }
+        },
       ),
-    );
+    ).then((ok) {
+      if (ok == true) _showSnackBar('Password changed successfully!');
+    });
   }
 
   // --- Profile Persistence ---

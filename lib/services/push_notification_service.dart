@@ -1,11 +1,10 @@
 // lib/services/push_notification_service.dart
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../main.dart';
+import 'alert_service.dart';
 
 // Top-level background message handler (Required by FCM)
 @pragma('vm:entry-point')
@@ -49,17 +48,22 @@ class PushNotificationService {
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
         final title = message.notification?.title ?? 'HotPotChef';
         final body = message.notification?.body ?? '';
-        debugPrint('Received foreground message: $title');
-        final messenger = globalMessengerKey.currentState;
-        if (messenger == null) return;
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(body.isEmpty ? title : '$title — $body'),
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 4),
-          ),
-        );
+        final id = message.data['alert_id'] ??
+            message.data['message_id'] ??
+            message.data['order_id'] ??
+            message.messageId ??
+            title;
+        AlertService.showBanner(id, title, body);
       });
+
+      _supabase.auth.onAuthStateChange.listen((data) {
+        if (data.session != null) {
+          AlertService.start();
+        } else {
+          AlertService.stop();
+        }
+      });
+      await AlertService.start();
 
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Error initializing PushNotifications service');

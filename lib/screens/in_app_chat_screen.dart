@@ -5,6 +5,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:intl/intl.dart';
 
+import '../services/alert_service.dart';
+
 class InAppChatScreen extends StatefulWidget {
   final String mealId;
   final String roomName;
@@ -29,7 +31,16 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
   bool _isFetchingRoles = false;
 
   @override
+  void initState() {
+    super.initState();
+    ChatAlertScope.activeMealId = widget.mealId;
+  }
+
+  @override
   void dispose() {
+    if (ChatAlertScope.activeMealId == widget.mealId) {
+      ChatAlertScope.activeMealId = null;
+    }
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -76,12 +87,14 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
     if (user == null) return;
 
     try {
-      await _supabase.from('messages').insert({
+      final inserted = await _supabase.from('messages').insert({
         'meal_id': widget.mealId,
         'sender_id': user.id,
         'content': text,
         'created_at': DateTime.now().toUtc().toIso8601String(),
-      });
+      }).select('id').maybeSingle();
+      final messageId = inserted?['id']?.toString();
+      if (messageId != null) AlertService.notifyChat(messageId: messageId);
       
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
