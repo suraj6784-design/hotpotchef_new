@@ -11,6 +11,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../utils/helpers.dart';
 import '../utils/app_theme.dart';
 import '../models/cart_enums.dart';
+import '../widgets/app_widgets.dart';
 import 'address_form_screen.dart';
 
 class CheckoutScreen extends StatefulWidget {
@@ -287,7 +288,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           'contact': phone,
           'email': user.email ?? '',
         },
-        'theme': {'color': '#FF5722'}
+        'theme': {'color': '#F4511E'}
       };
 
       _razorpay.open(options);
@@ -506,19 +507,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (_isLoading) {
       return Scaffold(
         appBar: AppBar(title: const Text('Checkout')),
-        body: const Center(child: CircularProgressIndicator(color: Colors.deepOrange)),
+        body: const Center(child: CircularProgressIndicator(color: AppTheme.primary)),
       );
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA),
+      backgroundColor: AppTheme.background,
       appBar: AppBar(
-        title: const Text('Checkout & Payment',
-            style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black87),
+        title: const Text('Checkout & Payment'),
       ),
+      bottomNavigationBar: _buildPayBar(),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -754,7 +752,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   const Divider(height: 20),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
-                    activeThumbColor: Colors.deepOrange,
+                    activeThumbColor: AppTheme.primary,
                     title: Text(
                       'Use HotPot Coins (Balance: ₹${_userCoinBalance.toStringAsFixed(2)})',
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
@@ -773,44 +771,75 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       ],
                     ),
                 ],
-                const Divider(height: 20, thickness: 1.5),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Grand Total', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-                    Text(
-                      '₹${_grandTotal.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 20,
-                        color: Colors.deepOrange,
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.08),
+                    borderRadius: AppTheme.radiusMd,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Grand Total', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                      Text(
+                        '₹${_grandTotal.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 22,
+                          color: AppTheme.primary,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
 
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepOrange,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+  Widget _buildPayBar() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 14,
+        bottom: MediaQuery.of(context).padding.bottom > 0 ? MediaQuery.of(context).padding.bottom : 16,
+      ),
+      decoration: BoxDecoration(
+        color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+        boxShadow: AppTheme.heavyShadow,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(AppTheme.rXl)),
+      ),
+      child: Row(
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('You pay',
+                  style: TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w500)),
+              const SizedBox(height: 2),
+              Text('₹${_grandTotal.toStringAsFixed(0)}',
+                  style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800)),
+            ],
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: GradientButton(
+              label: 'Pay & Place Order',
+              icon: Icons.lock_rounded,
+              loading: _isCheckingOut,
+              onPressed: _isCheckingOut ? null : _startRazorpayPayment,
             ),
-            onPressed: _isCheckingOut ? null : _startRazorpayPayment,
-            child: _isCheckingOut
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                  )
-                : Text(
-                    'Pay ₹${_grandTotal.toStringAsFixed(2)} & Place Order',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
           ),
         ],
       ),

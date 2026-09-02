@@ -5,11 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../utils/helpers.dart';
-import '../utils/app_theme.dart';
 import '../models/cart_state.dart';
 import '../models/cart_enums.dart';
 import '../providers/cart_provider.dart';
 import '../widgets/customer_ui_components.dart';
+import '../widgets/app_widgets.dart';
 import 'checkout_screen.dart';
 import 'customer_hub.dart';
 
@@ -182,21 +182,12 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
             ],
           ],
         ),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(color: Colors.orange.shade50, shape: BoxShape.circle),
-                child: Icon(Icons.shopping_basket_outlined, size: 64, color: Colors.orange.shade300),
-              ),
-              const SizedBox(height: 24),
-              const Text('Your plate is empty!', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
-              const SizedBox(height: 24),
-              ElevatedButton(onPressed: widget.onAddMoreMeals, child: const Text('Browse Menu')),
-            ],
-          ),
+        body: EmptyState(
+          icon: Icons.shopping_basket_outlined,
+          title: 'Your plate is empty!',
+          message: 'Discover fresh, home-cooked meals from local chefs and add your favourites.',
+          actionLabel: 'Browse Menu',
+          onAction: widget.onAddMoreMeals,
         ),
       );
     }
@@ -259,7 +250,9 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
               ),
             ),
 
-          ...cartState.items.map((item) {
+          ...cartState.items.asMap().entries.map((entry) {
+            final index = entry.key;
+            final item = entry.value;
             final cartItemId = item.id;
             final offered = (item.rawMealDetails['service_type']?.toString() ?? '')
                 .split(',')
@@ -567,62 +560,86 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                   ),
                 ],
               ),
-            );
+            ).entrance(index: index);
           }),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 4),
           OutlinedButton.icon(
             icon: const Icon(Icons.add_circle_outline),
             label: const Text('Add More Meals'),
             onPressed: widget.onAddMoreMeals,
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 20),
 
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primary,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          // Premium checkout bar (inline so it clears the hub's floating dock)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: AppTheme.radiusLg,
+              boxShadow: AppTheme.softShadow,
+              border: Theme.of(context).brightness == Brightness.dark
+                  ? Border.all(color: Colors.white.withValues(alpha: 0.06))
+                  : null,
             ),
-            onPressed: () async {
-              if (!isLoggedIn) {
-                CustomerHubScreen.returnToCartAfterLogin = true;
-                showAuthBottomSheet(context, () {
-                  ref.read(cartProvider.notifier).syncGuestCartToUser();
-                  if (mounted) setState(() {});
-                });
-                return;
-              }
-
-              // Validate single-vendor requirement
-              final canProceed = await _verifySingleVendorOrPrompt(cartState);
-              if (!canProceed || !context.mounted) return;
-
-              final checkoutItems = cartState.items.map((i) => i.toCheckoutPayload()).toList();
-
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => CheckoutScreen(
-                    cartItems: checkoutItems,
-                    onOrderPlacedSuccess: () {
-                      ref.read(cartProvider.notifier).clearCart();
-                      widget.onOrderPlacedSuccess();
-                    },
+            child: Row(
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Total payable',
+                        style: TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w500)),
+                    const SizedBox(height: 2),
+                    Text('₹${cartState.grandTotal.toStringAsFixed(0)}',
+                        style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800)),
+                  ],
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: GradientButton(
+                    label: isLoggedIn ? 'Checkout' : 'Sign in to order',
+                    icon: isLoggedIn ? Icons.arrow_forward_rounded : Icons.login_rounded,
+                    onPressed: () => _handleCheckoutPressed(cartState, isLoggedIn),
                   ),
                 ),
-              );
-            },
-            child: Text(
-              isLoggedIn
-                  ? 'Proceed to Checkout (₹${cartState.grandTotal.toStringAsFixed(0)})'
-                  : 'Sign in to place order (₹${cartState.grandTotal.toStringAsFixed(0)})',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ],
             ),
           ),
-          const SizedBox(height: 40),
         ],
+      ),
+    );
+  }
+
+  Future<void> _handleCheckoutPressed(CartState cartState, bool isLoggedIn) async {
+    if (!isLoggedIn) {
+      CustomerHubScreen.returnToCartAfterLogin = true;
+      showAuthBottomSheet(context, () {
+        ref.read(cartProvider.notifier).syncGuestCartToUser();
+        if (mounted) setState(() {});
+      });
+      return;
+    }
+
+    // Validate single-vendor requirement
+    final canProceed = await _verifySingleVendorOrPrompt(cartState);
+    if (!canProceed || !mounted) return;
+
+    final checkoutItems = cartState.items.map((i) => i.toCheckoutPayload()).toList();
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CheckoutScreen(
+          cartItems: checkoutItems,
+          onOrderPlacedSuccess: () {
+            ref.read(cartProvider.notifier).clearCart();
+            widget.onOrderPlacedSuccess();
+          },
+        ),
       ),
     );
   }
