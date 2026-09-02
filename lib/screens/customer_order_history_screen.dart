@@ -265,6 +265,15 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                           ...items.map((item) {
                             double parsedPrice = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
                             int parsedQty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+                            final placedDate = getTrueOrderDateTime(
+                              orderRecord['order_id']?.toString() ?? '',
+                              orderRecord['created_at']?.toString(),
+                            );
+                            final itemSlot = smartTimeSlot(
+                              item['time_slot']?.toString(),
+                              placedDate,
+                              selectedDateStr: item['selected_date']?.toString(),
+                            );
 
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 12),
@@ -291,7 +300,7 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                                         Text('${item['quantity']} x ${item['title']}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
                                         if (item['time_slot'] != null) ...[
                                           const SizedBox(height: 2),
-                                          Text('Slot: ${item['time_slot']}', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+                                          Text('Slot: $itemSlot', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
                                         ]
                                       ],
                                     ),
@@ -467,9 +476,18 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                     String deliveryTimeStr = 'ASAP';
                     if (items.isNotEmpty) {
                       final item = items.first;
-                      deliveryTimeStr = item['selected_date'] != null && item['exact_time'] != null
+                      final truePlacedDate = getTrueOrderDateTime(
+                        order['order_id']?.toString() ?? '',
+                        order['created_at']?.toString(),
+                      );
+                      final baseSlot = item['selected_date'] != null && item['exact_time'] != null
                           ? "${item['selected_date']} at ${item['exact_time']}"
                           : (item['time_slot']?.toString() ?? 'ASAP');
+                      deliveryTimeStr = smartTimeSlot(
+                        baseSlot,
+                        truePlacedDate,
+                        selectedDateStr: item['selected_date']?.toString(),
+                      );
                     }
 
                     _showOrderDetailsBottomSheet(

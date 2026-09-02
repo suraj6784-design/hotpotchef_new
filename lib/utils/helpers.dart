@@ -95,6 +95,39 @@ String formatOrderDate(String? isoString) {
   return DateFormat('dd MMM yyyy, hh:mm a').format(dt.toLocal());
 }
 
+/// Resolves a stored relative slot string (e.g. "Today at 3:13 PM") into an
+/// absolute, non-looping label anchored to [placedDate].
+///
+/// Slots are captured as literal text at order time, so "Today"/"Tomorrow"
+/// would otherwise keep re-reading as the current day forever. If
+/// [selectedDateStr] already holds a concrete date, it is preferred.
+String smartTimeSlot(String? originalSlot, DateTime placedDate, {String? selectedDateStr}) {
+  String slot = originalSlot ?? 'ASAP';
+
+  if (selectedDateStr != null &&
+      selectedDateStr.isNotEmpty &&
+      selectedDateStr.toLowerCase() != 'today' &&
+      selectedDateStr.toLowerCase() != 'tomorrow') {
+    if (slot.toLowerCase().contains('today')) {
+      slot = slot.replaceAll(RegExp('today', caseSensitive: false), selectedDateStr);
+    } else if (slot.toLowerCase().contains('tomorrow')) {
+      slot = slot.replaceAll(RegExp('tomorrow', caseSensitive: false), selectedDateStr);
+    } else if (!slot.contains(selectedDateStr)) {
+      slot = '$selectedDateStr | $slot';
+    }
+    return slot;
+  }
+
+  if (slot.toLowerCase().contains('today')) {
+    final dateStr = DateFormat('d MMM').format(placedDate);
+    slot = slot.replaceAll(RegExp('today', caseSensitive: false), dateStr);
+  } else if (slot.toLowerCase().contains('tomorrow')) {
+    final dateStr = DateFormat('d MMM').format(placedDate.add(const Duration(days: 1)));
+    slot = slot.replaceAll(RegExp('tomorrow', caseSensitive: false), dateStr);
+  }
+  return slot;
+}
+
 String formatFriendlyDate(DateTime date) {
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
