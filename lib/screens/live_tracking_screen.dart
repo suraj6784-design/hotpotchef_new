@@ -1,6 +1,7 @@
 // lib/screens/live_tracking_screen.dart
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -47,6 +48,9 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   bool _isLoading = true;
   late Map<String, dynamic> _order;
 
+  // Legacy orders only store `customer_id`; contact + saved location come from users.
+  Map<String, dynamic>? _customerRow;
+
   static const double _distanceRatio = 1.3;
   static const double _speedKmPerMin = 0.5; // Average city driving speed
 
@@ -60,18 +64,74 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   Future<void> _hydrateOrderIfNeeded() async {
     final id = _order['id']?.toString();
     if (id == null || id.isEmpty) return;
-    final hasAddress = (_order['delivery_address']?.toString().isNotEmpty ?? false) ||
-        (_order['delivery_lat'] != null);
-    if (hasAddress) return;
 
+    // The delivery address lives inside the `items` JSON on legacy orders, so
+    // make sure we have the full row (which carries `items` and `customer_id`).
+    if (_order['items'] == null || _order['customer_id'] == null) {
+      try {
+        final row = await _supabase.from('orders').select().eq('id', id).maybeSingle();
+        if (row != null) {
+          _order = {..._order, ...row};
+        }
+      } catch (e, stack) {
+        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed hydrating tracking order');
+      }
+    }
+
+    // Pull the customer's contact details + saved coordinates for fallbacks.
+    await _loadCustomerInfo();
+  }
+
+  Future<void> _loadCustomerInfo() async {
+    final customerId = _order['customer_id']?.toString() ?? '';
+    if (customerId.isEmpty || _customerRow != null) return;
     try {
-      final row = await _supabase.from('orders').select().eq('id', id).maybeSingle();
-      if (row != null && mounted) {
-        _order = {..._order, ...row};
+      final row = await _supabase
+          .from('users')
+          .select('name, full_name, email, phone, address, lat, lng, latitude, longitude')
+          .eq('id', customerId)
+          .maybeSingle();
+      if (row != null) {
+        _customerRow = Map<String, dynamic>.from(row);
       }
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed hydrating tracking order');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed loading tracking customer info');
     }
+  }
+
+  // --- Legacy-order data helpers ---
+
+  List<Map<String, dynamic>> _parseItems(dynamic raw) {
+    if (raw == null) return const [];
+    try {
+      final decoded = raw is String ? jsonDecode(raw) : raw;
+      if (decoded is List) {
+        return decoded.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      }
+    } catch (_) {
+      // Malformed JSON — ignore.
+    }
+    return const [];
+  }
+
+  double? _asDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString());
+  }
+
+  /// The order's destination address: prefer an explicit column, then the
+  /// address embedded in the `items` JSON, then the customer's saved address.
+  String? _deliveryAddress() {
+    final top = _order['delivery_address']?.toString();
+    if (top != null && top.isNotEmpty) return top;
+    for (final item in _parseItems(_order['items'])) {
+      final addr = item['delivery_address']?.toString();
+      if (addr != null && addr.isNotEmpty) return addr;
+    }
+    final saved = _customerRow?['address']?.toString();
+    if (saved != null && saved.isNotEmpty) return saved;
+    return null;
   }
 
   @override
@@ -173,17 +233,29 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
           if (locs.isNotEmpty) return LatLng(locs.first.latitude, locs.first.longitude);
         }
       } else {
-        final latStr = _order['delivery_lat']?.toString() ?? _order['customer_lat']?.toString();
-        final lngStr = _order['delivery_lng']?.toString() ?? _order['customer_lng']?.toString();
-
-        if (latStr != null && lngStr != null && latStr.isNotEmpty && lngStr.isNotEmpty) {
-          return LatLng(double.parse(latStr), double.parse(lngStr));
+        // 1. Explicit coordinates on the order (newer schema).
+        final lat = _asDouble(_order['delivery_lat'] ?? _order['customer_lat']);
+        final lng = _asDouble(_order['delivery_lng'] ?? _order['customer_lng']);
+        if (lat != null && lng != null) {
+          return LatLng(lat, lng);
         }
 
-        final addressStr = _order['delivery_address']?.toString();
+        // 2. Geocode the delivery address (stored inside `items` JSON on legacy orders).
+        final addressStr = _deliveryAddress();
         if (addressStr != null && addressStr.isNotEmpty) {
-          List<Location> locs = await locationFromAddress(addressStr);
-          if (locs.isNotEmpty) return LatLng(locs.first.latitude, locs.first.longitude);
+          try {
+            final locs = await locationFromAddress(addressStr);
+            if (locs.isNotEmpty) return LatLng(locs.first.latitude, locs.first.longitude);
+          } catch (_) {
+            // Geocoding can fail on messy/free-form addresses — fall back below.
+          }
+        }
+
+        // 3. Fall back to the customer's saved coordinates.
+        final cLat = _asDouble(_customerRow?['latitude'] ?? _customerRow?['lat']);
+        final cLng = _asDouble(_customerRow?['longitude'] ?? _customerRow?['lng']);
+        if (cLat != null && cLng != null) {
+          return LatLng(cLat, cLng);
         }
       }
     } catch (e, stack) {
@@ -344,14 +416,23 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   // --- Order Summary Modal ---
 
   void _showOrderSummaryModal() {
-    final double itemPrice = (_order['price'] as num?)?.toDouble() ?? 250.0;
-    final int qty = (_order['quantity'] as num?)?.toInt() ?? 1;
-    final double basketValue = itemPrice * qty;
-    final double billTotal = basketValue + 20.0; // Packaging fee fallback
+    final items = _parseItems(_order['items']);
+    final int qty = items.isNotEmpty
+        ? items.fold<int>(0, (sum, it) => sum + ((_asDouble(it['quantity']) ?? 1).toInt()))
+        : ((_order['quantity'] as num?)?.toInt() ?? 1);
+    final double? orderTotal = _asDouble(_order['total_price'] ?? _order['total_amount']);
+    final double basketValue = (orderTotal != null && orderTotal > 0)
+        ? orderTotal
+        : ((items.isNotEmpty ? _asDouble(items.first['price']) : null) ?? 250.0) * qty;
+    final String title = items.isNotEmpty
+        ? (items.first['title']?.toString() ?? 'Meal Order')
+        : (_order['title']?.toString() ?? 'Meal Order');
 
-    final String customerName = _order['customer_name']?.toString() ?? 'Customer';
-    final String customerPhone = _order['customer_phone']?.toString() ?? '';
-    final String deliveryAddress = _order['delivery_address']?.toString() ?? 'Delivery Address';
+    final String customerName =
+        (_customerRow?['name'] ?? _customerRow?['full_name'] ?? _customerRow?['email'] ?? _order['customer_name'] ?? 'Customer')
+            .toString();
+    final String customerPhone = (_customerRow?['phone'] ?? _order['customer_phone'] ?? '').toString();
+    final String deliveryAddress = _deliveryAddress() ?? 'Delivery Address';
     final String orderIdStr = formatOrderId(_order['order_id']?.toString(), _order['id'].toString());
     final String orderDate = formatOrderDate(_order['created_at']?.toString());
 
@@ -383,7 +464,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('${_order['title'] ?? 'Meal Order'} (x$qty)',
+                      Text('$title (x$qty)',
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain)),
                       const SizedBox(height: 2),
                       Text('Order confirmed & dispatched',
