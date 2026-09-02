@@ -10,6 +10,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/helpers.dart';
 import '../utils/app_theme.dart';
+import '../utils/network.dart';
 import '../models/cart_enums.dart';
 import '../widgets/app_widgets.dart';
 import 'address_form_screen.dart';
@@ -80,7 +81,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _heldRazorpayOrderId = null;
     _supabase.rpc('release_checkout_inventory', params: {
       'p_razorpay_order_id': orderId,
-    });
+    }).withTimeout(NetworkTimeouts.short);
   }
 
   // --- Initial Data Load ---
@@ -98,7 +99,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             .eq('user_id', user.id)
             .order('is_default', ascending: false),
         _supabase.rpc('calculate_cart_total', params: {'p_items': widget.cartItems}),
-      ]);
+      ]).withTimeout(NetworkTimeouts.standard);
 
       final userData = futures[0] as Map<String, dynamic>?;
       final addressResponse = futures[1] as List<dynamic>;
@@ -168,7 +169,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final chefsData = await _supabase
           .from('users')
           .select('id, lat, lng')
-          .inFilter('id', chefIds);
+          .inFilter('id', chefIds)
+          .withTimeout(NetworkTimeouts.short);
 
       double calculatedTotal = 0.0;
       final chefLocations = {for (var c in chefsData) c['id'].toString(): c};
@@ -277,7 +279,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           'tip_amount': _selectedTip,
           'apply_coins': _applyCoins,
         },
-      );
+      ).withTimeout(NetworkTimeouts.payment);
 
       if (response.status != 200 || response.data == null) {
         throw Exception('Could not initialize secure payment order');
@@ -322,7 +324,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Payment initialization failed');
       _releaseInventoryHold();
       setState(() => _isCheckingOut = false);
-      _showSnackBar(isSoldOutCheckoutError(e) ? soldOutCheckoutMessage(charged: false) : 'Initialization Failed: $e', isError: true);
+      _showSnackBar(
+        isSoldOutCheckoutError(e)
+            ? soldOutCheckoutMessage(charged: false)
+            : 'Initialization Failed: ${networkErrorMessage(e)}',
+        isError: true,
+      );
     }
   }
 
@@ -420,7 +427,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             razorpayOrderId: razorpayOrderId,
             signature: signature,
           ),
-        );
+        ).withTimeout(NetworkTimeouts.payment);
         if (rpcResponse is Map && rpcResponse['success'] == true) {
           return Map<String, dynamic>.from(rpcResponse);
         }
@@ -449,7 +456,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           'tip_amount': _selectedTip,
           'delivery_fee': _deliveryFee,
         },
-      );
+      ).withTimeout(NetworkTimeouts.payment);
       final data = recover.data is Map ? Map<String, dynamic>.from(recover.data as Map) : null;
       if (data != null && data['success'] == true) return data;
       if (isSoldOutCheckoutError(data?['error'], data)) {
@@ -517,7 +524,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _showSnackBar(
           soldOut
               ? '$e'
-              : '$e\nReference: ${response.paymentId}',
+              : '${networkErrorMessage(e)}\nReference: ${response.paymentId}',
           isError: true,
           duration: const Duration(seconds: 8),
         );

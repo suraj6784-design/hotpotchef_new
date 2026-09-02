@@ -14,6 +14,7 @@ import 'utils/helpers.dart';
 import 'utils/app_theme.dart';
 import 'utils/app_router.dart';
 import 'services/push_notification_service.dart';
+import 'widgets/offline_banner.dart';
 
 // Global Messenger Key to show Push Notifications across all screens
 final GlobalKey<ScaffoldMessengerState> globalMessengerKey = GlobalKey<ScaffoldMessengerState>();
@@ -74,6 +75,9 @@ class HotPotChefApp extends StatelessWidget {
           darkTheme: AppTheme.darkTheme,
           themeMode: ThemeMode.system, // Respect system light/dark mode settings
           routerConfig: AppRouter.router,
+          builder: (context, child) {
+            return OfflineBannerHost(child: child ?? const SizedBox.shrink());
+          },
         );
       },
     );

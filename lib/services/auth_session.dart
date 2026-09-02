@@ -7,6 +7,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../models/app_role.dart';
 import 'push_notification_service.dart';
+import '../utils/network.dart';
 
 /// Session helpers: resolve [AppRole], land on the right hub, and log out.
 class AuthSession {
@@ -33,7 +34,7 @@ class AuthSession {
           .select('role')
           .eq('id', user.id)
           .maybeSingle()
-          .timeout(const Duration(seconds: 5));
+          .timeout(NetworkTimeouts.short);
       final tableRole = row?['role']?.toString();
       if (tableRole != null && tableRole.isNotEmpty) {
         return AppRole.parse(tableRole);
@@ -64,7 +65,7 @@ class AuthSession {
     }
 
     try {
-      await _client.auth.signOut();
+      await _client.auth.signOut().withTimeout(NetworkTimeouts.short);
     } catch (e, st) {
       FirebaseCrashlytics.instance.recordError(e, st, reason: 'AuthSession signOut failed');
     }

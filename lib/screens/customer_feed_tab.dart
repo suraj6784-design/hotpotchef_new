@@ -9,6 +9,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../utils/helpers.dart';
 import '../utils/customer_constants.dart';
 import '../utils/dynamic_ui_engine.dart';
+import '../utils/network.dart';
 import '../providers/cart_provider.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
@@ -109,7 +110,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       final response = await Supabase.instance.client.functions.invoke(
         'ai-search',
         body: {'prompt': trimmed},
-      );
+      ).withTimeout(NetworkTimeouts.payment);
 
       List<Map<String, dynamic>> rawMeals = [];
       if (response.status == 200 && response.data != null && response.data['success'] == true) {
@@ -119,7 +120,8 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       final localResponse = await Supabase.instance.client
           .from('meals')
           .select()
-          .eq('status', 'Available');
+          .eq('status', 'Available')
+          .withTimeout(NetworkTimeouts.standard);
       final localMeals = List<Map<String, dynamic>>.from(localResponse);
       final qClean = trimmed.toLowerCase().replaceAll(' ', '');
 
@@ -148,7 +150,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'AI Search Failure');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('AI Search Error: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text(networkErrorMessage(e)), backgroundColor: Colors.red),
         );
         setState(() {
           _hasActiveSearch = false;
@@ -169,7 +171,8 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       final response = await Supabase.instance.client
           .from('user_addresses')
           .select()
-          .eq('user_id', user.id);
+          .eq('user_id', user.id)
+          .withTimeout(NetworkTimeouts.standard);
 
       List<Map<String, dynamic>> normalized = [];
       for (var row in response) {

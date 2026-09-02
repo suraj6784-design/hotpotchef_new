@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/app_theme.dart';
+import '../utils/network.dart';
 import '../models/cart_enums.dart';
 import '../models/pricing_models.dart';
 
@@ -240,7 +241,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
             'title': _titleController.text.trim(),
             'description': _descriptionController.text.trim(),
           },
-        );
+        ).withTimeout(NetworkTimeouts.payment);
         if (aiResponse.status == 200 && aiResponse.data != null) {
           healthTags = aiResponse.data['tags'] as List<dynamic>? ?? healthTags;
         }

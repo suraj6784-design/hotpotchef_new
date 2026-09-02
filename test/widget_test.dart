@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:hotpotchef_new/widgets/app_status_badge.dart';
+import 'package:hotpotchef_new/widgets/offline_banner.dart';
 
 void main() {
   testWidgets('AppStatusBadge renders its status label', (WidgetTester tester) async {
@@ -39,5 +40,33 @@ void main() {
 
     expect(find.text('Out for delivery'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('OfflineBanner shows copy when offline', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: OfflineBanner(
+          online: false,
+          child: Scaffold(body: Text('hub')),
+        ),
+      ),
+    );
+
+    expect(find.textContaining("You're offline"), findsOneWidget);
+    expect(find.text('hub'), findsOneWidget);
+  });
+
+  testWidgets('OfflineBanner hides copy when online', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: OfflineBanner(
+          online: true,
+          child: Scaffold(body: Text('hub')),
+        ),
+      ),
+    );
+
+    expect(find.textContaining("You're offline"), findsNothing);
+    expect(find.text('hub'), findsOneWidget);
   });
 }

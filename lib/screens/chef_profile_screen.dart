@@ -10,6 +10,7 @@ import 'package:geocoding/geocoding.dart'; // 🌟 Added for reverse geocoding
 import 'map_picker_screen.dart';
 import '../utils/helpers.dart';
 import '../utils/app_theme.dart';
+import '../utils/network.dart';
 import '../widgets/avatar_upload.dart';
 
 class ChefReviewModel {
@@ -202,7 +203,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
           'ifsc_code': ifsc,
           'beneficiary_name': beneficiary,
         },
-      );
+      ).withTimeout(NetworkTimeouts.payment);
 
       if (response.status == 200 && response.data != null && response.data['success'] == true) {
         setState(() {
@@ -216,7 +217,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
         throw Exception(response.data?['error'] ?? 'Settlement routing rejected');
       }
     } catch (e) {
-      _showSnackBar('Payout Setup Failed: $e', isError: true);
+      _showSnackBar('Payout Setup Failed: ${networkErrorMessage(e)}', isError: true);
     } finally {
       if (mounted) setState(() => _isSettingUpPayout = false);
     }

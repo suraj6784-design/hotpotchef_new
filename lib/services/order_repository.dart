@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../models/order_status.dart';
+import '../utils/network.dart';
 
 Map<String, dynamic>? _functionData(dynamic data) {
   if (data is Map<String, dynamic>) return data;
@@ -90,11 +91,13 @@ class OrderRepository {
           'reason': reason,
           if (chefId != null && chefId.isNotEmpty) 'chef_id': chefId,
         },
-      );
+      ).withTimeout(NetworkTimeouts.payment);
       final data = _functionData(res.data);
       if (res.status != 200 || data == null || data['success'] != true) {
         throw Exception(data?['error'] ?? 'Cancellation rejected by server');
       }
+    } on NetworkException catch (e) {
+      throw Exception(e.message);
     } on FunctionException catch (e) {
       final details = _functionData(e.details);
       throw Exception(details?['error'] ?? e.reasonPhrase ?? 'Cancellation failed');

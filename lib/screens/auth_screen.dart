@@ -10,6 +10,7 @@ import '../models/app_role.dart';
 import '../services/auth_session.dart';
 import '../services/push_notification_service.dart';
 import '../utils/helpers.dart';
+import '../utils/network.dart';
 import '../widgets/app_widgets.dart';
 
 class AuthScreen extends StatefulWidget {
@@ -44,6 +45,11 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   String _friendlyAuthError(Object error) {
+    if (error is NetworkException) return error.message;
+    final network = networkErrorMessage(error);
+    if (network == NetworkException.timedOutMessage || network == NetworkException.offlineMessage) {
+      return network;
+    }
     if (error is AuthException) {
       final msg = error.message.toLowerCase();
       if (msg.contains('invalid login') || msg.contains('invalid credentials')) {
@@ -86,7 +92,7 @@ class _AuthScreenState extends State<AuthScreen> {
         final response = await _supabase.auth.signInWithPassword(
           email: email,
           password: password,
-        );
+        ).withTimeout(NetworkTimeouts.standard);
 
         // 🌟 CRITICAL: Tells the OS login succeeded, triggering the device "Save Password" prompt
         TextInput.finishAutofillContext();
@@ -108,7 +114,7 @@ class _AuthScreenState extends State<AuthScreen> {
             'phone': phone,
             'role': _selectedRole.storageValue,
           },
-        );
+        ).withTimeout(NetworkTimeouts.standard);
 
         // 🌟 CRITICAL: Tells the OS registration/login succeeded, prompting credential saving
         TextInput.finishAutofillContext();
@@ -137,7 +143,7 @@ class _AuthScreenState extends State<AuthScreen> {
             'phone': phone,
             'role': _selectedRole.storageValue,
             'created_at': DateTime.now().toIso8601String(),
-          });
+          }).withTimeout(NetworkTimeouts.standard);
 
           await PushNotificationService.syncTokenForCurrentUser();
           await _routeUserByRole(response.user!);
@@ -173,7 +179,7 @@ class _AuthScreenState extends State<AuthScreen> {
       await _supabase.auth.resetPasswordForEmail(
         email,
         redirectTo: 'io.supabase.hotpotchef://reset-callback/',
-      );
+      ).withTimeout(NetworkTimeouts.standard);
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
