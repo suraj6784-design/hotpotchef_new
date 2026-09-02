@@ -116,10 +116,9 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     // Service types
     final rawServices = meal['service_type']?.toString() ?? '';
     _selectedServices.clear();
-    for (var st in ServiceType.values) {
-      if (rawServices.contains(st.toDisplayString())) {
-        _selectedServices.add(st);
-      }
+    for (final part in rawServices.split(',')) {
+      if (part.trim().isEmpty) continue;
+      _selectedServices.add(ServiceType.fromString(part.trim()));
     }
     if (_selectedServices.isEmpty) {
       _selectedServices.add(ServiceType.deliveryPlatform);

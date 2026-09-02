@@ -15,6 +15,7 @@ import 'dart:convert';
 import '../utils/helpers.dart';
 import '../utils/app_theme.dart';
 import '../widgets/customer_ui_components.dart';
+import '../services/order_lifecycle.dart';
 
 class CustomerOrdersTab extends StatefulWidget {
   final VoidCallback onProfileTap;
@@ -183,16 +184,7 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
   }
 
   bool _canCancelOrder(Map<String, dynamic> order) {
-    final status = order['status']?.toString().toLowerCase() ?? '';
-    if (status.contains('cancelled') ||
-        status.contains('delivered') ||
-        status.contains('completed') ||
-        status.contains('preparing') ||
-        status.contains('ready') ||
-        status.contains('out')) {
-      return false;
-    }
-    return true;
+    return OrderLifecycle.canCustomerCancel(order['status']?.toString());
   }
 
   Future<void> _cancelOrderGroup(List<Map<String, dynamic>> groupItems) async {
@@ -222,10 +214,11 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
 
     if (confirm == true) {
       try {
-        final supabase = Supabase.instance.client;
-        final String orderId = groupItems.first['order_id'].toString();
-
-        await supabase.from('orders').update({'status': 'Cancelled'}).eq('id', orderId);
+        final String orderId = groupItems.first['order_id']?.toString() ?? groupItems.first['id'].toString();
+        await OrderLifecycle().cancel(
+          orderId: orderId,
+          reason: 'Cancelled by customer',
+        );
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -473,7 +466,7 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
       statusIcon = Icons.cancel;
       statusColor = Colors.red;
       statusText = 'Order Cancelled';
-    } else if (status.toLowerCase().contains('ready') || status.toLowerCase().contains('out')) {
+    } else if (OrderLifecycle.isTrackable(status)) {
       statusIcon = Icons.delivery_dining;
       statusColor = AppTheme.primary;
       statusText = 'Order is on the way / ready';
@@ -484,7 +477,7 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
     }
 
     final bool isCancelled = status.toLowerCase().contains('cancelled') || status.toLowerCase().contains('rejected');
-    final bool isTrackable = (status.toLowerCase().contains('out') || status.toLowerCase().contains('ready')) && trackableItem != null;
+    final bool isTrackable = OrderLifecycle.isTrackable(status) && trackableItem != null;
 
     final serviceTypeStr = items.first['service_type']?.toString().toLowerCase() ?? '';
     final isPickupOrDineIn = serviceTypeStr.contains('pickup') || serviceTypeStr.contains('dine');
@@ -913,7 +906,10 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
               const Text('Please log in to view your orders.', style: TextStyle(fontSize: 16, color: AppTheme.textMuted)),
               const SizedBox(height: 24),
               ElevatedButton(
-                onPressed: () => context.go('/auth'),
+                onPressed: () => showAuthBottomSheet(context, () {
+                  setState(() => _isLoading = true);
+                  _initScopedStreams();
+                }),
                 child: const Text('Sign In'),
               ),
             ],
@@ -1056,7 +1052,7 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                   if (!status.contains('cancelled') && !status.contains('rejected')) allCancelled = false;
                   if (status.contains('delivered') || status.contains('completed')) isDelivered = true;
 
-                  if (status.contains('out') || status.contains('ready')) {
+                  if (OrderLifecycle.isTrackable(item['status']?.toString())) {
                     trackableItem = item;
                   }
                 }

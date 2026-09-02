@@ -10,6 +10,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/helpers.dart';
 import '../utils/app_theme.dart';
+import '../models/cart_enums.dart';
 import 'address_form_screen.dart';
 
 class CheckoutScreen extends StatefulWidget {
@@ -112,8 +113,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
-  bool get _hasDelivery => widget.cartItems.any((item) =>
-      (item['selected_service_type'] ?? item['serviceType'] ?? '').toString().toLowerCase().contains('delivery'));
+  bool get _hasDelivery => widget.cartItems.any((item) {
+        final raw = (item['selected_service_type'] ??
+                item['selectedServiceType'] ??
+                item['service_type'] ??
+                item['serviceType'] ??
+                '')
+            .toString();
+        return ServiceType.fromString(raw).isDelivery;
+      });
 
   // --- Batch Distance & Delivery Calculation ---
 
@@ -198,8 +206,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     for (final item in widget.cartItems) {
       final price = double.tryParse(
             item['discounted_price']?.toString() ??
+            item['discountedPrice']?.toString() ??
             item['price']?.toString() ??
-            item['base_price']?.toString() ?? '0',
+            item['base_price']?.toString() ??
+            item['basePrice']?.toString() ??
+            '0',
           ) ?? 0.0;
       final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
       sum += price * qty;
@@ -314,7 +325,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       }
 
       final adjustedCartItems = widget.cartItems.map((item) {
-        final rawDate = item['scheduledDate'] ?? item['scheduled_date'] ?? item['selected_date'];
+        final rawDate = item['scheduledDate'] ??
+            item['scheduled_date'] ??
+            item['selected_date'] ??
+            item['selectedDate'];
         String selectedDateStr = 'Today';
         
         if (rawDate != null) {
@@ -532,7 +546,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ...widget.cartItems.map((item) {
                   final title = item['title'] ?? 'Meal';
                   
-                  final rawDate = item['scheduledDate'] ?? item['scheduled_date'] ?? item['selected_date'];
+                  final rawDate = item['scheduledDate'] ??
+            item['scheduled_date'] ??
+            item['selected_date'] ??
+            item['selectedDate'];
                   String dateStr = 'Today';
                   if (rawDate != null) {
                     try {

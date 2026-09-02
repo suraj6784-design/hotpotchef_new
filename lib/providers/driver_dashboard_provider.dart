@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../models/driver_delivery_model.dart';
+import '../models/cart_enums.dart';
+import '../services/order_lifecycle.dart';
 
 void _logDriverError(dynamic error, StackTrace stackTrace, String reason) {
   if (kDebugMode) {
@@ -19,6 +21,7 @@ final driverDashboardProvider =
 
 class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
   final _supabase = Supabase.instance.client;
+  final _lifecycle = OrderLifecycle();
   RealtimeChannel? _dispatchChannel;
 
   @override
@@ -119,7 +122,9 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
       ].cast<Future<dynamic>>());
 
       final availableList = (results[0] as List)
-          .map((e) => DriverDeliveryModel.fromJson(Map<String, dynamic>.from(e)))
+          .map((e) => Map<String, dynamic>.from(e))
+          .where((e) => ServiceType.fromString(e['service_type']?.toString()).usesDeliveryPartner)
+          .map(DriverDeliveryModel.fromJson)
           .toList();
 
       final activeList = (results[1] as List)
@@ -160,23 +165,8 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
     if (user == null) return false;
 
     try {
-      // ATOMIC CONCURRENCY GUARD:
-      // Only updates if driver_id is STILL null at execution time.
-      final response = await _supabase
-          .from('orders')
-          .update({
-            'driver_id': user.id,
-            'status': DeliveryStatus.accepted.toDbValue(),
-            'accepted_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', orderId)
-          .isFilter('driver_id', null)
-          .select();
-
-      final updatedRows = List<Map<String, dynamic>>.from(response);
-
-      if (updatedRows.isEmpty) {
-        // Another driver claimed the order a split-second earlier
+      final success = await _lifecycle.acceptDelivery(orderId: orderId, driverId: user.id);
+      if (!success) {
         state = state.copyWith(
           errorMessage: 'Order was already accepted by another partner.',
         );
@@ -200,10 +190,12 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
     if (user == null) return false;
 
     try {
-      await _supabase.from('orders').update({
-        'status': nextStatus.toDbValue(),
-        if (nextStatus == DeliveryStatus.delivered) 'delivered_at': DateTime.now().toIso8601String(),
-      }).eq('id', orderId).eq('driver_id', user.id);
+      await _lifecycle.advanceDriver(
+        orderId: orderId,
+        currentStatus: nextStatus == DeliveryStatus.delivered
+            ? OrderStatus.outForDelivery
+            : OrderStatus.driverAssigned,
+      );
 
       await loadDashboardData(isSilentRefresh: true);
       return true;

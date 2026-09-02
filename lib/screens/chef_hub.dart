@@ -4,14 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
 import '../models/cart_enums.dart';
 import '../widgets/customer_ui_components.dart';
-import '../services/order_repository.dart';
+import '../services/order_lifecycle.dart';
+import '../services/auth_session.dart';
 import 'packaging_store_screen.dart';
 
 class ChefDashboardScreen extends StatefulWidget {
@@ -23,7 +23,7 @@ class ChefDashboardScreen extends StatefulWidget {
 
 class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   final _supabase = Supabase.instance.client;
-  final _orderRepo = OrderRepository();
+  final _orderLifecycle = OrderLifecycle();
 
   int _selectedIndex = 0;
   bool _isKitchenOpen = true;
@@ -31,10 +31,10 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
 
   final List<String> _fulfillmentTabs = const [
     'All',
-    'Platform Delivery',
-    'Self Delivery',
-    'Pickup',
-    'Dine-In',
+    'Delivery Partner',
+    'Chef-Self',
+    'Customer Pickup',
+    'Dine In',
   ];
 
   String get _currentUserId => _supabase.auth.currentUser?.id ?? '';
@@ -94,13 +94,13 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     if (filter == 'All') return true;
     final svc = ServiceType.fromString(order['service_type']?.toString());
     switch (filter) {
-      case 'Platform Delivery':
+      case 'Delivery Partner':
         return svc == ServiceType.deliveryPlatform;
-      case 'Self Delivery':
+      case 'Chef-Self':
         return svc == ServiceType.deliverySelf;
-      case 'Pickup':
+      case 'Customer Pickup':
         return svc == ServiceType.pickup;
-      case 'Dine-In':
+      case 'Dine In':
         return svc == ServiceType.dineIn;
       default:
         return true;
@@ -141,15 +141,11 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     if (confirm != true) return;
 
     try {
-      final res = await _supabase.rpc('cancel_and_restock_order', params: {
-        'p_order_id': order['id'],
-        'p_chef_id': _currentUserId,
-        'p_reason': 'Cancelled by kitchen',
-      });
-
-      if (res?['success'] != true) {
-        throw Exception(res?['error'] ?? 'Cancellation rejected by server');
-      }
+      await _orderLifecycle.cancel(
+        orderId: order['id'].toString(),
+        chefId: _currentUserId,
+        reason: 'Cancelled by kitchen',
+      );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -164,16 +160,44 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     }
   }
 
-  Future<void> _advanceOrderStatus(Map<String, dynamic> order, String nextStatus) async {
+  Future<void> _advanceKitchen(Map<String, dynamic> order) async {
     try {
-      await _orderRepo.updateOrderStatus(
-        orderId: order['id'],
-        newStatus: nextStatus,
-      );
-
+      final current = order['status']?.toString() ?? '';
+      final next = OrderLifecycle.nextKitchenStatus(current);
+      await _orderLifecycle.advanceKitchen(orderId: order['id'].toString(), currentStatus: current);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Status updated to: $nextStatus'), backgroundColor: Colors.green),
+          SnackBar(content: Text('Status updated to: $next'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Update failed: $e'), backgroundColor: Colors.red));
+      }
+    }
+  }
+
+  Future<void> _dispatchOrder(Map<String, dynamic> order) async {
+    try {
+      final current = order['status']?.toString() ?? '';
+      final svc = ServiceType.fromString(order['service_type']?.toString());
+      final next = OrderLifecycle.nextDispatchStatus(current, svc);
+      await _orderLifecycle.dispatch(
+        orderId: order['id'].toString(),
+        currentStatus: current,
+        service: svc,
+      );
+      if (!mounted) return;
+      if (next == null && svc.usesDeliveryPartner) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Ready for a delivery partner. Drivers can accept this order now.'),
+            backgroundColor: Colors.teal,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Status updated to: $next'), backgroundColor: Colors.green),
         );
       }
     } catch (e) {
@@ -244,11 +268,8 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
 
           final orders = snapshot.data ?? [];
 
-          final pendingCount = orders.where((o) => (o['status']?.toString().toLowerCase() ?? '') == 'pending chef approval').length;
-          final dispatchCount = orders.where((o) {
-            final s = o['status']?.toString().toLowerCase() ?? '';
-            return s == 'ready for pickup' || s == 'out for delivery';
-          }).length;
+          final pendingCount = orders.where((o) => OrderLifecycle.isPendingKitchen(o['status']?.toString())).length;
+          final dispatchCount = orders.where((o) => OrderLifecycle.isDispatchQueue(o['status']?.toString())).length;
 
           return StreamBuilder<List<Map<String, dynamic>>>(
             stream: _supabase
@@ -372,10 +393,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               IconButton(
                 icon: const Icon(Icons.logout, color: Colors.white),
                 tooltip: 'Log Out',
-                onPressed: () async {
-                  await _supabase.auth.signOut();
-                  if (mounted) context.go('/auth');
-                },
+                onPressed: () => AuthSession.logout(context),
               ),
             ],
           ),
@@ -385,10 +403,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   }
 
   Widget _buildOrdersTab(List<Map<String, dynamic>> allOrders) {
-    final activeOrders = allOrders.where((o) {
-      final s = o['status']?.toString().toLowerCase() ?? '';
-      return s == 'pending chef approval' || s == 'confirmed' || s == 'preparing';
-    }).toList()
+    final activeOrders = allOrders.where((o) => OrderLifecycle.isKitchenActive(o['status']?.toString())).toList()
       ..sort((a, b) => (b['created_at'] ?? '').compareTo(a['created_at'] ?? ''));
 
     final filteredOrders = activeOrders.where((o) => _matchesFilter(o, _fulfillmentFilter)).toList();
@@ -441,7 +456,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
 
   Widget _buildOrderCard(Map<String, dynamic> order) {
     final status = order['status']?.toString() ?? 'Pending';
-    final isPending = status.toLowerCase() == 'pending chef approval';
+    final isPending = OrderLifecycle.isPendingKitchen(status);
     final isPreparing = status.toLowerCase() == 'preparing';
 
     final orderId = formatOrderId(order['order_id']?.toString(), order['id'].toString());
@@ -490,7 +505,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 Expanded(
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-                    onPressed: () => _advanceOrderStatus(order, 'Confirmed'),
+                    onPressed: () => _advanceKitchen(order),
                     child: const Text('Confirm'),
                   ),
                 ),
@@ -503,7 +518,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                     ),
                     icon: Icon(isPreparing ? Icons.check_circle : Icons.soup_kitchen, size: 18),
                     label: Text(isPreparing ? 'Ready for Pickup' : 'Start Preparing'),
-                    onPressed: () => _advanceOrderStatus(order, isPreparing ? 'Ready for Pickup' : 'Preparing'),
+                    onPressed: () => _advanceKitchen(order),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -521,10 +536,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   }
 
   Widget _buildDispatchTab(List<Map<String, dynamic>> allOrders) {
-    final dispatches = allOrders.where((o) {
-      final s = o['status']?.toString().toLowerCase() ?? '';
-      return s == 'ready for pickup' || s == 'out for delivery';
-    }).toList();
+    final dispatches = allOrders.where((o) => OrderLifecycle.isDispatchQueue(o['status']?.toString())).toList();
 
     if (dispatches.isEmpty) {
       return const Center(child: Text('No orders waiting for pickup or delivery.', style: TextStyle(color: AppTheme.textMuted)));
@@ -535,8 +547,15 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       itemCount: dispatches.length,
       itemBuilder: (context, index) {
         final order = dispatches[index];
-        final isOut = (order['status']?.toString().toLowerCase() ?? '') == 'out for delivery';
+        final isOut = OrderLifecycle.normalize(order['status']?.toString()) == 'out for delivery';
         final svc = ServiceType.fromString(order['service_type']?.toString());
+        final dispatchLabel = () {
+          if (isOut) return 'Mark Delivered';
+          if (svc.usesDeliveryPartner) return 'Release to Delivery Partners';
+          if (svc == ServiceType.deliverySelf) return 'Dispatch (Chef-Self)';
+          if (svc == ServiceType.dineIn) return 'Mark Dine-In Complete';
+          return 'Mark Picked Up';
+        }();
 
         return AppCard(
           margin: const EdgeInsets.only(bottom: 14),
@@ -564,8 +583,8 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                     foregroundColor: Colors.white,
                   ),
                   icon: Icon(isOut ? Icons.check : Icons.delivery_dining),
-                  label: Text(isOut ? 'Mark Delivered' : 'Dispatch Order'),
-                  onPressed: () => _advanceOrderStatus(order, isOut ? 'Delivered' : 'Out for Delivery'),
+                  label: Text(dispatchLabel),
+                  onPressed: () => _dispatchOrder(order),
                 ),
               ),
             ],

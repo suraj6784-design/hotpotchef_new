@@ -55,6 +55,14 @@ class Ui {
 // GLOBAL HELPERS FOR ORDERS & SCHEDULING
 // ----------------------------------------------------------------------
 
+String mealDisplayTitle(Map<String, dynamic> meal, {String fallback = 'Meal'}) {
+  final title = meal['title']?.toString().trim();
+  if (title != null && title.isNotEmpty) return title;
+  final name = meal['name']?.toString().trim();
+  if (name != null && name.isNotEmpty) return name;
+  return fallback;
+}
+
 String formatOrderId(String? rawOrderId, String fallbackId) {
   if (rawOrderId != null && rawOrderId.isNotEmpty) {
     return rawOrderId.length > 8 ? rawOrderId.substring(0, 8).toUpperCase() : rawOrderId.toUpperCase();

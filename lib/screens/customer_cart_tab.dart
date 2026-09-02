@@ -246,8 +246,17 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
 
           ...cartState.items.map((item) {
             final cartItemId = item.id;
-            final availableServices = ServiceType.values;
-            final currentService = item.serviceType;
+            final offered = (item.rawMealDetails['service_type']?.toString() ?? '')
+                .split(',')
+                .map((s) => s.trim())
+                .where((s) => s.isNotEmpty)
+                .map(ServiceType.fromString)
+                .toSet();
+            final availableServices =
+                offered.isEmpty ? ServiceType.values.toList() : offered.toList();
+            final currentService = availableServices.contains(item.serviceType)
+                ? item.serviceType
+                : availableServices.first;
 
             final isOfferActive = item.discountedPrice != null ||
                 cartState.isOfferActive(item.rawMealDetails);
@@ -385,7 +394,10 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                         }).toList(),
                         onChanged: (val) {
                           if (val != null) {
-                            ref.read(cartProvider.notifier).updateItemServiceType(cartItemId, val.toString());
+                            ref.read(cartProvider.notifier).updateItemServiceType(
+                                  cartItemId,
+                                  val.toDisplayString(),
+                                );
                           }
                         },
                       ),
@@ -549,7 +561,10 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
             onPressed: () async {
               if (!isLoggedIn) {
                 CustomerHubScreen.returnToCartAfterLogin = true;
-                showAuthBottomSheet(context, () => setState(() {}));
+                showAuthBottomSheet(context, () {
+                  ref.read(cartProvider.notifier).syncGuestCartToUser();
+                  if (mounted) setState(() {});
+                });
                 return;
               }
 
@@ -557,7 +572,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
               final canProceed = await _verifySingleVendorOrPrompt(cartState);
               if (!canProceed || !context.mounted) return;
 
-              final checkoutItems = cartState.items.map((i) => i.toJson()).toList();
+              final checkoutItems = cartState.items.map((i) => i.toCheckoutPayload()).toList();
 
               Navigator.push(
                 context,
@@ -573,7 +588,9 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
               );
             },
             child: Text(
-              'Proceed to Checkout (₹${cartState.grandTotal.toStringAsFixed(0)})',
+              isLoggedIn
+                  ? 'Proceed to Checkout (₹${cartState.grandTotal.toStringAsFixed(0)})'
+                  : 'Sign in to place order (₹${cartState.grandTotal.toStringAsFixed(0)})',
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
           ),

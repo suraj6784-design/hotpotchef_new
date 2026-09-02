@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import '../models/app_role.dart';
 import '../screens/auth_screen.dart';
 import '../screens/customer_hub.dart';
 import '../screens/chef_hub.dart';
@@ -15,13 +16,20 @@ import '../screens/driver_profile_screen.dart';
 import '../screens/customer_profile_screen.dart';
 import '../screens/chef_analytics_screen.dart';
 import '../screens/chef_publish_meal_screen.dart';
+import '../screens/referral_screen.dart';
+import '../screens/customer_order_history_screen.dart';
+import '../screens/customer_bulk_request_screen.dart';
+import '../services/auth_session.dart';
 
 class AppRouter {
+  static final AuthRefreshNotifier _authRefresh = AuthRefreshNotifier();
+
   static final GoRouter router = GoRouter(
     initialLocation: '/customer-hub',
+    refreshListenable: _authRefresh,
     errorBuilder: (context, state) {
       final user = Supabase.instance.client.auth.currentUser;
-      final role = (user?.userMetadata?['role'] ?? 'customer').toString().toLowerCase();
+      final role = AppRole.parse(user?.userMetadata?['role']?.toString());
 
       return Scaffold(
         backgroundColor: const Color(0xFF121212),
@@ -40,15 +48,7 @@ class AppRouter {
                 const SizedBox(height: 24),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white),
-                  onPressed: () {
-                    if (role == 'chef') {
-                      context.go('/chef-hub');
-                    } else if (role == 'driver') {
-                      context.go('/driver-hub');
-                    } else {
-                      context.go('/customer-hub');
-                    }
-                  },
+                  onPressed: () => context.go(role.hubPath),
                   child: const Text('Return Home'),
                 ),
               ],
@@ -61,7 +61,7 @@ class AppRouter {
       final session = Supabase.instance.client.auth.currentSession;
       final isAuthenticated = session != null;
       final path = state.uri.path;
-      final role = session?.user.userMetadata?['role']?.toString().toLowerCase() ?? 'customer';
+      final role = AppRole.parse(session?.user.userMetadata?['role']?.toString());
 
       // 1. Protect Chef and Driver routes against unauthenticated access
       const protectedChefDriverRoutes = [
@@ -79,15 +79,12 @@ class AppRouter {
       // 2. Enforce correct role-based landing on app startup or auth navigation
       if (isAuthenticated) {
         if (path == '/auth') {
-          if (role == 'chef') return '/chef-hub';
-          if (role == 'driver') return '/driver-hub';
-          return '/customer-hub';
+          return role.hubPath;
         }
 
-        // Intercept if a Chef or Driver lands on the customer hub by default on app launch
-        if (path == '/customer-hub') {
-          if (role == 'chef') return '/chef-hub';
-          if (role == 'driver') return '/driver-hub';
+        // Chefs and drivers should not land on the guest customer feed
+        if (path == '/customer-hub' && role != AppRole.customer) {
+          return role.hubPath;
         }
       }
 
@@ -127,10 +124,10 @@ class AppRouter {
         builder: (context, state) {
           try {
             final extra = state.extra;
-            final mapExtra = extra is Map<String, dynamic> ? extra : <String, dynamic>{};
+            final mapExtra = extra is Map ? Map<String, dynamic>.from(extra) : <String, dynamic>{};
 
-            final order = mapExtra['order'] is Map<String, dynamic>
-                ? Map<String, dynamic>.from(mapExtra['order'])
+            final order = mapExtra['order'] is Map
+                ? Map<String, dynamic>.from(mapExtra['order'] as Map)
                 : <String, dynamic>{};
             final isDriver = mapExtra['isDriver'] == true;
             final isDineInNavigation = mapExtra['isDineInNavigation'] == true;
@@ -157,6 +154,18 @@ class AppRouter {
       GoRoute(
         path: '/chef-analytics',
         builder: (context, state) => const ChefAnalyticsScreen(),
+      ),
+      GoRoute(
+        path: '/referral',
+        builder: (context, state) => const ReferralScreen(),
+      ),
+      GoRoute(
+        path: '/order-history',
+        builder: (context, state) => const CustomerOrderHistoryScreen(),
+      ),
+      GoRoute(
+        path: '/bulk-request',
+        builder: (context, state) => const CustomerBulkRequestScreen(),
       ),
     ],
   );

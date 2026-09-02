@@ -4,8 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:go_router/go_router.dart';
 
+import '../models/app_role.dart';
+import '../services/auth_session.dart';
 import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
 
@@ -24,8 +25,7 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _isLoading = false;
   bool _obscurePassword = true;
 
-  // Role Selection (Customer, Chef, Driver)
-  String _selectedRole = 'Customer';
+  AppRole _selectedRole = AppRole.customer;
 
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -41,37 +41,9 @@ class _AuthScreenState extends State<AuthScreen> {
     super.dispose();
   }
 
-  // --- Route User to Their Proper Dashboard Based on Role ---
   Future<void> _routeUserByRole(User user) async {
-    String? role;
-
-    try {
-      // 1. Primary check: Query the public.users table
-      final userData = await _supabase
-          .from('users')
-          .select('role')
-          .eq('id', user.id)
-          .maybeSingle();
-
-      role = userData?['role']?.toString();
-    } catch (e, st) {
-      FirebaseCrashlytics.instance.recordError(e, st, reason: 'Role fetch error from users table');
-    }
-
-    // 2. Fallback check: Auth metadata if public table query was blocked or empty
-    role ??= user.userMetadata?['role']?.toString() ?? 'Customer';
-
-    final normalizedRole = role.trim().toLowerCase();
-
     if (!mounted) return;
-
-    if (normalizedRole == 'chef') {
-      context.go('/chef-hub');
-    } else if (normalizedRole == 'driver') {
-      context.go('/driver-hub');
-    } else {
-      context.go('/customer-hub');
-    }
+    await AuthSession.goToHub(context);
   }
 
   Future<void> _submitAuth() async {
@@ -107,7 +79,7 @@ class _AuthScreenState extends State<AuthScreen> {
           data: {
             'name': name,
             'phone': phone,
-            'role': _selectedRole, // Stored in Auth metadata
+            'role': _selectedRole.storageValue,
           },
         );
 
@@ -122,7 +94,7 @@ class _AuthScreenState extends State<AuthScreen> {
             'name': name,
             'full_name': name,
             'phone': phone,
-            'role': _selectedRole,
+            'role': _selectedRole.storageValue,
             'created_at': DateTime.now().toIso8601String(),
           });
 
@@ -323,11 +295,11 @@ class _AuthScreenState extends State<AuthScreen> {
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          _buildRoleChoiceChip('Customer', Icons.restaurant),
+                          _buildRoleChoiceChip(AppRole.customer, Icons.restaurant),
                           const SizedBox(width: 8),
-                          _buildRoleChoiceChip('Chef', Icons.outdoor_grill),
+                          _buildRoleChoiceChip(AppRole.chef, Icons.outdoor_grill),
                           const SizedBox(width: 8),
-                          _buildRoleChoiceChip('Driver', Icons.delivery_dining),
+                          _buildRoleChoiceChip(AppRole.driver, Icons.delivery_dining),
                         ],
                       ),
                       const SizedBox(height: 20),
@@ -445,7 +417,7 @@ class _AuthScreenState extends State<AuthScreen> {
                               child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                             )
                           : Text(
-                              _isLogin ? 'Sign In' : 'Register as $_selectedRole',
+                              _isLogin ? 'Sign In' : 'Register as ${_selectedRole.storageValue}',
                               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                             ),
                     ),
@@ -476,11 +448,12 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   // --- Helper Widget for Role Selection Buttons ---
-  Widget _buildRoleChoiceChip(String roleName, IconData icon) {
-    final isSelected = _selectedRole == roleName;
+  Widget _buildRoleChoiceChip(AppRole role, IconData icon) {
+    final isSelected = _selectedRole == role;
+    final roleName = role.storageValue;
     return Expanded(
       child: GestureDetector(
-        onTap: () => setState(() => _selectedRole = roleName),
+        onTap: () => setState(() => _selectedRole = role),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(

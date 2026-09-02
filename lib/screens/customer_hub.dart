@@ -7,7 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../providers/cart_provider.dart';
 import '../providers/favorites_provider.dart';
-import '../services/push_notification_service.dart';
+import '../services/auth_session.dart';
 import '../utils/app_theme.dart';
 import 'customer_feed_tab.dart';
 import 'customer_cart_tab.dart';
@@ -34,15 +34,11 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
   }
 
   Future<void> _handleLogout() async {
-    await PushNotificationService.clearTokenOnLogout();
-    await Supabase.instance.client.auth.signOut();
-    ref.read(cartProvider.notifier).clearCart();
-    ref.invalidate(favoritesProvider);
-    setState(() => _selectedIndex = 0);
-
-    if (mounted) {
-      context.go('/auth');
-    }
+    await AuthSession.logout(context, beforeNavigate: () async {
+      ref.read(cartProvider.notifier).clearCart();
+      ref.invalidate(favoritesProvider);
+    });
+    if (mounted) setState(() => _selectedIndex = 0);
   }
 
   void _navigateToProfile() {

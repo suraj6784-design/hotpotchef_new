@@ -1,5 +1,5 @@
 name: hotpotchef_new
-description: "A new Flutter project."
+description: "HotPotChef — home chefs publish meals; customers and delivery partners fulfill orders."
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -41,6 +41,7 @@ dependencies:
   http: ^1.6.0
   local_auth: ^3.0.2
   flutter_secure_storage: ^11.0.0
+  shared_preferences: ^2.5.3
 
 dev_dependencies:
   flutter_test:

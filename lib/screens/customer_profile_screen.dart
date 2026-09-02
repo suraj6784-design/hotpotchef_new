@@ -9,6 +9,7 @@ import 'address_form_screen.dart';
 import 'auth_screen.dart';
 import 'referral_screen.dart';
 import 'customer_order_history_screen.dart';
+import '../services/auth_session.dart';
 import '../utils/helpers.dart';
 import '../utils/app_theme.dart';
 import '../widgets/avatar_upload.dart';
@@ -67,54 +68,11 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
   // --- Safe Back Navigation Logic ---
 
   Future<void> _handleSafeBack() async {
-    final user = _supabase.auth.currentUser;
-    if (user == null) {
-      if (mounted) {
-        try {
-          context.go('/auth');
-        } catch (_) {
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => const AuthScreen()),
-            (route) => false,
-          );
-        }
-      }
+    if (AuthSession.currentUser == null) {
+      if (mounted) context.go('/auth');
       return;
     }
-
-    String role = 'customer';
-    try {
-      final userData = await _supabase
-          .from('users')
-          .select('role')
-          .eq('id', user.id)
-          .maybeSingle();
-
-      if (userData != null && userData['role'] != null) {
-        role = userData['role'].toString().trim().toLowerCase();
-      } else if (user.userMetadata?['role'] != null) {
-        role = user.userMetadata!['role'].toString().trim().toLowerCase();
-      }
-    } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Role check during safe back navigation');
-    }
-
-    if (!mounted) return;
-
-    try {
-      if (role == 'chef') {
-        context.go('/chef-hub');
-      } else if (role == 'driver') {
-        context.go('/driver-hub');
-      } else {
-        context.go('/customer-hub');
-      }
-      return;
-    } catch (_) {
-      if (Navigator.canPop(context)) {
-        Navigator.pop(context);
-      }
-    }
+    await AuthSession.goToHub(context);
   }
 
   // --- Data Loading ---

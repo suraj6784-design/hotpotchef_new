@@ -45,6 +45,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
 
   String _etaText = 'Calculating ETA...';
   bool _isLoading = true;
+  late Map<String, dynamic> _order;
 
   static const double _distanceRatio = 1.3;
   static const double _speedKmPerMin = 0.5; // Average city driving speed
@@ -52,7 +53,25 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   @override
   void initState() {
     super.initState();
+    _order = Map<String, dynamic>.from(widget.order);
     _initializeTracking();
+  }
+
+  Future<void> _hydrateOrderIfNeeded() async {
+    final id = _order['id']?.toString();
+    if (id == null || id.isEmpty) return;
+    final hasAddress = (_order['delivery_address']?.toString().isNotEmpty ?? false) ||
+        (_order['delivery_lat'] != null);
+    if (hasAddress) return;
+
+    try {
+      final row = await _supabase.from('orders').select().eq('id', id).maybeSingle();
+      if (row != null && mounted) {
+        _order = {..._order, ...row};
+      }
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed hydrating tracking order');
+    }
   }
 
   @override
@@ -65,6 +84,8 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
 
   Future<void> _initializeTracking() async {
     try {
+      await _hydrateOrderIfNeeded();
+
       // 1. Verify and request GPS location permissions
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
@@ -139,27 +160,27 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   Future<LatLng?> _resolveDestinationCoordinates() async {
     try {
       if (widget.isDineInNavigation) {
-        final latStr = widget.order['chef_lat']?.toString() ?? widget.order['hosting_lat']?.toString();
-        final lngStr = widget.order['chef_lng']?.toString() ?? widget.order['hosting_lng']?.toString();
+        final latStr = _order['chef_lat']?.toString() ?? _order['hosting_lat']?.toString();
+        final lngStr = _order['chef_lng']?.toString() ?? _order['hosting_lng']?.toString();
 
         if (latStr != null && lngStr != null && latStr.isNotEmpty && lngStr.isNotEmpty) {
           return LatLng(double.parse(latStr), double.parse(lngStr));
         }
 
-        final chefAddress = widget.order['chef_address']?.toString() ?? widget.order['hosting_address']?.toString();
+        final chefAddress = _order['chef_address']?.toString() ?? _order['hosting_address']?.toString();
         if (chefAddress != null && chefAddress.isNotEmpty) {
           List<Location> locs = await locationFromAddress(chefAddress);
           if (locs.isNotEmpty) return LatLng(locs.first.latitude, locs.first.longitude);
         }
       } else {
-        final latStr = widget.order['delivery_lat']?.toString() ?? widget.order['customer_lat']?.toString();
-        final lngStr = widget.order['delivery_lng']?.toString() ?? widget.order['customer_lng']?.toString();
+        final latStr = _order['delivery_lat']?.toString() ?? _order['customer_lat']?.toString();
+        final lngStr = _order['delivery_lng']?.toString() ?? _order['customer_lng']?.toString();
 
         if (latStr != null && lngStr != null && latStr.isNotEmpty && lngStr.isNotEmpty) {
           return LatLng(double.parse(latStr), double.parse(lngStr));
         }
 
-        final addressStr = widget.order['delivery_address']?.toString();
+        final addressStr = _order['delivery_address']?.toString();
         if (addressStr != null && addressStr.isNotEmpty) {
           List<Location> locs = await locationFromAddress(addressStr);
           if (locs.isNotEmpty) return LatLng(locs.first.latitude, locs.first.longitude);
@@ -283,7 +304,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
       }
 
       // Broadcast telemetry over Supabase Realtime channel
-      _locationChannel ??= _supabase.channel('order_${widget.order['id']}');
+      _locationChannel ??= _supabase.channel('order_${_order['id']}');
       _locationChannel!.sendBroadcastMessage(
         event: 'location_update',
         payload: {'lat': position.latitude, 'lng': position.longitude},
@@ -292,7 +313,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   }
 
   void _listenToDriverTelemetry() {
-    final orderId = widget.order['id']?.toString() ?? '';
+    final orderId = _order['id']?.toString() ?? '';
     if (orderId.isEmpty) return;
 
     _locationChannel = _supabase.channel('order_$orderId');
@@ -323,16 +344,16 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   // --- Order Summary Modal ---
 
   void _showOrderSummaryModal() {
-    final double itemPrice = (widget.order['price'] as num?)?.toDouble() ?? 250.0;
-    final int qty = (widget.order['quantity'] as num?)?.toInt() ?? 1;
+    final double itemPrice = (_order['price'] as num?)?.toDouble() ?? 250.0;
+    final int qty = (_order['quantity'] as num?)?.toInt() ?? 1;
     final double basketValue = itemPrice * qty;
     final double billTotal = basketValue + 20.0; // Packaging fee fallback
 
-    final String customerName = widget.order['customer_name']?.toString() ?? 'Customer';
-    final String customerPhone = widget.order['customer_phone']?.toString() ?? '';
-    final String deliveryAddress = widget.order['delivery_address']?.toString() ?? 'Delivery Address';
-    final String orderIdStr = formatOrderId(widget.order['order_id']?.toString(), widget.order['id'].toString());
-    final String orderDate = formatOrderDate(widget.order['created_at']?.toString());
+    final String customerName = _order['customer_name']?.toString() ?? 'Customer';
+    final String customerPhone = _order['customer_phone']?.toString() ?? '';
+    final String deliveryAddress = _order['delivery_address']?.toString() ?? 'Delivery Address';
+    final String orderIdStr = formatOrderId(_order['order_id']?.toString(), _order['id'].toString());
+    final String orderDate = formatOrderDate(_order['created_at']?.toString());
 
     showModalBottomSheet(
       context: context,
@@ -362,7 +383,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('${widget.order['title'] ?? 'Meal Order'} (x$qty)',
+                      Text('${_order['title'] ?? 'Meal Order'} (x$qty)',
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain)),
                       const SizedBox(height: 2),
                       Text('Order confirmed & dispatched',

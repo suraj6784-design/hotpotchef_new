@@ -180,7 +180,7 @@ class CartNotifier extends Notifier<CartState> {
 
     final rawSlot = meal['time_slot']?.toString() ?? '';
     final smartSchedule = _calculateSmartDefaultSchedule(rawSlot);
-    final rawServices = meal['service_type']?.toString() ?? 'Delivery (Platform)';
+    final rawServices = meal['service_type']?.toString() ?? 'Delivery Partner';
     final serviceType = ServiceType.fromString(rawServices.split(',').first.trim());
     final int availableStock = int.tryParse(meal['quantity']?.toString() ?? '99') ?? 99;
 
@@ -209,7 +209,7 @@ class CartNotifier extends Notifier<CartState> {
         id: '${mealId}_${DateTime.now().microsecondsSinceEpoch}',
         mealId: mealId,
         chefId: chefId,
-        title: meal['name']?.toString() ?? 'Meal Item',
+        title: meal['title']?.toString() ?? meal['name']?.toString() ?? 'Meal Item',
         basePrice: basePriceVal, // Safely assigned
         discountedPrice: validDiscount, // Safely assigned
         quantity: quantity.clamp(1, availableStock),

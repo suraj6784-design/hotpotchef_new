@@ -39,31 +39,39 @@ class CartItemModel {
   }) : assert(quantity > 0, 'Quantity must be at least 1');
 
   factory CartItemModel.fromJson(Map<String, dynamic> json) {
-    final rawDetails = json['mealDetails'] is Map
-        ? Map<String, dynamic>.from(json['mealDetails'] as Map)
+    final rawDetailsSource = json['mealDetails'] ?? json['meal_details'] ?? json['rawMealDetails'];
+    final rawDetails = rawDetailsSource is Map
+        ? Map<String, dynamic>.from(rawDetailsSource)
         : <String, dynamic>{};
 
-    final addOnsRaw = json['selectedAddOns'] as List<dynamic>? ?? [];
-    final parsedAddOns = addOnsRaw
-        .whereType<Map<String, dynamic>>()
-        .map(CartItemAddOn.fromJson)
+    final addOnsRaw = json['selectedAddOns'] ?? json['selected_add_ons'] ?? [];
+    final parsedAddOns = (addOnsRaw is List ? addOnsRaw : const [])
+        .whereType<Map>()
+        .map((e) => CartItemAddOn.fromJson(Map<String, dynamic>.from(e)))
         .toList(growable: false);
 
     return CartItemModel(
       id: json['id']?.toString() ?? '',
-      mealId: json['mealId']?.toString() ?? '',
-      chefId: json['chefId']?.toString() ?? '',
-      title: json['title']?.toString() ?? rawDetails['name']?.toString() ?? '',
+      mealId: json['mealId']?.toString() ?? json['meal_id']?.toString() ?? '',
+      chefId: json['chefId']?.toString() ?? json['chef_id']?.toString() ?? '',
+      title: json['title']?.toString() ??
+          rawDetails['title']?.toString() ??
+          rawDetails['name']?.toString() ??
+          '',
       basePrice: (json['basePrice'] as num?)?.toDouble() ??
           (rawDetails['price'] as num?)?.toDouble() ??
           0.0,
       discountedPrice: (json['discountedPrice'] as num?)?.toDouble() ??
           (rawDetails['discounted_price'] as num?)?.toDouble(),
       quantity: int.tryParse(json['quantity']?.toString() ?? '1') ?? 1,
-      scheduledDate: DateTime.tryParse(json['selectedDate']?.toString() ?? '') ??
+      scheduledDate: DateTime.tryParse(json['selectedDate']?.toString() ?? json['scheduled_date']?.toString() ?? '') ??
           DateTime.now(),
-      serviceType: ServiceType.fromString(json['selectedServiceType']?.toString()),
-      timeSlot: json['timeSlot']?.toString() ?? rawDetails['exact_time']?.toString(),
+      serviceType: ServiceType.fromString(
+        json['selectedServiceType']?.toString() ??
+            json['selected_service_type']?.toString() ??
+            json['service_type']?.toString(),
+      ),
+      timeSlot: json['timeSlot']?.toString() ?? json['time_slot']?.toString() ?? rawDetails['exact_time']?.toString(),
       selectedAddOns: parsedAddOns,
       specialInstructions: json['specialInstructions']?.toString(),
       rawMealDetails: Map.unmodifiable(rawDetails),
@@ -85,6 +93,30 @@ class CartItemModel {
         'specialInstructions': specialInstructions,
         'mealDetails': rawMealDetails,
       };
+
+  /// Snake_case + camelCase aliases expected by checkout and `place_customer_order`.
+  Map<String, dynamic> toCheckoutPayload() {
+    final meal = Map<String, dynamic>.from(rawMealDetails);
+    return {
+      ...toJson(),
+      'chef_id': chefId,
+      'meal_id': mealId,
+      'source_meal_id': mealId,
+      'name': title,
+      'price': discountedPrice ?? basePrice,
+      'base_price': basePrice,
+      'discounted_price': discountedPrice,
+      'selected_service_type': serviceType.toDisplayString(),
+      'service_type': serviceType.toDisplayString(),
+      'serviceType': serviceType.toDisplayString(),
+      'scheduled_date': scheduledDate.toIso8601String(),
+      'scheduledDate': scheduledDate.toIso8601String(),
+      'selected_date': scheduledDate.toIso8601String(),
+      'time_slot': timeSlot,
+      'rawMealDetails': meal,
+      'meal_details': meal,
+    };
+  }
 
   CartItemModel copyWith({
     String? id,

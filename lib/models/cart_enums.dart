@@ -7,39 +7,44 @@ enum ServiceType {
   dineIn;
 
   static ServiceType fromString(String? value) {
-    switch (value?.toLowerCase().trim()) {
-      case 'delivery (platform)':
-      case 'delivery_platform':
-      case 'delivery':
-        return ServiceType.deliveryPlatform;
-      case 'delivery (self)':
-      case 'delivery_self':
-        return ServiceType.deliverySelf;
-      case 'pickup':
-        return ServiceType.pickup;
-      case 'dinein':
-      case 'dine_in':
-        return ServiceType.dineIn;
-      default:
-        return ServiceType.deliveryPlatform;
+    final raw = value?.toLowerCase().trim() ?? '';
+    final token = raw.split(',').first.trim();
+
+    if (token.contains('partner') ||
+        token.contains('platform') ||
+        token == 'delivery' ||
+        token == 'delivery_platform') {
+      return ServiceType.deliveryPlatform;
     }
+    if (token.contains('self') || token.contains('chef-self') || token == 'delivery_self') {
+      return ServiceType.deliverySelf;
+    }
+    if (token.contains('pickup') || token.contains('pick up')) {
+      return ServiceType.pickup;
+    }
+    if (token.contains('dine')) {
+      return ServiceType.dineIn;
+    }
+    return ServiceType.deliveryPlatform;
   }
 
   String toDisplayString() {
     switch (this) {
       case ServiceType.deliveryPlatform:
-        return 'Delivery (Platform)';
+        return 'Delivery Partner';
       case ServiceType.deliverySelf:
-        return 'Delivery (Self)';
+        return 'Chef-Self';
       case ServiceType.pickup:
-        return 'Pickup';
+        return 'Customer Pickup';
       case ServiceType.dineIn:
-        return 'Dine-In';
+        return 'Dine In';
     }
   }
 
   bool get isDelivery =>
       this == ServiceType.deliveryPlatform || this == ServiceType.deliverySelf;
+
+  bool get usesDeliveryPartner => this == ServiceType.deliveryPlatform;
 }
 
 /// Strongly typed add-ons/customizations for production scalability

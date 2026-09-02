@@ -13,7 +13,7 @@ enum DeliveryStatus {
   static DeliveryStatus fromString(String? val) {
     final s = val?.toLowerCase().trim() ?? '';
     if (s.contains('ready')) return DeliveryStatus.readyForPickup;
-    if (s.contains('accepted')) return DeliveryStatus.accepted;
+    if (s.contains('assigned') || s.contains('accept')) return DeliveryStatus.accepted;
     if (s.contains('pickup') || s.contains('picked')) return DeliveryStatus.pickedUp;
     if (s.contains('out')) return DeliveryStatus.outForDelivery;
     if (s.contains('deliver')) return DeliveryStatus.delivered;
@@ -24,17 +24,17 @@ enum DeliveryStatus {
   String toDbValue() {
     switch (this) {
       case DeliveryStatus.readyForPickup:
-        return 'ready_for_pickup';
+        return 'Ready for Pickup';
       case DeliveryStatus.accepted:
-        return 'accepted';
+        return 'Driver Assigned';
       case DeliveryStatus.pickedUp:
-        return 'picked_up';
+        return 'Ready for Pickup';
       case DeliveryStatus.outForDelivery:
-        return 'out_for_delivery';
+        return 'Out for Delivery';
       case DeliveryStatus.delivered:
-        return 'delivered';
+        return 'Delivered';
       case DeliveryStatus.cancelled:
-        return 'cancelled';
+        return 'Cancelled';
     }
   }
 }

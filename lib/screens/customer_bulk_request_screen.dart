@@ -26,7 +26,7 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
   final _budgetController = TextEditingController();
   final _addressController = TextEditingController();
 
-  String _selectedServiceType = 'Delivery (Platform)';
+  String _selectedServiceType = 'Delivery Partner';
   DateTime _targetDate = DateTime.now().add(const Duration(days: 1));
   TimeOfDay _targetTime = const TimeOfDay(hour: 13, minute: 0);
   bool _isLoading = false;
@@ -256,7 +256,7 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
             DropdownButtonFormField<String>(
               initialValue: _selectedServiceType,
               decoration: _inputStyle('Fulfillment Type'),
-              items: ['Delivery (Platform)', 'Chef Self-Delivery', 'Customer Pickup', 'Dine-in']
+              items: ['Delivery Partner', 'Chef-Self', 'Customer Pickup', 'Dine In']
                   .map((s) => DropdownMenuItem(value: s, child: Text(s, style: const TextStyle(fontSize: 14))))
                   .toList(),
               onChanged: (val) => setState(() => _selectedServiceType = val!),

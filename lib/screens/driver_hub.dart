@@ -3,15 +3,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
 import '../widgets/customer_ui_components.dart';
 import '../providers/driver_dashboard_provider.dart';
 import '../models/driver_delivery_model.dart';
+import '../services/auth_session.dart';
 import 'driver_profile_screen.dart';
 
 class DriverHubScreen extends ConsumerStatefulWidget {
@@ -146,14 +145,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                       ),
                       const SizedBox(width: 12),
                       GestureDetector(
-                        onTap: () async {
-                          try {
-                            await Supabase.instance.client.auth.signOut();
-                            if (mounted) context.go('/auth');
-                          } catch (e, stack) {
-                            FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Driver signout failure');
-                          }
-                        },
+                        onTap: () => AuthSession.logout(context),
                         child: Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle),
@@ -422,7 +414,15 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                       icon: const Icon(Icons.navigation, size: 16),
                       label: const Text('Navigate'),
                       onPressed: () {
-                        context.push('/tracking', extra: {'order': {'id': delivery.orderId}, 'isDriver': true});
+                        context.push('/tracking', extra: {
+                          'order': {
+                            'id': delivery.orderId,
+                            'delivery_address': delivery.customerAddress,
+                            'pickup_address': delivery.pickupAddress,
+                            'title': delivery.chefName,
+                          },
+                          'isDriver': true,
+                        });
                       },
                     ),
                   ),
