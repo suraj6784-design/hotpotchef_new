@@ -51,7 +51,8 @@ class AuthSession {
     context.go(resolved.hubPath);
   }
 
-  /// FCM token clear + Supabase signOut + navigate to `/auth`.
+  /// FCM token clear + Supabase signOut + return to the public guest feed
+  /// (`/customer-hub`) so users can keep browsing meals after logging out.
   static Future<void> logout(
     BuildContext context, {
     Future<void> Function()? beforeNavigate,
@@ -73,7 +74,7 @@ class AuthSession {
     }
 
     if (context.mounted) {
-      context.go('/auth');
+      context.go('/customer-hub');
     }
   }
 }

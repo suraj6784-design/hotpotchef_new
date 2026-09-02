@@ -97,14 +97,20 @@ class CartItemModel {
   /// Snake_case + camelCase aliases expected by checkout and `place_customer_order`.
   Map<String, dynamic> toCheckoutPayload() {
     final meal = Map<String, dynamic>.from(rawMealDetails);
+    // Guard against a ₹0 checkout total: when `basePrice` wasn't captured
+    // (e.g. the meal price arrived as a String), fall back to the price
+    // carried in the meal details so downstream pricing never collapses to 0.
+    final double resolvedBase = basePrice > 0 ? basePrice : PricingCalculator.basePrice(meal);
+    final double resolvedPrice =
+        (discountedPrice != null && discountedPrice! > 0) ? discountedPrice! : resolvedBase;
     return {
       ...toJson(),
       'chef_id': chefId,
       'meal_id': mealId,
       'source_meal_id': mealId,
       'name': title,
-      'price': discountedPrice ?? basePrice,
-      'base_price': basePrice,
+      'price': resolvedPrice,
+      'base_price': resolvedBase,
       'discounted_price': discountedPrice,
       'selected_service_type': serviceType.toDisplayString(),
       'service_type': serviceType.toDisplayString(),

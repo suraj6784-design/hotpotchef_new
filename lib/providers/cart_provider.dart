@@ -184,9 +184,10 @@ class CartNotifier extends Notifier<CartState> {
     final serviceType = ServiceType.fromString(rawServices.split(',').first.trim());
     final int availableStock = int.tryParse(meal['quantity']?.toString() ?? '99') ?? 99;
 
-    // Prevent 0.00 checkout bug by strictly rejecting 0 values from discounted_price
-    final double basePriceVal = (meal['price'] as num?)?.toDouble() ?? 0.0;
-    final double? rawDiscount = (meal['discounted_price'] as num?)?.toDouble();
+    // Parse robustly: meal prices can arrive as num OR String, and a strict
+    // `as num?` cast silently yields 0 — the root of the ₹0.00 checkout bug.
+    final double basePriceVal = double.tryParse(meal['price']?.toString() ?? '') ?? 0.0;
+    final double? rawDiscount = double.tryParse(meal['discounted_price']?.toString() ?? '');
     final double? validDiscount = (rawDiscount != null && rawDiscount > 0) ? rawDiscount : null;
 
     // Deterministic item matching (considers add-on selection)

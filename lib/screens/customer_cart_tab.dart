@@ -93,6 +93,21 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
     }
   }
 
+  /// Drops slots whose start time has already passed when the chosen day is
+  /// today, so customers can't schedule a delivery in the past.
+  List<String> _futureSlotsForDate(List<String> slots, DateTime date) {
+    final now = DateTime.now();
+    final isToday = date.year == now.year && date.month == now.month && date.day == now.day;
+    if (!isToday) return slots;
+
+    final nowMinutes = now.hour * 60 + now.minute;
+    return slots.where((slot) {
+      final startStr = slot.split(RegExp('to', caseSensitive: false)).first.trim();
+      final start = _parseTimeOfDay(startStr);
+      return (start.hour * 60 + start.minute) > nowMinutes;
+    }).toList();
+  }
+
   TimeOfDay _parseTimeOfDay(String timeStr) {
     final cleaned = timeStr.toUpperCase().replaceAll(' ', '');
     bool isPM = cleaned.contains('PM');
@@ -448,7 +463,8 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                       Expanded(
                         child: GestureDetector(
                           onTap: () async {
-                            final subSlots = _generateSubSlots(rawSchedule);
+                            final subSlots =
+                                _futureSlotsForDate(_generateSubSlots(rawSchedule), item.scheduledDate);
                             final pickedSlot = await showDialog<String>(
                               context: context,
                               builder: (ctx) => AlertDialog(
@@ -456,15 +472,26 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                                 content: SizedBox(
                                   width: double.maxFinite,
                                   height: 220,
-                                  child: ListView.builder(
-                                    shrinkWrap: true,
-                                    itemCount: subSlots.length,
-                                    itemBuilder: (c, i) => ListTile(
-                                      leading: const Icon(Icons.access_time, color: AppTheme.primary, size: 18),
-                                      title: Text(subSlots[i], style: const TextStyle(fontSize: 13)),
-                                      onTap: () => Navigator.pop(ctx, subSlots[i]),
-                                    ),
-                                  ),
+                                  child: subSlots.isEmpty
+                                      ? const Center(
+                                          child: Padding(
+                                            padding: EdgeInsets.all(16),
+                                            child: Text(
+                                              'No more time slots available today.\nPlease choose a later day.',
+                                              textAlign: TextAlign.center,
+                                              style: TextStyle(fontSize: 13, color: AppTheme.textMuted),
+                                            ),
+                                          ),
+                                        )
+                                      : ListView.builder(
+                                          shrinkWrap: true,
+                                          itemCount: subSlots.length,
+                                          itemBuilder: (c, i) => ListTile(
+                                            leading: const Icon(Icons.access_time, color: AppTheme.primary, size: 18),
+                                            title: Text(subSlots[i], style: const TextStyle(fontSize: 13)),
+                                            onTap: () => Navigator.pop(ctx, subSlots[i]),
+                                          ),
+                                        ),
                                 ),
                               ),
                             );
