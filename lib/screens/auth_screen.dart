@@ -2,13 +2,14 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../models/app_role.dart';
 import '../services/auth_session.dart';
-import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
+import '../widgets/app_widgets.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -158,36 +159,22 @@ class _AuthScreenState extends State<AuthScreen> {
     await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.surfaceDark,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          'Lookup Account Email',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
+        title: const Text('Lookup Account Email'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
               'Enter your registered phone number or full name to check your account email hint.',
-              style: TextStyle(color: Colors.white70, fontSize: 13),
+              style: TextStyle(fontSize: 13, color: AppTheme.textMuted),
             ),
             const SizedBox(height: 16),
             TextField(
               controller: inputController,
-              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Phone or Name',
-                labelStyle: const TextStyle(color: Colors.grey, fontSize: 13),
-                floatingLabelStyle: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold),
                 hintText: 'e.g. 9876543210 or John Doe',
-                hintStyle: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-                filled: true,
-                fillColor: const Color(0xFF2A2A2A),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white12)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppTheme.primary, width: 2)),
+                prefixIcon: Icon(Icons.search_rounded),
               ),
             ),
           ],
@@ -195,15 +182,9 @@ class _AuthScreenState extends State<AuthScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+            child: const Text('Cancel'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primary,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-            ),
             onPressed: () async {
               final query = inputController.text.trim();
               Navigator.pop(ctx);
@@ -250,235 +231,261 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
+  void _browseAsGuest() {
+    if (Navigator.of(context).canPop()) {
+      Navigator.pop(context);
+    } else {
+      context.go('/customer-hub');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       backgroundColor: AppTheme.background,
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            // 🌟 1. Wrapped form fields in an AutofillGroup to enable OS password persistence
-            child: AutofillGroup(
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Center(
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: Image.asset('assets/app_icon.png', height: 72, width: 72),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      _isLogin ? 'Welcome Back!' : 'Create Account',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                        color: AppTheme.textMain,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _isLogin ? 'Sign in to access your dashboard' : 'Join HotPot Chef as a customer, cook, or driver',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 13, color: AppTheme.textMuted),
-                    ),
-                    const SizedBox(height: 28),
-
-                    // --- ROLE SELECTION (SIGN UP ONLY) ---
-                    if (!_isLogin) ...[
-                      const Text(
-                        'I want to join as:',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textMain),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          _buildRoleChoiceChip(AppRole.customer, Icons.restaurant),
-                          const SizedBox(width: 8),
-                          _buildRoleChoiceChip(AppRole.chef, Icons.outdoor_grill),
-                          const SizedBox(width: 8),
-                          _buildRoleChoiceChip(AppRole.driver, Icons.delivery_dining),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-
-                      TextFormField(
-                        controller: _nameController,
-                        style: const TextStyle(color: AppTheme.textMain, fontSize: 14),
-                        // 🌟 2. Added name autofill hint
-                        autofillHints: const [AutofillHints.name],
-                        decoration: InputDecoration(
-                          labelText: 'Full Name',
-                          prefixIcon: const Icon(Icons.person_outline, color: AppTheme.primary),
-                          filled: true,
-                          fillColor: Colors.white,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                        ),
-                        validator: (v) => !_isLogin && (v == null || v.trim().isEmpty) ? 'Please enter your name' : null,
-                      ),
-                      const SizedBox(height: 16),
-
-                      TextFormField(
-                        controller: _phoneController,
-                        keyboardType: TextInputType.phone,
-                        style: const TextStyle(color: AppTheme.textMain, fontSize: 14),
-                        // 🌟 3. Added telephone autofill hint
-                        autofillHints: const [AutofillHints.telephoneNumber],
-                        decoration: InputDecoration(
-                          labelText: 'Phone Number',
-                          prefixIcon: const Icon(Icons.phone_outlined, color: AppTheme.primary),
-                          filled: true,
-                          fillColor: Colors.white,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                        ),
-                        validator: (v) => !_isLogin && (v == null || v.trim().length < 10) ? 'Enter a valid 10-digit number' : null,
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-
-                    TextFormField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      style: const TextStyle(color: AppTheme.textMain, fontSize: 14),
-                      // 🌟 4. Added email/username autofill hints
-                      autofillHints: const [AutofillHints.email, AutofillHints.username],
-                      decoration: InputDecoration(
-                        labelText: 'Email Address',
-                        prefixIcon: const Icon(Icons.email_outlined, color: AppTheme.primary),
-                        filled: true,
-                        fillColor: Colors.white,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                      ),
-                      validator: (v) {
-                        if (v == null || v.trim().isEmpty || !v.contains('@')) {
-                          return 'Please enter a valid email address';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-
-                    TextFormField(
-                      controller: _passwordController,
-                      obscureText: _obscurePassword,
-                      style: const TextStyle(color: AppTheme.textMain, fontSize: 14),
-                      // 🌟 5. Added password autofill hint
-                      autofillHints: const [AutofillHints.password],
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        prefixIcon: const Icon(Icons.lock_outline, color: AppTheme.primary),
-                        suffixIcon: IconButton(
-                          icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, color: Colors.grey),
-                          onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-                        ),
-                        filled: true,
-                        fillColor: Colors.white,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                      ),
-                      validator: (v) {
-                        if (v == null || v.trim().isEmpty) {
-                          return 'Please enter your password';
-                        }
-                        // Only enforce 8+ chars for new registrations; allow legacy passwords on login
-                        if (!_isLogin && v.trim().length < 8) {
-                          return 'Password must be at least 8 characters long';
-                        }
-                        return null;
-                      },
-                    ),
-
-                    if (_isLogin) ...[
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton(
-                          onPressed: _handleForgotPassword,
-                          child: const Text('Forgot Password?', style: TextStyle(color: AppTheme.primary, fontSize: 12)),
-                        ),
-                      ),
-                    ],
-
-                    const SizedBox(height: 24),
-
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        elevation: 0,
-                      ),
-                      onPressed: _isLoading ? null : _submitAuth,
-                      child: _isLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                            )
-                          : Text(
-                              _isLogin ? 'Sign In' : 'Register as ${_selectedRole.storageValue}',
-                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                            ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    TextButton(
-                      onPressed: () => setState(() => _isLogin = !_isLogin),
-                      child: Text(
-                        _isLogin ? "Don't have an account? Sign Up" : "Already have an account? Sign In",
-                        style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-
-                    if (_isLogin) ...[
-                      TextButton(
-                        onPressed: _handleForgotUsername,
-                        child: const Text('Forgot Email / Username?', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                      ),
-                    ],
-                  ],
+      body: Stack(
+        children: [
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 280,
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: AppTheme.primaryGradient,
+                borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(36),
+                  bottomRight: Radius.circular(36),
                 ),
               ),
             ),
           ),
-        ),
+          SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+                child: AutofillGroup(
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const SizedBox(height: 12),
+                        Center(
+                          child: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: AppTheme.radiusLg,
+                              boxShadow: AppTheme.softShadow,
+                            ),
+                            child: ClipRRect(
+                              borderRadius: AppTheme.radiusMd,
+                              child: Image.asset('assets/app_icon.png', height: 64, width: 64),
+                            ),
+                          ),
+                        ).popIn(),
+                        const SizedBox(height: 16),
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 250),
+                          child: Text(
+                            _isLogin ? 'Welcome back' : 'Join HotPotChef',
+                            key: ValueKey(_isLogin),
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          _isLogin
+                              ? 'Sign in to kitchens, orders, and your wallet'
+                              : 'Create an account as a diner, home chef, or driver',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.85)),
+                        ),
+                        const SizedBox(height: 28),
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: AppTheme.cardDecoration(isDark: isDark),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              AnimatedSize(
+                                duration: const Duration(milliseconds: 280),
+                                curve: Curves.easeOutCubic,
+                                child: !_isLogin
+                                    ? Column(
+                                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                                        children: [
+                                          Text(
+                                            'I want to join as',
+                                            style: TextStyle(
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 13,
+                                                color: Theme.of(context).colorScheme.onSurface),
+                                          ),
+                                          const SizedBox(height: 10),
+                                          Row(
+                                            children: [
+                                              _buildRoleChoiceChip(AppRole.customer, Icons.restaurant_rounded),
+                                              const SizedBox(width: 8),
+                                              _buildRoleChoiceChip(AppRole.chef, Icons.outdoor_grill_rounded),
+                                              const SizedBox(width: 8),
+                                              _buildRoleChoiceChip(AppRole.driver, Icons.delivery_dining_rounded),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 18),
+                                          TextFormField(
+                                            controller: _nameController,
+                                            autofillHints: const [AutofillHints.name],
+                                            textCapitalization: TextCapitalization.words,
+                                            decoration: const InputDecoration(
+                                              labelText: 'Full Name',
+                                              prefixIcon: Icon(Icons.person_outline),
+                                            ),
+                                            validator: (v) =>
+                                                !_isLogin && (v == null || v.trim().isEmpty) ? 'Please enter your name' : null,
+                                          ),
+                                          const SizedBox(height: 14),
+                                          TextFormField(
+                                            controller: _phoneController,
+                                            keyboardType: TextInputType.phone,
+                                            autofillHints: const [AutofillHints.telephoneNumber],
+                                            decoration: const InputDecoration(
+                                              labelText: 'Phone Number',
+                                              prefixIcon: Icon(Icons.phone_outlined),
+                                            ),
+                                            validator: (v) => !_isLogin && (v == null || v.trim().length < 10)
+                                                ? 'Enter a valid 10-digit number'
+                                                : null,
+                                          ),
+                                          const SizedBox(height: 14),
+                                        ],
+                                      )
+                                    : const SizedBox.shrink(),
+                              ),
+                              TextFormField(
+                                controller: _emailController,
+                                keyboardType: TextInputType.emailAddress,
+                                autofillHints: const [AutofillHints.email, AutofillHints.username],
+                                decoration: const InputDecoration(
+                                  labelText: 'Email Address',
+                                  prefixIcon: Icon(Icons.email_outlined),
+                                ),
+                                validator: (v) {
+                                  if (v == null || v.trim().isEmpty || !v.contains('@')) {
+                                    return 'Please enter a valid email address';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 14),
+                              TextFormField(
+                                controller: _passwordController,
+                                obscureText: _obscurePassword,
+                                autofillHints: const [AutofillHints.password],
+                                decoration: InputDecoration(
+                                  labelText: 'Password',
+                                  prefixIcon: const Icon(Icons.lock_outline),
+                                  suffixIcon: IconButton(
+                                    icon: Icon(_obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                                    onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                                  ),
+                                ),
+                                validator: (v) {
+                                  if (v == null || v.trim().isEmpty) {
+                                    return 'Please enter your password';
+                                  }
+                                  if (!_isLogin && v.trim().length < 8) {
+                                    return 'Password must be at least 8 characters long';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              if (_isLogin)
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: TextButton(
+                                    onPressed: _handleForgotPassword,
+                                    child: const Text('Forgot Password?'),
+                                  ),
+                                )
+                              else
+                                const SizedBox(height: 18),
+                              GradientButton(
+                                label: _isLogin ? 'Sign In' : 'Register as ${_selectedRole.storageValue}',
+                                icon: _isLogin ? Icons.login_rounded : Icons.person_add_alt_1_rounded,
+                                loading: _isLoading,
+                                onPressed: _isLoading ? null : _submitAuth,
+                              ),
+                            ],
+                          ),
+                        ).entrance(),
+                        const SizedBox(height: 8),
+                        TextButton(
+                          onPressed: _isLoading ? null : () => setState(() => _isLogin = !_isLogin),
+                          child: Text(
+                            _isLogin ? "Don't have an account? Sign Up" : 'Already have an account? Sign In',
+                          ),
+                        ),
+                        if (_isLogin)
+                          TextButton(
+                            onPressed: _handleForgotUsername,
+                            child: const Text(
+                              'Forgot Email / Username?',
+                              style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                            ),
+                          ),
+                        TextButton(
+                          onPressed: _browseAsGuest,
+                          child: const Text('Continue browsing meals'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  // --- Helper Widget for Role Selection Buttons ---
   Widget _buildRoleChoiceChip(AppRole role, IconData icon) {
     final isSelected = _selectedRole == role;
-    final roleName = role.storageValue;
     return Expanded(
       child: GestureDetector(
         onTap: () => setState(() => _selectedRole = role),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            color: isSelected ? AppTheme.primary : Colors.white,
-            borderRadius: BorderRadius.circular(12),
+            color: isSelected ? AppTheme.primary : Theme.of(context).colorScheme.surface,
+            borderRadius: AppTheme.radiusMd,
             border: Border.all(
               color: isSelected ? AppTheme.primary : Colors.grey.shade300,
               width: 1.5,
             ),
+            boxShadow: isSelected ? AppTheme.brandGlow(opacity: 0.28) : const [],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 20, color: isSelected ? Colors.white : Colors.grey.shade700),
+              Icon(icon, size: 20, color: isSelected ? Colors.white : AppTheme.textMuted),
               const SizedBox(height: 4),
               Text(
-                roleName,
+                role.storageValue,
                 style: TextStyle(
                   fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: isSelected ? Colors.white : Colors.grey.shade700,
+                  fontWeight: FontWeight.w700,
+                  color: isSelected ? Colors.white : Theme.of(context).colorScheme.onSurface,
                 ),
               ),
             ],
