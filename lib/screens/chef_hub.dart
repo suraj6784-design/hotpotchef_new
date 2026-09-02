@@ -1,5 +1,7 @@
 // lib/screens/chef_hub.dart
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -40,10 +42,92 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   String get _currentUserId => _supabase.auth.currentUser?.id ?? '';
   String get _currentUserEmail => _supabase.auth.currentUser?.email ?? 'Chef';
 
+  // Resolved customer_id -> display name cache (orders only store customer_id).
+  final Map<String, String> _customerNameCache = {};
+  final Set<String> _customerNameLoading = {};
+
   @override
   void initState() {
     super.initState();
     _loadKitchenStatus();
+  }
+
+  // --- Order data helpers (orders use the legacy schema: `items` JSON text,
+  // `total_price`, `order_type`, `customer_id`). ---
+
+  double _toAmount(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString()) ?? 0.0;
+  }
+
+  List<Map<String, dynamic>> _parseItems(dynamic raw) {
+    if (raw == null) return const [];
+    try {
+      final decoded = raw is String ? jsonDecode(raw) : raw;
+      if (decoded is List) {
+        return decoded.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      }
+    } catch (_) {
+      // Malformed JSON — fall through to empty list.
+    }
+    return const [];
+  }
+
+  double _orderTotal(Map<String, dynamic> order) =>
+      _toAmount(order['total_price'] ?? order['total_amount']);
+
+  ServiceType _orderService(Map<String, dynamic> order) =>
+      ServiceType.fromString(order['order_type']?.toString() ?? order['service_type']?.toString());
+
+  String _orderTitle(Map<String, dynamic> order) {
+    final items = _parseItems(order['items']);
+    if (items.isEmpty) return order['title']?.toString() ?? 'Meal Order';
+    final first = items.first['title']?.toString() ?? 'Meal Order';
+    return items.length > 1 ? '$first +${items.length - 1} more' : first;
+  }
+
+  int _orderQuantity(Map<String, dynamic> order) {
+    final items = _parseItems(order['items']);
+    if (items.isEmpty) return int.tryParse(order['quantity']?.toString() ?? '1') ?? 1;
+    return items.fold<int>(
+        0, (sum, it) => sum + (int.tryParse(it['quantity']?.toString() ?? '1') ?? 1));
+  }
+
+  String _customerName(Map<String, dynamic> order) {
+    final id = order['customer_id']?.toString() ?? '';
+    if (id.isEmpty) return order['customer_name']?.toString() ?? 'Guest';
+    final cached = _customerNameCache[id];
+    if (cached != null) return cached;
+    _loadCustomerName(id);
+    return 'Customer';
+  }
+
+  Future<void> _loadCustomerName(String customerId) async {
+    if (_customerNameCache.containsKey(customerId) || _customerNameLoading.contains(customerId)) {
+      return;
+    }
+    _customerNameLoading.add(customerId);
+    try {
+      final row = await _supabase
+          .from('users')
+          .select('name, full_name, email')
+          .eq('id', customerId)
+          .maybeSingle();
+      final resolved = (row?['name'] ?? row?['full_name'] ?? row?['email'] ?? 'Customer')
+          .toString()
+          .trim();
+      final name = resolved.isEmpty ? 'Customer' : resolved;
+      if (mounted) {
+        setState(() => _customerNameCache[customerId] = name);
+      } else {
+        _customerNameCache[customerId] = name;
+      }
+    } catch (_) {
+      // Leave uncached so it can be retried on the next rebuild.
+    } finally {
+      _customerNameLoading.remove(customerId);
+    }
   }
 
   Future<void> _loadKitchenStatus() async {
@@ -92,7 +176,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
 
   bool _matchesFilter(Map<String, dynamic> order, String filter) {
     if (filter == 'All') return true;
-    final svc = ServiceType.fromString(order['service_type']?.toString());
+    final svc = _orderService(order);
     switch (filter) {
       case 'Delivery Partner':
         return svc == ServiceType.deliveryPlatform;
@@ -460,9 +544,9 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     final isPreparing = status.toLowerCase() == 'preparing';
 
     final orderId = formatOrderId(order['order_id']?.toString(), order['id'].toString());
-    final title = order['title'] ?? 'Meal Order';
-    final quantity = int.tryParse(order['quantity']?.toString() ?? '1') ?? 1;
-    final totalAmount = (order['total_amount'] as num?)?.toDouble() ?? 0.0;
+    final title = _orderTitle(order);
+    final quantity = _orderQuantity(order);
+    final totalAmount = _orderTotal(order);
     final instructions = order['special_instructions']?.toString() ?? '';
 
     return AppCard(
@@ -480,7 +564,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
           const SizedBox(height: 8),
           Text('$title (x$quantity)', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain)),
           const SizedBox(height: 4),
-          Text('Customer: ${order['customer_name'] ?? 'Guest'} • ₹${totalAmount.toStringAsFixed(2)}',
+          Text('Customer: ${_customerName(order)} • ₹${totalAmount.toStringAsFixed(2)}',
               style: const TextStyle(fontSize: 13, color: AppTheme.textMuted)),
           if (instructions.isNotEmpty) ...[
             const SizedBox(height: 8),
@@ -548,7 +632,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       itemBuilder: (context, index) {
         final order = dispatches[index];
         final isOut = OrderLifecycle.normalize(order['status']?.toString()) == 'out for delivery';
-        final svc = ServiceType.fromString(order['service_type']?.toString());
+        final svc = _orderService(order);
         final dispatchLabel = () {
           if (isOut) return 'Mark Delivered';
           if (svc.usesDeliveryPartner) return 'Release to Delivery Partners';
@@ -571,7 +655,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 ],
               ),
               const SizedBox(height: 8),
-              Text('${order['title']} (x${order['quantity']})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              Text('${_orderTitle(order)} (x${_orderQuantity(order)})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
               const SizedBox(height: 4),
               Text('Method: ${svc.toDisplayString()}', style: const TextStyle(fontSize: 12, color: AppTheme.primary, fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
@@ -653,7 +737,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
 
   Widget _buildHistoryTab(List<Map<String, dynamic>> orders) {
     final history = orders.where((o) => (o['status']?.toString().toLowerCase() ?? '') == 'delivered').toList();
-    final double revenue = history.fold(0.0, (sum, o) => sum + ((o['total_amount'] as num?)?.toDouble() ?? 0.0));
+    final double revenue = history.fold(0.0, (sum, o) => sum + _orderTotal(o));
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -672,9 +756,9 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         ...history.map((h) => ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.check_circle, color: Colors.green),
-              title: Text(h['title'] ?? 'Order', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              title: Text(_orderTitle(h), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
               subtitle: Text(formatOrderDate(h['created_at']?.toString() ?? '')),
-              trailing: Text('₹${(h['total_amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+              trailing: Text('₹${_orderTotal(h).toStringAsFixed(2)}',
                   style: const TextStyle(fontWeight: FontWeight.bold)),
             )),
       ],
