@@ -1,5 +1,7 @@
 // lib/screens/auth_screen.dart
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -10,19 +12,30 @@ import '../models/app_role.dart';
 import '../services/auth_session.dart';
 import '../services/push_notification_service.dart';
 import '../utils/account_hint.dart';
+import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
 import '../utils/network.dart';
 import '../widgets/app_widgets.dart';
 
 class AuthScreen extends StatefulWidget {
-  const AuthScreen({super.key});
+  const AuthScreen({
+    super.key,
+    this.asSheet = false,
+    this.sheetTitle,
+    this.sheetSubtitle,
+  });
+
+  /// Guest checkout/order uses a modal sheet so the cart stays visible behind.
+  final bool asSheet;
+  final String? sheetTitle;
+  final String? sheetSubtitle;
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
 }
 
 class _AuthScreenState extends State<AuthScreen> {
-  final _supabase = Supabase.instance.client;
+  SupabaseClient get _supabase => Supabase.instance.client;
   final _formKey = GlobalKey<FormState>();
 
   bool _isLogin = true;
@@ -70,13 +83,17 @@ class _AuthScreenState extends State<AuthScreen> {
     return 'Sign-in failed. Please check your details and try again.';
   }
 
-  Future<void> _routeUserByRole(User user) async {
+  void _leaveAuthAfterSuccess() {
     if (!mounted) return;
-    // Navigate using the role from the session metadata — this is instant and
-    // does not depend on a `public.users` query, which could stall and leave the
-    // Sign In button spinning even though authentication already succeeded.
-    // This mirrors the router's own redirect logic.
-    await AuthSession.goToHub(context, role: AuthSession.roleFromSession());
+    final role = AuthSession.roleFromSession();
+    final router = GoRouter.of(context);
+    if (widget.asSheet || Navigator.of(context).canPop()) {
+      Navigator.of(context).pop(true);
+    }
+    // Stay on the current hub/cart when a guest customer signs in from a sheet.
+    if (!widget.asSheet || role != AppRole.customer) {
+      router.go(role.hubPath);
+    }
   }
 
   Future<void> _submitAuth() async {
@@ -99,8 +116,8 @@ class _AuthScreenState extends State<AuthScreen> {
         TextInput.finishAutofillContext();
 
         if (response.user != null) {
-          await PushNotificationService.syncTokenForCurrentUser();
-          await _routeUserByRole(response.user!);
+          unawaited(PushNotificationService.syncTokenForCurrentUser());
+          _leaveAuthAfterSuccess();
         }
       } else {
         // --- SIGN-UP FLOW WITH EXPLICIT ROLE ---
@@ -146,8 +163,8 @@ class _AuthScreenState extends State<AuthScreen> {
             'created_at': DateTime.now().toIso8601String(),
           }).withTimeout(NetworkTimeouts.standard);
 
-          await PushNotificationService.syncTokenForCurrentUser();
-          await _routeUserByRole(response.user!);
+          unawaited(PushNotificationService.syncTokenForCurrentUser());
+          _leaveAuthAfterSuccess();
         }
       }
     } catch (e, stack) {
@@ -283,6 +300,9 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    if (widget.asSheet) {
+      return _buildSheet(isDark);
+    }
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -351,142 +371,9 @@ class _AuthScreenState extends State<AuthScreen> {
                           style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.85)),
                         ),
                         const SizedBox(height: 28),
-                        Container(
-                          padding: const EdgeInsets.all(20),
-                          decoration: AppTheme.cardDecoration(isDark: isDark),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              AnimatedSize(
-                                duration: const Duration(milliseconds: 280),
-                                curve: Curves.easeOutCubic,
-                                child: !_isLogin
-                                    ? Column(
-                                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                                        children: [
-                                          Text(
-                                            'I want to join as',
-                                            style: TextStyle(
-                                                fontWeight: FontWeight.w700,
-                                                fontSize: 13,
-                                                color: Theme.of(context).colorScheme.onSurface),
-                                          ),
-                                          const SizedBox(height: 10),
-                                          Row(
-                                            children: [
-                                              _buildRoleChoiceChip(AppRole.customer, Icons.restaurant_rounded),
-                                              const SizedBox(width: 8),
-                                              _buildRoleChoiceChip(AppRole.chef, Icons.outdoor_grill_rounded),
-                                              const SizedBox(width: 8),
-                                              _buildRoleChoiceChip(AppRole.driver, Icons.delivery_dining_rounded),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 18),
-                                          TextFormField(
-                                            controller: _nameController,
-                                            autofillHints: const [AutofillHints.name],
-                                            textCapitalization: TextCapitalization.words,
-                                            decoration: const InputDecoration(
-                                              labelText: 'Full Name',
-                                              prefixIcon: Icon(Icons.person_outline),
-                                            ),
-                                            validator: (v) =>
-                                                !_isLogin && (v == null || v.trim().isEmpty) ? 'Please enter your name' : null,
-                                          ),
-                                          const SizedBox(height: 14),
-                                          TextFormField(
-                                            controller: _phoneController,
-                                            keyboardType: TextInputType.phone,
-                                            autofillHints: const [AutofillHints.telephoneNumber],
-                                            decoration: const InputDecoration(
-                                              labelText: 'Phone Number',
-                                              prefixIcon: Icon(Icons.phone_outlined),
-                                            ),
-                                            validator: (v) => !_isLogin && (v == null || v.trim().length < 10)
-                                                ? 'Enter a valid 10-digit number'
-                                                : null,
-                                          ),
-                                          const SizedBox(height: 14),
-                                        ],
-                                      )
-                                    : const SizedBox.shrink(),
-                              ),
-                              TextFormField(
-                                controller: _emailController,
-                                keyboardType: TextInputType.emailAddress,
-                                autofillHints: const [AutofillHints.email, AutofillHints.username],
-                                decoration: const InputDecoration(
-                                  labelText: 'Email Address',
-                                  prefixIcon: Icon(Icons.email_outlined),
-                                ),
-                                validator: (v) {
-                                  if (v == null || v.trim().isEmpty || !v.contains('@')) {
-                                    return 'Please enter a valid email address';
-                                  }
-                                  return null;
-                                },
-                              ),
-                              const SizedBox(height: 14),
-                              TextFormField(
-                                controller: _passwordController,
-                                obscureText: _obscurePassword,
-                                autofillHints: const [AutofillHints.password],
-                                decoration: InputDecoration(
-                                  labelText: 'Password',
-                                  prefixIcon: const Icon(Icons.lock_outline),
-                                  suffixIcon: IconButton(
-                                    icon: Icon(_obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
-                                    onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-                                  ),
-                                ),
-                                validator: (v) {
-                                  if (v == null || v.trim().isEmpty) {
-                                    return 'Please enter your password';
-                                  }
-                                  if (!_isLogin && v.trim().length < 8) {
-                                    return 'Password must be at least 8 characters long';
-                                  }
-                                  return null;
-                                },
-                              ),
-                              if (_isLogin)
-                                Align(
-                                  alignment: Alignment.centerRight,
-                                  child: TextButton(
-                                    onPressed: _handleForgotPassword,
-                                    child: const Text('Forgot Password?'),
-                                  ),
-                                )
-                              else
-                                const SizedBox(height: 18),
-                              GradientButton(
-                                label: _isLogin ? 'Sign In' : 'Register as ${_selectedRole.storageValue}',
-                                icon: _isLogin ? Icons.login_rounded : Icons.person_add_alt_1_rounded,
-                                loading: _isLoading,
-                                onPressed: _isLoading ? null : _submitAuth,
-                              ),
-                            ],
-                          ),
-                        ).entrance(),
+                        _buildCredentialCard(isDark).entrance(),
                         const SizedBox(height: 8),
-                        TextButton(
-                          onPressed: _isLoading ? null : () => setState(() => _isLogin = !_isLogin),
-                          child: Text(
-                            _isLogin ? "Don't have an account? Sign Up" : 'Already have an account? Sign In',
-                          ),
-                        ),
-                        if (_isLogin)
-                          TextButton(
-                            onPressed: _handleForgotUsername,
-                            child: const Text(
-                              'Forgot Email / Username?',
-                              style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
-                            ),
-                          ),
-                        TextButton(
-                          onPressed: _browseAsGuest,
-                          child: const Text('Continue browsing meals'),
-                        ),
+                        ..._buildAuthLinks(compact: false),
                       ],
                     ),
                   ),
@@ -497,6 +384,225 @@ class _AuthScreenState extends State<AuthScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildSheet(bool isDark) {
+    final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
+    final muted = isDark ? Colors.grey.shade400 : AppTheme.textMuted;
+    final bg = isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight;
+    final title = widget.sheetTitle ?? (_isLogin ? 'Sign in to continue' : 'Join HotPotChef');
+    final subtitle = widget.sheetSubtitle ??
+        (_isLogin ? 'Your cart stays on this screen.' : 'Create an account to finish your order.');
+
+    return Material(
+      color: bg,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.92),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 10),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: muted.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 8, 0),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(title, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: titleColor)),
+                          const SizedBox(height: 4),
+                          Text(subtitle, style: TextStyle(fontSize: 13, height: 1.35, color: muted)),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Close',
+                      onPressed: _isLoading ? null : () => Navigator.pop(context),
+                      icon: Icon(Icons.close, color: muted),
+                    ),
+                  ],
+                ),
+              ),
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                  child: AutofillGroup(
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildCredentialCard(isDark),
+                          const SizedBox(height: 4),
+                          ..._buildAuthLinks(compact: true),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCredentialCard(bool isDark) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: AppTheme.cardDecoration(isDark: isDark),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AnimatedSize(
+            duration: const Duration(milliseconds: 280),
+            curve: Curves.easeOutCubic,
+            child: !_isLogin
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'I want to join as',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                            color: Theme.of(context).colorScheme.onSurface),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          _buildRoleChoiceChip(AppRole.customer, Icons.restaurant_rounded),
+                          const SizedBox(width: 8),
+                          _buildRoleChoiceChip(AppRole.chef, Icons.outdoor_grill_rounded),
+                          const SizedBox(width: 8),
+                          _buildRoleChoiceChip(AppRole.driver, Icons.delivery_dining_rounded),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                      TextFormField(
+                        controller: _nameController,
+                        autofillHints: const [AutofillHints.name],
+                        textCapitalization: TextCapitalization.words,
+                        decoration: const InputDecoration(
+                          labelText: 'Full Name',
+                          prefixIcon: Icon(Icons.person_outline),
+                        ),
+                        validator: (v) =>
+                            !_isLogin && (v == null || v.trim().isEmpty) ? 'Please enter your name' : null,
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: _phoneController,
+                        keyboardType: TextInputType.phone,
+                        autofillHints: const [AutofillHints.telephoneNumber],
+                        decoration: const InputDecoration(
+                          labelText: 'Phone Number',
+                          prefixIcon: Icon(Icons.phone_outlined),
+                        ),
+                        validator: (v) => !_isLogin && (v == null || v.trim().length < 10)
+                            ? 'Enter a valid 10-digit number'
+                            : null,
+                      ),
+                      const SizedBox(height: 14),
+                    ],
+                  )
+                : const SizedBox.shrink(),
+          ),
+          TextFormField(
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+            autofillHints: const [AutofillHints.email, AutofillHints.username],
+            decoration: const InputDecoration(
+              labelText: 'Email Address',
+              prefixIcon: Icon(Icons.email_outlined),
+            ),
+            validator: (v) {
+              if (v == null || v.trim().isEmpty || !v.contains('@')) {
+                return 'Please enter a valid email address';
+              }
+              return null;
+            },
+          ),
+          const SizedBox(height: 14),
+          TextFormField(
+            controller: _passwordController,
+            obscureText: _obscurePassword,
+            autofillHints: const [AutofillHints.password],
+            decoration: InputDecoration(
+              labelText: 'Password',
+              prefixIcon: const Icon(Icons.lock_outline),
+              suffixIcon: IconButton(
+                icon: Icon(_obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+              ),
+            ),
+            validator: (v) {
+              if (v == null || v.trim().isEmpty) {
+                return 'Please enter your password';
+              }
+              if (!_isLogin && v.trim().length < 8) {
+                return 'Password must be at least 8 characters long';
+              }
+              return null;
+            },
+          ),
+          if (_isLogin)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: _handleForgotPassword,
+                child: const Text('Forgot Password?'),
+              ),
+            )
+          else
+            const SizedBox(height: 18),
+          GradientButton(
+            label: _isLogin ? 'Sign In' : 'Register as ${_selectedRole.storageValue}',
+            icon: _isLogin ? Icons.login_rounded : Icons.person_add_alt_1_rounded,
+            loading: _isLoading,
+            onPressed: _isLoading ? null : _submitAuth,
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildAuthLinks({required bool compact}) {
+    return [
+      TextButton(
+        onPressed: _isLoading ? null : () => setState(() => _isLogin = !_isLogin),
+        child: Text(
+          _isLogin ? "Don't have an account? Sign Up" : 'Already have an account? Sign In',
+        ),
+      ),
+      if (_isLogin)
+        TextButton(
+          onPressed: _handleForgotUsername,
+          child: const Text(
+            'Forgot Email / Username?',
+            style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
+          ),
+        ),
+      TextButton(
+        onPressed: _browseAsGuest,
+        child: Text(compact ? 'Keep my cart and go back' : 'Continue browsing meals'),
+      ),
+    ];
   }
 
   Widget _buildRoleChoiceChip(AppRole role, IconData icon) {

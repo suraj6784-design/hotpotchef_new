@@ -517,12 +517,25 @@ class _MealDetailsModalContentState extends State<_MealDetailsModalContent> {
 }
 
 // 7. Streamlined Auth Flow
-void showAuthBottomSheet(BuildContext context, VoidCallback onSuccess) {
-  Navigator.push(
-    context,
-    MaterialPageRoute(builder: (_) => const AuthScreen()),
-  ).then((_) {
-    onSuccess();
+void showAuthBottomSheet(
+  BuildContext context,
+  VoidCallback onSuccess, {
+  String? title,
+  String? subtitle,
+}) {
+  showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    backgroundColor: Colors.transparent,
+    barrierColor: Colors.black.withValues(alpha: 0.45),
+    builder: (ctx) => AuthScreen(
+      asSheet: true,
+      sheetTitle: title,
+      sheetSubtitle: subtitle,
+    ),
+  ).then((ok) {
+    if (ok == true) onSuccess();
   });
 }
 

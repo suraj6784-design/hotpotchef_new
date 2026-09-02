@@ -5,6 +5,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'alert_service.dart';
+import '../utils/network.dart';
 
 // Top-level background message handler (Required by FCM)
 @pragma('vm:entry-point')
@@ -80,7 +81,7 @@ class PushNotificationService {
       final user = _supabase.auth.currentUser;
       if (user == null) return;
 
-      String? token = await _messaging.getToken();
+      String? token = await _messaging.getToken().withTimeout(NetworkTimeouts.short);
       if (token != null) {
         await _updateTokenInDatabase(token);
       }
@@ -98,7 +99,7 @@ class PushNotificationService {
       // Save token inside the users table column 'fcm_token'
       await _supabase.from('users').update({
         'fcm_token': token,
-      }).eq('id', user.id);
+      }).eq('id', user.id).withTimeout(NetworkTimeouts.short);
 
       debugPrint('FCM Token successfully updated in Supabase.');
     } catch (e, stack) {

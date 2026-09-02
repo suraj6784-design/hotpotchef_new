@@ -617,10 +617,15 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
   Future<void> _handleCheckoutPressed(CartState cartState, bool isLoggedIn) async {
     if (!isLoggedIn) {
       CustomerHubScreen.returnToCartAfterLogin = true;
-      showAuthBottomSheet(context, () {
-        ref.read(cartProvider.notifier).syncGuestCartToUser();
-        if (mounted) setState(() {});
-      });
+      showAuthBottomSheet(
+        context,
+        () {
+          ref.read(cartProvider.notifier).syncGuestCartToUser();
+          if (mounted) setState(() {});
+        },
+        title: 'Sign in to order',
+        subtitle: 'Your cart is still here. Sign in to continue checkout.',
+      );
       return;
     }
 
