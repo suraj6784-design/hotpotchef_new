@@ -9,6 +9,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../models/app_role.dart';
 import '../services/auth_session.dart';
 import '../services/push_notification_service.dart';
+import '../utils/account_hint.dart';
 import '../utils/helpers.dart';
 import '../utils/network.dart';
 import '../widgets/app_widgets.dart';
@@ -208,7 +209,7 @@ class _AuthScreenState extends State<AuthScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Enter your registered phone number or full name to check your account email hint.',
+              'Enter the phone number or name on the account. If it matches, a masked email hint is shown. You can only try this a few times per hour.',
               style: TextStyle(fontSize: 13, color: AppTheme.textMuted),
             ),
             const SizedBox(height: 16),
@@ -232,7 +233,7 @@ class _AuthScreenState extends State<AuthScreen> {
               final query = inputController.text.trim();
               Navigator.pop(ctx);
               if (query.isEmpty) return;
-              if (query.length > 80 || query.contains(',') || query.contains('(') || query.contains(')')) {
+              if (!isValidAccountLookupQuery(query)) {
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Please enter a simple phone number or name.')),
@@ -241,36 +242,26 @@ class _AuthScreenState extends State<AuthScreen> {
               }
 
               try {
-                final response = await _supabase
-                    .from('users')
-                    .select('email')
-                    .or('phone.eq.$query,name.eq.$query')
-                    .maybeSingle();
+                final response = await _supabase.rpc(
+                  'lookup_account_hint',
+                  params: {'p_query': query},
+                ).withTimeout(NetworkTimeouts.standard);
 
                 if (!mounted) return;
 
-                if (response != null && response['email'] != null) {
-                  final email = response['email'].toString();
-                  final atIndex = email.indexOf('@');
-                  final maskedEmail = atIndex > 1
-                      ? email.replaceRange(1, atIndex, '***')
-                      : email;
-
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Account found! Registered email: $maskedEmail'),
-                      backgroundColor: Colors.green,
-                      duration: const Duration(seconds: 6),
-                    ),
-                  );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('No account found matching those details.')),
-                  );
-                }
-              } catch (e) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Lookup failed: $e'), backgroundColor: Colors.red),
+                  SnackBar(
+                    content: Text(accountHintMessage(parseAccountHint(response))),
+                    duration: const Duration(seconds: 6),
+                  ),
+                );
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(networkErrorMessage(e)),
+                    backgroundColor: Colors.red,
+                  ),
                 );
               }
             },
