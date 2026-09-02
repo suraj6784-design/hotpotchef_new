@@ -905,6 +905,15 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
                       onTap: () => openLegalDocument(context, LegalDocumentType.cancellation),
                       isDark: isDark,
                     ),
+                    if (SupportConfig.playStoreUrl != null) ...[
+                      Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
+                      _buildListTile(
+                        icon: Icons.star_outline,
+                        title: 'Rate us on Play Store',
+                        onTap: launchPlayStore,
+                        isDark: isDark,
+                      ),
+                    ],
 
                     if (widget.onLogout != null)
                       Padding(

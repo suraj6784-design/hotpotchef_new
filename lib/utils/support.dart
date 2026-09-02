@@ -17,6 +17,12 @@ class SupportConfig {
 
   static bool get hasWhatsApp => whatsappDigits.length >= 10;
 
+  static String? get playStoreUrl {
+    final value = dotenv.env['PLAY_STORE_URL']?.trim();
+    if (value == null || value.isEmpty) return null;
+    return value;
+  }
+
   static String? urlFor(LegalDocumentType type) {
     final key = switch (type) {
       LegalDocumentType.terms => 'TERMS_URL',
@@ -54,6 +60,12 @@ Future<bool> launchSupportWhatsApp({String? message}) {
     if (message != null && message.isNotEmpty) 'text': message,
   });
   return launchUrl(uri, mode: LaunchMode.externalApplication);
+}
+
+Future<bool> launchPlayStore() {
+  final url = SupportConfig.playStoreUrl;
+  if (url == null) return Future.value(false);
+  return launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
 }
 
 Future<void> openLegalDocument(BuildContext context, LegalDocumentType type) async {
