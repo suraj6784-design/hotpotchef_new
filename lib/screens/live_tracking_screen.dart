@@ -519,10 +519,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_etaText, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
-        elevation: 1,
+        title: Text(_etaText),
         actions: [
           IconButton(
             icon: const Icon(Icons.support_agent, color: AppTheme.primary),
@@ -551,9 +548,9 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 4))],
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: AppTheme.radiusLg,
+                      boxShadow: AppTheme.softShadow,
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,

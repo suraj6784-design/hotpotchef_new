@@ -13,8 +13,8 @@ import 'package:go_router/go_router.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'dart:convert';
 import '../utils/helpers.dart';
-import '../utils/app_theme.dart';
 import '../widgets/customer_ui_components.dart';
+import '../widgets/app_widgets.dart';
 import '../services/order_lifecycle.dart';
 
 class CustomerOrdersTab extends StatefulWidget {
@@ -870,23 +870,15 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
     if (user == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('My Orders')),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(padding: const EdgeInsets.all(24), decoration: BoxDecoration(color: Colors.grey.shade200, shape: BoxShape.circle), child: Icon(Icons.receipt_long_outlined, size: 64, color: Colors.grey.shade500)),
-              const SizedBox(height: 24),
-              const Text('Please log in to view your orders.', style: TextStyle(fontSize: 16, color: AppTheme.textMuted)),
-              const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: () => showAuthBottomSheet(context, () {
-                  setState(() => _isLoading = true);
-                  _initScopedStreams();
-                }),
-                child: const Text('Sign In'),
-              ),
-            ],
-          ),
+        body: EmptyState(
+          icon: Icons.receipt_long_outlined,
+          title: 'Sign in to track orders',
+          message: 'Your live kitchen and delivery updates will show up here.',
+          actionLabel: 'Sign In',
+          onAction: () => showAuthBottomSheet(context, () {
+            setState(() => _isLoading = true);
+            _initScopedStreams();
+          }),
         ),
       );
     }
@@ -901,25 +893,15 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
     if (_activeOrders.isEmpty && _activeRequests.isEmpty) {
       return Scaffold(
         appBar: AppBar(title: const Text('My Orders')),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Text('You have no active orders right now.', textAlign: TextAlign.center, style: TextStyle(color: AppTheme.textMuted, fontSize: 15)),
-                const SizedBox(height: 16),
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.refresh, size: 16),
-                  label: const Text('Refresh Orders'),
-                  onPressed: () {
-                    setState(() => _isLoading = true);
-                    _initScopedStreams();
-                  },
-                )
-              ],
-            ),
-          ),
+        body: EmptyState(
+          icon: Icons.soup_kitchen_outlined,
+          title: 'No active orders',
+          message: 'When a chef accepts your meal, it will appear here with live status.',
+          actionLabel: 'Refresh Orders',
+          onAction: () {
+            setState(() => _isLoading = true);
+            _initScopedStreams();
+          },
         ),
       );
     }

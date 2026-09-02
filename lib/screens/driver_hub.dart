@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
-import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
 import '../widgets/customer_ui_components.dart';
+import '../widgets/app_widgets.dart';
+import '../widgets/app_status_badge.dart';
 import '../providers/driver_dashboard_provider.dart';
 import '../models/driver_delivery_model.dart';
 import '../services/auth_session.dart';
@@ -43,16 +45,14 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
         final shouldExit = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
-            backgroundColor: AppTheme.surfaceDark,
-            title: const Text('Exit App', style: TextStyle(color: Colors.white)),
-            content: const Text('Are you sure you want to exit?', style: TextStyle(color: Colors.white70)),
+            title: const Text('Exit App'),
+            content: const Text('Are you sure you want to exit?'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                child: const Text('Cancel'),
               ),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary, foregroundColor: Colors.white),
                 onPressed: () => Navigator.pop(ctx, true),
                 child: const Text('Exit'),
               ),
@@ -75,17 +75,13 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 right: 24,
                 bottom: 24,
               ),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [AppTheme.primary, AppTheme.primaryGradientEnd],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.only(
+              decoration: BoxDecoration(
+                gradient: AppTheme.primaryGradient,
+                borderRadius: const BorderRadius.only(
                   bottomLeft: Radius.circular(32),
                   bottomRight: Radius.circular(32),
                 ),
-                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4))],
+                boxShadow: AppTheme.brandGlow(opacity: 0.28),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -116,7 +112,11 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.circle, color: _isOnline ? Colors.greenAccent : Colors.redAccent, size: 10),
+                              _isOnline
+                                  ? const Icon(Icons.circle, color: Colors.greenAccent, size: 10)
+                                      .animate(onPlay: (c) => c.repeat(reverse: true))
+                                      .fade(begin: 0.35, end: 1, duration: 900.ms)
+                                  : const Icon(Icons.circle, color: Colors.redAccent, size: 10),
                               const SizedBox(width: 6),
                               Text(
                                 _isOnline ? 'Online • Live Feed' : 'Offline',
@@ -163,8 +163,6 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
         bottomNavigationBar: NavigationBar(
           selectedIndex: _selectedIndex,
           onDestinationSelected: (idx) => setState(() => _selectedIndex = idx),
-          backgroundColor: Colors.white,
-          indicatorColor: AppTheme.primary.withValues(alpha: 0.15),
           destinations: const [
             NavigationDestination(
               icon: Icon(Icons.dashboard_outlined),
@@ -199,9 +197,9 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [AppTheme.primary, AppTheme.primaryGradientEnd]),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4))],
+              gradient: AppTheme.primaryGradient,
+              borderRadius: AppTheme.radiusLg,
+              boxShadow: AppTheme.brandGlow(opacity: 0.3),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -265,14 +263,18 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
           const SizedBox(height: 12),
           if (state.recentDeliveries.isEmpty)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.all(32),
-                child: Text('No delivery history yet.', style: TextStyle(color: AppTheme.textMuted)),
+            const SizedBox(
+              height: 260,
+              child: EmptyState(
+                icon: Icons.local_shipping_outlined,
+                title: 'No delivery history yet',
+                message: 'Completed runs will show up here with payouts.',
               ),
             )
           else
-            ...state.recentDeliveries.map((delivery) => AppCard(
+            ...state.recentDeliveries.asMap().entries.map((entry) {
+              final delivery = entry.value;
+              return AppCard(
                   margin: const EdgeInsets.only(bottom: 12),
                   padding: const EdgeInsets.all(16),
                   child: Row(
@@ -280,10 +282,10 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                     children: [
                       Row(
                         children: [
-                          const CircleAvatar(
-                            backgroundColor: Colors.green,
+                          CircleAvatar(
+                            backgroundColor: AppTheme.success.withValues(alpha: 0.15),
                             radius: 16,
-                            child: Icon(Icons.check, color: Colors.white, size: 16),
+                            child: const Icon(Icons.check, color: AppTheme.success, size: 16),
                           ),
                           const SizedBox(width: 12),
                           Column(
@@ -300,11 +302,12 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                       ),
                       Text(
                         '+₹${delivery.payout.toStringAsFixed(0)}',
-                        style: const TextStyle(fontWeight: FontWeight.w900, color: Colors.green, fontSize: 15),
+                        style: const TextStyle(fontWeight: FontWeight.w900, color: AppTheme.success, fontSize: 15),
                       ),
                     ],
                   ),
-                )),
+                ).entrance(index: entry.key);
+            }),
         ],
       ),
     );
@@ -312,10 +315,18 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
 
   Widget _buildAvailableTab(List<DriverDeliveryModel> available, DriverDashboardNotifier notifier) {
     if (!_isOnline) {
-      return const Center(child: Text('Go Online to receive orders.', style: TextStyle(color: Colors.grey, fontSize: 16)));
+      return const EmptyState(
+        icon: Icons.wifi_off_rounded,
+        title: 'You\'re offline',
+        message: 'Go online from the header to receive nearby dispatches.',
+      );
     }
     if (available.isEmpty) {
-      return const Center(child: Text('Scanning for nearby orders...', style: TextStyle(color: AppTheme.textMuted)));
+      return const EmptyState(
+        icon: Icons.radar_rounded,
+        title: 'Scanning nearby kitchens',
+        message: 'New partner deliveries will appear here as chefs release them.',
+      );
     }
 
     return ListView.builder(
@@ -346,11 +357,10 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               const SizedBox(height: 8),
               Text('Dropoff: ${delivery.customerAddress}', style: const TextStyle(fontSize: 12, color: AppTheme.textMain)),
               const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary, foregroundColor: Colors.white),
-                  onPressed: () async {
+              GradientButton(
+                label: 'Accept Delivery',
+                icon: Icons.check_rounded,
+                onPressed: () async {
                     final success = await notifier.acceptOrder(delivery.orderId);
                     if (success && mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -358,19 +368,21 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                       );
                     }
                   },
-                  child: const Text('Accept Delivery', style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-              )
+              ),
             ],
           ),
-        );
+        ).entrance(index: index);
       },
     );
   }
 
   Widget _buildActiveDeliveryTab(List<DriverDeliveryModel> active, DriverDashboardNotifier notifier) {
     if (active.isEmpty) {
-      return const Center(child: Text('No active deliveries in progress.', style: TextStyle(color: AppTheme.textMuted, fontSize: 15)));
+      return const EmptyState(
+        icon: Icons.map_outlined,
+        title: 'No active runs',
+        message: 'Accepted deliveries will land here so you can navigate and complete them.',
+      );
     }
 
     return ListView.builder(
@@ -389,13 +401,8 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text('Run #${delivery.orderId.substring(0, 6).toUpperCase()}',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(6)),
-                    child: Text(delivery.status.toDbValue().toUpperCase(),
-                        style: TextStyle(color: Colors.orange.shade800, fontSize: 10, fontWeight: FontWeight.bold)),
-                  ),
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textMuted)),
+                  AppStatusBadge(status: delivery.status.toDbValue()),
                 ],
               ),
               const SizedBox(height: 12),
@@ -428,24 +435,23 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: isOut ? Colors.green : AppTheme.primary,
-                        foregroundColor: Colors.white,
-                      ),
+                    child: GradientButton(
+                      label: isOut ? 'Mark Delivered' : 'Start Delivery',
+                      icon: isOut ? Icons.check_rounded : Icons.delivery_dining_rounded,
+                      gradient: isOut
+                          ? const LinearGradient(colors: [AppTheme.success, Color(0xFF43C478)])
+                          : AppTheme.primaryGradient,
                       onPressed: () async {
                         final nextStatus = isOut ? DeliveryStatus.delivered : DeliveryStatus.outForDelivery;
                         await notifier.updateDeliveryStatus(delivery.orderId, nextStatus);
                       },
-                      child: Text(isOut ? 'Mark Delivered' : 'Start Delivery',
-                          style: const TextStyle(fontWeight: FontWeight.bold)),
                     ),
                   ),
                 ],
               ),
             ],
           ),
-        );
+        ).entrance(index: index);
       },
     );
   }

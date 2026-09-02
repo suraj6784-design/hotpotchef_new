@@ -13,8 +13,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
 
 import '../utils/helpers.dart';
-import '../utils/app_theme.dart';
 import '../widgets/customer_ui_components.dart';
+import '../widgets/app_widgets.dart';
+import '../widgets/app_status_badge.dart';
 
 class CustomerOrderHistoryScreen extends StatelessWidget {
   const CustomerOrderHistoryScreen({super.key});
@@ -368,17 +369,18 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
     if (user == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Order History', style: TextStyle(fontWeight: FontWeight.bold))),
-        body: const Center(child: Text('Please sign in to view your order history.', style: TextStyle(color: AppTheme.textMuted))),
+        body: const EmptyState(
+          icon: Icons.receipt_long_outlined,
+          title: 'Sign in to see history',
+          message: 'Completed and cancelled orders will appear here after you log in.',
+        ),
       );
     }
 
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
-        title: const Text('Order History', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textMain)),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: AppTheme.textMain),
+        title: const Text('Order History'),
       ),
       body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: Supabase.instance.client
@@ -393,7 +395,11 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
 
           if (snapshot.hasError) {
             FirebaseCrashlytics.instance.recordError(snapshot.error, snapshot.stackTrace, reason: 'Order history stream failure');
-            return const Center(child: Text('Failed to load order history.', style: TextStyle(color: AppTheme.textMuted)));
+            return const EmptyState(
+              icon: Icons.wifi_off_rounded,
+              title: 'Couldn\'t load history',
+              message: 'Check your connection and try again in a moment.',
+            );
           }
 
           final allOrders = snapshot.data ?? [];
@@ -407,23 +413,10 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
           }).toList();
 
           if (pastOrders.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
-                    Icon(Icons.receipt_long_outlined, size: 56, color: Colors.grey),
-                    SizedBox(height: 16),
-                    Text('No past order history found.',
-                        style: TextStyle(color: AppTheme.textMain, fontSize: 16, fontWeight: FontWeight.bold)),
-                    SizedBox(height: 6),
-                    Text('Completed or cancelled orders will appear here.',
-                        style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
-                    
-                  ],
-                ),
-              ),
+            return const EmptyState(
+              icon: Icons.receipt_long_outlined,
+              title: 'No past orders yet',
+              message: 'Completed or cancelled orders will appear here.',
             );
           }
 
@@ -514,21 +507,7 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                           children: [
                             Text(displayId,
                                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textMuted)),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: isSuccessful ? Colors.green.shade50 : Colors.red.shade50,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                status.toUpperCase(),
-                                style: TextStyle(
-                                  color: isSuccessful ? Colors.green.shade700 : Colors.red.shade700,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
+                            AppStatusBadge(status: status),
                           ],
                         ),
                         const SizedBox(height: 10),
@@ -559,7 +538,7 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-              );
+              ).entrance(index: index);
             },
           );
         },

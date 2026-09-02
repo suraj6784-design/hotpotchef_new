@@ -11,9 +11,9 @@ import 'referral_screen.dart';
 import 'customer_order_history_screen.dart';
 import '../services/auth_session.dart';
 import '../utils/helpers.dart';
-import '../utils/app_theme.dart';
 import '../widgets/avatar_upload.dart';
 import '../widgets/loyalty_badge_card.dart';
+import '../widgets/app_widgets.dart';
 
 class CustomerProfileScreen extends StatefulWidget {
   final VoidCallback? onLogout;
@@ -460,8 +460,9 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(colors: [Colors.deepOrange, Colors.orangeAccent]),
-                  borderRadius: BorderRadius.circular(16),
+                  gradient: AppTheme.primaryGradient,
+                  borderRadius: AppTheme.radiusLg,
+                  boxShadow: AppTheme.brandGlow(opacity: 0.28),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -537,7 +538,7 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close', style: TextStyle(color: Colors.grey))),
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
       ],
     ),
   );
@@ -706,7 +707,7 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
       return Scaffold(
         appBar: AppBar(
           leading: IconButton(
-            icon: Icon(Icons.arrow_back, color: isDark ? Colors.white : AppTheme.textMain),
+            icon: const Icon(Icons.arrow_back),
             onPressed: _handleSafeBack,
           ),
           title: Row(
@@ -718,11 +719,12 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
             ],
           ),
         ),
-        body: Center(
-          child: ElevatedButton(
-            onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AuthScreen())),
-            child: const Text('Go to Login'),
-          ),
+        body: EmptyState(
+          icon: Icons.person_outline_rounded,
+          title: 'Sign in to manage your account',
+          message: 'Save addresses, track HotPot Coins, and keep your dietary preferences in one place.',
+          actionLabel: 'Go to Login',
+          onAction: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AuthScreen())),
         ),
       );
     }
@@ -734,10 +736,10 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
         _handleSafeBack();
       },
       child: Scaffold(
-        backgroundColor: isDark ? const Color(0xFF121212) : AppTheme.background,
+        backgroundColor: AppTheme.background,
         appBar: AppBar(
           leading: IconButton(
-            icon: Icon(Icons.arrow_back, color: isDark ? Colors.white : AppTheme.textMain),
+            icon: const Icon(Icons.arrow_back),
             onPressed: _handleSafeBack,
           ),
           title: Row(
@@ -745,12 +747,10 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
             children: [
               ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.asset('assets/app_icon.png', height: 24, width: 24)),
               const SizedBox(width: 8),
-              Text('Account', style: TextStyle(color: isDark ? Colors.white : AppTheme.textMain)),
+              const Text('Account'),
             ],
           ),
-          backgroundColor: isDark ? const Color(0xFF1A1A1A) : Colors.white,
           centerTitle: true,
-          elevation: 0,
           actions: [
             if (widget.onLogout != null)
               IconButton(

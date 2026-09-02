@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/driver_dashboard_provider.dart';
-import '../models/driver_delivery_model.dart';
 import '../utils/helpers.dart';
-import '../utils/app_theme.dart';
+import '../widgets/customer_ui_components.dart';
+import '../widgets/app_widgets.dart';
 
 class DriverDashboardTab extends ConsumerStatefulWidget {
   final VoidCallback onProfileTap;
@@ -54,17 +54,15 @@ class _DriverDashboardTabState extends ConsumerState<DriverDashboardTab>
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
-        title: const Text('Driver Dashboard', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: AppTheme.primary,
-        elevation: 0,
+        title: const Text('Driver Dashboard'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.person, color: Colors.white),
+            icon: const Icon(Icons.person),
             onPressed: widget.onProfileTap,
             tooltip: 'Profile',
           ),
           IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
+            icon: const Icon(Icons.logout),
             onPressed: widget.onLogout,
             tooltip: 'Logout',
           ),
@@ -82,13 +80,9 @@ class _DriverDashboardTabState extends ConsumerState<DriverDashboardTab>
                   Container(
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [AppTheme.primary, AppTheme.primaryGradientEnd],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 5))],
+                      gradient: AppTheme.primaryGradient,
+                      borderRadius: AppTheme.radiusLg,
+                      boxShadow: AppTheme.brandGlow(opacity: 0.3),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -198,30 +192,29 @@ class _DriverDashboardTabState extends ConsumerState<DriverDashboardTab>
                   const SizedBox(height: 12),
 
                   if (filteredDeliveries.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 40),
-                      child: Center(
-                        child: Text('No completed deliveries found for this timeframe.', style: TextStyle(color: AppTheme.textMuted)),
+                    const SizedBox(
+                      height: 260,
+                      child: EmptyState(
+                        icon: Icons.local_shipping_outlined,
+                        title: 'No deliveries in this range',
+                        message: 'Try a different timeframe to see completed runs.',
                       ),
                     )
                   else
-                    ...filteredDeliveries.map((delivery) => Container(
+                    ...filteredDeliveries.asMap().entries.map((entry) {
+                      final delivery = entry.value;
+                      return AppCard(
                           margin: const EdgeInsets.only(bottom: 12),
                           padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(14),
-                            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
-                          ),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Row(
                                 children: [
-                                  const CircleAvatar(
-                                    backgroundColor: Colors.green,
+                                  CircleAvatar(
+                                    backgroundColor: AppTheme.success.withValues(alpha: 0.15),
                                     radius: 16,
-                                    child: Icon(Icons.check, color: Colors.white, size: 16),
+                                    child: const Icon(Icons.check, color: AppTheme.success, size: 16),
                                   ),
                                   const SizedBox(width: 12),
                                   Column(
@@ -230,18 +223,19 @@ class _DriverDashboardTabState extends ConsumerState<DriverDashboardTab>
                                       Text(delivery.chefName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                                       const SizedBox(height: 2),
                                       Text(formatOrderDate(delivery.createdAt.toIso8601String()),
-                                          style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                                          style: const TextStyle(color: AppTheme.textMuted, fontSize: 11)),
                                     ],
                                   ),
                                 ],
                               ),
                               Text(
                                 '+₹${delivery.payout.toStringAsFixed(0)}',
-                                style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 15),
+                                style: const TextStyle(color: AppTheme.success, fontWeight: FontWeight.w900, fontSize: 15),
                               ),
                             ],
                           ),
-                        )),
+                        ).entrance(index: entry.key);
+                    }),
                 ],
               ),
             ),
