@@ -150,38 +150,11 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
     );
   }
 
-  String _getMonthName(int month) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return months[month - 1];
-  }
-
-  String _getSmartTimeSlot(String? originalSlot, DateTime placedDate, {String? selectedDateStr}) {
-    String slot = originalSlot ?? 'ASAP';
-
-    if (selectedDateStr != null &&
-        selectedDateStr.isNotEmpty &&
-        selectedDateStr.toLowerCase() != 'today' &&
-        selectedDateStr.toLowerCase() != 'tomorrow') {
-      if (slot.toLowerCase().contains('today')) {
-        slot = slot.replaceAll(RegExp('today', caseSensitive: false), selectedDateStr);
-      } else if (slot.toLowerCase().contains('tomorrow')) {
-        slot = slot.replaceAll(RegExp('tomorrow', caseSensitive: false), selectedDateStr);
-      } else if (!slot.contains(selectedDateStr)) {
-        slot = '$selectedDateStr | $slot';
-      }
-      return slot;
-    }
-
-    if (slot.toLowerCase().contains('today')) {
-      final dateStr = "${placedDate.day} ${_getMonthName(placedDate.month)}";
-      slot = slot.replaceAll(RegExp('today', caseSensitive: false), dateStr);
-    } else if (slot.toLowerCase().contains('tomorrow')) {
-      final tmrw = placedDate.add(const Duration(days: 1));
-      final dateStr = "${tmrw.day} ${_getMonthName(tmrw.month)}";
-      slot = slot.replaceAll(RegExp('tomorrow', caseSensitive: false), dateStr);
-    }
-    return slot;
-  }
+  // Delegates to the shared helper so slot resolution (including the
+  // "delivery date is never before the order date" guard) stays consistent
+  // across every screen.
+  String _getSmartTimeSlot(String? originalSlot, DateTime placedDate, {String? selectedDateStr}) =>
+      smartTimeSlot(originalSlot, placedDate, selectedDateStr: selectedDateStr);
 
   bool _canCancelOrder(Map<String, dynamic> order) {
     return OrderLifecycle.canCustomerCancel(order['status']?.toString());

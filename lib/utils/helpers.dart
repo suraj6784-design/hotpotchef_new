@@ -95,19 +95,70 @@ String formatOrderDate(String? isoString) {
   return DateFormat('dd MMM yyyy, hh:mm a').format(dt.toLocal());
 }
 
-/// Resolves a stored relative slot string (e.g. "Today at 3:13 PM") into an
-/// absolute, non-looping label anchored to [placedDate].
+const Map<String, int> _monthAbbrToNumber = {
+  'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+  'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
+};
+
+/// Extracts the time-of-day portion (e.g. "9:04 AM") from a slot string.
+String? extractSlotTime(String slot) {
+  final match = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)', caseSensitive: false).firstMatch(slot);
+  return match?.group(0)?.toUpperCase();
+}
+
+/// Attempts to parse an absolute calendar date embedded in a slot string, e.g.
+/// "Sun, 16th Aug at 9:04 AM" or "16/08/2026". Returns null when none is found.
+/// A missing year is assumed to be [assumedYear].
+DateTime? parseSlotDate(String slot, int assumedYear) {
+  // Numeric form: dd/MM or dd/MM/yyyy
+  final numeric = RegExp(r'\b(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?\b').firstMatch(slot);
+  if (numeric != null) {
+    final d = int.tryParse(numeric.group(1)!);
+    final mo = int.tryParse(numeric.group(2)!);
+    var y = assumedYear;
+    if (numeric.group(3) != null) {
+      final yy = int.parse(numeric.group(3)!);
+      y = yy < 100 ? 2000 + yy : yy;
+    }
+    if (d != null && mo != null && mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
+      return DateTime(y, mo, d);
+    }
+  }
+
+  // Named form: "16th Aug", "16 August"
+  final named =
+      RegExp(r'\b(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]{3,})', caseSensitive: false).firstMatch(slot);
+  if (named != null) {
+    final d = int.tryParse(named.group(1)!);
+    final mo = _monthAbbrToNumber[named.group(2)!.toLowerCase().substring(0, 3)];
+    if (d != null && mo != null && d >= 1 && d <= 31) {
+      return DateTime(assumedYear, mo, d);
+    }
+  }
+  return null;
+}
+
+/// Resolves a stored slot string into a stable, valid label anchored to
+/// [placedDate].
 ///
-/// Slots are captured as literal text at order time, so "Today"/"Tomorrow"
-/// would otherwise keep re-reading as the current day forever. If
-/// [selectedDateStr] already holds a concrete date, it is preferred.
+/// Two problems are corrected here so every screen behaves consistently:
+///  1. Relative slots ("Today"/"Tomorrow") are captured as literal text at
+///     order time and would otherwise keep re-reading as the current day
+///     forever — they are rewritten against [placedDate].
+///  2. Absolute slots copied from a meal's stale availability window can fall
+///     *before* the order was placed (delivery date earlier than order date),
+///     which is impossible — such dates are re-anchored to [placedDate].
+///
+/// If [selectedDateStr] holds a concrete customer-chosen date, it is preferred.
 String smartTimeSlot(String? originalSlot, DateTime placedDate, {String? selectedDateStr}) {
   String slot = originalSlot ?? 'ASAP';
 
-  if (selectedDateStr != null &&
+  final hasConcreteSelected = selectedDateStr != null &&
       selectedDateStr.isNotEmpty &&
       selectedDateStr.toLowerCase() != 'today' &&
-      selectedDateStr.toLowerCase() != 'tomorrow') {
+      selectedDateStr.toLowerCase() != 'tomorrow';
+
+  if (hasConcreteSelected) {
     if (slot.toLowerCase().contains('today')) {
       slot = slot.replaceAll(RegExp('today', caseSensitive: false), selectedDateStr);
     } else if (slot.toLowerCase().contains('tomorrow')) {
@@ -115,15 +166,24 @@ String smartTimeSlot(String? originalSlot, DateTime placedDate, {String? selecte
     } else if (!slot.contains(selectedDateStr)) {
       slot = '$selectedDateStr | $slot';
     }
-    return slot;
+  } else if (slot.toLowerCase().contains('today')) {
+    slot = slot.replaceAll(
+        RegExp('today', caseSensitive: false), DateFormat('d MMM').format(placedDate));
+  } else if (slot.toLowerCase().contains('tomorrow')) {
+    slot = slot.replaceAll(RegExp('tomorrow', caseSensitive: false),
+        DateFormat('d MMM').format(placedDate.add(const Duration(days: 1))));
   }
 
-  if (slot.toLowerCase().contains('today')) {
-    final dateStr = DateFormat('d MMM').format(placedDate);
-    slot = slot.replaceAll(RegExp('today', caseSensitive: false), dateStr);
-  } else if (slot.toLowerCase().contains('tomorrow')) {
-    final dateStr = DateFormat('d MMM').format(placedDate.add(const Duration(days: 1)));
-    slot = slot.replaceAll(RegExp('tomorrow', caseSensitive: false), dateStr);
+  // Invariant: a delivery slot can never be earlier than the order date.
+  final slotDate = parseSlotDate(slot, placedDate.year);
+  if (slotDate != null) {
+    final placedDay = DateTime(placedDate.year, placedDate.month, placedDate.day);
+    final slotDay = DateTime(slotDate.year, slotDate.month, slotDate.day);
+    if (slotDay.isBefore(placedDay)) {
+      final time = extractSlotTime(slot);
+      final dateStr = DateFormat('EEE, d MMM').format(placedDate);
+      slot = time != null ? '$dateStr at $time' : dateStr;
+    }
   }
   return slot;
 }
