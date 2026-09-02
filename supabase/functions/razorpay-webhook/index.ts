@@ -19,6 +19,23 @@ serve(async (req) => {
 
     const payload = JSON.parse(rawBody)
     const event = payload?.event
+    const admin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    )
+
+    if (event === 'payment.failed' || event === 'order.expired') {
+      const razorpayOrderId = payload?.payload?.payment?.entity?.order_id
+        ?? payload?.payload?.order?.entity?.id
+      if (razorpayOrderId) {
+        await admin.rpc('release_checkout_inventory', {
+          p_razorpay_order_id: razorpayOrderId,
+          p_force: true,
+        })
+      }
+      return jsonResponse({ success: true, released: true, event })
+    }
+
     if (event !== 'payment.captured') {
       return jsonResponse({ skipped: true, event })
     }
@@ -29,11 +46,6 @@ serve(async (req) => {
     if (!paymentId || !razorpayOrderId) {
       return jsonResponse({ skipped: true, reason: 'missing payment ids' })
     }
-
-    const admin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-    )
 
     const { data: existing } = await admin.from('orders').select('id').eq('payment_id', paymentId).maybeSingle()
     if (existing?.id) {
@@ -69,6 +81,11 @@ serve(async (req) => {
     if (!error && placed?.success === true) {
       return jsonResponse({ success: true, order_id: placed.order_id })
     }
+
+    await admin.rpc('release_checkout_inventory', {
+      p_razorpay_order_id: razorpayOrderId,
+      p_force: true,
+    })
 
     try {
       const payment = await fetchPayment(paymentId)

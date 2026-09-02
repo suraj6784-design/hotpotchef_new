@@ -86,6 +86,20 @@ serve(async (req) => {
       user_id: user.id,
     })
 
+    await admin.rpc('expire_checkout_holds')
+    const { data: reserved, error: reserveError } = await admin.rpc('reserve_checkout_inventory', {
+      p_razorpay_order_id: rzpOrder.id,
+      p_cart_items: cartItems,
+      p_user_id: user.id,
+    })
+    if (reserveError || reserved?.success !== true) {
+      return jsonResponse({
+        success: false,
+        code: reserved?.code ?? 'sold_out',
+        error: reserved?.error || reserveError?.message || 'This meal just sold out. Nothing was charged.',
+      })
+    }
+
     const { error: pendingError } = await admin.from('pending_checkouts').insert({
       user_id: user.id,
       razorpay_order_id: rzpOrder.id,
@@ -99,13 +113,20 @@ serve(async (req) => {
       delivery_fee: deliveryFee,
       amount_paise: amountPaise,
     })
-    if (pendingError) throw new Error(pendingError.message)
+    if (pendingError) {
+      await admin.rpc('release_checkout_inventory', {
+        p_razorpay_order_id: rzpOrder.id,
+        p_force: true,
+      })
+      throw new Error(pendingError.message)
+    }
 
     return jsonResponse({
       success: true,
       order_id: rzpOrder.id,
       amount: amountPaise,
       currency: 'INR',
+      hold_minutes: 15,
     })
   } catch (err) {
     return jsonResponse({ success: false, error: err.message ?? 'Could not initialize payment' }, 400)

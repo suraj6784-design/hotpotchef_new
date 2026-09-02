@@ -43,6 +43,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   int _selectedTip = 0;
 
   Map<String, dynamic>? _serverPricing;
+  String? _heldRazorpayOrderId;
+  bool _orderRecorded = false;
+  bool _placingOrder = false;
 
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _instructionsController = TextEditingController();
@@ -64,10 +67,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   @override
   void dispose() {
+    _releaseInventoryHold();
     _razorpay.clear();
     _phoneController.dispose();
     _instructionsController.dispose();
     super.dispose();
+  }
+
+  void _releaseInventoryHold() {
+    final orderId = _heldRazorpayOrderId;
+    if (orderId == null || _orderRecorded || _placingOrder) return;
+    _heldRazorpayOrderId = null;
+    _supabase.rpc('release_checkout_inventory', params: {
+      'p_razorpay_order_id': orderId,
+    });
   }
 
   // --- Initial Data Load ---
@@ -266,16 +279,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         },
       );
 
-      if (response.status != 200 || response.data == null || response.data['success'] != true) {
-        throw Exception(response.data?['error'] ?? 'Could not initialize secure payment order');
+      if (response.status != 200 || response.data == null) {
+        throw Exception('Could not initialize secure payment order');
       }
 
-      final data = response.data as Map<String, dynamic>;
+      final data = Map<String, dynamic>.from(response.data as Map);
+      if (data['success'] != true) {
+        if (isSoldOutCheckoutError(data['error'], data)) {
+          throw Exception(soldOutCheckoutMessage(charged: false));
+        }
+        throw Exception(data['error'] ?? 'Could not initialize secure payment order');
+      }
+
       final razorpayOrderId = data['order_id'] as String;
       final amountInPaise = data['amount'];
+      _heldRazorpayOrderId = razorpayOrderId;
+      _orderRecorded = false;
 
       final razorpayKey = dotenv.env['RAZORPAY_KEY_ID'] ?? '';
       if (razorpayKey.isEmpty) {
+        _releaseInventoryHold();
         throw Exception('Payment gateway configuration missing.');
       }
 
@@ -285,7 +308,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         'name': 'HotPotChef',
         'description': 'Order Checkout',
         'order_id': razorpayOrderId,
-        'retry': {'enabled': true, 'max_count': 1},
+        'retry': {'enabled': false, 'max_count': 0},
         'send_sms_hash': true,
         'prefill': {
           'contact': phone,
@@ -297,13 +320,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _razorpay.open(options);
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Payment initialization failed');
+      _releaseInventoryHold();
       setState(() => _isCheckingOut = false);
-      _showSnackBar('Initialization Failed: $e', isError: true);
+      _showSnackBar(isSoldOutCheckoutError(e) ? soldOutCheckoutMessage(charged: false) : 'Initialization Failed: $e', isError: true);
     }
   }
 
   void _handlePaymentError(PaymentFailureResponse response) {
     if (!mounted) return;
+    _placingOrder = false;
+    _releaseInventoryHold();
     setState(() => _isCheckingOut = false);
     _showSnackBar('Payment Cancelled or Failed: ${response.message ?? ''}', isError: true);
   }
@@ -399,6 +425,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           return Map<String, dynamic>.from(rpcResponse);
         }
         lastError = rpcResponse is Map ? rpcResponse['error'] : rpcResponse;
+        if (rpcResponse is Map && isSoldOutCheckoutError(rpcResponse['error'], Map<String, dynamic>.from(rpcResponse))) {
+          break;
+        }
       } catch (e) {
         lastError = e;
       }
@@ -423,6 +452,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       );
       final data = recover.data is Map ? Map<String, dynamic>.from(recover.data as Map) : null;
       if (data != null && data['success'] == true) return data;
+      if (isSoldOutCheckoutError(data?['error'], data)) {
+        throw Exception(soldOutCheckoutMessage(
+          charged: true,
+          refunded: data?['refunded'] == true,
+        ));
+      }
       if (data != null && data['refunded'] == true) {
         throw Exception(
           'We could not record this order, so the payment was refunded. It should return in 5–7 business days.',
@@ -431,6 +466,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       throw Exception(data?['error'] ?? lastError ?? 'Could not record paid order');
     } on FunctionException catch (e) {
       final details = e.details is Map ? Map<String, dynamic>.from(e.details as Map) : null;
+      if (isSoldOutCheckoutError(details?['error'] ?? e, details)) {
+        throw Exception(soldOutCheckoutMessage(
+          charged: true,
+          refunded: details?['refunded'] == true,
+        ));
+      }
       if (details?['refunded'] == true) {
         throw Exception(
           'We could not record this order, so the payment was refunded. It should return in 5–7 business days.',
@@ -442,6 +483,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Future<void> _handlePaymentSuccess(PaymentSuccessResponse response) async {
     setState(() => _isCheckingOut = true);
+    _placingOrder = true;
 
     try {
       final user = _supabase.auth.currentUser;
@@ -452,13 +494,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
       final placed = await _placeOrderWithRetries(
         paymentId: response.paymentId!,
-        razorpayOrderId: response.orderId,
+        razorpayOrderId: response.orderId ?? _heldRazorpayOrderId,
         signature: response.signature,
       );
 
       if (placed == null || placed['success'] != true) {
         throw Exception(placed?['error'] ?? 'Server failed to record verified order.');
       }
+
+      _orderRecorded = true;
+      _heldRazorpayOrderId = null;
 
       if (mounted) {
         widget.onOrderPlacedSuccess();
@@ -468,13 +513,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Order recording failed post-payment');
       if (mounted) {
+        final soldOut = isSoldOutCheckoutError(e);
         _showSnackBar(
-          '$e\nReference: ${response.paymentId}',
+          soldOut
+              ? '$e'
+              : '$e\nReference: ${response.paymentId}',
           isError: true,
           duration: const Duration(seconds: 8),
         );
       }
     } finally {
+      _placingOrder = false;
       if (mounted) setState(() => _isCheckingOut = false);
     }
   }

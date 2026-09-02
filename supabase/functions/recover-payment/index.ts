@@ -135,6 +135,11 @@ serve(async (req) => {
       return jsonResponse({ success: true, order_id: placed.order_id, recovered: true })
     }
 
+    await admin.rpc('release_checkout_inventory', {
+      p_razorpay_order_id: razorpayOrderId,
+      p_force: true,
+    })
+
     let refunded = false
     let refundId: string | null = null
     try {
@@ -147,11 +152,15 @@ serve(async (req) => {
       console.error('recover-payment refund failed', refundErr)
     }
 
+    const soldOut = placed?.code === 'sold_out' || /sold out|no longer available/i.test(String(placed?.error || ''))
     return jsonResponse({
       success: false,
       refunded,
       refund_id: refundId,
-      error: placed?.error || placeError?.message || 'Could not record the order after payment',
+      code: soldOut ? 'sold_out' : placed?.code,
+      error: soldOut
+        ? 'This meal just sold out. Your payment was refunded and should return in 5–7 business days.'
+        : (placed?.error || placeError?.message || 'Could not record the order after payment'),
     }, refunded ? 200 : 500)
   } catch (err) {
     return jsonResponse({ success: false, error: err.message ?? 'Recovery failed' }, 400)

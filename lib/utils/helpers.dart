@@ -274,3 +274,19 @@ List<DateTime> getValidDatesForChefSchedule(String scheduleStr) {
   }
   return dates;
 }
+
+bool isSoldOutCheckoutError(Object? error, [Map<String, dynamic>? data]) {
+  if (data?['code']?.toString() == 'sold_out') return true;
+  final text = '${data?['error'] ?? error}'.toLowerCase();
+  return text.contains('sold out') || text.contains('no longer available');
+}
+
+String soldOutCheckoutMessage({required bool charged, bool refunded = false}) {
+  if (charged && refunded) {
+    return 'This meal just sold out. Your payment was refunded and should return in 5–7 business days.';
+  }
+  if (charged) {
+    return 'This meal just sold out after payment. We are issuing a refund.';
+  }
+  return 'This meal just sold out. Nothing was charged — pick another portion or chef.';
+}
