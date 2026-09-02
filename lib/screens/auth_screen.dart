@@ -8,6 +8,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../models/app_role.dart';
 import '../services/auth_session.dart';
+import '../services/push_notification_service.dart';
 import '../utils/helpers.dart';
 import '../widgets/app_widgets.dart';
 
@@ -42,6 +43,26 @@ class _AuthScreenState extends State<AuthScreen> {
     super.dispose();
   }
 
+  String _friendlyAuthError(Object error) {
+    if (error is AuthException) {
+      final msg = error.message.toLowerCase();
+      if (msg.contains('invalid login') || msg.contains('invalid credentials')) {
+        return 'Wrong email or password. Please try again.';
+      }
+      if (msg.contains('email not confirmed')) {
+        return 'Please confirm your email before signing in.';
+      }
+      if (msg.contains('already registered') || msg.contains('already been registered')) {
+        return 'An account with this email already exists. Try signing in.';
+      }
+      if (msg.contains('network') || msg.contains('failed host lookup')) {
+        return 'Network issue. Check your connection and try again.';
+      }
+      if (error.message.trim().isNotEmpty) return error.message;
+    }
+    return 'Sign-in failed. Please check your details and try again.';
+  }
+
   Future<void> _routeUserByRole(User user) async {
     if (!mounted) return;
     // Navigate using the role from the session metadata — this is instant and
@@ -71,6 +92,7 @@ class _AuthScreenState extends State<AuthScreen> {
         TextInput.finishAutofillContext();
 
         if (response.user != null) {
+          await PushNotificationService.syncTokenForCurrentUser();
           await _routeUserByRole(response.user!);
         }
       } else {
@@ -92,6 +114,20 @@ class _AuthScreenState extends State<AuthScreen> {
         TextInput.finishAutofillContext();
 
         if (response.user != null) {
+          if (response.session == null) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Account created. Check your email to confirm, then sign in.',
+                  ),
+                ),
+              );
+              setState(() => _isLogin = true);
+            }
+            return;
+          }
+
           // Initialize user record in public.users table with selected role
           await _supabase.from('users').upsert({
             'id': response.user!.id,
@@ -103,6 +139,7 @@ class _AuthScreenState extends State<AuthScreen> {
             'created_at': DateTime.now().toIso8601String(),
           });
 
+          await PushNotificationService.syncTokenForCurrentUser();
           await _routeUserByRole(response.user!);
         }
       }
@@ -111,7 +148,7 @@ class _AuthScreenState extends State<AuthScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Authentication Failed: $e'),
+            content: Text(_friendlyAuthError(e)),
             backgroundColor: Colors.redAccent,
             behavior: SnackBarBehavior.floating,
           ),
@@ -189,6 +226,13 @@ class _AuthScreenState extends State<AuthScreen> {
               final query = inputController.text.trim();
               Navigator.pop(ctx);
               if (query.isEmpty) return;
+              if (query.length > 80 || query.contains(',') || query.contains('(') || query.contains(')')) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Please enter a simple phone number or name.')),
+                );
+                return;
+              }
 
               try {
                 final response = await _supabase
