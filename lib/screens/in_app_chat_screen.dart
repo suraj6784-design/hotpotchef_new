@@ -6,6 +6,8 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:intl/intl.dart';
 
 import '../services/alert_service.dart';
+import '../utils/app_theme.dart';
+import '../utils/network.dart';
 
 class InAppChatScreen extends StatefulWidget {
   final String mealId;
@@ -107,7 +109,7 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to send chat message');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to send: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text(networkErrorMessage(e)), backgroundColor: Colors.red),
         );
       }
     }
@@ -118,17 +120,25 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
   @override
   Widget build(BuildContext context) {
     final currentUserId = _supabase.auth.currentUser?.id;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? AppTheme.backgroundDark : AppTheme.background;
+    final surface = isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight;
+    final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
+    final muted = isDark ? Colors.grey.shade400 : AppTheme.textMuted;
+    final otherBubble = isDark ? AppTheme.surfaceMutedDark : AppTheme.surfaceMutedLight;
+    final otherText = isDark ? AppTheme.textMainDark : AppTheme.textMain;
+    final composerFill = isDark ? AppTheme.surfaceMutedDark : AppTheme.surfaceMutedLight;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: bg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1E1E1E),
+        backgroundColor: surface,
         title: Text(
           widget.roomName,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor),
         ),
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: IconThemeData(color: titleColor),
       ),
       body: Column(
         children: [
@@ -141,14 +151,14 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
                   .order('created_at', ascending: false),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator(color: Colors.deepOrange));
+                  return const Center(child: CircularProgressIndicator(color: AppTheme.primary));
                 }
                 if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return const Center(
+                  return Center(
                     child: Text(
                       'No messages yet.\nStart the conversation securely!',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey),
+                      style: TextStyle(color: muted),
                     ),
                   );
                 }
@@ -243,21 +253,26 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                               decoration: BoxDecoration(
-                                color: isMe ? Colors.deepOrange : const Color(0xFF2A2A2A),
+                                color: isMe ? AppTheme.primary : otherBubble,
                                 borderRadius: BorderRadius.only(
                                   topLeft: const Radius.circular(16),
                                   topRight: const Radius.circular(16),
                                   bottomLeft: Radius.circular(isMe ? 16 : 4),
                                   bottomRight: Radius.circular(isMe ? 4 : 16),
                                 ),
-                                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
                               ),
-                              child: Text(msg['content'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 14)),
+                              child: Text(
+                                msg['content'] ?? '',
+                                style: TextStyle(
+                                  color: isMe ? Colors.white : otherText,
+                                  fontSize: 14,
+                                ),
+                              ),
                             ),
                             if (timeStr.isNotEmpty)
                               Padding(
                                 padding: const EdgeInsets.only(top: 4, right: 4, left: 4),
-                                child: Text(timeStr, style: const TextStyle(color: Colors.grey, fontSize: 9)),
+                                child: Text(timeStr, style: TextStyle(color: muted, fontSize: 9)),
                               )
                           ],
                         ),
@@ -270,9 +285,9 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: const BoxDecoration(
-              color: Color(0xFF1E1E1E),
-              border: Border(top: BorderSide(color: Colors.black12)),
+            decoration: BoxDecoration(
+              color: surface,
+              border: Border(top: BorderSide(color: isDark ? Colors.black26 : Colors.black12)),
             ),
             child: SafeArea(
               child: Row(
@@ -280,12 +295,12 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
                   Expanded(
                     child: TextField(
                       controller: _controller,
-                      style: const TextStyle(color: Colors.white),
+                      style: TextStyle(color: titleColor),
                       decoration: InputDecoration(
                         hintText: 'Message securely...',
-                        hintStyle: const TextStyle(color: Colors.grey),
+                        hintStyle: TextStyle(color: muted),
                         filled: true,
-                        fillColor: const Color(0xFF2A2A2A),
+                        fillColor: composerFill,
                         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
                       ),
@@ -299,7 +314,7 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
                     onTap: _sendMessage,
                     child: const CircleAvatar(
                       radius: 22,
-                      backgroundColor: Colors.deepOrange,
+                      backgroundColor: AppTheme.primary,
                       child: Icon(Icons.send, color: Colors.white, size: 20),
                     ),
                   ),

@@ -20,6 +20,7 @@ import '../screens/referral_screen.dart';
 import '../screens/customer_order_history_screen.dart';
 import '../screens/customer_bulk_request_screen.dart';
 import '../services/auth_session.dart';
+import '../widgets/not_found_page.dart';
 
 class AppRouter {
   static final AuthRefreshNotifier _authRefresh = AuthRefreshNotifier();
@@ -31,31 +32,7 @@ class AppRouter {
       final user = Supabase.instance.client.auth.currentUser;
       final role = AppRole.parse(user?.userMetadata?['role']?.toString());
 
-      return Scaffold(
-        backgroundColor: const Color(0xFF121212),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.error_outline, size: 64, color: Colors.deepOrange),
-                const SizedBox(height: 16),
-                const Text('Page not found', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                const Text('The page you are looking for does not exist or has been moved.',
-                    textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 13)),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white),
-                  onPressed: () => context.go(role.hubPath),
-                  child: const Text('Return Home'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
+      return NotFoundPage(onHome: () => context.go(role.hubPath));
     },
     redirect: (context, state) {
       final session = Supabase.instance.client.auth.currentSession;

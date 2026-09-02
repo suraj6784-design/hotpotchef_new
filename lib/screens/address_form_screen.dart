@@ -12,6 +12,7 @@ import 'package:uuid/uuid.dart';
 
 import '../utils/helpers.dart';
 import '../utils/app_theme.dart';
+import '../widgets/app_dialog.dart';
 import 'map_picker_screen.dart';
 
 class PlacePrediction {
@@ -383,27 +384,12 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     final addressId = widget.existingAddress?['id'];
     if (addressId == null) return;
 
-    final confirm = await showDialog<bool>(
+    final confirm = await AppDialog.showConfirmation(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.surfaceDark,
-        title: const Text('Delete Address', style: TextStyle(color: Colors.white)),
-        content: const Text(
-          'Are you sure you want to delete this address? This action cannot be undone.',
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+      title: 'Delete Address',
+      message: 'Are you sure you want to delete this address? This action cannot be undone.',
+      confirmText: 'Delete',
+      isDestructive: true,
     );
 
     if (confirm != true) return;
