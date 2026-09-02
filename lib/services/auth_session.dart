@@ -28,7 +28,12 @@ class AuthSession {
     if (user == null) return AppRole.customer;
 
     try {
-      final row = await _client.from('users').select('role').eq('id', user.id).maybeSingle();
+      final row = await _client
+          .from('users')
+          .select('role')
+          .eq('id', user.id)
+          .maybeSingle()
+          .timeout(const Duration(seconds: 5));
       final tableRole = row?['role']?.toString();
       if (tableRole != null && tableRole.isNotEmpty) {
         return AppRole.parse(tableRole);

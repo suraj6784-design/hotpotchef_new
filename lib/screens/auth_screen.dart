@@ -43,7 +43,11 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Future<void> _routeUserByRole(User user) async {
     if (!mounted) return;
-    await AuthSession.goToHub(context);
+    // Navigate using the role from the session metadata — this is instant and
+    // does not depend on a `public.users` query, which could stall and leave the
+    // Sign In button spinning even though authentication already succeeded.
+    // This mirrors the router's own redirect logic.
+    await AuthSession.goToHub(context, role: AuthSession.roleFromSession());
   }
 
   Future<void> _submitAuth() async {
