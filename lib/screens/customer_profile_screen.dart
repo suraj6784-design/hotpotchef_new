@@ -553,52 +553,66 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
 
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: isDark ? AppTheme.surfaceDark : Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Saved Addresses', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : AppTheme.textMain)),
-                TextButton.icon(
-                  icon: const Icon(Icons.add, size: 16, color: AppTheme.primary),
-                  label: const Text('Add New', style: TextStyle(color: AppTheme.primary)),
-                  onPressed: () async {
-                    Navigator.pop(ctx);
-                    await Navigator.push(context, MaterialPageRoute(builder: (_) => const AddressFormScreen()));
-                    _loadProfileData();
-                  },
+      builder: (ctx) => ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.8),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Saved Addresses', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : AppTheme.textMain)),
+                  TextButton.icon(
+                    icon: const Icon(Icons.add, size: 16, color: AppTheme.primary),
+                    label: const Text('Add New', style: TextStyle(color: AppTheme.primary)),
+                    onPressed: () async {
+                      Navigator.pop(ctx);
+                      await Navigator.push(context, MaterialPageRoute(builder: (_) => const AddressFormScreen()));
+                      _loadProfileData();
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (_addresses.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Text('No saved addresses.', style: TextStyle(color: Colors.grey)),
+                )
+              else
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: _addresses.map((addr) {
+                      final displayStr = "${addr['house_no'] ?? ''}, ${addr['street'] ?? ''}, ${addr['city'] ?? ''}";
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: ListTile(
+                          leading: const Icon(Icons.location_on, color: AppTheme.primary),
+                          title: Text(displayStr, style: TextStyle(color: isDark ? Colors.white : AppTheme.textMain, fontSize: 14)),
+                          trailing: Icon(Icons.edit, size: 16, color: isDark ? Colors.white70 : Colors.grey),
+                          onTap: () async {
+                            Navigator.pop(ctx);
+                            await Navigator.push(context, MaterialPageRoute(builder: (_) => AddressFormScreen(existingAddress: addr)));
+                            _loadProfileData();
+                          },
+                        ),
+                      );
+                    }).toList(),
+                  ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (_addresses.isEmpty) const Text('No saved addresses.', style: TextStyle(color: Colors.grey)),
-            ..._addresses.map((addr) {
-              final displayStr = "${addr['house_no'] ?? ''}, ${addr['street'] ?? ''}, ${addr['city'] ?? ''}";
-              return Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade100, 
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: ListTile(
-                  leading: const Icon(Icons.location_on, color: AppTheme.primary),
-                  title: Text(displayStr, style: TextStyle(color: isDark ? Colors.white : AppTheme.textMain, fontSize: 14)),
-                  trailing: Icon(Icons.edit, size: 16, color: isDark ? Colors.white70 : Colors.grey),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    await Navigator.push(context, MaterialPageRoute(builder: (_) => AddressFormScreen(existingAddress: addr)));
-                    _loadProfileData();
-                  },
-                ),
-              );
-            }),
-          ],
+            ],
+          ),
         ),
       ),
     );
