@@ -9,6 +9,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/app_theme.dart';
 import '../widgets/customer_ui_components.dart';
+import '../widgets/app_widgets.dart';
 
 class DailyMetric {
   final String dayLabel;
@@ -195,12 +196,7 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
-        title: const Text(
-          'Chef Earnings & Analytics',
-          style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textMain),
-        ),
-        backgroundColor: Colors.white,
-        elevation: 0,
+        title: const Text('Chef Earnings & Analytics'),
         actions: [
           PopupMenuButton<int>(
             icon: const Icon(Icons.calendar_today, color: AppTheme.textMain, size: 20),
@@ -227,7 +223,6 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  // KPI Cards
                   Row(
                     children: [
                       Expanded(
@@ -251,12 +246,12 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                                 style: const TextStyle(
                                   fontSize: 22,
                                   fontWeight: FontWeight.w900,
-                                  color: Colors.green,
+                                  color: AppTheme.success,
                                 ),
                               ),
                             ],
                           ),
-                        ),
+                        ).entrance(),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -285,7 +280,7 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                               ),
                             ],
                           ),
-                        ),
+                        ).entrance(index: 1),
                       ),
                     ],
                   ),
@@ -404,14 +399,10 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                         ),
                         const SizedBox(height: 12),
                         if (_topDishes.isEmpty)
-                          const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 24),
-                            child: Center(
-                              child: Text(
-                                'No completed order history yet.',
-                                style: TextStyle(color: AppTheme.textMuted),
-                              ),
-                            ),
+                          const EmptyState(
+                            icon: Icons.restaurant_menu_rounded,
+                            title: 'No completed history yet',
+                            message: 'Delivered dishes will rank here by volume.',
                           )
                         else
                           ListView.separated(

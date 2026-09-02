@@ -2,6 +2,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../utils/app_theme.dart';
+
 class AppStatusBadge extends StatelessWidget {
   final String status;
 
@@ -16,30 +18,30 @@ class AppStatusBadge extends StatelessWidget {
     IconData iconData;
 
     if (lowerStatus.contains('pending')) {
-      baseColor = Colors.orange;
+      baseColor = AppTheme.warning;
       iconData = Icons.hourglass_top_rounded;
     } else if (lowerStatus.contains('confirm') || lowerStatus.contains('preparing')) {
-      baseColor = Colors.blue;
+      baseColor = AppTheme.info;
       iconData = Icons.soup_kitchen_rounded;
     } else if (lowerStatus.contains('ready') || lowerStatus.contains('out for delivery')) {
-      baseColor = Colors.purple;
+      baseColor = AppTheme.primary;
       iconData = Icons.local_shipping_rounded;
     } else if (lowerStatus.contains('deliver') || lowerStatus.contains('complet')) {
-      baseColor = Colors.green;
+      baseColor = AppTheme.success;
       iconData = Icons.check_circle_rounded;
     } else if (lowerStatus.contains('cancel') || lowerStatus.contains('reject')) {
-      baseColor = Colors.redAccent;
+      baseColor = AppTheme.error;
       iconData = Icons.cancel_rounded;
     } else {
-      baseColor = Colors.grey;
+      baseColor = AppTheme.textMuted;
       iconData = Icons.info_outline_rounded;
     }
 
-    final bgColor = isDark ? baseColor.withValues(alpha: 0.2) : baseColor.withValues(alpha: 0.1);
+    final bgColor = isDark ? baseColor.withValues(alpha: 0.2) : baseColor.withValues(alpha: 0.12);
     final hsl = HSLColor.fromColor(baseColor);
     final textColor = isDark
         ? hsl.withLightness((hsl.lightness + 0.32).clamp(0.0, 1.0)).toColor()
-        : hsl.withLightness((hsl.lightness - 0.32).clamp(0.0, 1.0)).toColor();
+        : hsl.withLightness((hsl.lightness - 0.28).clamp(0.0, 1.0)).toColor();
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -58,8 +60,9 @@ class AppStatusBadge extends StatelessWidget {
               status,
               style: TextStyle(
                 color: textColor,
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                fontSize: 11.5,
+                letterSpacing: 0.2,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,

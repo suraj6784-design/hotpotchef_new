@@ -7,11 +7,14 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
-import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
 import '../models/cart_enums.dart';
 import '../widgets/customer_ui_components.dart';
+import '../widgets/app_widgets.dart';
+import '../widgets/app_status_badge.dart';
 import '../services/order_lifecycle.dart';
 import '../services/auth_session.dart';
 import 'packaging_store_screen.dart';
@@ -197,24 +200,21 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.surfaceDark,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Row(children: [
-          Icon(Icons.warning_amber_rounded, color: Colors.red),
+          Icon(Icons.warning_amber_rounded, color: AppTheme.error),
           SizedBox(width: 8),
-          Text('Cancel & Restock?', style: TextStyle(color: Colors.white)),
+          Expanded(child: Text('Cancel & Restock?')),
         ]),
         content: const Text(
           'Are you sure you want to cancel this order? It will be refunded, and inventory will be automatically restored.',
-          style: TextStyle(color: Colors.white70),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Keep Order', style: TextStyle(color: Colors.grey)),
+            child: const Text('Keep Order'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error, foregroundColor: Colors.white),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Cancel Order'),
           ),
@@ -307,16 +307,14 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         final shouldExit = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
-            backgroundColor: AppTheme.surfaceDark,
-            title: const Text('Exit App', style: TextStyle(color: Colors.white)),
-            content: const Text('Are you sure you want to exit?', style: TextStyle(color: Colors.white70)),
+            title: const Text('Exit App'),
+            content: const Text('Are you sure you want to exit?'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                child: const Text('Cancel'),
               ),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary, foregroundColor: Colors.white),
                 onPressed: () => Navigator.pop(ctx, true),
                 child: const Text('Exit'),
               ),
@@ -334,18 +332,27 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             .stream(primaryKey: ['id'])
             .eq('chef_id', _currentUserId),
         builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null) {
+            return Scaffold(
+              backgroundColor: AppTheme.background,
+              body: Column(
+                children: [
+                  _buildHeader(),
+                  const Expanded(child: OrderListSkeleton()),
+                ],
+              ),
+            );
+          }
+
           if (snapshot.hasError) {
             return Scaffold(
-              body: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.wifi_off, size: 48, color: Colors.grey),
-                    const SizedBox(height: 12),
-                    Text('Connection issue: ${snapshot.error}', style: const TextStyle(color: Colors.grey)),
-                    TextButton(onPressed: () => setState(() {}), child: const Text('Retry')),
-                  ],
-                ),
+              backgroundColor: AppTheme.background,
+              body: EmptyState(
+                icon: Icons.wifi_off_rounded,
+                title: 'Kitchen connection lost',
+                message: 'We couldn\'t load your orders. Check your connection and try again.',
+                actionLabel: 'Retry',
+                onAction: () => setState(() {}),
               ),
             );
           }
@@ -383,8 +390,6 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 bottomNavigationBar: NavigationBar(
                   selectedIndex: _selectedIndex,
                   onDestinationSelected: (idx) => setState(() => _selectedIndex = idx),
-                  backgroundColor: Colors.white,
-                  indicatorColor: AppTheme.primary.withValues(alpha: 0.15),
                   destinations: [
                     NavigationDestination(
                       icon: Badge(label: Text('$pendingCount'), isLabelVisible: pendingCount > 0, child: const Icon(Icons.receipt_long_outlined)),
@@ -416,16 +421,29 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
 
   // --- Sub-Components ---
 
+  Widget _headerIcon(IconData icon, String tooltip, VoidCallback onPressed) {
+    return Container(
+      margin: const EdgeInsets.only(left: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.18),
+        shape: BoxShape.circle,
+      ),
+      child: IconButton(
+        visualDensity: VisualDensity.compact,
+        icon: Icon(icon, color: Colors.white, size: 20),
+        tooltip: tooltip,
+        onPressed: onPressed,
+      ),
+    );
+  }
+
   Widget _buildHeader() {
     return Container(
       padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + 12, left: 20, right: 20, bottom: 20),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [AppTheme.primary, AppTheme.primaryGradientEnd],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.only(bottomLeft: Radius.circular(28), bottomRight: Radius.circular(28)),
+      decoration: BoxDecoration(
+        gradient: AppTheme.primaryGradient,
+        borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(28), bottomRight: Radius.circular(28)),
+        boxShadow: AppTheme.brandGlow(opacity: 0.28),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -449,7 +467,11 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.circle, color: _isKitchenOpen ? Colors.greenAccent : Colors.redAccent, size: 9),
+                      _isKitchenOpen
+                          ? const Icon(Icons.circle, color: Colors.greenAccent, size: 9)
+                              .animate(onPlay: (c) => c.repeat(reverse: true))
+                              .fade(begin: 0.35, end: 1, duration: 900.ms)
+                          : const Icon(Icons.circle, color: Colors.redAccent, size: 9),
                       const SizedBox(width: 6),
                       Text(
                         _isKitchenOpen ? 'Online • Taking Orders' : 'Offline',
@@ -463,22 +485,9 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
           ),
           Row(
             children: [
-              IconButton(
-                icon: const Icon(Icons.insights, color: Colors.white),
-                tooltip: 'Analytics',
-                onPressed: () => context.push('/chef-analytics'),
-              ),
-              IconButton(
-                icon: const Icon(Icons.person_outline, color: Colors.white),
-                tooltip: 'Profile',
-                onPressed: () => context.push('/chef-profile'),
-              ),
-              // --- ADDED LOGOUT BUTTON HERE ---
-              IconButton(
-                icon: const Icon(Icons.logout, color: Colors.white),
-                tooltip: 'Log Out',
-                onPressed: () => AuthSession.logout(context),
-              ),
+              _headerIcon(Icons.insights, 'Analytics', () => context.push('/chef-analytics')),
+              _headerIcon(Icons.person_outline, 'Profile', () => context.push('/chef-profile')),
+              _headerIcon(Icons.logout, 'Log Out', () => AuthSession.logout(context)),
             ],
           ),
         ],
@@ -508,30 +517,41 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   ? activeOrders.length
                   : activeOrders.where((o) => _matchesFilter(o, label)).length;
 
-              return FilterChip(
-                label: Text('$label ($count)'),
-                selected: isSelected,
-                selectedColor: AppTheme.primary,
-                checkmarkColor: Colors.white,
-                labelStyle: TextStyle(
-                  color: isSelected ? Colors.white : AppTheme.textMain,
-                  fontSize: 12,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              return GestureDetector(
+                onTap: () => setState(() => _fulfillmentFilter = label),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isSelected ? AppTheme.primary : Theme.of(context).colorScheme.surface,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: isSelected ? AppTheme.primary : Colors.grey.shade300),
+                    boxShadow: isSelected ? AppTheme.brandGlow(opacity: 0.28) : const [],
+                  ),
+                  child: Text(
+                    '$label ($count)',
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : AppTheme.textMain,
+                      fontSize: 12,
+                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                    ),
+                  ),
                 ),
-                backgroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                onSelected: (_) => setState(() => _fulfillmentFilter = label),
               );
             },
           ),
         ),
         Expanded(
           child: filteredOrders.isEmpty
-              ? const Center(child: Text('No active orders in this queue.', style: TextStyle(color: AppTheme.textMuted)))
+              ? const EmptyState(
+                  icon: Icons.receipt_long_outlined,
+                  title: 'No active orders',
+                  message: 'New orders in this queue will appear here in real time.',
+                )
               : ListView.builder(
                   padding: const EdgeInsets.all(16),
                   itemCount: filteredOrders.length,
-                  itemBuilder: (context, index) => _buildOrderCard(filteredOrders[index]),
+                  itemBuilder: (context, index) => _buildOrderCard(filteredOrders[index]).entrance(index: index),
                 ),
         ),
       ],
@@ -548,6 +568,9 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     final quantity = _orderQuantity(order);
     final totalAmount = _orderTotal(order);
     final instructions = order['special_instructions']?.toString() ?? '';
+    final customer = _customerName(order);
+    final initial = customer.isNotEmpty ? customer[0].toUpperCase() : 'C';
+    final svc = _orderService(order);
 
     return AppCard(
       margin: const EdgeInsets.only(bottom: 14),
@@ -555,65 +578,105 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(orderId, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
-              buildStatusBadge(status),
+              Text(orderId, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: AppTheme.textMuted)),
+              const Spacer(),
+              AppStatusBadge(status: status),
             ],
           ),
-          const SizedBox(height: 8),
-          Text('$title (x$quantity)', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain)),
-          const SizedBox(height: 4),
-          Text('Customer: ${_customerName(order)} • ₹${totalAmount.toStringAsFixed(2)}',
-              style: const TextStyle(fontSize: 13, color: AppTheme.textMuted)),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: AppTheme.primary.withValues(alpha: 0.12),
+                child: Text(initial, style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w800)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('$title (x$quantity)',
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppTheme.textMain)),
+                    const SizedBox(height: 2),
+                    Text(customer, style: const TextStyle(fontSize: 13, color: AppTheme.textMuted)),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withValues(alpha: 0.1),
+                  borderRadius: AppTheme.radiusMd,
+                ),
+                child: Text('₹${totalAmount.toStringAsFixed(0)}',
+                    style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w800, fontSize: 14)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          PillTag(
+            label: svc.toDisplayString(),
+            icon: svc.isDelivery ? Icons.delivery_dining : Icons.storefront,
+            color: AppTheme.info,
+          ),
           if (instructions.isNotEmpty) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(8)),
-              child: Text('Note: $instructions', style: TextStyle(color: Colors.amber.shade900, fontSize: 12, fontStyle: FontStyle.italic)),
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppTheme.warning.withValues(alpha: 0.12),
+                borderRadius: AppTheme.radiusSm,
+              ),
+              child: Text('Note: $instructions',
+                  style: const TextStyle(color: AppTheme.textMain, fontSize: 12, fontStyle: FontStyle.italic)),
             ),
           ],
           const SizedBox(height: 14),
-          Row(
-            children: [
-              if (isPending) ...[
+          if (isPending)
+            Row(
+              children: [
                 Expanded(
                   child: OutlinedButton(
-                    style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+                    style: OutlinedButton.styleFrom(foregroundColor: AppTheme.error, side: const BorderSide(color: AppTheme.error)),
                     onPressed: () => _cancelCustomerOrder(order),
                     child: const Text('Reject'),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+                  child: GradientButton(
+                    label: 'Confirm',
+                    icon: Icons.check_rounded,
+                    gradient: const LinearGradient(colors: [AppTheme.success, Color(0xFF43C478)]),
                     onPressed: () => _advanceKitchen(order),
-                    child: const Text('Confirm'),
                   ),
                 ),
-              ] else ...[
+              ],
+            )
+          else
+            Row(
+              children: [
                 Expanded(
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isPreparing ? Colors.teal : AppTheme.primary,
-                      foregroundColor: Colors.white,
-                    ),
-                    icon: Icon(isPreparing ? Icons.check_circle : Icons.soup_kitchen, size: 18),
-                    label: Text(isPreparing ? 'Ready for Pickup' : 'Start Preparing'),
+                  child: GradientButton(
+                    label: isPreparing ? 'Ready for Pickup' : 'Start Preparing',
+                    icon: isPreparing ? Icons.check_circle_rounded : Icons.soup_kitchen_rounded,
+                    gradient: isPreparing
+                        ? const LinearGradient(colors: [Color(0xFF00897B), Color(0xFF26A69A)])
+                        : AppTheme.primaryGradient,
                     onPressed: () => _advanceKitchen(order),
                   ),
                 ),
                 const SizedBox(width: 8),
                 IconButton(
-                  icon: const Icon(Icons.cancel_outlined, color: Colors.redAccent),
+                  icon: const Icon(Icons.cancel_outlined, color: AppTheme.error),
                   tooltip: 'Cancel & Restock',
                   onPressed: () => _cancelCustomerOrder(order),
                 ),
               ],
-            ],
-          ),
+            ),
         ],
       ),
     );
@@ -623,7 +686,11 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     final dispatches = allOrders.where((o) => OrderLifecycle.isDispatchQueue(o['status']?.toString())).toList();
 
     if (dispatches.isEmpty) {
-      return const Center(child: Text('No orders waiting for pickup or delivery.', style: TextStyle(color: AppTheme.textMuted)));
+      return const EmptyState(
+        icon: Icons.local_shipping_outlined,
+        title: 'Nothing to dispatch',
+        message: 'Orders ready for pickup or delivery will show up here.',
+      );
     }
 
     return ListView.builder(
@@ -647,33 +714,37 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(formatOrderId(order['order_id']?.toString(), order['id'].toString()),
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
-                  buildStatusBadge(order['status']),
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: AppTheme.textMuted)),
+                  const Spacer(),
+                  AppStatusBadge(status: order['status']?.toString() ?? ''),
                 ],
               ),
-              const SizedBox(height: 8),
-              Text('${_orderTitle(order)} (x${_orderQuantity(order)})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-              const SizedBox(height: 4),
-              Text('Method: ${svc.toDisplayString()}', style: const TextStyle(fontSize: 12, color: AppTheme.primary, fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: isOut ? Colors.green : Colors.teal,
-                    foregroundColor: Colors.white,
-                  ),
-                  icon: Icon(isOut ? Icons.check : Icons.delivery_dining),
-                  label: Text(dispatchLabel),
-                  onPressed: () => _dispatchOrder(order),
-                ),
+              Text('${_orderTitle(order)} (x${_orderQuantity(order)})',
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+              const SizedBox(height: 4),
+              Text('${_customerName(order)} • ₹${_orderTotal(order).toStringAsFixed(0)}',
+                  style: const TextStyle(fontSize: 13, color: AppTheme.textMuted)),
+              const SizedBox(height: 10),
+              PillTag(
+                label: svc.toDisplayString(),
+                icon: svc.isDelivery ? Icons.delivery_dining : Icons.storefront,
+                color: isOut ? AppTheme.success : AppTheme.info,
+              ),
+              const SizedBox(height: 14),
+              GradientButton(
+                label: dispatchLabel,
+                icon: isOut ? Icons.check_rounded : Icons.delivery_dining_rounded,
+                gradient: isOut
+                    ? const LinearGradient(colors: [AppTheme.success, Color(0xFF43C478)])
+                    : const LinearGradient(colors: [Color(0xFF00897B), Color(0xFF26A69A)]),
+                onPressed: () => _dispatchOrder(order),
               ),
             ],
           ),
-        );
+        ).entrance(index: index);
       },
     );
   }
@@ -690,44 +761,53 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         return ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              ),
-              icon: const Icon(Icons.add),
-              label: const Text('Publish New Dish', style: TextStyle(fontWeight: FontWeight.bold)),
+            GradientButton(
+              label: 'Publish New Dish',
+              icon: Icons.add_rounded,
               onPressed: () => context.push('/chef-publish-meal'),
             ),
             const SizedBox(height: 16),
             if (items.isEmpty)
-              const Center(child: Padding(padding: EdgeInsets.all(32), child: Text('No menu items active.')))
+              const EmptyState(
+                icon: Icons.restaurant_menu_rounded,
+                title: 'No dishes yet',
+                message: 'Publish your first dish to start receiving orders from hungry customers.',
+              )
             else
-              ...items.map((meal) {
+              ...items.asMap().entries.map((entry) {
+                final meal = entry.value;
                 final isPaused = meal['status']?.toString().toLowerCase() == 'paused';
                 return AppCard(
                   margin: const EdgeInsets.only(bottom: 10),
                   child: ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(10),
                       child: meal['image_url'] != null
-                          ? Image.network(meal['image_url'], width: 50, height: 50, fit: BoxFit.cover)
-                          : Container(width: 50, height: 50, color: Colors.grey.shade200, child: const Icon(Icons.fastfood)),
+                          ? CachedNetworkImage(
+                              imageUrl: meal['image_url'].toString(),
+                              width: 52,
+                              height: 52,
+                              fit: BoxFit.cover,
+                              placeholder: (_, _) => const AppShimmer(
+                                child: ShimmerBox(width: 52, height: 52),
+                              ),
+                              errorWidget: (_, _, _) => Container(
+                                  width: 52, height: 52, color: Colors.grey.shade200, child: const Icon(Icons.fastfood)),
+                            )
+                          : Container(width: 52, height: 52, color: Colors.grey.shade200, child: const Icon(Icons.fastfood)),
                     ),
                     title: Text(meal['title'] ?? 'Meal', style: TextStyle(fontWeight: FontWeight.bold, decoration: isPaused ? TextDecoration.lineThrough : null)),
                     subtitle: Text('₹${meal['price']} • Stock: ${meal['quantity']} remaining'),
                     trailing: Switch.adaptive(
-                      activeColor: AppTheme.primary,
+                      activeThumbColor: AppTheme.primary,
                       value: !isPaused,
                       onChanged: (active) async {
                         await _supabase.from('meals').update({'status': active ? 'Available' : 'Paused'}).eq('id', meal['id']);
                       },
                     ),
                   ),
-                );
+                ).entrance(index: entry.key);
               }),
           ],
         );
@@ -739,6 +819,14 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     final history = orders.where((o) => (o['status']?.toString().toLowerCase() ?? '') == 'delivered').toList();
     final double revenue = history.fold(0.0, (sum, o) => sum + _orderTotal(o));
 
+    if (history.isEmpty) {
+      return const EmptyState(
+        icon: Icons.account_balance_wallet_outlined,
+        title: 'No completed sales yet',
+        message: 'Delivered orders will appear here with a running sales total.',
+      );
+    }
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -747,27 +835,42 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             children: [
               const Text('Delivered Order Sales', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
               const SizedBox(height: 6),
-              Text('₹${revenue.toStringAsFixed(2)}', style: const TextStyle(color: Colors.green, fontSize: 26, fontWeight: FontWeight.w900)),
-              Text('${history.length} completed orders', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+              Text('₹${revenue.toStringAsFixed(2)}',
+                  style: const TextStyle(color: AppTheme.success, fontSize: 28, fontWeight: FontWeight.w900)),
+              Text('${history.length} completed orders', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
             ],
           ),
-        ),
+        ).popIn(),
         const SizedBox(height: 16),
-        ...history.map((h) => ListTile(
+        ...history.asMap().entries.map((entry) {
+          final h = entry.value;
+          return AppCard(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.check_circle, color: Colors.green),
+              leading: CircleAvatar(
+                backgroundColor: AppTheme.success.withValues(alpha: 0.12),
+                child: const Icon(Icons.check_circle, color: AppTheme.success),
+              ),
               title: Text(_orderTitle(h), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
               subtitle: Text(formatOrderDate(h['created_at']?.toString() ?? '')),
               trailing: Text('₹${_orderTotal(h).toStringAsFixed(2)}',
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
-            )),
+                  style: const TextStyle(fontWeight: FontWeight.w800)),
+            ),
+          ).entrance(index: entry.key);
+        }),
       ],
     );
   }
 
   Widget _buildCustomerLeadsTab(List<Map<String, dynamic>> requests) {
     if (requests.isEmpty) {
-      return const Center(child: Text('No broadcast requests currently open.', style: TextStyle(color: AppTheme.textMuted)));
+      return const EmptyState(
+        icon: Icons.campaign_outlined,
+        title: 'No open leads',
+        message: 'Bulk catering broadcasts from customers will show up here for you to claim.',
+      );
     }
 
     return ListView.builder(
@@ -781,21 +884,24 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(req['title'] ?? 'Bulk Catering Lead', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                  Text('₹${req['budget'] ?? '0'}', style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold)),
+                  Expanded(
+                    child: Text(req['title'] ?? 'Bulk Catering Lead',
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                  ),
+                  Text('₹${req['budget'] ?? '0'}',
+                      style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w800)),
                 ],
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 8),
               Text('Quantity: ${req['quantity']} • Needed by: ${req['target_date_time'] ?? 'ASAP'}',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-                  onPressed: () async {
+                  style: const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+              const SizedBox(height: 14),
+              GradientButton(
+                label: 'Claim Lead',
+                icon: Icons.handshake_rounded,
+                gradient: const LinearGradient(colors: [AppTheme.success, Color(0xFF43C478)]),
+                onPressed: () async {
                     final res = await _supabase
                         .from('customer_requests')
                         .update({'status': 'Accepted', 'accepted_chef_id': _currentUserId})
@@ -811,12 +917,10 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                       }
                     }
                   },
-                  child: const Text('Claim Lead'),
-                ),
               ),
             ],
           ),
-        );
+        ).entrance(index: index);
       },
     );
   }

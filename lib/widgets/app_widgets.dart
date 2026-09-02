@@ -357,6 +357,62 @@ class MealListSkeleton extends StatelessWidget {
   }
 }
 
+/// Compact order-row skeleton used on chef kitchen / dispatch queues.
+class OrderListSkeleton extends StatelessWidget {
+  final int count;
+  const OrderListSkeleton({super.key, this.count = 4});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: count,
+      itemBuilder: (_, _) => AppShimmer(
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 14),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+            borderRadius: AppTheme.radiusLg,
+          ),
+          child: const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  ShimmerBox(width: 88, height: 12),
+                  Spacer(),
+                  ShimmerBox(width: 72, height: 20, borderRadius: AppTheme.radiusMd),
+                ],
+              ),
+              SizedBox(height: 16),
+              Row(
+                children: [
+                  ShimmerBox(width: 44, height: 44, borderRadius: BorderRadius.all(Radius.circular(22))),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ShimmerBox(width: double.infinity, height: 16),
+                        SizedBox(height: 8),
+                        ShimmerBox(width: 120, height: 12),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 16),
+              ShimmerBox(width: double.infinity, height: 44, borderRadius: AppTheme.radiusMd),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Small decorative helpers
 // ---------------------------------------------------------------------------
