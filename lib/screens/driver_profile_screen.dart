@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import 'map_picker_screen.dart';
+import '../utils/app_theme.dart';
 import '../widgets/avatar_upload.dart';
 import '../widgets/change_password_dialog.dart';
 
@@ -280,16 +281,22 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
   // --- Digital ID Card Modal ---
 
   void _showDigitalIDCard() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surface = isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight;
+    final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
+    final muted = isDark ? Colors.grey.shade400 : AppTheme.textMuted;
+    final verified = isDark ? Colors.greenAccent : Colors.green.shade700;
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
+        backgroundColor: surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
-          children: const [
-            Icon(Icons.badge_outlined, color: Colors.deepOrange),
-            SizedBox(width: 8),
-            Text('Digital Partner ID', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+          children: [
+            const Icon(Icons.badge_outlined, color: AppTheme.primary),
+            const SizedBox(width: 8),
+            Text('Digital Partner ID', style: TextStyle(color: titleColor, fontWeight: FontWeight.bold, fontSize: 18)),
           ],
         ),
         content: Column(
@@ -299,49 +306,55 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
             Center(
               child: CircleAvatar(
                 radius: 36,
-                backgroundColor: Colors.deepOrange.withValues(alpha: 0.2),
+                backgroundColor: AppTheme.primary.withValues(alpha: 0.2),
                 backgroundImage: _avatarUrl != null ? NetworkImage(_avatarUrl!) : null,
-                child: _avatarUrl == null ? const Icon(Icons.person, size: 40, color: Colors.deepOrange) : null,
+                child: _avatarUrl == null ? const Icon(Icons.person, size: 40, color: AppTheme.primary) : null,
               ),
             ),
             const SizedBox(height: 16),
-            _buildIDRow('Partner Name', _nameController.text.isEmpty ? 'Driver' : _nameController.text),
-            _buildIDRow('Phone', _phoneController.text),
-            _buildIDRow('Emergency Contact', _emergencyPhoneController.text.isEmpty ? 'Not provided' : _emergencyPhoneController.text),
-            _buildIDRow('DL Number', _dlNumberController.text.isEmpty ? 'Pending' : _dlNumberController.text),
-            _buildIDRow('Vehicle Reg', _vehicleRegNoController.text.isEmpty ? 'Pending' : _vehicleRegNoController.text),
-            _buildIDRow('Blood Group', _bloodGroup),
+            _buildIDRow('Partner Name', _nameController.text.isEmpty ? 'Driver' : _nameController.text, titleColor, muted),
+            _buildIDRow('Phone', _phoneController.text, titleColor, muted),
+            _buildIDRow('Emergency Contact', _emergencyPhoneController.text.isEmpty ? 'Not provided' : _emergencyPhoneController.text, titleColor, muted),
+            _buildIDRow('DL Number', _dlNumberController.text.isEmpty ? 'Pending' : _dlNumberController.text, titleColor, muted),
+            _buildIDRow('Vehicle Reg', _vehicleRegNoController.text.isEmpty ? 'Pending' : _vehicleRegNoController.text, titleColor, muted),
+            _buildIDRow('Blood Group', _bloodGroup, titleColor, muted),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
               decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  Icon(Icons.verified, color: Colors.greenAccent, size: 16),
-                  SizedBox(width: 6),
+                children: [
+                  Icon(Icons.verified, color: verified, size: 16),
+                  const SizedBox(width: 6),
                   Text('Active Commercial Delivery Partner',
-                      style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                      style: TextStyle(color: verified, fontSize: 11, fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close', style: TextStyle(color: Colors.grey))),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Close', style: TextStyle(color: muted))),
         ],
       ),
     );
   }
 
-  Widget _buildIDRow(String label, String value) {
+  Widget _buildIDRow(String label, String value, Color titleColor, Color muted) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-          Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+          Text(label, style: TextStyle(color: muted, fontSize: 12)),
+          Flexible(
+            child: Text(
+              value,
+              style: TextStyle(color: titleColor, fontWeight: FontWeight.bold, fontSize: 13),
+              textAlign: TextAlign.end,
+            ),
+          ),
         ],
       ),
     );
@@ -351,30 +364,40 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? AppTheme.backgroundDark : AppTheme.background;
+    final surface = isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight;
+    final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
+    final muted = isDark ? Colors.grey.shade400 : AppTheme.textMuted;
+    final fill = isDark ? AppTheme.surfaceMutedDark : Colors.white;
+    final divider = isDark ? Colors.white24 : Colors.black12;
+    final verified = isDark ? Colors.lightBlueAccent : Colors.blue.shade700;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: bg,
       appBar: AppBar(
-        title: const Text('Driver Profile', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        title: Text('Driver Profile', style: TextStyle(fontWeight: FontWeight.bold, color: titleColor)),
         backgroundColor: Colors.transparent,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: IconThemeData(color: titleColor),
         actions: [
           TextButton.icon(
-            icon: Icon(_isEditing ? Icons.close : Icons.edit, color: Colors.deepOrange, size: 18),
-            label: Text(_isEditing ? 'Cancel' : 'Edit', style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold)),
+            icon: Icon(_isEditing ? Icons.close : Icons.edit, color: AppTheme.primary, size: 18),
+            label: Text(_isEditing ? 'Cancel' : 'Edit', style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold)),
             onPressed: () => setState(() => _isEditing = !_isEditing),
           ),
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.deepOrange))
+          ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
           : Form(
               key: _formKey,
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
                   Card(
-                    color: const Color(0xFF1E1E1E),
+                    color: surface,
+                    elevation: isDark ? 0 : 1,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                     child: Padding(
                       padding: const EdgeInsets.all(20),
@@ -394,19 +417,19 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                                   children: [
                                     Text(
                                       _nameController.text.isEmpty ? 'Delivery Partner' : _nameController.text,
-                                      style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                                      style: TextStyle(color: titleColor, fontSize: 18, fontWeight: FontWeight.bold),
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
                                       _phoneController.text.isEmpty ? 'Contact pending' : _phoneController.text,
-                                      style: const TextStyle(color: Colors.grey, fontSize: 13),
+                                      style: TextStyle(color: muted, fontSize: 13),
                                     ),
                                     const SizedBox(height: 6),
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                       decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(6)),
-                                      child: const Text('Verified Driver',
-                                          style: TextStyle(color: Colors.lightBlueAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                                      child: Text('Verified Driver',
+                                          style: TextStyle(color: verified, fontSize: 10, fontWeight: FontWeight.bold)),
                                     ),
                                   ],
                                 ),
@@ -433,8 +456,8 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                               Expanded(
                                 child: ElevatedButton.icon(
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.grey.shade800,
-                                    foregroundColor: Colors.white,
+                                    backgroundColor: isDark ? Colors.grey.shade800 : AppTheme.surfaceMutedLight,
+                                    foregroundColor: isDark ? Colors.white : AppTheme.textMain,
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                     padding: const EdgeInsets.symmetric(vertical: 12),
                                   ),
@@ -453,7 +476,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
 
                   // Personal Info
                   const Text('Personal & Identity Info (Govt. Compliance)',
-                      style: TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold, fontSize: 15)),
+                      style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 15)),
                   const SizedBox(height: 12),
                   _buildTextField(
                     controller: _nameController,
@@ -504,9 +527,14 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                         flex: 2,
                         child: DropdownButtonFormField<String>(
                           value: _bloodGroup,
-                          dropdownColor: const Color(0xFF1E1E1E),
-                          style: const TextStyle(color: Colors.white),
-                          decoration: const InputDecoration(labelText: 'Blood Group', prefixIcon: Icon(Icons.bloodtype, color: Colors.redAccent)),
+                          dropdownColor: fill,
+                          style: TextStyle(color: titleColor),
+                          decoration: InputDecoration(
+                            labelText: 'Blood Group',
+                            prefixIcon: const Icon(Icons.bloodtype, color: Colors.redAccent),
+                            filled: true,
+                            fillColor: fill,
+                          ),
                           items: _bloodGroups.map((bg) => DropdownMenuItem(value: bg, child: Text(bg))).toList(),
                           onChanged: _isEditing ? (val) => setState(() => _bloodGroup = val ?? 'O+') : null,
                         ),
@@ -527,14 +555,14 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                       return null;
                     },
                   ),
-                  const Divider(height: 32, color: Colors.white24),
+                  Divider(height: 32, color: divider),
 
                   // Residential Address
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text('Permanent / Residential Address',
-                          style: TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold, fontSize: 15)),
+                          style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 15)),
                       Row(
                         children: [
                           Icon(_latitude != null ? Icons.check_circle : Icons.warning_amber_rounded,
@@ -549,8 +577,8 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                     ],
                   ),
                   const SizedBox(height: 4),
-                  const Text('Required for background verification and local RTO compliance.',
-                      style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  Text('Required for background verification and local RTO compliance.',
+                      style: TextStyle(color: muted, fontSize: 12)),
                   const SizedBox(height: 16),
 
                   if (_isEditing)
@@ -561,14 +589,14 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                         child: OutlinedButton.icon(
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 14),
-                            backgroundColor: _latitude == null ? Colors.deepOrange.withValues(alpha: 0.1) : Colors.green.withValues(alpha: 0.1),
-                            side: BorderSide(color: _latitude == null ? Colors.deepOrange : Colors.green),
+                            backgroundColor: _latitude == null ? AppTheme.primary.withValues(alpha: 0.1) : Colors.green.withValues(alpha: 0.1),
+                            side: BorderSide(color: _latitude == null ? AppTheme.primary : Colors.green),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
-                          icon: Icon(Icons.pin_drop, color: _latitude == null ? Colors.deepOrange : Colors.green),
+                          icon: Icon(Icons.pin_drop, color: _latitude == null ? AppTheme.primary : Colors.green),
                           label: Text(
                             _latitude == null ? 'Pin Home Address on Map *' : 'Location Pinned (Tap to change)',
-                            style: TextStyle(fontWeight: FontWeight.bold, color: _latitude == null ? Colors.deepOrange : Colors.green),
+                            style: TextStyle(fontWeight: FontWeight.bold, color: _latitude == null ? AppTheme.primary : Colors.green),
                           ),
                           onPressed: _openMapPicker,
                         ),
@@ -624,17 +652,22 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                       ),
                     ],
                   ),
-                  const Divider(height: 32, color: Colors.white24),
+                  Divider(height: 32, color: divider),
 
                   // Vehicle & License Details
                   const Text('Vehicle & License Details (MoRTH / RTO)',
-                      style: TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold, fontSize: 15)),
+                      style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 15)),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     value: _vehicleType,
-                    dropdownColor: const Color(0xFF1E1E1E),
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(labelText: 'Vehicle Category', prefixIcon: Icon(Icons.two_wheeler, color: Colors.grey)),
+                    dropdownColor: fill,
+                    style: TextStyle(color: titleColor),
+                    decoration: InputDecoration(
+                      labelText: 'Vehicle Category',
+                      prefixIcon: Icon(Icons.two_wheeler, color: muted),
+                      filled: true,
+                      fillColor: fill,
+                    ),
                     items: _vehicleTypes.map((vt) => DropdownMenuItem(value: vt, child: Text(vt))).toList(),
                     onChanged: _isEditing ? (val) => setState(() => _vehicleType = val ?? _vehicleType) : null,
                   ),
@@ -670,7 +703,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                   if (_isEditing)
                     ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.deepOrange,
+                        backgroundColor: AppTheme.primary,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -697,6 +730,12 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     String? Function(String?)? validator,
     List<TextInputFormatter>? inputFormatters,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
+    final muted = isDark ? Colors.grey.shade400 : AppTheme.textMuted;
+    final fill = isDark ? AppTheme.surfaceMutedDark : Colors.white;
+    final border = isDark ? Colors.white12 : Colors.grey.shade300;
+
     return TextFormField(
       controller: controller,
       enabled: _isEditing && enabled,
@@ -704,18 +743,18 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
       maxLength: maxLength,
       validator: validator,
       inputFormatters: inputFormatters,
-      style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+      style: TextStyle(color: titleColor, fontSize: 14, fontWeight: FontWeight.w500),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: Colors.grey, fontSize: 13),
-        floatingLabelStyle: const TextStyle(color: Colors.deepOrange, fontSize: 14, fontWeight: FontWeight.bold),
-        prefixIcon: prefixIcon != null ? Icon(prefixIcon, color: Colors.grey, size: 20) : null,
+        labelStyle: TextStyle(color: muted, fontSize: 13),
+        floatingLabelStyle: const TextStyle(color: AppTheme.primary, fontSize: 14, fontWeight: FontWeight.bold),
+        prefixIcon: prefixIcon != null ? Icon(prefixIcon, color: muted, size: 20) : null,
         filled: true,
-        fillColor: const Color(0xFF2A2A2A),
+        fillColor: fill,
         counterText: '',
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.white12)),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.deepOrange, width: 2)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: border)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppTheme.primary, width: 2)),
         disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
         errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.redAccent)),
       ),

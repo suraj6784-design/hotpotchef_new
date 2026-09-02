@@ -8,6 +8,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:geocoding/geocoding.dart'; // 🌟 Added for reverse geocoding
 
 import 'map_picker_screen.dart';
+import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
 import '../utils/network.dart';
 import '../widgets/avatar_upload.dart';
@@ -372,23 +373,31 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
   Widget build(BuildContext context) {
     final user = _supabase.auth.currentUser;
     final email = user?.email ?? 'No Email';
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? AppTheme.backgroundDark : AppTheme.background;
+    final surface = isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight;
+    final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
+    final muted = isDark ? Colors.grey.shade400 : AppTheme.textMuted;
+    final divider = isDark ? Colors.white24 : Colors.black12;
+    final verified = isDark ? Colors.greenAccent : Colors.green.shade700;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: bg,
       appBar: AppBar(
-        title: const Text('Chef Profile & Settings', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: const Color(0xFF1A1A1A),
+        title: Text('Chef Profile & Settings', style: TextStyle(color: titleColor, fontWeight: FontWeight.bold)),
+        backgroundColor: surface,
         elevation: 0,
+        iconTheme: IconThemeData(color: titleColor),
         actions: [
           TextButton.icon(
-            icon: Icon(_isEditing ? Icons.close : Icons.edit, color: Colors.deepOrange, size: 18),
-            label: Text(_isEditing ? 'Cancel' : 'Edit', style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold)),
+            icon: Icon(_isEditing ? Icons.close : Icons.edit, color: AppTheme.primary, size: 18),
+            label: Text(_isEditing ? 'Cancel' : 'Edit', style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold)),
             onPressed: () => setState(() => _isEditing = !_isEditing),
           ),
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.deepOrange))
+          ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
           : Form(
               key: _formKey,
               child: ListView(
@@ -396,7 +405,8 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                 children: [
                   // Profile Identity Header Card
                   Card(
-                    color: const Color(0xFF1E1E1E),
+                    color: surface,
+                    elevation: isDark ? 0 : 1,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     child: Padding(
                       padding: const EdgeInsets.all(20),
@@ -414,10 +424,10 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                               children: [
                                 Text(
                                   _nameController.text.isEmpty ? 'Home Kitchen Partner' : _nameController.text,
-                                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                                  style: TextStyle(color: titleColor, fontSize: 18, fontWeight: FontWeight.bold),
                                 ),
                                 const SizedBox(height: 4),
-                                Text(email, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                                Text(email, style: TextStyle(color: muted, fontSize: 13)),
                                 const SizedBox(height: 8),
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -425,8 +435,8 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                                     color: Colors.green.withValues(alpha: 0.15),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
-                                  child: const Text('Verified Food Partner',
-                                      style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                                  child: Text('Verified Food Partner',
+                                      style: TextStyle(color: verified, fontSize: 11, fontWeight: FontWeight.bold)),
                                 ),
                               ],
                             ),
@@ -439,7 +449,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
 
                   // Personal Information Section
                   const Text('Kitchen & Business Credentials',
-                      style: TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold, fontSize: 15)),
+                      style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 15)),
                   const SizedBox(height: 12),
                   _buildValidatedTextField(
                     controller: _nameController,
@@ -476,14 +486,14 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                           style: TextStyle(color: Colors.blueAccent, fontSize: 12, decoration: TextDecoration.underline)),
                     ),
                   ),
-                  const Divider(height: 32, color: Colors.white24),
+                  Divider(height: 32, color: divider),
 
                   // Kitchen Dispatch Address Section
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text('Kitchen Pickup Address',
-                          style: TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold, fontSize: 15)),
+                          style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 15)),
                       Row(
                         children: [
                           Icon(_latitude != null ? Icons.check_circle : Icons.warning_amber_rounded,
@@ -498,7 +508,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                     ],
                   ),
                   const SizedBox(height: 4),
-                  const Text('Drivers navigate to these coordinates for food collection.', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  Text('Drivers navigate to these coordinates for food collection.', style: TextStyle(color: muted, fontSize: 12)),
                   const SizedBox(height: 12),
 
                   if (_isEditing)
@@ -509,13 +519,13 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                         child: OutlinedButton.icon(
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 14),
-                            side: BorderSide(color: _latitude == null ? Colors.deepOrange : Colors.green),
+                            side: BorderSide(color: _latitude == null ? AppTheme.primary : Colors.green),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
-                          icon: Icon(Icons.pin_drop, color: _latitude == null ? Colors.deepOrange : Colors.green),
+                          icon: Icon(Icons.pin_drop, color: _latitude == null ? AppTheme.primary : Colors.green),
                           label: Text(
                             _latitude == null ? 'Pin Exact Kitchen on Map *' : 'Location Pinned (Tap to update)',
-                            style: TextStyle(fontWeight: FontWeight.bold, color: _latitude == null ? Colors.deepOrange : Colors.green),
+                            style: TextStyle(fontWeight: FontWeight.bold, color: _latitude == null ? AppTheme.primary : Colors.green),
                           ),
                           onPressed: _openMapPicker,
                         ),
@@ -567,14 +577,15 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                       ),
                     ],
                   ),
-                  const Divider(height: 36, color: Colors.white24),
+                  Divider(height: 36, color: divider),
 
                   // Automated Settlements & Payout Section
                   const Text('Automated Bank Payout Routing',
-                      style: TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold, fontSize: 15)),
+                      style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 15)),
                   const SizedBox(height: 12),
                   Card(
-                    color: const Color(0xFF1E1E1E),
+                    color: surface,
+                    elevation: isDark ? 0 : 1,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     child: Padding(
                       padding: const EdgeInsets.all(16),
@@ -584,29 +595,29 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                             contentPadding: EdgeInsets.zero,
                             leading: Icon(
                               _payoutEnabled ? Icons.account_balance_wallet : Icons.account_balance,
-                              color: _payoutEnabled ? Colors.greenAccent : Colors.orangeAccent,
+                              color: _payoutEnabled ? Colors.green : Colors.orange,
                             ),
                             title: Text(
                               _payoutEnabled ? 'Direct Settlement Active' : 'Configure Settlement Account',
-                              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                              style: TextStyle(color: titleColor, fontSize: 14, fontWeight: FontWeight.bold),
                             ),
                             subtitle: Text(
                               _payoutEnabled
                                   ? 'Earnings settle automatically to your registered account.'
                                   : 'Required for automated split payouts via Razorpay Route.',
-                              style: const TextStyle(color: Colors.grey, fontSize: 12),
+                              style: TextStyle(color: muted, fontSize: 12),
                             ),
                             trailing: _payoutEnabled
                                 ? const Chip(backgroundColor: Colors.green, label: Text('Active', style: TextStyle(color: Colors.white, fontSize: 11)))
                                 : ElevatedButton(
-                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange),
+                                    style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
                                     onPressed: _isSettingUpPayout ? null : _setupChefPayout,
                                     child: _isSettingUpPayout
                                         ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                                         : const Text('Link', style: TextStyle(color: Colors.white, fontSize: 12)),
                                   ),
                           ),
-                          const Divider(color: Colors.white12),
+                          Divider(color: divider.withValues(alpha: 0.5)),
                           _buildValidatedTextField(controller: _beneficiaryNameController, label: 'Account Holder Name'),
                           const SizedBox(height: 10),
                           _buildValidatedTextField(controller: _bankAccountController, label: 'Bank Account Number', keyboardType: TextInputType.number),
@@ -625,13 +636,14 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
 
                   // Account Security Card
                   Card(
-                    color: const Color(0xFF1E1E1E),
+                    color: surface,
+                    elevation: isDark ? 0 : 1,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     child: ListTile(
-                      leading: const Icon(Icons.security, color: Colors.white70),
-                      title: const Text('Security & Credentials', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
-                      subtitle: const Text('Update login password', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                      trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                      leading: Icon(Icons.security, color: muted),
+                      title: Text('Security & Credentials', style: TextStyle(color: titleColor, fontSize: 14, fontWeight: FontWeight.bold)),
+                      subtitle: Text('Update login password', style: TextStyle(color: muted, fontSize: 12)),
+                      trailing: Icon(Icons.chevron_right, color: muted),
                       onTap: _showChangePasswordDialog,
                     ),
                   ),
@@ -639,12 +651,12 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
 
                   // Customer Reviews Section
                   const Text('Customer Reviews & Ratings',
-                      style: TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold, fontSize: 15)),
+                      style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 15)),
                   const SizedBox(height: 12),
                   if (_reviews.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 16),
-                      child: Center(child: Text('No reviews received yet.', style: TextStyle(color: Colors.grey, fontSize: 13))),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Center(child: Text('No reviews received yet.', style: TextStyle(color: muted, fontSize: 13))),
                     )
                   else
                     ListView.builder(
@@ -654,7 +666,8 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                       itemBuilder: (context, index) {
                         final rev = _reviews[index];
                         return Card(
-                          color: const Color(0xFF1E1E1E),
+                          color: surface,
+                          elevation: isDark ? 0 : 1,
                           margin: const EdgeInsets.only(bottom: 10),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           child: Padding(
@@ -671,17 +684,17 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                                         (i) => Icon(i < rev.rating ? Icons.star : Icons.star_border, color: Colors.amber, size: 15),
                                       ),
                                     ),
-                                    Text(formatOrderDate(rev.createdAt.toIso8601String()), style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                                    Text(formatOrderDate(rev.createdAt.toIso8601String()), style: TextStyle(color: muted, fontSize: 11)),
                                   ],
                                 ),
                                 const SizedBox(height: 6),
                                 Text('Dish: ${rev.mealTitle}',
-                                    style: const TextStyle(color: Colors.deepOrangeAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                                    style: const TextStyle(color: AppTheme.primary, fontSize: 12, fontWeight: FontWeight.bold)),
                                 const SizedBox(height: 2),
-                                Text(rev.customerName, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                                Text(rev.customerName, style: TextStyle(color: titleColor, fontSize: 13, fontWeight: FontWeight.w600)),
                                 if (rev.comment.isNotEmpty) ...[
                                   const SizedBox(height: 4),
-                                  Text('"${rev.comment}"', style: const TextStyle(color: Colors.white70, fontSize: 12, fontStyle: FontStyle.italic)),
+                                  Text('"${rev.comment}"', style: TextStyle(color: muted, fontSize: 12, fontStyle: FontStyle.italic)),
                                 ],
                               ],
                             ),
@@ -695,7 +708,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                   if (_isEditing)
                     ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.deepOrange,
+                        backgroundColor: AppTheme.primary,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -722,6 +735,12 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     String? Function(String?)? validator,
     List<TextInputFormatter>? inputFormatters,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
+    final muted = isDark ? Colors.grey.shade400 : AppTheme.textMuted;
+    final fill = isDark ? AppTheme.surfaceMutedDark : Colors.white;
+    final border = isDark ? Colors.white12 : Colors.grey.shade300;
+
     return TextFormField(
       controller: controller,
       enabled: _isEditing,
@@ -729,18 +748,18 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
       maxLength: maxLength,
       validator: validator,
       inputFormatters: inputFormatters,
-      style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+      style: TextStyle(color: titleColor, fontSize: 14, fontWeight: FontWeight.w500),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: Colors.grey, fontSize: 13),
-        floatingLabelStyle: const TextStyle(color: Colors.deepOrange, fontSize: 14, fontWeight: FontWeight.bold),
-        prefixIcon: prefixIcon != null ? Icon(prefixIcon, color: Colors.deepOrange, size: 20) : null,
+        labelStyle: TextStyle(color: muted, fontSize: 13),
+        floatingLabelStyle: const TextStyle(color: AppTheme.primary, fontSize: 14, fontWeight: FontWeight.bold),
+        prefixIcon: prefixIcon != null ? Icon(prefixIcon, color: AppTheme.primary, size: 20) : null,
         filled: true,
-        fillColor: const Color(0xFF2A2A2A),
+        fillColor: fill,
         counterText: '',
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.white12)),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.deepOrange, width: 2)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: border)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppTheme.primary, width: 2)),
         disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
         errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.redAccent)),
       ),

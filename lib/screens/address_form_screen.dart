@@ -423,14 +423,25 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? AppTheme.backgroundDark : AppTheme.background;
+    final surface = isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight;
+    final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
+    final muted = isDark ? Colors.grey.shade400 : AppTheme.textMuted;
+    final fill = isDark ? AppTheme.surfaceMutedDark : Colors.white;
+    final divider = isDark ? Colors.white24 : Colors.black12;
+    final optionBorder = isDark ? Colors.white12 : Colors.grey.shade300;
+    final optionDivider = isDark ? Colors.white10 : Colors.grey.shade200;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: bg,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        iconTheme: IconThemeData(color: titleColor),
         title: Text(
           widget.existingAddress == null ? 'Add Delivery Address' : 'Edit Address',
-          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+          style: TextStyle(fontWeight: FontWeight.bold, color: titleColor),
         ),
         actions: [
           if (widget.existingAddress != null)
@@ -464,18 +475,18 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
                     controller: controller,
                     focusNode: focusNode,
                     onEditingComplete: onEditingComplete,
-                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    style: TextStyle(color: titleColor, fontSize: 14),
                     decoration: InputDecoration(
                       labelText: 'Search Building, Street, or Area 🔍',
-                      labelStyle: const TextStyle(color: Colors.grey, fontSize: 13),
+                      labelStyle: TextStyle(color: muted, fontSize: 13),
                       hintText: 'Start typing area or landmark...',
-                      hintStyle: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                      hintStyle: TextStyle(color: muted, fontSize: 13),
                       filled: true,
-                      fillColor: AppTheme.surfaceDark,
+                      fillColor: fill,
                       prefixIcon: const Icon(Icons.search, color: AppTheme.primary),
                       suffixIcon: controller.text.isNotEmpty
                           ? IconButton(
-                              icon: const Icon(Icons.clear, color: Colors.grey, size: 18),
+                              icon: Icon(Icons.clear, color: muted, size: 18),
                               onPressed: () {
                                 controller.clear();
                                 _searchController.clear();
@@ -500,15 +511,15 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
                         constraints: const BoxConstraints(maxHeight: 260),
                         width: MediaQuery.of(context).size.width - 32,
                         decoration: BoxDecoration(
-                          color: AppTheme.surfaceDark,
+                          color: surface,
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: Colors.white12),
+                          border: Border.all(color: optionBorder),
                         ),
                         child: ListView.separated(
                           padding: EdgeInsets.zero,
                           shrinkWrap: true,
                           itemCount: options.length,
-                          separatorBuilder: (_, _) => const Divider(height: 1, color: Colors.white10),
+                          separatorBuilder: (_, _) => Divider(height: 1, color: optionDivider),
                           itemBuilder: (BuildContext context, int index) {
                             final option = options.elementAt(index);
                             return ListTile(
@@ -516,12 +527,12 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
                               leading: const Icon(Icons.location_on_outlined, color: AppTheme.primary, size: 20),
                               title: Text(
                                 option.primaryText,
-                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white),
+                                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: titleColor),
                               ),
                               subtitle: option.secondaryText.isNotEmpty
                                   ? Text(
                                       option.secondaryText,
-                                      style: const TextStyle(fontSize: 12, color: Colors.white60),
+                                      style: TextStyle(fontSize: 12, color: muted),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     )
@@ -538,20 +549,20 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
               const SizedBox(height: 16),
 
               Row(
-                children: const [
-                  Expanded(child: Divider(color: Colors.white24)),
+                children: [
+                  Expanded(child: Divider(color: divider)),
                   Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 8),
-                    child: Text('OR', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Text('OR', style: TextStyle(color: muted, fontWeight: FontWeight.bold)),
                   ),
-                  Expanded(child: Divider(color: Colors.white24)),
+                  Expanded(child: Divider(color: divider)),
                 ],
               ),
               const SizedBox(height: 16),
 
               OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
-                  backgroundColor: AppTheme.surfaceDark,
+                  backgroundColor: fill,
                   foregroundColor: AppTheme.primary,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -566,9 +577,9 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
               ),
               const SizedBox(height: 24),
 
-              const Text(
+              Text(
                 'Address Details',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor),
               ),
               const SizedBox(height: 12),
 
@@ -663,21 +674,27 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     int? maxLength,
     String? Function(String?)? validator,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
+    final muted = isDark ? Colors.grey.shade400 : AppTheme.textMuted;
+    final fill = isDark ? AppTheme.surfaceMutedDark : Colors.white;
+    final border = isDark ? Colors.white12 : Colors.grey.shade300;
+
     return TextFormField(
       controller: controller,
-      style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+      style: TextStyle(color: titleColor, fontSize: 14, fontWeight: FontWeight.w500),
       keyboardType: keyboardType,
       maxLength: maxLength,
       validator: validator,
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: Colors.grey, fontSize: 13),
+        labelStyle: TextStyle(color: muted, fontSize: 13),
         floatingLabelStyle: const TextStyle(color: AppTheme.primary, fontSize: 14, fontWeight: FontWeight.bold),
         filled: true,
-        fillColor: AppTheme.surfaceDark,
+        fillColor: fill,
         counterText: '',
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white12)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: border)),
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppTheme.primary, width: 2)),
         errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.redAccent)),
       ),

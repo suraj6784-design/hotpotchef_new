@@ -86,13 +86,18 @@ class _DriverIdCardScreenState extends State<DriverIdCardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? AppTheme.backgroundDark : AppTheme.background;
+    final surface = isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight;
+    final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: bg,
       appBar: AppBar(
-        title: const Text('Digital ID Card', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: const Color(0xFF1E1E1E),
+        title: Text('Digital ID Card', style: TextStyle(color: titleColor, fontWeight: FontWeight.bold)),
+        backgroundColor: surface,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: IconThemeData(color: titleColor),
       ),
       body: Center(
         child: SingleChildScrollView(
