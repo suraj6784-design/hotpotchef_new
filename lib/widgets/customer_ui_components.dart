@@ -616,8 +616,8 @@ class _MealRatingBadgeState extends State<MealRatingBadge> {
   }
 }
 
-// 9. Standardized Universal App Card
-class AppCard extends StatelessWidget {
+// 9. Standardized Universal App Card (with tactile press feedback)
+class AppCard extends StatefulWidget {
   final Widget child;
   final EdgeInsetsGeometry? padding;
   final EdgeInsetsGeometry? margin;
@@ -634,29 +634,48 @@ class AppCard extends StatelessWidget {
   });
 
   @override
+  State<AppCard> createState() => _AppCardState();
+}
+
+class _AppCardState extends State<AppCard> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (widget.onTap == null) return;
+    if (_pressed != value) setState(() => _pressed = value);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final card = Container(
-      margin: margin,
-      padding: padding,
-      clipBehavior: Clip.hardEdge,
-      decoration: BoxDecoration(
-        color: backgroundColor ?? (isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: isDark ? [] : AppTheme.softShadow,
+    final card = AnimatedScale(
+      scale: _pressed ? 0.97 : 1.0,
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOut,
+      child: Container(
+        margin: widget.margin,
+        padding: widget.padding,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: widget.backgroundColor ?? (isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight),
+          borderRadius: AppTheme.radiusLg,
+          boxShadow: isDark ? const [] : AppTheme.softShadow,
+          border: isDark ? Border.all(color: Colors.white.withValues(alpha: 0.06)) : null,
+        ),
+        child: widget.child,
       ),
-      child: child,
     );
 
-    if (onTap != null) {
-      return GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: card,
-      );
-    }
+    if (widget.onTap == null) return card;
 
-    return card;
+    return GestureDetector(
+      onTap: widget.onTap,
+      onTapDown: (_) => _setPressed(true),
+      onTapUp: (_) => _setPressed(false),
+      onTapCancel: () => _setPressed(false),
+      behavior: HitTestBehavior.opaque,
+      child: card,
+    );
   }
 }

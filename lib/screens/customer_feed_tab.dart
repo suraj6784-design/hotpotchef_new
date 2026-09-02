@@ -4,13 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 import '../utils/helpers.dart';
 import '../utils/customer_constants.dart';
 import '../utils/dynamic_ui_engine.dart';
 import '../providers/cart_provider.dart';
-import '../models/cart_state.dart';
 import '../widgets/customer_ui_components.dart';
+import '../widgets/app_widgets.dart';
 import '../widgets/daily_streak_banner.dart';
 import '../widgets/ai_recommendations_section.dart';
 import 'address_form_screen.dart';
@@ -635,35 +636,22 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
               stream: _mealsStream,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(32),
-                      child: CircularProgressIndicator(color: brandPrimary),
-                    ),
-                  );
+                  return const MealListSkeleton(count: 4);
                 }
                 if (snapshot.hasError) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.wifi_off, size: 48, color: Colors.grey),
-                        const SizedBox(height: 16),
-                        const Text('Trouble connecting to the kitchen.', style: TextStyle(color: textMuted)),
-                        TextButton(
-                          onPressed: () => setState(() {}),
-                          child: const Text('Tap to Retry', style: TextStyle(color: brandPrimary, fontWeight: FontWeight.bold)),
-                        )
-                      ],
-                    ),
+                  return EmptyState(
+                    icon: Icons.wifi_off_rounded,
+                    title: 'Trouble reaching the kitchen',
+                    message: 'We couldn\'t load fresh meals right now. Please check your connection and try again.',
+                    actionLabel: 'Retry',
+                    onAction: () => setState(() {}),
                   );
                 }
                 if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(32),
-                      child: Text('No home-cooked meals have been published yet.', style: TextStyle(color: textMuted)),
-                    ),
+                  return const EmptyState(
+                    icon: Icons.restaurant_menu_rounded,
+                    title: 'No meals published yet',
+                    message: 'Our home chefs are prepping something delicious. Check back soon!',
                   );
                 }
 
@@ -693,11 +681,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
 
   Widget _buildMealGrid(List<Map<String, dynamic>> meals) {
     if (meals.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(32),
-          child: Text('No meals found.', style: TextStyle(color: textMuted)),
-        ),
+      return const EmptyState(
+        icon: Icons.search_off_rounded,
+        title: 'No meals found',
+        message: 'Try a different category or search for something else.',
       );
     }
 
@@ -727,7 +714,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             crossAxisCount: columns,
             crossAxisSpacing: 16,
             mainAxisSpacing: 16,
-            mainAxisExtent: 330,
+            mainAxisExtent: 342,
           ),
           itemCount: meals.length,
           itemBuilder: (context, index) {
@@ -746,11 +733,11 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             return GestureDetector(
               onTap: () => showMealDetailsDialog(context, meal, ref),
               child: Container(
-                clipBehavior: Clip.hardEdge,
+                clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4))],
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: AppTheme.radiusLg,
+                  boxShadow: AppTheme.softShadow,
                 ),
                 child: Stack(
                   children: [
@@ -770,22 +757,46 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                           Stack(
                             children: [
                               ClipRRect(
-                                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                                borderRadius: const BorderRadius.vertical(top: Radius.circular(AppTheme.rLg)),
                                 child: Container(
-                                  height: 120,
+                                  height: 130,
                                   width: double.infinity,
                                   color: Colors.grey.shade200,
                                   child: meal['image_url'] != null
                                       ? Hero(
                                           tag: 'meal-image-${meal['id']}',
-                                          child: Image.network(
-                                            meal['image_url'],
+                                          child: CachedNetworkImage(
+                                            imageUrl: meal['image_url'].toString(),
                                             fit: BoxFit.cover,
                                             width: double.infinity,
                                             height: double.infinity,
+                                            placeholder: (_, _) => const AppShimmer(
+                                              child: ShimmerBox(
+                                                width: double.infinity,
+                                                height: 130,
+                                                borderRadius: BorderRadius.zero,
+                                              ),
+                                            ),
+                                            errorWidget: (_, _, _) =>
+                                                const Icon(Icons.restaurant, color: Colors.grey, size: 40),
                                           ),
                                         )
                                       : const Icon(Icons.restaurant, color: Colors.grey, size: 40),
+                                ),
+                              ),
+                              // Subtle gradient scrim for legibility of top badges
+                              Positioned.fill(
+                                bottom: null,
+                                child: Container(
+                                  height: 56,
+                                  decoration: const BoxDecoration(
+                                    borderRadius: BorderRadius.vertical(top: Radius.circular(AppTheme.rLg)),
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topCenter,
+                                      end: Alignment.bottomCenter,
+                                      colors: [Color(0x55000000), Colors.transparent],
+                                    ),
+                                  ),
                                 ),
                               ),
                               if (!isAvailable)
@@ -953,18 +964,35 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                         ],
                                       ),
                                     ),
-                                    ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor:
-                                            isAvailable ? brandPrimary.withValues(alpha: 0.1) : Colors.grey.shade200,
-                                        foregroundColor: isAvailable ? brandPrimary : Colors.grey,
-                                        elevation: 0,
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                      ),
-                                      onPressed: isAvailable ? () => _handleAddToCart(meal) : null,
-                                      child: Text(
-                                        isAvailable ? 'Add +' : 'Closed',
-                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                                    Material(
+                                      color: Colors.transparent,
+                                      child: InkWell(
+                                        borderRadius: BorderRadius.circular(12),
+                                        onTap: isAvailable ? () => _handleAddToCart(meal) : null,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                                          decoration: BoxDecoration(
+                                            gradient: isAvailable ? AppTheme.primaryGradient : null,
+                                            color: isAvailable ? null : Colors.grey.shade200,
+                                            borderRadius: BorderRadius.circular(12),
+                                            boxShadow: isAvailable ? AppTheme.brandGlow(opacity: 0.25) : null,
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(isAvailable ? Icons.add_rounded : Icons.lock_clock,
+                                                  size: 15, color: isAvailable ? Colors.white : Colors.grey),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                isAvailable ? 'Add' : 'Closed',
+                                                style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 12,
+                                                    color: isAvailable ? Colors.white : Colors.grey),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -978,7 +1006,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                   ],
                 ),
               ),
-            );
+            ).entrance(index: index);
           },
         );
       },
