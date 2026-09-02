@@ -9,7 +9,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/helpers.dart';
-import '../utils/app_theme.dart';
 import '../utils/network.dart';
 import '../models/cart_enums.dart';
 import '../services/alert_service.dart';
@@ -88,45 +87,70 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   // --- Initial Data Load ---
 
   Future<void> _loadUserCheckoutData() async {
-    try {
-      final user = _supabase.auth.currentUser;
-      if (user == null) return;
-
-      final futures = await Future.wait([
-        _supabase.from('users').select().eq('id', user.id).maybeSingle(),
-        _supabase
-            .from('user_addresses')
-            .select()
-            .eq('user_id', user.id)
-            .order('is_default', ascending: false),
-        _supabase.rpc('calculate_cart_total', params: {'p_items': widget.cartItems}),
-      ]).withTimeout(NetworkTimeouts.standard);
-
-      final userData = futures[0] as Map<String, dynamic>?;
-      final addressResponse = futures[1] as List<dynamic>;
-      final pricingRes = futures[2] as Map<String, dynamic>?;
-
-      if (!mounted) return;
-
-      setState(() {
-        _savedAddresses = List<Map<String, dynamic>>.from(addressResponse);
-        if (_savedAddresses.isNotEmpty) {
-          _selectedAddressData = _savedAddresses.first;
-        }
-        _phoneController.text = userData?['phone']?.toString() ??
-            user.userMetadata?['phone']?.toString() ??
-            '';
-        _userCoinBalance =
-            double.tryParse(userData?['hotpot_coins']?.toString() ?? '0') ?? 0.0;
-        _serverPricing = pricingRes;
-        _isLoading = false;
-      });
-
-      await _calculateDeliveryFee();
-    } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to load user checkout data');
+    final user = _supabase.auth.currentUser;
+    if (user == null) {
       if (mounted) setState(() => _isLoading = false);
+      return;
     }
+
+    Map<String, dynamic>? userData;
+    List<Map<String, dynamic>>? fetchedAddresses;
+    Map<String, dynamic>? pricingRes;
+
+    try {
+      userData = await _supabase
+          .from('users')
+          .select()
+          .eq('id', user.id)
+          .maybeSingle()
+          .withTimeout(NetworkTimeouts.standard);
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to load checkout user');
+    }
+
+    try {
+      final raw = await _supabase
+          .from('user_addresses')
+          .select()
+          .eq('user_id', user.id)
+          .withTimeout(NetworkTimeouts.standard);
+      fetchedAddresses = List<Map<String, dynamic>>.from(raw as List);
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to load checkout addresses');
+    }
+
+    try {
+      pricingRes = await _supabase
+          .rpc('calculate_cart_total', params: {'p_items': widget.cartItems})
+          .withTimeout(NetworkTimeouts.standard) as Map<String, dynamic>?;
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to calculate cart total');
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      if (fetchedAddresses != null) {
+        _savedAddresses = fetchedAddresses;
+        _selectedAddressData = preferredCheckoutAddress(
+              fetchedAddresses,
+              selectedId: _selectedAddressData?['id'],
+            ) ??
+            checkoutAddressFromUserProfile(userData) ??
+            _selectedAddressData;
+      } else {
+        _selectedAddressData ??= checkoutAddressFromUserProfile(userData);
+      }
+      _phoneController.text = userData?['phone']?.toString() ??
+          user.userMetadata?['phone']?.toString() ??
+          '';
+      _userCoinBalance =
+          double.tryParse(userData?['hotpot_coins']?.toString() ?? '0') ?? 0.0;
+      if (pricingRes != null) _serverPricing = pricingRes;
+      _isLoading = false;
+    });
+
+    await _calculateDeliveryFee();
   }
 
   bool get _hasDelivery => widget.cartItems.any((item) {
@@ -147,9 +171,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return;
     }
 
-    if (_selectedAddressData == null ||
-        _selectedAddressData!['latitude'] == null ||
-        _selectedAddressData!['longitude'] == null) {
+    final custLat = addressCoordinate(_selectedAddressData, latitude: true);
+    final custLng = addressCoordinate(_selectedAddressData, latitude: false);
+    if (custLat == null || custLng == null) {
       setState(() => _deliveryFee = 40.0);
       return;
     }
@@ -157,8 +181,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     setState(() => _isCalculatingFee = true);
 
     try {
-      final custLat = double.parse(_selectedAddressData!['latitude'].toString());
-      final custLng = double.parse(_selectedAddressData!['longitude'].toString());
 
       final chefIds = widget.cartItems
           .map((e) => e['chef_id']?.toString() ?? e['chefId']?.toString())
@@ -353,7 +375,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return 'Store Pickup / Dine-In';
     }
     final a = _selectedAddressData!;
-    return "${a['house_no']}, ${a['street']}, ${a['city']}, ${a['state']} - ${a['postal_code'] ?? a['pincode'] ?? ''}";
+    final formatted = formatSavedAddress(a);
+    return formatted.isNotEmpty ? formatted : 'Store Pickup / Dine-In';
   }
 
   List<Map<String, dynamic>> _checkoutCartItems() {
@@ -554,7 +577,39 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   // --- Modals & Widgets ---
 
+  Future<void> _openAddressForm({Map<String, dynamic>? existing}) async {
+    final result = await Navigator.push<Object?>(
+      context,
+      MaterialPageRoute(builder: (_) => AddressFormScreen(existingAddress: existing)),
+    );
+    if (!mounted) return;
+
+    if (result is Map<String, dynamic>) {
+      setState(() {
+        final id = result['id'];
+        _savedAddresses = [
+          result,
+          ..._savedAddresses.where((addr) => addr['id'] != id),
+        ];
+        _selectedAddressData = result;
+      });
+      await _calculateDeliveryFee();
+      _showSnackBar('Delivery address saved');
+    } else if (result == 'deleted') {
+      _selectedAddressData = null;
+    }
+
+    if (result != null) {
+      await _loadUserCheckoutData();
+    }
+  }
+
   void _showAddressSelectorModal() {
+    if (_savedAddresses.isEmpty) {
+      _openAddressForm();
+      return;
+    }
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
@@ -570,14 +625,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 const Text('Select Delivery Address',
                     style: TextStyle(color: Colors.black87, fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
-                if (_savedAddresses.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 16),
-                    child: Text('No saved addresses yet.', style: TextStyle(color: Colors.grey)),
-                  ),
                 ..._savedAddresses.map((addr) {
                   final isSelected = _selectedAddressData?['id'] == addr['id'];
-                  final displayStr = "${addr['house_no']}, ${addr['street']}, ${addr['city'] ?? ''}";
+                  final displayStr = formatSavedAddress(addr);
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 12),
@@ -590,7 +640,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       dense: true,
                       leading: Icon(Icons.location_on, color: isSelected ? Colors.deepOrange : Colors.grey),
                       title: Text(
-                        displayStr,
+                        displayStr.isEmpty ? 'Saved address' : displayStr,
                         style: TextStyle(
                           color: isSelected ? Colors.deepOrange : Colors.black87,
                           fontSize: 13,
@@ -612,10 +662,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       style: TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold)),
                   onPressed: () {
                     Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const AddressFormScreen()),
-                    ).then((_) => _loadUserCheckoutData());
+                    _openAddressForm();
                   },
                 ),
               ],
@@ -745,17 +792,22 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       ]),
                       TextButton(
                         onPressed: _showAddressSelectorModal,
-                        child: const Text('Change',
-                            style: TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold)),
+                        child: Text(
+                          _selectedAddressData == null ? 'Add' : 'Change',
+                          style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold),
+                        ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    _selectedAddressData != null
-                        ? "${_selectedAddressData!['house_no']}, ${_selectedAddressData!['street']}, ${_selectedAddressData!['city']}"
-                        : 'Please add a delivery address',
-                    style: const TextStyle(color: Colors.grey, fontSize: 14),
+                  InkWell(
+                    onTap: _showAddressSelectorModal,
+                    child: Text(
+                      formatSavedAddress(_selectedAddressData).isEmpty
+                          ? 'Please add a delivery address'
+                          : formatSavedAddress(_selectedAddressData),
+                      style: const TextStyle(color: Colors.grey, fontSize: 14),
+                    ),
                   ),
                 ],
               ),

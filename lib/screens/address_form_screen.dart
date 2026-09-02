@@ -305,6 +305,44 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
 
   // --- Database Persistence ---
 
+  Future<Map<String, dynamic>> _upsertAddress({
+    required Map<String, dynamic> addressData,
+    Object? existingId,
+  }) async {
+    final client = Supabase.instance.client;
+    final payload = {
+      'user_id': addressData['user_id'],
+      'house_no': addressData['house_no'],
+      'street': addressData['street'],
+      'city': addressData['city'],
+      'state': addressData['state'],
+      'postal_code': addressData['postal_code'],
+      'country': addressData['country'],
+      'landmark': addressData['landmark'],
+      'latitude': addressData['latitude'],
+      'longitude': addressData['longitude'],
+    };
+
+    Future<Map<String, dynamic>> write(Map<String, dynamic> data) async {
+      if (existingId != null) {
+        await client.from('user_addresses').update(Map<String, dynamic>.from(data)..remove('user_id')).eq('id', existingId);
+        return {...data, 'id': existingId};
+      }
+      await client.from('user_addresses').insert(data);
+      return data;
+    }
+
+    try {
+      return await write(payload);
+    } catch (_) {
+      final alt = {
+        ...payload,
+        'pincode': payload['postal_code'],
+      }..remove('postal_code');
+      return await write(alt);
+    }
+  }
+
   Future<void> _saveAddress() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -329,8 +367,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final client = Supabase.instance.client;
-      final user = client.auth.currentUser;
+      final user = Supabase.instance.client.auth.currentUser;
       if (user == null) throw Exception('User authentication session expired');
 
       final addressData = {
@@ -350,21 +387,10 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
       };
 
       final existingId = widget.existingAddress?['id'];
-      if (existingId != null) {
-        await client.from('user_addresses').update(addressData).eq('id', existingId);
-      } else {
-        await client.from('user_addresses').insert(addressData);
-      }
+      final saved = await _upsertAddress(addressData: addressData, existingId: existingId);
 
       if (!mounted) return;
-      Navigator.pop(context, true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Address saved successfully!'),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      Navigator.pop(context, saved);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -398,14 +424,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     try {
       await Supabase.instance.client.from('user_addresses').delete().eq('id', addressId);
       if (!mounted) return;
-      Navigator.pop(context, true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Address deleted successfully'),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      Navigator.pop(context, 'deleted');
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

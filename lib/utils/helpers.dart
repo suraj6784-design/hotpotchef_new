@@ -290,3 +290,83 @@ String soldOutCheckoutMessage({required bool charged, bool refunded = false}) {
   }
   return 'This meal just sold out. Nothing was charged — pick another portion or chef.';
 }
+
+String _cleanAddressPart(dynamic value) {
+  final text = value?.toString().trim() ?? '';
+  if (text.isEmpty || text == 'null') return '';
+  return text;
+}
+
+/// Builds a single-line address from `user_addresses` or a `users` profile row.
+String formatSavedAddress(Map<String, dynamic>? data) {
+  if (data == null) return '';
+
+  final parts = <String>[
+    _cleanAddressPart(data['house_no']),
+    _cleanAddressPart(data['street'] ?? data['address_line1'] ?? data['address_line_1']),
+    _cleanAddressPart(data['landmark']),
+    _cleanAddressPart(data['city']),
+    _cleanAddressPart(data['state']),
+  ].where((part) => part.isNotEmpty).toList();
+
+  final pin = _cleanAddressPart(data['postal_code'] ?? data['pincode']);
+  if (pin.isNotEmpty) {
+    if (parts.isEmpty) return pin;
+    return '${parts.join(', ')} - $pin';
+  }
+
+  if (parts.isNotEmpty) return parts.join(', ');
+  return _cleanAddressPart(data['address'] ?? data['full_address'] ?? data['formatted_address']);
+}
+
+double? addressCoordinate(Map<String, dynamic>? data, {required bool latitude}) {
+  if (data == null) return null;
+  final keys = latitude ? const ['latitude', 'lat'] : const ['longitude', 'lng', 'long'];
+  for (final key in keys) {
+    final parsed = double.tryParse(data[key]?.toString() ?? '');
+    if (parsed != null) return parsed;
+  }
+  return null;
+}
+
+Map<String, dynamic>? preferredCheckoutAddress(
+  List<Map<String, dynamic>> addresses, {
+  Object? selectedId,
+}) {
+  if (addresses.isEmpty) return null;
+  if (selectedId != null) {
+    for (final address in addresses) {
+      if (address['id'] == selectedId) return address;
+    }
+  }
+  for (final address in addresses) {
+    if (address['is_default'] == true) return address;
+  }
+
+  final ranked = [...addresses];
+  ranked.sort((a, b) {
+    final aTime = DateTime.tryParse(_cleanAddressPart(a['updated_at'] ?? a['created_at'])) ??
+        DateTime.fromMillisecondsSinceEpoch(0);
+    final bTime = DateTime.tryParse(_cleanAddressPart(b['updated_at'] ?? b['created_at'])) ??
+        DateTime.fromMillisecondsSinceEpoch(0);
+    return bTime.compareTo(aTime);
+  });
+  return ranked.first;
+}
+
+Map<String, dynamic>? checkoutAddressFromUserProfile(Map<String, dynamic>? user) {
+  if (user == null) return null;
+  final formatted = formatSavedAddress(user);
+  if (formatted.isEmpty) return null;
+  return {
+    'id': 'profile',
+    'house_no': user['house_no'],
+    'street': user['street'] ?? user['address'],
+    'city': user['city'],
+    'state': user['state'],
+    'postal_code': user['postal_code'] ?? user['pincode'],
+    'latitude': user['latitude'] ?? user['lat'],
+    'longitude': user['longitude'] ?? user['lng'],
+    'address': user['address'],
+  };
+}
