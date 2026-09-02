@@ -88,6 +88,9 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
 
     _isVeg = meal['is_veg'] ?? true;
     _selectedCategory = meal['category']?.toString() ?? 'Maharashtrian';
+    if (!_categories.contains(_selectedCategory)) {
+      _selectedCategory = _categories.first;
+    }
     _activeTimeSlot = meal['time_slot']?.toString() ?? '';
     _existingImageUrl = meal['image_url']?.toString();
     _acceptsHotpotCoins = meal['accepts_hotpot_coins'] ?? true;
@@ -397,6 +400,33 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
             ),
             const SizedBox(height: 24),
 
+            if (isEditing) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.primary.withValues(alpha: 0.25)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Editing published dish',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: AppTheme.primary),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Update quantity, time slots, delivery options, price, and offers below, then tap Update Meal.',
+                      style: TextStyle(fontSize: 12, height: 1.35, color: AppTheme.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
+
             // Basics
             const Text('Meal Identity', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain)),
             const SizedBox(height: 12),
@@ -494,7 +524,12 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
             const SizedBox(height: 24),
 
             // Logistics & Schedule
-            const Text('Fulfillment & Prep Schedule', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain)),
+            const Text('Time slots', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain)),
+            const SizedBox(height: 4),
+            const Text(
+              'When this dish can be ordered and served.',
+              style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+            ),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(16),
@@ -506,13 +541,25 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    _activeTimeSlot.isEmpty ? 'No delivery window assigned' : 'Slot: $_activeTimeSlot',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: _activeTimeSlot.isEmpty ? AppTheme.textMuted : AppTheme.primary,
-                    ),
+                  Row(
+                    children: [
+                      Icon(
+                        _activeTimeSlot.isEmpty ? Icons.schedule_outlined : Icons.schedule,
+                        size: 18,
+                        color: _activeTimeSlot.isEmpty ? AppTheme.textMuted : AppTheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _activeTimeSlot.isEmpty ? 'No time slot assigned yet' : _activeTimeSlot,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: _activeTimeSlot.isEmpty ? AppTheme.textMuted : AppTheme.primary,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 10),
                   SizedBox(
@@ -523,16 +570,25 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       ),
                       icon: const Icon(Icons.schedule, size: 16, color: AppTheme.primary),
-                      label: const Text('Configure Cooking & Serving Schedule', style: TextStyle(color: AppTheme.primary)),
+                      label: Text(
+                        _activeTimeSlot.isEmpty ? 'Set cooking & serving slot' : 'Change time slot',
+                        style: const TextStyle(color: AppTheme.primary),
+                      ),
                       onPressed: _openScheduleBuilder,
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 20),
 
-            // Service Types
+            const Text('Delivery options', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain)),
+            const SizedBox(height: 4),
+            const Text(
+              'How customers can receive this dish. Select every option you can offer.',
+              style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+            ),
+            const SizedBox(height: 12),
             Container(
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -544,7 +600,9 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                   return CheckboxListTile(
                     dense: true,
                     activeColor: AppTheme.primary,
-                    title: Text(option.toDisplayString(), style: const TextStyle(fontSize: 13, color: AppTheme.textMain)),
+                    secondary: Icon(_serviceIcon(option), color: AppTheme.primary, size: 22),
+                    title: Text(option.toDisplayString(), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textMain)),
+                    subtitle: Text(option.chefHelpText, style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
                     value: _selectedServices.contains(option),
                     onChanged: (val) {
                       setState(() {
@@ -784,6 +842,19 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     setState(() {
       _activeTimeSlot = '$datePrefix (${start.format(context)} to ${end.format(context)})';
     });
+  }
+
+  IconData _serviceIcon(ServiceType type) {
+    switch (type) {
+      case ServiceType.deliveryPlatform:
+        return Icons.delivery_dining_rounded;
+      case ServiceType.deliverySelf:
+        return Icons.two_wheeler_rounded;
+      case ServiceType.pickup:
+        return Icons.storefront_rounded;
+      case ServiceType.dineIn:
+        return Icons.restaurant_rounded;
+    }
   }
 
   InputDecoration _inputStyle(String label) {

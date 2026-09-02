@@ -86,7 +86,15 @@ class AppRouter {
       ),
       GoRoute(
         path: '/chef-publish-meal',
-        builder: (context, state) => const ChefPublishMealScreen(),
+        builder: (context, state) {
+          final extra = state.extra;
+          final meal = extra is Map<String, dynamic>
+              ? extra
+              : extra is Map
+                  ? Map<String, dynamic>.from(extra)
+                  : null;
+          return ChefPublishMealScreen(existingMeal: meal);
+        },
       ),
       GoRoute(
         path: '/chat/:mealId',

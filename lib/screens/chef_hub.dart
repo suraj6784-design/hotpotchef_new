@@ -18,6 +18,7 @@ import '../widgets/app_status_badge.dart';
 import '../services/order_lifecycle.dart';
 import '../services/auth_session.dart';
 import 'packaging_store_screen.dart';
+import 'chef_publish_meal_screen.dart';
 
 class ChefDashboardScreen extends StatefulWidget {
   const ChefDashboardScreen({super.key});
@@ -752,6 +753,16 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     );
   }
 
+  void _openMealEditor(Map<String, dynamic> meal) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ChefPublishMealScreen(
+          existingMeal: Map<String, dynamic>.from(meal),
+        ),
+      ),
+    );
+  }
+
   Widget _buildMenuTab() {
     return StreamBuilder<List<Map<String, dynamic>>>(
       stream: _supabase
@@ -780,35 +791,110 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               ...items.asMap().entries.map((entry) {
                 final meal = entry.value;
                 final isPaused = meal['status']?.toString().toLowerCase() == 'paused';
+                final slot = meal['time_slot']?.toString().trim() ?? '';
+                final services = (meal['service_type']?.toString() ?? '')
+                    .split(',')
+                    .map((s) => s.trim())
+                    .where((s) => s.isNotEmpty)
+                    .toList();
+
                 return AppCard(
                   margin: const EdgeInsets.only(bottom: 10),
-                  child: ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: meal['image_url'] != null
-                          ? CachedNetworkImage(
-                              imageUrl: meal['image_url'].toString(),
-                              width: 52,
-                              height: 52,
-                              fit: BoxFit.cover,
-                              placeholder: (_, _) => const AppShimmer(
-                                child: ShimmerBox(width: 52, height: 52),
-                              ),
-                              errorWidget: (_, _, _) => Container(
-                                  width: 52, height: 52, color: Colors.grey.shade200, child: const Icon(Icons.fastfood)),
-                            )
-                          : Container(width: 52, height: 52, color: Colors.grey.shade200, child: const Icon(Icons.fastfood)),
-                    ),
-                    title: Text(meal['title'] ?? 'Meal', style: TextStyle(fontWeight: FontWeight.bold, decoration: isPaused ? TextDecoration.lineThrough : null)),
-                    subtitle: Text('₹${meal['price']} • Stock: ${meal['quantity']} remaining'),
-                    trailing: Switch.adaptive(
-                      activeThumbColor: AppTheme.primary,
-                      value: !isPaused,
-                      onChanged: (active) async {
-                        await _supabase.from('meals').update({'status': active ? 'Available' : 'Paused'}).eq('id', meal['id']);
-                      },
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: meal['image_url'] != null
+                                ? CachedNetworkImage(
+                                    imageUrl: meal['image_url'].toString(),
+                                    width: 56,
+                                    height: 56,
+                                    fit: BoxFit.cover,
+                                    placeholder: (_, _) => const AppShimmer(
+                                      child: ShimmerBox(width: 56, height: 56),
+                                    ),
+                                    errorWidget: (_, _, _) => Container(
+                                        width: 56, height: 56, color: Colors.grey.shade200, child: const Icon(Icons.fastfood)),
+                                  )
+                                : Container(width: 56, height: 56, color: Colors.grey.shade200, child: const Icon(Icons.fastfood)),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  meal['title'] ?? 'Meal',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    decoration: isPaused ? TextDecoration.lineThrough : null,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '₹${meal['price']} • Stock: ${meal['quantity']} remaining',
+                                  style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                                ),
+                                if (slot.isNotEmpty) ...[
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.schedule, size: 14, color: AppTheme.primary),
+                                      const SizedBox(width: 4),
+                                      Expanded(
+                                        child: Text(
+                                          slot,
+                                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.primary),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                                if (services.isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  Wrap(
+                                    spacing: 6,
+                                    runSpacing: 6,
+                                    children: services
+                                        .map((s) => PillTag(
+                                              label: s,
+                                              icon: ServiceType.fromString(s).isDelivery
+                                                  ? Icons.delivery_dining
+                                                  : Icons.storefront,
+                                              color: AppTheme.primary,
+                                            ))
+                                        .toList(),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          Switch.adaptive(
+                            activeThumbColor: AppTheme.primary,
+                            value: !isPaused,
+                            onChanged: (active) async {
+                              await _supabase.from('meals').update({'status': active ? 'Available' : 'Paused'}).eq('id', meal['id']);
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.primary,
+                          side: const BorderSide(color: AppTheme.primary),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        icon: const Icon(Icons.edit_outlined, size: 18),
+                        label: const Text('Edit dish', style: TextStyle(fontWeight: FontWeight.w700)),
+                        onPressed: () => _openMealEditor(meal),
+                      ),
+                    ],
                   ),
                 ).entrance(index: entry.key);
               }),

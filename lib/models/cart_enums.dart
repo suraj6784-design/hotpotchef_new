@@ -45,6 +45,19 @@ enum ServiceType {
       this == ServiceType.deliveryPlatform || this == ServiceType.deliverySelf;
 
   bool get usesDeliveryPartner => this == ServiceType.deliveryPlatform;
+
+  String get chefHelpText {
+    switch (this) {
+      case ServiceType.deliveryPlatform:
+        return 'A HotPotChef driver collects and delivers.';
+      case ServiceType.deliverySelf:
+        return 'You deliver the order to the customer.';
+      case ServiceType.pickup:
+        return 'Customer collects from your kitchen.';
+      case ServiceType.dineIn:
+        return 'Customer eats at your kitchen.';
+    }
+  }
 }
 
 /// Strongly typed add-ons/customizations for production scalability
