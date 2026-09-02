@@ -16,6 +16,7 @@ import '../utils/support.dart';
 import '../widgets/avatar_upload.dart';
 import '../widgets/loyalty_badge_card.dart';
 import '../widgets/app_widgets.dart';
+import '../widgets/change_password_dialog.dart';
 
 class CustomerProfileScreen extends StatefulWidget {
   final VoidCallback? onLogout;
@@ -37,9 +38,6 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
   String _gender = 'Not Specified';
   String _dietaryPref = 'Vegetarian';
 
-  final _oldPasswordController = TextEditingController();
-  final _newPasswordController = TextEditingController();
-
   double _hotpotCoins = 0.0;
   String? _avatarUrl;
   List<Map<String, dynamic>> _addresses = [];
@@ -48,7 +46,6 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
 
   bool _isLoading = true;
   bool _isSaving = false;
-  bool _isChangingPassword = false;
 
   @override
   void initState() {
@@ -62,8 +59,6 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
     _phoneController.dispose();
     _dobController.dispose();
     _allergiesController.dispose();
-    _oldPasswordController.dispose();
-    _newPasswordController.dispose();
     super.dispose();
   }
 
@@ -171,36 +166,30 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
     }
   }
 
-  Future<void> _changePassword() async {
-    final oldPass = _oldPasswordController.text.trim();
-    final newPass = _newPasswordController.text.trim();
-
-    if (oldPass.isEmpty || newPass.isEmpty || newPass.length < 8) {
-      _showSnackBar('Please enter your old password and a new password (min 8 chars).', isError: true);
-      return;
-    }
-
-    setState(() => _isChangingPassword = true);
-    try {
-      final user = _supabase.auth.currentUser;
-      if (user == null || user.email == null) throw Exception('Not logged in');
-
-      // 🌟 Verify old password by re-authenticating first
-      await _supabase.auth.signInWithPassword(email: user.email!, password: oldPass);
-      await _supabase.auth.updateUser(UserAttributes(password: newPass));
-
-      _oldPasswordController.clear();
-      _newPasswordController.clear();
-
-      if (!mounted) return;
-      Navigator.pop(context);
-      _showSnackBar('Password changed successfully!');
-    } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Password change failure');
-      _showSnackBar('Failed to update password. Incorrect old password or network error.', isError: true);
-    } finally {
-      if (mounted) setState(() => _isChangingPassword = false);
-    }
+  void _showChangePasswordDialog() {
+    showDialog<bool>(
+      context: context,
+      builder: (ctx) => ChangePasswordDialog(
+        onSubmit: ({required currentPassword, required newPassword}) async {
+          final user = _supabase.auth.currentUser;
+          if (user == null || user.email == null) {
+            throw Exception('Not logged in');
+          }
+          try {
+            await _supabase.auth.signInWithPassword(
+              email: user.email!,
+              password: currentPassword,
+            );
+            await _supabase.auth.updateUser(UserAttributes(password: newPassword));
+          } catch (e, stack) {
+            FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Password change failure');
+            rethrow;
+          }
+        },
+      ),
+    ).then((ok) {
+      if (ok == true) _showSnackBar('Password changed successfully!');
+    });
   }
 
   Future<void> _selectDateOfBirth(BuildContext context, StateSetter setSheetState) async {
@@ -624,56 +613,6 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
                 ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  void _showChangePasswordDialog() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: isDark ? AppTheme.surfaceDark : Colors.white,
-          title: Text('Change Password', style: TextStyle(color: isDark ? Colors.white : AppTheme.textMain)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildSheetTextField(
-                context: ctx,
-                controller: _oldPasswordController,
-                label: 'Old Password',
-                icon: Icons.lock_outline,
-                obscureText: true,
-              ),
-              const SizedBox(height: 12),
-              _buildSheetTextField(
-                context: ctx,
-                controller: _newPasswordController,
-                label: 'New Password (min 8 chars)',
-                icon: Icons.lock_reset,
-                obscureText: true,
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary, foregroundColor: Colors.white),
-              onPressed: _isChangingPassword
-                  ? null
-                  : () async {
-                      setDialogState(() => _isChangingPassword = true);
-                      await _changePassword();
-                      if (ctx.mounted) setDialogState(() => _isChangingPassword = false);
-                    },
-              child: _isChangingPassword
-                  ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Text('Update'),
-            )
-          ],
         ),
       ),
     );

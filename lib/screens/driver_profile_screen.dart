@@ -31,8 +31,6 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
   final _emergencyPhoneController = TextEditingController();
   final _aadhaarMaskedController = TextEditingController();
   final _panController = TextEditingController();
-  final _oldPasswordController = TextEditingController();
-  final _newPasswordController = TextEditingController();
 
   String _bloodGroup = 'O+';
   String? _avatarUrl;
@@ -71,8 +69,6 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     _emergencyPhoneController.dispose();
     _aadhaarMaskedController.dispose();
     _panController.dispose();
-    _oldPasswordController.dispose();
-    _newPasswordController.dispose();
     _houseController.dispose();
     _streetController.dispose();
     _cityController.dispose();
@@ -162,8 +158,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     showDialog<bool>(
       context: context,
       builder: (ctx) => ChangePasswordDialog(
-        requireCurrentPassword: true,
-        onSubmit: ({currentPassword, required newPassword}) async {
+        onSubmit: ({required currentPassword, required newPassword}) async {
           final user = _supabase.auth.currentUser;
           if (user == null || user.email == null) {
             throw Exception('Not logged in');
@@ -171,14 +166,11 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
           try {
             await _supabase.auth.signInWithPassword(
               email: user.email!,
-              password: currentPassword ?? '',
+              password: currentPassword,
             );
             await _supabase.auth.updateUser(UserAttributes(password: newPassword));
-            _oldPasswordController.clear();
-            _newPasswordController.clear();
           } catch (e, stack) {
             FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Driver password change failure');
-            _showSnackBar('Failed to update password. Incorrect old password or network error.', isError: true);
             rethrow;
           }
         },

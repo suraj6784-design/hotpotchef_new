@@ -7,13 +7,12 @@ class ChangePasswordDialog extends StatefulWidget {
   const ChangePasswordDialog({
     super.key,
     required this.onSubmit,
-    this.requireCurrentPassword = false,
-    this.requireConfirm = false,
   });
 
-  final bool requireCurrentPassword;
-  final bool requireConfirm;
-  final Future<void> Function({String? currentPassword, required String newPassword}) onSubmit;
+  final Future<void> Function({
+    required String currentPassword,
+    required String newPassword,
+  }) onSubmit;
 
   @override
   State<ChangePasswordDialog> createState() => _ChangePasswordDialogState();
@@ -24,6 +23,7 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
   final _next = TextEditingController();
   final _confirm = TextEditingController();
   bool _submitting = false;
+  String? _error;
 
   @override
   void dispose() {
@@ -33,22 +33,20 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
     super.dispose();
   }
 
-  String? _error;
-
   Future<void> _submit() async {
-    final newPass = _next.text.trim();
     final current = _current.text.trim();
+    final newPass = _next.text.trim();
     final confirm = _confirm.text.trim();
 
-    if (widget.requireCurrentPassword && current.isEmpty) {
-      setState(() => _error = 'Enter your current password.');
+    if (current.isEmpty) {
+      setState(() => _error = 'Enter your old password.');
       return;
     }
     if (newPass.length < 8) {
       setState(() => _error = 'Password must be at least 8 characters long.');
       return;
     }
-    if (widget.requireConfirm && newPass != confirm) {
+    if (newPass != confirm) {
       setState(() => _error = 'Passwords do not match.');
       return;
     }
@@ -58,15 +56,15 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
       _error = null;
     });
     try {
-      await widget.onSubmit(
-        currentPassword: widget.requireCurrentPassword ? current : null,
-        newPassword: newPass,
-      );
+      await widget.onSubmit(currentPassword: current, newPassword: newPass);
       if (!mounted) return;
       Navigator.pop(context, true);
-    } catch (_) {
-      if (mounted) setState(() => _submitting = false);
-      rethrow;
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        _error = 'Could not update password. Check your old password and try again.';
+      });
     }
   }
 
@@ -94,27 +92,26 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
         'Change Password',
         style: TextStyle(color: titleColor, fontSize: 18, fontWeight: FontWeight.bold),
       ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (widget.requireCurrentPassword) ...[
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
             TextField(
               controller: _current,
               obscureText: true,
               enabled: !_submitting,
+              autofocus: true,
               style: TextStyle(color: titleColor),
-              decoration: decoration('Current password', Icons.lock_outline),
+              decoration: decoration('Old password', Icons.lock_outline),
             ),
             const SizedBox(height: 12),
-          ],
-          TextField(
-            controller: _next,
-            obscureText: true,
-            enabled: !_submitting,
-            style: TextStyle(color: titleColor),
-            decoration: decoration('New password (min 8 chars)', Icons.lock_reset),
-          ),
-          if (widget.requireConfirm) ...[
+            TextField(
+              controller: _next,
+              obscureText: true,
+              enabled: !_submitting,
+              style: TextStyle(color: titleColor),
+              decoration: decoration('New password (min 8 chars)', Icons.lock_reset),
+            ),
             const SizedBox(height: 12),
             TextField(
               controller: _confirm,
@@ -123,12 +120,12 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
               style: TextStyle(color: titleColor),
               decoration: decoration('Confirm new password', Icons.lock_reset),
             ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(_error!, style: const TextStyle(color: AppTheme.error, fontSize: 13)),
+            ],
           ],
-          if (_error != null) ...[
-            const SizedBox(height: 12),
-            Text(_error!, style: const TextStyle(color: AppTheme.error, fontSize: 13)),
-          ],
-        ],
+        ),
       ),
       actions: [
         TextButton(

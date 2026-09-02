@@ -111,63 +111,96 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     super.dispose();
   }
 
-  // --- Optimized Data Loading with Single-Pass Relational Join ---
+  // --- Profile + reviews load independently so a reviews join cannot blank the form ---
+
+  void _applyUserProfile(Map<String, dynamic>? userData, User user) {
+    _nameController.text = userData?['name']?.toString() ??
+        userData?['full_name']?.toString() ??
+        user.userMetadata?['name']?.toString() ??
+        '';
+    _phoneController.text = userData?['phone']?.toString() ?? user.userMetadata?['phone']?.toString() ?? '';
+    _fssaiController.text = userData?['fssai_number']?.toString() ?? '';
+    _gatewayAccountController.text = userData?['gateway_account_id']?.toString() ?? '';
+
+    _beneficiaryNameController.text = userData?['beneficiary_name']?.toString() ?? '';
+    _bankAccountController.text = userData?['bank_account_masked']?.toString() ??
+        userData?['bank_account_number']?.toString() ??
+        '';
+    _ifscController.text = userData?['bank_ifsc']?.toString() ?? '';
+
+    _avatarUrl = userData?['avatar_url']?.toString();
+    _payoutEnabled = userData?['payout_enabled'] == true || _gatewayAccountController.text.isNotEmpty;
+
+    _latitude = (userData?['lat'] as num?)?.toDouble();
+    _longitude = (userData?['lng'] as num?)?.toDouble();
+
+    _houseController.text = userData?['house_no']?.toString() ?? '';
+    _streetController.text = userData?['street']?.toString() ?? userData?['address']?.toString() ?? '';
+    _cityController.text = userData?['city']?.toString() ?? '';
+    _stateController.text = userData?['state']?.toString() ?? '';
+    _pincodeController.text = userData?['pincode']?.toString() ?? userData?['postal_code']?.toString() ?? '';
+  }
 
   Future<void> _loadProfileAndReviews() async {
     setState(() => _isLoading = true);
+    final user = _supabase.auth.currentUser;
+    if (user == null) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+
     try {
-      final user = _supabase.auth.currentUser;
-      if (user == null) return;
-
-      final results = await Future.wait([
-        // 1. Chef profile with structured columns
-        _supabase.from('users').select().eq('id', user.id).maybeSingle(),
-        // 2. Relational Reviews query (0 N+1 overhead)
-        _supabase
-            .from('reviews')
-            .select('*, customer:users(name, full_name), meal:meals(title)')
-            .eq('chef_id', user.id)
-            .order('created_at', ascending: false)
-            .limit(20),
-      ]);
-
-      final userData = results[0] as Map<String, dynamic>?;
-      final rawReviews = results[1] as List<dynamic>? ?? [];
-
-      if (userData != null && mounted) {
-        _nameController.text = userData['name'] ?? userData['full_name'] ?? user.userMetadata?['name'] ?? '';
-        _phoneController.text = userData['phone'] ?? user.userMetadata?['phone'] ?? '';
-        _fssaiController.text = userData['fssai_number'] ?? '';
-        _gatewayAccountController.text = userData['gateway_account_id']?.toString() ?? '';
-
-        _beneficiaryNameController.text = userData['beneficiary_name']?.toString() ?? '';
-        _bankAccountController.text = userData['bank_account_masked']?.toString() ??
-            userData['bank_account_number']?.toString() ?? '';
-        _ifscController.text = userData['bank_ifsc']?.toString() ?? '';
-
-        _avatarUrl = userData['avatar_url']?.toString();
-        _payoutEnabled = userData['payout_enabled'] == true || _gatewayAccountController.text.isNotEmpty;
-
-        _latitude = (userData['lat'] as num?)?.toDouble();
-        _longitude = (userData['lng'] as num?)?.toDouble();
-
-        // Load structured address fields directly
-        _houseController.text = userData['house_no']?.toString() ?? '';
-        _streetController.text = userData['street']?.toString() ?? userData['address']?.toString() ?? '';
-        _cityController.text = userData['city']?.toString() ?? '';
-        _stateController.text = userData['state']?.toString() ?? '';
-        _pincodeController.text = userData['pincode']?.toString() ?? userData['postal_code']?.toString() ?? '';
-      }
-
-      if (mounted) {
-        setState(() {
-          _reviews = rawReviews.map((r) => ChefReviewModel.fromJson(Map<String, dynamic>.from(r))).toList();
-          _isLoading = false;
-        });
-      }
+      final userData = await _supabase
+          .from('users')
+          .select()
+          .eq('id', user.id)
+          .maybeSingle()
+          .withTimeout(NetworkTimeouts.standard);
+      if (mounted) _applyUserProfile(userData, user);
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chef Profile Loading Error');
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) _applyUserProfile(null, user);
+    }
+
+    List<ChefReviewModel> reviews = [];
+    try {
+      final rawReviews = await _supabase
+          .from('reviews')
+          .select('*, customer:users!customer_id(name, full_name), meal:meals(title)')
+          .eq('chef_id', user.id)
+          .order('created_at', ascending: false)
+          .limit(20)
+          .withTimeout(NetworkTimeouts.standard);
+      reviews = (rawReviews as List<dynamic>)
+          .map((r) => ChefReviewModel.fromJson(Map<String, dynamic>.from(r)))
+          .toList();
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chef reviews loading error');
+      try {
+        final rawReviews = await _supabase
+            .from('reviews')
+            .select()
+            .eq('chef_id', user.id)
+            .order('created_at', ascending: false)
+            .limit(20)
+            .withTimeout(NetworkTimeouts.standard);
+        reviews = (rawReviews as List<dynamic>)
+            .map((r) => ChefReviewModel.fromJson(Map<String, dynamic>.from(r)))
+            .toList();
+      } catch (fallbackError, fallbackStack) {
+        FirebaseCrashlytics.instance.recordError(
+          fallbackError,
+          fallbackStack,
+          reason: 'Chef reviews fallback loading error',
+        );
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _reviews = reviews;
+        _isLoading = false;
+      });
     }
   }
 
@@ -341,12 +374,19 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     showDialog<bool>(
       context: context,
       builder: (ctx) => ChangePasswordDialog(
-        requireConfirm: true,
-        onSubmit: ({currentPassword, required newPassword}) async {
+        onSubmit: ({required currentPassword, required newPassword}) async {
+          final user = _supabase.auth.currentUser;
+          if (user == null || user.email == null) {
+            throw Exception('Not logged in');
+          }
           try {
+            await _supabase.auth.signInWithPassword(
+              email: user.email!,
+              password: currentPassword,
+            );
             await _supabase.auth.updateUser(UserAttributes(password: newPassword));
-          } catch (e) {
-            _showSnackBar('Failed to change password: $e', isError: true);
+          } catch (e, stack) {
+            FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chef password change failure');
             rethrow;
           }
         },
@@ -743,7 +783,8 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
 
     return TextFormField(
       controller: controller,
-      enabled: _isEditing,
+      readOnly: !_isEditing,
+      enableInteractiveSelection: true,
       keyboardType: keyboardType,
       maxLength: maxLength,
       validator: validator,
