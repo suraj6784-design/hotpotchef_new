@@ -233,7 +233,10 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Order Cancelled & Inventory Restocked'), backgroundColor: Colors.orange),
+          const SnackBar(
+            content: Text('Order cancelled, inventory restored, and refund started.'),
+            backgroundColor: Colors.orange,
+          ),
         );
       }
     } catch (e, st) {

@@ -6,6 +6,12 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../models/order_status.dart';
 
+Map<String, dynamic>? _functionData(dynamic data) {
+  if (data is Map<String, dynamic>) return data;
+  if (data is Map) return Map<String, dynamic>.from(data);
+  return null;
+}
+
 class OrderRepository {
   final SupabaseClient _supabase = Supabase.instance.client;
 
@@ -76,21 +82,22 @@ class OrderRepository {
     String? chefId,
     String reason = 'Cancelled',
   }) async {
-    if (chefId != null && chefId.isNotEmpty) {
-      final res = await _supabase.rpc('cancel_and_restock_order', params: {
-        'p_order_id': orderId,
-        'p_chef_id': chefId,
-        'p_reason': reason,
-      });
-      if (res is Map && res['success'] != true) {
-        throw Exception(res['error'] ?? 'Cancellation rejected by server');
+    try {
+      final res = await _supabase.functions.invoke(
+        'cancel-order',
+        body: {
+          'order_id': orderId,
+          'reason': reason,
+          if (chefId != null && chefId.isNotEmpty) 'chef_id': chefId,
+        },
+      );
+      final data = _functionData(res.data);
+      if (res.status != 200 || data == null || data['success'] != true) {
+        throw Exception(data?['error'] ?? 'Cancellation rejected by server');
       }
-      return;
+    } on FunctionException catch (e) {
+      final details = _functionData(e.details);
+      throw Exception(details?['error'] ?? e.reasonPhrase ?? 'Cancellation failed');
     }
-
-    await _supabase.from('orders').update({
-      'status': OrderStatus.cancelled,
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-    }).eq('id', orderId);
   }
 }

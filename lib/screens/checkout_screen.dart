@@ -255,8 +255,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final response = await _supabase.functions.invoke(
         'create-split-order',
         body: {
-          'cart_items': widget.cartItems,
+          'cart_items': _checkoutCartItems(),
           'customer_email': user.email,
+          'customer_phone': phone,
+          'delivery_address': _formattedDeliveryAddress(),
+          'instructions': _instructionsController.text.trim(),
           'delivery_fee': _deliveryFee,
           'tip_amount': _selectedTip,
           'apply_coins': _applyCoins,
@@ -311,66 +314,150 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _showSnackBar('Redirecting to wallet: ${response.walletName}');
   }
 
+  String _formattedDeliveryAddress() {
+    if (!_hasDelivery || _selectedAddressData == null) {
+      return 'Store Pickup / Dine-In';
+    }
+    final a = _selectedAddressData!;
+    return "${a['house_no']}, ${a['street']}, ${a['city']}, ${a['state']} - ${a['postal_code'] ?? a['pincode'] ?? ''}";
+  }
+
+  List<Map<String, dynamic>> _checkoutCartItems() {
+    return widget.cartItems.map((item) {
+      final rawDate = item['scheduledDate'] ??
+          item['scheduled_date'] ??
+          item['selected_date'] ??
+          item['selectedDate'];
+      String selectedDateStr = 'Today';
+
+      if (rawDate != null) {
+        try {
+          final dt = DateTime.parse(rawDate.toString());
+          selectedDateStr =
+              "${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}";
+        } catch (_) {
+          selectedDateStr = rawDate.toString();
+        }
+      }
+
+      final rawDetails = item['rawMealDetails'] as Map<String, dynamic>?;
+      final finalTimeSlot = item['timeSlot'] ??
+          item['time_slot'] ??
+          rawDetails?['exact_time'] ??
+          item['exact_time'] ??
+          'ASAP';
+
+      return {
+        ...item,
+        'source_meal_id': item['source_meal_id'] ?? item['meal_id'] ?? item['mealId'] ?? item['id'],
+        'selected_date': selectedDateStr,
+        'time_slot': finalTimeSlot,
+      };
+    }).toList();
+  }
+
+  Map<String, dynamic> _placeOrderParams({
+    required String paymentId,
+    required String? razorpayOrderId,
+    required String? signature,
+  }) {
+    final user = _supabase.auth.currentUser!;
+    return {
+      'p_customer_email': user.email!,
+      'p_customer_phone': _phoneController.text.trim(),
+      'p_delivery_address': _formattedDeliveryAddress(),
+      'p_instructions': _instructionsController.text.trim(),
+      'p_cart_items': _checkoutCartItems(),
+      'p_apply_coins': _applyCoins,
+      'p_tip_amount': _selectedTip,
+      'p_delivery_fee': _deliveryFee,
+      'p_payment_id': paymentId,
+      'p_razorpay_order_id': razorpayOrderId,
+      'p_razorpay_signature': signature,
+      'p_idempotency_key': paymentId,
+      'p_user_id': user.id,
+    };
+  }
+
+  Future<Map<String, dynamic>?> _placeOrderWithRetries({
+    required String paymentId,
+    required String? razorpayOrderId,
+    required String? signature,
+  }) async {
+    Object? lastError;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        final rpcResponse = await _supabase.rpc(
+          'place_customer_order',
+          params: _placeOrderParams(
+            paymentId: paymentId,
+            razorpayOrderId: razorpayOrderId,
+            signature: signature,
+          ),
+        );
+        if (rpcResponse is Map && rpcResponse['success'] == true) {
+          return Map<String, dynamic>.from(rpcResponse);
+        }
+        lastError = rpcResponse is Map ? rpcResponse['error'] : rpcResponse;
+      } catch (e) {
+        lastError = e;
+      }
+      await Future<void>.delayed(Duration(milliseconds: 400 * (attempt + 1)));
+    }
+
+    try {
+      final recover = await _supabase.functions.invoke(
+        'recover-payment',
+        body: {
+          'payment_id': paymentId,
+          'razorpay_order_id': razorpayOrderId,
+          'razorpay_signature': signature,
+          'customer_phone': _phoneController.text.trim(),
+          'delivery_address': _formattedDeliveryAddress(),
+          'instructions': _instructionsController.text.trim(),
+          'cart_items': _checkoutCartItems(),
+          'apply_coins': _applyCoins,
+          'tip_amount': _selectedTip,
+          'delivery_fee': _deliveryFee,
+        },
+      );
+      final data = recover.data is Map ? Map<String, dynamic>.from(recover.data as Map) : null;
+      if (data != null && data['success'] == true) return data;
+      if (data != null && data['refunded'] == true) {
+        throw Exception(
+          'We could not record this order, so the payment was refunded. It should return in 5–7 business days.',
+        );
+      }
+      throw Exception(data?['error'] ?? lastError ?? 'Could not record paid order');
+    } on FunctionException catch (e) {
+      final details = e.details is Map ? Map<String, dynamic>.from(e.details as Map) : null;
+      if (details?['refunded'] == true) {
+        throw Exception(
+          'We could not record this order, so the payment was refunded. It should return in 5–7 business days.',
+        );
+      }
+      throw Exception(details?['error'] ?? lastError ?? e.reasonPhrase ?? 'Could not record paid order');
+    }
+  }
+
   Future<void> _handlePaymentSuccess(PaymentSuccessResponse response) async {
     setState(() => _isCheckingOut = true);
 
     try {
       final user = _supabase.auth.currentUser;
       if (user == null) throw Exception('Authentication expired');
-
-      String formattedAddress = "Store Pickup / Dine-In";
-      if (_hasDelivery && _selectedAddressData != null) {
-        final a = _selectedAddressData!;
-        formattedAddress =
-            "${a['house_no']}, ${a['street']}, ${a['city']}, ${a['state']} - ${a['postal_code'] ?? a['pincode'] ?? ''}";
+      if (response.paymentId == null || response.paymentId!.isEmpty) {
+        throw Exception('Payment succeeded without a payment id');
       }
 
-      final adjustedCartItems = widget.cartItems.map((item) {
-        final rawDate = item['scheduledDate'] ??
-            item['scheduled_date'] ??
-            item['selected_date'] ??
-            item['selectedDate'];
-        String selectedDateStr = 'Today';
-        
-        if (rawDate != null) {
-          try {
-            final dt = DateTime.parse(rawDate.toString());
-            selectedDateStr = "${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}";
-          } catch (_) {
-            selectedDateStr = rawDate.toString();
-          }
-        }
+      final placed = await _placeOrderWithRetries(
+        paymentId: response.paymentId!,
+        razorpayOrderId: response.orderId,
+        signature: response.signature,
+      );
 
-        final rawDetails = item['rawMealDetails'] as Map<String, dynamic>?;
-        final finalTimeSlot = item['timeSlot'] ?? item['time_slot'] ?? rawDetails?['exact_time'] ?? item['exact_time'] ?? 'ASAP';
-
-        return {
-          ...item,
-          'source_meal_id': item['mealId'] ?? item['id'],
-          'selected_date': selectedDateStr,
-          'time_slot': finalTimeSlot,
-        };
-      }).toList();
-
-      // ATOMIC TRANSACTION: Both order placement & coin updates happen inside the RPC
-      final rpcResponse = await _supabase.rpc('place_customer_order', params: {
-        'p_customer_email': user.email!,
-        'p_customer_phone': _phoneController.text.trim(),
-        'p_delivery_address': formattedAddress,
-        'p_instructions': _instructionsController.text.trim(),
-        'p_cart_items': adjustedCartItems,
-        'p_apply_coins': _applyCoins,
-        'p_tip_amount': _selectedTip,
-        'p_delivery_fee': _deliveryFee,
-        'p_payment_id': response.paymentId,
-        'p_razorpay_order_id': response.orderId,
-        'p_razorpay_signature': response.signature,
-        'p_idempotency_key': response.paymentId,
-        'p_user_id': user.id,
-      });
-
-      if (rpcResponse == null || rpcResponse['success'] != true) {
-        throw Exception(rpcResponse?['error'] ?? 'Server failed to record verified order.');
+      if (placed == null || placed['success'] != true) {
+        throw Exception(placed?['error'] ?? 'Server failed to record verified order.');
       }
 
       if (mounted) {
@@ -382,9 +469,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Order recording failed post-payment');
       if (mounted) {
         _showSnackBar(
-          'Error verifying order: $e\nIf your account was debited, reference ID: ${response.paymentId}',
+          '$e\nReference: ${response.paymentId}',
           isError: true,
-          duration: const Duration(seconds: 7),
+          duration: const Duration(seconds: 8),
         );
       }
     } finally {

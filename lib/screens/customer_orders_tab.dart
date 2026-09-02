@@ -170,7 +170,9 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
           SizedBox(width: 8),
           Text('Cancel Order'),
         ]),
-        content: const Text('Are you sure you want to completely cancel this order?'),
+        content: const Text(
+          'Cancel this order? Inventory will be restored and a refund will be issued to the original payment method (usually 5–7 business days).',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -195,7 +197,10 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Order Cancelled Successfully'), backgroundColor: Colors.orange),
+            const SnackBar(
+              content: Text('Order cancelled. Refund is on the way if you paid online.'),
+              backgroundColor: Colors.orange,
+            ),
           );
         }
       } catch (e) {
