@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../providers/cart_provider.dart';
 import '../providers/favorites_provider.dart';
 import '../services/auth_session.dart';
+import '../utils/app_haptics.dart';
 import '../utils/app_theme.dart';
 import '../widgets/app_widgets.dart';
 import 'customer_feed_tab.dart';
@@ -94,7 +95,7 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
       backgroundColor: AppTheme.canvasOf(context),
       body: Stack(
         children: [
-          IndexedStack(
+          HubTabSwitcher(
             index: _selectedIndex,
             children: pages,
           ),
@@ -105,7 +106,10 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
               left: 20,
               right: 20,
               child: GestureDetector(
-                onTap: () => _onNavigationItemTapped(1),
+                onTap: () {
+                  AppHaptics.light();
+                  _onNavigationItemTapped(1);
+                },
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                   decoration: BoxDecoration(
@@ -144,12 +148,12 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
                       ),
                     ],
                   ),
-                ),
+                ).popIn(),
               ),
             ),
 
           Positioned(
-            bottom: 20,
+            bottom: 12,
             left: 0,
             right: 0,
             child: HubBottomDock(

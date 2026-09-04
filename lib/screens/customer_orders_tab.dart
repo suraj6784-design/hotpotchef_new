@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'dart:convert';
+import '../utils/app_page.dart';
 import '../utils/helpers.dart';
 import '../utils/network.dart';
 import '../utils/support.dart';
@@ -817,8 +818,8 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
     if (!mounted) return;
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => CheckoutScreen(
+      appMaterialRoute(
+        CheckoutScreen(
           cartItems: items,
           sourceRequestId: request['id']?.toString(),
           preferredAddress: {

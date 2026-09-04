@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/helpers.dart';
+import '../utils/app_page.dart';
 import '../utils/app_theme.dart';
 import '../models/cart_enums.dart';
 import '../providers/cart_provider.dart';
@@ -284,8 +285,8 @@ Future<bool> addMealToCartWithConflict({
 void showMealDetailsDialog(BuildContext context, Map<String, dynamic> meal, WidgetRef ref) {
   Navigator.push(
     context,
-    MaterialPageRoute(
-      builder: (ctx) => Scaffold(
+    appMaterialRoute(
+      Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         body: MealDetailsBody(meal: meal, ref: ref),
       ),

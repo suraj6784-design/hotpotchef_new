@@ -70,6 +70,11 @@ class AppTheme {
   static const BorderRadius radiusLg = BorderRadius.all(Radius.circular(rLg));
   static const BorderRadius radiusXl = BorderRadius.all(Radius.circular(rXl));
 
+  static const Duration tabDuration = Duration(milliseconds: 240);
+  static const Duration pageDuration = Duration(milliseconds: 340);
+  static const Duration pageReverseDuration = Duration(milliseconds: 280);
+  static const Curve pageCurve = Curves.easeOutCubic;
+
   // ---------------------------------------------------------------------------
   // 4. Shadows
   // ---------------------------------------------------------------------------

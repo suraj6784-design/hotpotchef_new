@@ -25,7 +25,21 @@ import '../screens/customer_bulk_request_screen.dart';
 import '../screens/driver_id_card_screen.dart';
 import '../services/auth_session.dart';
 import '../widgets/not_found_page.dart';
+import 'app_page.dart';
 import 'helpers.dart';
+
+GoRoute _fadeRoute(
+  String path,
+  Widget Function(BuildContext context, GoRouterState state) builder,
+) {
+  return GoRoute(
+    path: path,
+    pageBuilder: (context, state) => appFadeSlidePage(
+      key: state.pageKey,
+      child: builder(context, state),
+    ),
+  );
+}
 
 class AppRouter {
   static final AuthRefreshNotifier _authRefresh = AuthRefreshNotifier();
@@ -80,135 +94,83 @@ class AppRouter {
       return null;
     },
     routes: [
-      GoRoute(
-        path: '/auth',
-        builder: (context, state) => const AuthScreen(),
-      ),
-      GoRoute(
-        path: '/reset-password',
-        builder: (context, state) => const ResetPasswordScreen(),
-      ),
-      GoRoute(
-        path: '/reset-callback',
-        builder: (context, state) => const ResetPasswordScreen(),
-      ),
-      GoRoute(
-        path: '/customer-hub',
-        builder: (context, state) => CustomerHubScreen(
+      _fadeRoute('/auth', (context, state) => const AuthScreen()),
+      _fadeRoute('/reset-password', (context, state) => const ResetPasswordScreen()),
+      _fadeRoute('/reset-callback', (context, state) => const ResetPasswordScreen()),
+      _fadeRoute(
+        '/customer-hub',
+        (context, state) => CustomerHubScreen(
           key: ValueKey('customer-${state.uri.query}'),
           initialTab: customerHubTabIndex(state.uri.queryParameters['tab']),
         ),
       ),
-      GoRoute(
-        path: '/chef-hub',
-        builder: (context, state) => ChefDashboardScreen(
+      _fadeRoute(
+        '/chef-hub',
+        (context, state) => ChefDashboardScreen(
           key: ValueKey('chef-${state.uri.query}'),
           initialTab: chefHubTabIndex(state.uri.queryParameters['tab']),
         ),
       ),
-      GoRoute(
-        path: '/driver-hub',
-        builder: (context, state) => const DriverHubScreen(),
+      _fadeRoute('/driver-hub', (context, state) => const DriverHubScreen()),
+      _fadeRoute('/chef-publish-meal', (context, state) {
+        final extra = state.extra;
+        final meal = extra is Map<String, dynamic>
+            ? extra
+            : extra is Map
+                ? Map<String, dynamic>.from(extra)
+                : null;
+        return ChefPublishMealScreen(existingMeal: meal);
+      }),
+      _fadeRoute(
+        '/meal/:mealId',
+        (context, state) => MealLinkScreen(mealId: state.pathParameters['mealId'] ?? ''),
       ),
-      GoRoute(
-        path: '/chef-publish-meal',
-        builder: (context, state) {
+      _fadeRoute('/chats', (context, state) => const ChatInboxScreen()),
+      _fadeRoute('/chat/:mealId', (context, state) {
+        final mealId = state.pathParameters['mealId'] ?? '';
+        return InAppChatScreen(
+          mealId: mealId,
+          roomName: state.uri.queryParameters['roomName'] ?? 'Chat',
+          otherUserId: state.uri.queryParameters['otherUserId'],
+          memberIds: parseChatMemberIds(state.uri.queryParameters['memberIds']),
+          isGroup: state.uri.queryParameters['group'] == '1',
+        );
+      }),
+      _fadeRoute('/tracking', (context, state) {
+        try {
           final extra = state.extra;
-          final meal = extra is Map<String, dynamic>
-              ? extra
-              : extra is Map
-                  ? Map<String, dynamic>.from(extra)
-                  : null;
-          return ChefPublishMealScreen(existingMeal: meal);
-        },
-      ),
-      GoRoute(
-        path: '/meal/:mealId',
-        builder: (context, state) => MealLinkScreen(
-          mealId: state.pathParameters['mealId'] ?? '',
-        ),
-      ),
-      GoRoute(
-        path: '/chats',
-        builder: (context, state) => const ChatInboxScreen(),
-      ),
-      GoRoute(
-        path: '/chat/:mealId',
-        builder: (context, state) {
-          final mealId = state.pathParameters['mealId'] ?? '';
-          final roomName = state.uri.queryParameters['roomName'] ?? 'Chat';
-          final otherUserId = state.uri.queryParameters['otherUserId'];
-          return InAppChatScreen(
-            mealId: mealId,
-            roomName: roomName,
-            otherUserId: otherUserId,
-            memberIds: parseChatMemberIds(state.uri.queryParameters['memberIds']),
-            isGroup: state.uri.queryParameters['group'] == '1',
+          final mapExtra = extra is Map ? Map<String, dynamic>.from(extra) : <String, dynamic>{};
+          final orderId = state.uri.queryParameters['orderId'];
+          final order = mapExtra['order'] is Map
+              ? Map<String, dynamic>.from(mapExtra['order'] as Map)
+              : (orderId != null && orderId.isNotEmpty)
+                  ? <String, dynamic>{'id': orderId, 'order_id': orderId}
+                  : <String, dynamic>{};
+          return LiveTrackingScreen(
+            order: order,
+            isDriver: mapExtra['isDriver'] == true,
+            isDineInNavigation: mapExtra['isDineInNavigation'] == true,
           );
-        },
-      ),
-      GoRoute(
-        path: '/tracking',
-        builder: (context, state) {
-          try {
-            final extra = state.extra;
-            final mapExtra = extra is Map ? Map<String, dynamic>.from(extra) : <String, dynamic>{};
-            final orderId = state.uri.queryParameters['orderId'];
-
-            final order = mapExtra['order'] is Map
-                ? Map<String, dynamic>.from(mapExtra['order'] as Map)
-                : (orderId != null && orderId.isNotEmpty)
-                    ? <String, dynamic>{'id': orderId, 'order_id': orderId}
-                    : <String, dynamic>{};
-            final isDriver = mapExtra['isDriver'] == true;
-            final isDineInNavigation = mapExtra['isDineInNavigation'] == true;
-
-            return LiveTrackingScreen(order: order, isDriver: isDriver, isDineInNavigation: isDineInNavigation);
-          } catch (e, stack) {
-            FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Tracking route parameter parsing failure');
-            return const Scaffold(body: Center(child: Text('Invalid tracking parameters')));
-          }
-        },
-      ),
-      GoRoute(
-        path: '/customer-profile',
-        builder: (context, state) => const CustomerProfileScreen(),
-      ),
-      GoRoute(
-        path: '/chef-profile',
-        builder: (context, state) => const ChefProfileScreen(),
-      ),
-      GoRoute(
-        path: '/driver-profile',
-        builder: (context, state) => const DriverProfileScreen(),
-      ),
-      GoRoute(
-        path: '/driver-id-card',
-        builder: (context, state) {
-          final extra = state.extra is Map ? Map<String, dynamic>.from(state.extra as Map) : <String, dynamic>{};
-          return DriverIdCardScreen(
-            driverName: extra['name']?.toString() ?? 'Delivery Partner',
-            driverPhone: extra['phone']?.toString() ?? '',
-            avatarUrl: extra['avatarUrl']?.toString(),
-          );
-        },
-      ),
-      GoRoute(
-        path: '/chef-analytics',
-        builder: (context, state) => const ChefAnalyticsScreen(),
-      ),
-      GoRoute(
-        path: '/referral',
-        builder: (context, state) => const ReferralScreen(),
-      ),
-      GoRoute(
-        path: '/order-history',
-        builder: (context, state) => const CustomerOrderHistoryScreen(),
-      ),
-      GoRoute(
-        path: '/bulk-request',
-        builder: (context, state) => const CustomerBulkRequestScreen(),
-      ),
+        } catch (e, stack) {
+          FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Tracking route parameter parsing failure');
+          return const Scaffold(body: Center(child: Text('Invalid tracking parameters')));
+        }
+      }),
+      _fadeRoute('/customer-profile', (context, state) => const CustomerProfileScreen()),
+      _fadeRoute('/chef-profile', (context, state) => const ChefProfileScreen()),
+      _fadeRoute('/driver-profile', (context, state) => const DriverProfileScreen()),
+      _fadeRoute('/driver-id-card', (context, state) {
+        final extra = state.extra is Map ? Map<String, dynamic>.from(state.extra as Map) : <String, dynamic>{};
+        return DriverIdCardScreen(
+          driverName: extra['name']?.toString() ?? 'Delivery Partner',
+          driverPhone: extra['phone']?.toString() ?? '',
+          avatarUrl: extra['avatarUrl']?.toString(),
+        );
+      }),
+      _fadeRoute('/chef-analytics', (context, state) => const ChefAnalyticsScreen()),
+      _fadeRoute('/referral', (context, state) => const ReferralScreen()),
+      _fadeRoute('/order-history', (context, state) => const CustomerOrderHistoryScreen()),
+      _fadeRoute('/bulk-request', (context, state) => const CustomerBulkRequestScreen()),
     ],
   );
 }

@@ -10,6 +10,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:go_router/go_router.dart';
 
+import '../utils/app_page.dart';
 import '../utils/helpers.dart';
 import '../utils/customer_constants.dart';
 import '../utils/dynamic_ui_engine.dart';
@@ -22,7 +23,6 @@ import '../widgets/daily_streak_banner.dart';
 import '../widgets/ai_recommendations_section.dart';
 import '../services/delivery_estimator_service.dart';
 import 'address_form_screen.dart';
-import 'customer_bulk_request_screen.dart';
 
 class CustomerFeedTab extends ConsumerStatefulWidget {
   final List<String> favoriteMeals;
@@ -539,7 +539,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                         Navigator.pop(ctx);
                                         Navigator.push(
                                           context,
-                                          MaterialPageRoute(builder: (_) => const AddressFormScreen()),
+                                          appMaterialRoute(const AddressFormScreen()),
                                         ).then((_) => _fetchUserAddresses());
                                       },
                                     ),
@@ -730,10 +730,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                   showAuthBottomSheet(context, () => setState(() {}));
                   return;
                 }
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const CustomerBulkRequestScreen()),
-                );
+                context.push('/bulk-request');
               },
             ),
           ),

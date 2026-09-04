@@ -7,6 +7,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import 'map_picker_screen.dart';
 import 'driver_id_card_screen.dart';
+import '../utils/app_page.dart';
 import '../utils/app_theme.dart';
 import '../utils/pinned_address.dart';
 import '../utils/gst_invoice.dart';
@@ -140,8 +141,8 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
 
     final result = await Navigator.push<Map<String, dynamic>?>(
       context,
-      MaterialPageRoute(
-        builder: (_) => MapPickerScreen(initialLat: _latitude, initialLng: _longitude),
+      appMaterialRoute<Map<String, dynamic>?>(
+        MapPickerScreen(initialLat: _latitude, initialLng: _longitude),
       ),
     );
 

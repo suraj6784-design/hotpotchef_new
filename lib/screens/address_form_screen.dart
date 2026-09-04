@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../utils/helpers.dart';
+import '../utils/app_page.dart';
 import '../utils/app_theme.dart';
 import '../utils/pinned_address.dart';
 import '../widgets/app_dialog.dart';
@@ -241,8 +242,8 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
   Future<void> _openMapPicker() async {
     final result = await Navigator.push<Map<String, dynamic>?>(
       context,
-      MaterialPageRoute(
-        builder: (_) => MapPickerScreen(
+      appMaterialRoute<Map<String, dynamic>?>(
+        MapPickerScreen(
           initialLat: _latitude,
           initialLng: _longitude,
         ),

@@ -18,7 +18,6 @@ import '../providers/driver_dashboard_provider.dart';
 import '../models/driver_delivery_model.dart';
 import '../services/auth_session.dart';
 import '../services/delivery_estimator_service.dart';
-import 'driver_profile_screen.dart';
 
 class DriverHubScreen extends ConsumerStatefulWidget {
   const DriverHubScreen({super.key});
@@ -233,10 +232,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                       const SizedBox(width: 12),
                       GestureDetector(
                         onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const DriverProfileScreen()),
-                          );
+                          context.push('/driver-profile');
                         },
                         child: const CircleAvatar(
                           backgroundColor: Colors.white,
@@ -258,7 +254,12 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 ],
               ),
             ),
-                Expanded(child: pages[_selectedIndex]),
+                Expanded(
+                  child: HubTabSwitcher(
+                    index: _selectedIndex,
+                    children: pages,
+                  ),
+                ),
               ],
             ),
             Positioned(

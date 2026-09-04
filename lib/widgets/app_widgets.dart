@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:shimmer/shimmer.dart';
 
+import '../utils/app_haptics.dart';
 import '../utils/app_theme.dart';
 
 // ---------------------------------------------------------------------------
@@ -120,7 +121,12 @@ class _GradientButtonState extends State<GradientButton> {
     );
 
     return GestureDetector(
-      onTap: enabled ? widget.onPressed : null,
+      onTap: enabled
+          ? () {
+              AppHaptics.light();
+              widget.onPressed?.call();
+            }
+          : null,
       onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
       onTapUp: enabled ? (_) => setState(() => _pressed = false) : null,
       onTapCancel: () => setState(() => _pressed = false),
@@ -561,6 +567,40 @@ class HubDockDestination {
   });
 }
 
+/// Keeps every hub tab mounted and fades the visible one.
+class HubTabSwitcher extends StatelessWidget {
+  final int index;
+  final List<Widget> children;
+
+  const HubTabSwitcher({
+    super.key,
+    required this.index,
+    required this.children,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        for (var i = 0; i < children.length; i++)
+          IgnorePointer(
+            ignoring: i != index,
+            child: TickerMode(
+              enabled: i == index,
+              child: AnimatedOpacity(
+                opacity: i == index ? 1 : 0,
+                duration: AppTheme.tabDuration,
+                curve: AppTheme.pageCurve,
+                child: children[i],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 /// Floating pill navigation used on customer and driver hubs.
 class HubBottomDock extends StatelessWidget {
   final int selectedIndex;
@@ -577,29 +617,32 @@ class HubBottomDock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final surface = AppTheme.surfaceOf(context);
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(
-          color: surface,
-          borderRadius: BorderRadius.circular(40),
-          border: Border.all(
-            color: Theme.of(context).brightness == Brightness.dark
-                ? Colors.white.withValues(alpha: 0.08)
-                : const Color(0xFFEDE6E0),
+    return SafeArea(
+      minimum: const EdgeInsets.only(bottom: 8),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: surface,
+            borderRadius: BorderRadius.circular(40),
+            border: Border.all(color: AppTheme.hairlineOf(context)),
+            boxShadow: AppTheme.softShadow,
           ),
-          boxShadow: AppTheme.softShadow,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (var i = 0; i < destinations.length; i++)
-              _HubDockButton(
-                destination: destinations[i],
-                selected: selectedIndex == i,
-                onTap: () => onSelect(i),
-              ),
-          ],
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = 0; i < destinations.length; i++)
+                _HubDockButton(
+                  destination: destinations[i],
+                  selected: selectedIndex == i,
+                  onTap: () {
+                    if (i == selectedIndex) return;
+                    AppHaptics.selection();
+                    onSelect(i);
+                  },
+                ),
+            ],
+          ),
         ),
       ),
     );

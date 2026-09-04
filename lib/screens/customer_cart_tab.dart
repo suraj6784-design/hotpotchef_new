@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../utils/app_page.dart';
 import '../utils/helpers.dart';
 import '../models/cart_state.dart';
 import '../models/cart_enums.dart';
@@ -649,8 +650,8 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
 
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => CheckoutScreen(
+      appMaterialRoute(
+        CheckoutScreen(
           cartItems: checkoutItems,
           preferredAddressId: ref.read(selectedDeliveryAddressProvider)?['id'],
           preferredAddress: ref.read(selectedDeliveryAddressProvider),

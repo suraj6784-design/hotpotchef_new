@@ -11,6 +11,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../utils/app_haptics.dart';
 import '../utils/helpers.dart';
 import '../models/cart_enums.dart';
 import '../widgets/customer_ui_components.dart';
@@ -498,14 +499,23 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 body: Column(
                   children: [
                     _buildHeader(),
-                    Expanded(child: tabs[_selectedIndex]),
+                    Expanded(
+                      child: HubTabSwitcher(
+                        index: _selectedIndex,
+                        children: tabs,
+                      ),
+                    ),
                   ],
                 ),
                 bottomNavigationBar: NavigationBar(
                   selectedIndex: _selectedIndex,
                   backgroundColor: AppTheme.surfaceOf(context),
                   indicatorColor: AppTheme.primary.withValues(alpha: 0.14),
-                  onDestinationSelected: (idx) => setState(() => _selectedIndex = idx),
+                  onDestinationSelected: (idx) {
+                    if (idx == _selectedIndex) return;
+                    AppHaptics.selection();
+                    setState(() => _selectedIndex = idx);
+                  },
                   destinations: [
                     NavigationDestination(
                       icon: Badge(label: Text('$pendingCount'), isLabelVisible: pendingCount > 0, child: const Icon(Icons.receipt_long_outlined)),
