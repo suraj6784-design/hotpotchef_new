@@ -211,6 +211,17 @@ void main() {
         'meal-77',
       );
     });
+
+    test('otherChatParticipantId skips my own messages', () {
+      expect(
+        otherChatParticipantId([
+          {'sender_id': 'me'},
+          {'sender_id': 'chef-2'},
+        ], 'me'),
+        'chef-2',
+      );
+      expect(otherChatParticipantId([{'sender_id': 'me'}], 'me'), isNull);
+    });
   });
 
   group('checkoutItemsFromCateringRequest', () {

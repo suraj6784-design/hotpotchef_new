@@ -65,6 +65,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
   double? _latitude;
   double? _longitude;
   bool _isLoading = false;
+  bool _makeDefault = false;
   String _sessionToken = _uuid.v4();
 
   Timer? _debounceTimer;
@@ -88,6 +89,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
           double.tryParse(a['latitude']?.toString() ?? '');
       _longitude = (a['longitude'] as num?)?.toDouble() ??
           double.tryParse(a['longitude']?.toString() ?? '');
+      _makeDefault = a['is_default'] == true;
 
       if (_streetController.text.isNotEmpty) {
         _searchController.text = "${_houseController.text}, ${_streetController.text}".trim();
@@ -321,8 +323,17 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
       'landmark': addressData['landmark'],
       'latitude': addressData['latitude'],
       'longitude': addressData['longitude'],
-      if (addressData['is_default'] == true) 'is_default': true,
+      if (addressData.containsKey('is_default')) 'is_default': addressData['is_default'],
     };
+
+    if (payload['is_default'] == true) {
+      try {
+        await client
+            .from('user_addresses')
+            .update({'is_default': false})
+            .eq('user_id', payload['user_id']);
+      } catch (_) {}
+    }
 
     Future<Map<String, dynamic>> write(Map<String, dynamic> data) async {
       if (existingId != null) {
@@ -405,8 +416,10 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
 
       final existingId = widget.existingAddress?['id'] ??
           matchingSavedAddressId(existingRows, addressData);
-      if (shouldMarkSavedAddressDefault(existingRows, editingId: existingId)) {
+      if (_makeDefault || shouldMarkSavedAddressDefault(existingRows, editingId: existingId)) {
         addressData['is_default'] = true;
+      } else if (widget.existingAddress?['is_default'] == true) {
+        addressData['is_default'] = false;
       }
       final saved = await _upsertAddress(addressData: addressData, existingId: existingId);
 
@@ -680,6 +693,15 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 16),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                activeThumbColor: AppTheme.primary,
+                title: Text('Default delivery address', style: TextStyle(color: titleColor, fontWeight: FontWeight.w600)),
+                subtitle: Text('Home and checkout will use this pin first.', style: TextStyle(color: muted, fontSize: 12)),
+                value: _makeDefault,
+                onChanged: (value) => setState(() => _makeDefault = value),
               ),
               const SizedBox(height: 24),
 

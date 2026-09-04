@@ -4,9 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/alert_service.dart';
-import '../utils/app_theme.dart';
+import '../utils/helpers.dart';
 import '../utils/network.dart';
 
 class InAppChatScreen extends StatefulWidget {
@@ -78,6 +79,52 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
     }
   }
 
+  Future<void> _callOtherParty() async {
+    final me = _supabase.auth.currentUser?.id;
+    try {
+      final rows = await _supabase
+          .from('messages')
+          .select('sender_id')
+          .eq('meal_id', widget.mealId)
+          .limit(40);
+      final otherId = otherChatParticipantId(
+        (rows as List).map((row) => Map<String, dynamic>.from(row)),
+        me,
+      );
+      if (otherId == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No one to call yet. Wait for a reply, or use Call on the order.')),
+          );
+        }
+        return;
+      }
+      final userDoc = await _supabase.from('users').select('phone').eq('id', otherId).maybeSingle();
+      final phoneStr = userDoc?['phone']?.toString() ?? '';
+      if (phoneStr.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No phone number available.'), backgroundColor: Colors.orange),
+          );
+        }
+        return;
+      }
+      final uri = Uri(scheme: 'tel', path: phoneStr);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open phone dialer.'), backgroundColor: Colors.red),
+        );
+      }
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to call chat participant');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      }
+    }
+  }
+
   // --- Send Message Pipeline ---
 
   Future<void> _sendMessage() async {
@@ -139,6 +186,13 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
         ),
         elevation: 0,
         iconTheme: IconThemeData(color: titleColor),
+        actions: [
+          IconButton(
+            tooltip: 'Call',
+            icon: const Icon(Icons.phone_outlined),
+            onPressed: _callOtherParty,
+          ),
+        ],
       ),
       body: Column(
         children: [

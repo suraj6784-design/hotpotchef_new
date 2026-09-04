@@ -90,6 +90,14 @@ String? mealIdFromOrderItem(Map<String, dynamic>? item) {
   return null;
 }
 
+String? otherChatParticipantId(Iterable<Map<String, dynamic>> messages, String? myId) {
+  for (final message in messages) {
+    final id = message['sender_id']?.toString() ?? '';
+    if (id.isNotEmpty && id != myId) return id;
+  }
+  return null;
+}
+
 String orderChatRoomId(Map<String, dynamic> order, {List<Map<String, dynamic>>? items}) {
   if (items != null && items.isNotEmpty) {
     return mealIdFromOrderItem(items.first) ?? order['id']?.toString() ?? '';

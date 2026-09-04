@@ -548,6 +548,28 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
     );
   }
 
+  Future<void> _markDefaultAddress(Map<String, dynamic> addr) async {
+    final id = addr['id'];
+    final user = _supabase.auth.currentUser;
+    if (id == null || user == null) return;
+    try {
+      await _supabase.from('user_addresses').update({'is_default': false}).eq('user_id', user.id);
+      await _supabase.from('user_addresses').update({'is_default': true}).eq('id', id);
+      await _loadProfileData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Default delivery address updated.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not set default address: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
   void _showAddressesSheet() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -556,7 +578,8 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
       isScrollControlled: true,
       backgroundColor: isDark ? AppTheme.surfaceDark : Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => ConstrainedBox(
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => ConstrainedBox(
         constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.8),
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -600,7 +623,28 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
                         child: ListTile(
                           leading: const Icon(Icons.location_on, color: AppTheme.primary),
                           title: Text(displayStr, style: TextStyle(color: isDark ? Colors.white : AppTheme.textMain, fontSize: 14)),
-                          trailing: Icon(Icons.edit, size: 16, color: isDark ? Colors.white70 : Colors.grey),
+                          subtitle: addr['is_default'] == true
+                              ? const Text('Default', style: TextStyle(color: AppTheme.primary, fontSize: 12, fontWeight: FontWeight.w700))
+                              : null,
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                tooltip: addr['is_default'] == true ? 'Default address' : 'Use as default',
+                                icon: Icon(
+                                  addr['is_default'] == true ? Icons.star : Icons.star_border,
+                                  color: addr['is_default'] == true ? Colors.amber : (isDark ? Colors.white70 : Colors.grey),
+                                ),
+                                onPressed: addr['is_default'] == true
+                                    ? null
+                                    : () async {
+                                        await _markDefaultAddress(addr);
+                                        setSheetState(() {});
+                                      },
+                              ),
+                              Icon(Icons.edit, size: 16, color: isDark ? Colors.white70 : Colors.grey),
+                            ],
+                          ),
                           onTap: () async {
                             Navigator.pop(ctx);
                             await Navigator.push(context, MaterialPageRoute(builder: (_) => AddressFormScreen(existingAddress: addr)));
@@ -613,6 +657,7 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
                 ),
             ],
           ),
+        ),
         ),
       ),
     );
