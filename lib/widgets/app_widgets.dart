@@ -567,7 +567,7 @@ class HubDockDestination {
   });
 }
 
-/// Keeps every hub tab mounted and fades the visible one.
+/// Keeps every hub tab mounted. Only the selected child is painted.
 class HubTabSwitcher extends StatelessWidget {
   final int index;
   final List<Widget> children;
@@ -580,23 +580,10 @@ class HubTabSwitcher extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        for (var i = 0; i < children.length; i++)
-          IgnorePointer(
-            ignoring: i != index,
-            child: TickerMode(
-              enabled: i == index,
-              child: AnimatedOpacity(
-                opacity: i == index ? 1 : 0,
-                duration: AppTheme.tabDuration,
-                curve: AppTheme.pageCurve,
-                child: children[i],
-              ),
-            ),
-          ),
-      ],
+    return IndexedStack(
+      index: index,
+      sizing: StackFit.expand,
+      children: children,
     );
   }
 }

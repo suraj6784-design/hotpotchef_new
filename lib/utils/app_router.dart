@@ -99,10 +99,14 @@ class AppRouter {
       _fadeRoute('/reset-callback', (context, state) => const ResetPasswordScreen()),
       _fadeRoute(
         '/customer-hub',
-        (context, state) => CustomerHubScreen(
-          key: ValueKey('customer-${state.uri.query}'),
-          initialTab: customerHubTabIndex(state.uri.queryParameters['tab']),
-        ),
+        (context, state) {
+          final userId = Supabase.instance.client.auth.currentUser?.id ?? 'guest';
+          final tab = state.uri.queryParameters['tab'];
+          return CustomerHubScreen(
+            key: ValueKey('customer-$userId-${tab ?? ''}'),
+            initialTab: userId == 'guest' ? 0 : customerHubTabIndex(tab),
+          );
+        },
       ),
       _fadeRoute(
         '/chef-hub',
