@@ -190,7 +190,8 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                     GestureDetector(
                       onTap: () => showContactSupportSheet(
                         ctx,
-                        orderRef: orderRecord['id']?.toString() ?? displayOrderIdStr,
+                        orderNumber: displayOrderIdStr,
+                        orderUuid: orderRecord['id']?.toString(),
                       ),
                       child: const Text('Support', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 14)),
                     )

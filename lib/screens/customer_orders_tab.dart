@@ -458,7 +458,11 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                       ],
                     ),
                     GestureDetector(
-                      onTap: () => showContactSupportSheet(ctx, orderRef: items.first['order_id']?.toString() ?? items.first['id']?.toString()),
+                      onTap: () => showContactSupportSheet(
+                        ctx,
+                        orderNumber: displayOrderIdStr,
+                        orderUuid: items.first['order_id']?.toString() ?? items.first['id']?.toString(),
+                      ),
                       child: const Text('Support', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 14)),
                     )
                   ],

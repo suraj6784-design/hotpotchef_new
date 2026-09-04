@@ -96,7 +96,7 @@ LegalDocument legalDocumentFor(LegalDocumentType type) {
           ),
           LegalSection(
             'How do I reach support?',
-            'Use Contact Us in Account, or Support on an order. Email is always available; WhatsApp appears if a support number is configured.',
+            'Use Contact Us in Account, or Support on an order. Opening Support from an order attaches that order number to email and WhatsApp automatically. Email is always available; WhatsApp appears if a support number is configured.',
           ),
         ],
       );
