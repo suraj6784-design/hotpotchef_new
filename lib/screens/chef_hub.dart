@@ -680,7 +680,17 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         children: [
           Row(
             children: [
-              Text(orderId, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: AppTheme.textMuted)),
+              InkWell(
+                onTap: () => copyOrderNumber(context, orderId),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(orderId, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: AppTheme.textMuted)),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.copy, size: 12, color: AppTheme.textMuted),
+                  ],
+                ),
+              ),
               const Spacer(),
               AppStatusBadge(status: status),
             ],

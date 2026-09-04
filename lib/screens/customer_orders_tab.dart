@@ -525,7 +525,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                             children: [
                               Icon(statusIcon, color: statusColor, size: 24),
                               const SizedBox(width: 12),
-                              Expanded(child: Text(statusText, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain))),
+                              Expanded(child: Text(statusText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.onSurfaceOf(context)))),
                             ],
                           ),
                           const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: Colors.black12)),
@@ -671,13 +671,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                             ],
                           ),
                           const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider(height: 1, color: Colors.black12)),
-                          Row(
-                            children: [
-                              Text('Order ID: $displayOrderIdStr', style: const TextStyle(color: AppTheme.textMuted, fontSize: 13, fontWeight: FontWeight.bold)),
-                              const SizedBox(width: 8),
-                              const Icon(Icons.copy, size: 14, color: AppTheme.textMuted)
-                            ],
-                          ),
+                          orderIdCopyRow(context, displayOrderIdStr),
                           const SizedBox(height: 16),
                           ...items.map((item) {
                             double parsedPrice = lineItemUnitPrice(item);
@@ -1251,7 +1245,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                 ),
                               ),
                               Text('₹${finalGrandTotal.toInt()}',
-                                  style: const TextStyle(color: Colors.black38, fontSize: 14, fontWeight: FontWeight.bold)),
+                                  style: TextStyle(color: AppTheme.onSurfaceOf(context).withValues(alpha: 0.55), fontSize: 14, fontWeight: FontWeight.bold)),
                             ],
                           ),
                           const SizedBox(height: 12),

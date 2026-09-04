@@ -11,6 +11,7 @@ import 'package:geocoding/geocoding.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:go_router/go_router.dart';
 
 import '../utils/helpers.dart';
 import '../utils/support.dart';
@@ -517,12 +518,38 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
     );
   }
 
+  void _openOrderGroup() {
+    final roomId = resolvedOrderId(_order) ?? '';
+    if (roomId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Chat is not available for this order.'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
+    final label = formatOrderId(_order['order_id']?.toString(), roomId);
+    final otherId = widget.isDriver
+        ? (_order['customer_id']?.toString() ?? _order['user_id']?.toString() ?? '')
+        : (_order['chef_id']?.toString() ?? '');
+    context.push(chatPath(
+      roomId,
+      roomName: 'Order $label',
+      otherUserId: otherId,
+      memberIds: orderChatMemberIds(_order),
+      isGroup: true,
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(_etaText),
         actions: [
+          IconButton(
+            tooltip: 'Order group',
+            icon: const Icon(Icons.chat_bubble_outline, color: AppTheme.primary),
+            onPressed: _openOrderGroup,
+          ),
           IconButton(
             icon: const Icon(Icons.support_agent, color: AppTheme.primary),
             onPressed: () {

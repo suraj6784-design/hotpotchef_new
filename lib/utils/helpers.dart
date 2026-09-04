@@ -2,7 +2,9 @@
 
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import 'app_theme.dart';
 import 'network.dart';
 
 // Export the theme so all screens automatically inherit it
@@ -70,6 +72,33 @@ String formatOrderId(String? rawOrderId, String fallbackId) {
     return rawOrderId.length > 8 ? rawOrderId.substring(0, 8).toUpperCase() : rawOrderId.toUpperCase();
   }
   return fallbackId.length > 8 ? fallbackId.substring(0, 8).toUpperCase() : fallbackId.toUpperCase();
+}
+
+Future<void> copyOrderNumber(BuildContext context, String orderNumber) async {
+  final text = orderNumber.trim();
+  if (text.isEmpty) return;
+  await Clipboard.setData(ClipboardData(text: text));
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text('Copied $text')),
+  );
+}
+
+Widget orderIdCopyRow(BuildContext context, String orderNumber) {
+  return InkWell(
+    onTap: () => copyOrderNumber(context, orderNumber),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          'Order ID: $orderNumber',
+          style: TextStyle(color: AppTheme.onSurfaceOf(context).withValues(alpha: 0.65), fontSize: 13, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(width: 8),
+        Icon(Icons.copy, size: 14, color: AppTheme.onSurfaceOf(context).withValues(alpha: 0.65)),
+      ],
+    ),
+  );
 }
 
 /// Orders store the UUID in `id`. Enriched line items copy it to `order_id`.

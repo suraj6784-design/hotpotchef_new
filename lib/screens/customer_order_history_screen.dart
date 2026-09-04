@@ -255,7 +255,7 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                             children: [
                               Icon(statusIcon, color: statusColor, size: 24),
                               const SizedBox(width: 12),
-                              Expanded(child: Text(statusText, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain))),
+                              Expanded(child: Text(statusText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.onSurfaceOf(context)))),
                             ],
                           ),
                           const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: Colors.black12)),
@@ -342,32 +342,50 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                           Row(children: [
                             CircleAvatar(backgroundColor: AppTheme.primary.withValues(alpha: 0.1), radius: 20, child: const Icon(Icons.restaurant, color: AppTheme.primary, size: 20)),
                             const SizedBox(width: 12),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                FutureBuilder<String>(
-                                  future: lookupChefDisplayName(
-                                    chefId,
-                                    hint: items.isNotEmpty ? items.first : orderRecord,
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  FutureBuilder<String>(
+                                    future: lookupChefDisplayName(
+                                      chefId,
+                                      hint: items.isNotEmpty ? items.first : orderRecord,
+                                    ),
+                                    builder: (context, snap) {
+                                      final name = snap.data ??
+                                          chefDisplayName(
+                                            items.isNotEmpty ? items.first : orderRecord,
+                                            fallback: 'Loading chef...',
+                                          );
+                                      return Text(
+                                        name,
+                                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.onSurfaceOf(context)),
+                                      );
+                                    },
                                   ),
-                                  builder: (context, snap) {
-                                    final name = snap.data ??
-                                        chefDisplayName(
-                                          items.isNotEmpty ? items.first : orderRecord,
-                                          fallback: 'Loading chef...',
-                                        );
-                                    return Text(
-                                      name,
-                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain),
-                                    );
-                                  },
-                                ),
-                                const Text('Home kitchen', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
-                              ],
+                                  const Text('Home kitchen', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'Order group',
+                              icon: const Icon(Icons.chat_bubble_outline, color: AppTheme.primary),
+                              onPressed: () {
+                                final roomId = resolvedOrderId(orderRecord) ?? '';
+                                if (roomId.isEmpty) return;
+                                Navigator.pop(ctx);
+                                context.push(chatPath(
+                                  roomId,
+                                  roomName: 'Order $displayOrderIdStr',
+                                  otherUserId: chefId,
+                                  memberIds: orderChatMemberIds(orderRecord),
+                                  isGroup: true,
+                                ));
+                              },
                             ),
                           ]),
-                          const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider(height: 1, color: Colors.black12)),
-                          Text('Order ID: $displayOrderIdStr', style: const TextStyle(color: AppTheme.textMuted, fontSize: 13, fontWeight: FontWeight.bold)),
+                          Padding(padding: const EdgeInsets.symmetric(vertical: 16), child: Divider(height: 1, color: AppTheme.hairlineOf(context))),
+                          orderIdCopyRow(context, displayOrderIdStr),
                           const SizedBox(height: 16),
                           ...items.map((item) {
                             double parsedPrice = lineItemUnitPrice(item);
