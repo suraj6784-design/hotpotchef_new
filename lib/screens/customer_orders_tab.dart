@@ -389,8 +389,8 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
           builder: (ctx) => AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: const Row(children: [Icon(Icons.check_circle, color: Colors.green), SizedBox(width: 8), Text('Invoice Ready')]),
-            content: const Text('Your invoice has been generated securely. You can open it to view, save, or share it.',
-                style: TextStyle(fontSize: 13, color: AppTheme.textMain)),
+            content: Text('Your invoice has been generated securely. You can open it to view, save, or share it.',
+                style: TextStyle(fontSize: 13, color: AppTheme.onSurfaceOf(context))),
             actions: [
               TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Dismiss', style: TextStyle(color: Colors.grey))),
               ElevatedButton.icon(
@@ -528,7 +528,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                               Expanded(child: Text(statusText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.onSurfaceOf(context)))),
                             ],
                           ),
-                          const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: Colors.black12)),
+                          Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: AppTheme.hairlineOf(context))),
                           
                           // Timings & Delivery Type in Details Sheet
                           Row(
@@ -536,7 +536,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                               const Icon(Icons.local_shipping_outlined, size: 14, color: AppTheme.primary),
                               const SizedBox(width: 6),
                               const Text('Type: ', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
-                              Text(orderType, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+                              Text(orderType, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                             ],
                           ),
                           const SizedBox(height: 6),
@@ -545,7 +545,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                               const Icon(Icons.access_time, size: 14, color: AppTheme.textMuted),
                               const SizedBox(width: 6),
                               const Text('Placed: ', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
-                              Text(dateTimeString, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppTheme.textMain)),
+                              Text(dateTimeString, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppTheme.onSurfaceOf(context))),
                             ],
                           ),
                           const SizedBox(height: 6),
@@ -641,7 +641,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                             chefDisplayName(items.first, fallback: 'Loading chef...');
                                         return Text(
                                           name,
-                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain),
+                                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.onSurfaceOf(context)),
                                         );
                                       },
                                     ),
@@ -670,7 +670,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                               )
                             ],
                           ),
-                          const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider(height: 1, color: Colors.black12)),
+                          Padding(padding: const EdgeInsets.symmetric(vertical: 16), child: Divider(height: 1, color: AppTheme.hairlineOf(context))),
                           orderIdCopyRow(context, displayOrderIdStr),
                           const SizedBox(height: 16),
                           ...items.map((item) {
@@ -702,7 +702,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text('${item['quantity']} x ${item['title']}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+                                        Text('${item['quantity']} x ${item['title']}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                                         const SizedBox(height: 2),
                                         Text('Slot: $smartSlot', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
                                       ],
@@ -744,13 +744,13 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                             ],
                           ),
                           const SizedBox(height: 16),
-                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Item total', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)), Text('₹${itemsTotal.toInt()}', style: const TextStyle(color: AppTheme.textMain, fontSize: 13, fontWeight: FontWeight.w500))]),
+                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Item total', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)), Text('₹${itemsTotal.toInt()}', style: TextStyle(color: AppTheme.onSurfaceOf(context), fontSize: 13, fontWeight: FontWeight.w500))]),
                           const SizedBox(height: 10),
-                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Packaging fees', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)), Text('₹${packagingFee.toInt()}', style: const TextStyle(color: AppTheme.textMain, fontSize: 13, fontWeight: FontWeight.w500))]),
+                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Packaging fees', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)), Text('₹${packagingFee.toInt()}', style: TextStyle(color: AppTheme.onSurfaceOf(context), fontSize: 13, fontWeight: FontWeight.w500))]),
                           const SizedBox(height: 10),
-                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Delivery fee', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)), Text('₹${deliveryFee.toInt()}', style: const TextStyle(color: AppTheme.textMain, fontSize: 13, fontWeight: FontWeight.w500))]),
-                          const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: Colors.black12)),
-                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Grand total', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.textMain)), Text('₹${finalGrandTotal.toInt()}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.textMain))]),
+                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Delivery fee', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)), Text('₹${deliveryFee.toInt()}', style: TextStyle(color: AppTheme.onSurfaceOf(context), fontSize: 13, fontWeight: FontWeight.w500))]),
+                          Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: AppTheme.hairlineOf(context))),
+                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Grand total', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.onSurfaceOf(context))), Text('₹${finalGrandTotal.toInt()}', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.onSurfaceOf(context)))]),
                           if (isCancelled) ...[
                             const SizedBox(height: 10),
                             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Refund amount', style: TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold)), Text('₹${finalGrandTotal.toInt()}', style: const TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold))]),
@@ -929,13 +929,13 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
             ],
           ),
           const SizedBox(height: 12),
-          Text('${req['quantity']}x ${req['title']}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+          Text('${req['quantity']}x ${req['title']}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
           const SizedBox(height: 4),
           Text('Budget: ₹${req['budget']}', style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 14)),
           const SizedBox(height: 8),
           Row(children: [const Icon(Icons.calendar_today, size: 14, color: AppTheme.textMuted), const SizedBox(width: 6), Text('Needed By: ${req['target_date_time']}', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12))]),
           if (isAccepted || isOrdered) ...[
-            const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: Colors.black12)),
+            Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: AppTheme.hairlineOf(context))),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -1119,7 +1119,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
               const SizedBox(height: 12),
               ..._activeRequests.map((req) => _buildBulkRequestCard(req)),
               const SizedBox(height: 24),
-              const Divider(color: Colors.black12, thickness: 1.5),
+              Divider(color: AppTheme.hairlineOf(context), thickness: 1.5),
               const SizedBox(height: 24),
             ],
             if (sortedKeys.isNotEmpty) ...[
@@ -1256,7 +1256,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                               const Icon(Icons.local_shipping_outlined, size: 14, color: AppTheme.primary),
                               const SizedBox(width: 6),
                               const Text('Type: ', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
-                              Text(orderType, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+                              Text(orderType, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                             ],
                           ),
                           const SizedBox(height: 4),
@@ -1306,7 +1306,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                             ),
                           ),
                           const SizedBox(height: 12),
-                          const Divider(height: 1, color: Colors.black12),
+                          Divider(height: 1, color: AppTheme.hairlineOf(context)),
                           const SizedBox(height: 8),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.end,

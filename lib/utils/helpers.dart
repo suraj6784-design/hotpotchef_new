@@ -67,6 +67,14 @@ String mealDisplayTitle(Map<String, dynamic> meal, {String fallback = 'Meal'}) {
   return fallback;
 }
 
+String mealShareText(Map<String, dynamic> meal) {
+  final title = mealDisplayTitle(meal);
+  final chef = chefDisplayName(meal);
+  final price = parseMoney(meal['discounted_price'] ?? meal['price']);
+  final priceBit = price > 0 ? ' — ₹${price.toStringAsFixed(0)}' : '';
+  return 'Try $title from $chef on HotPotChef$priceBit';
+}
+
 String formatOrderId(String? rawOrderId, String fallbackId) {
   if (rawOrderId != null && rawOrderId.isNotEmpty) {
     return rawOrderId.length > 8 ? rawOrderId.substring(0, 8).toUpperCase() : rawOrderId.toUpperCase();

@@ -363,4 +363,15 @@ void main() {
       expect(pinned['pickup_lng'], 73.85);
     });
   });
+
+  test('mealShareText names the dish, kitchen, and price', () {
+    expect(
+      mealShareText({
+        'title': 'Dal Tadka',
+        'chef_name': 'Asha Kitchen',
+        'price': 120,
+      }),
+      'Try Dal Tadka from Asha Kitchen on HotPotChef — ₹120',
+    );
+  });
 }

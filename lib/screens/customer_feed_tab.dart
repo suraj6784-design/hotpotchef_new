@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../utils/helpers.dart';
 import '../utils/customer_constants.dart';
@@ -1153,6 +1154,12 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                             ),
                                         ],
                                       ),
+                                    ),
+                                    IconButton(
+                                      tooltip: 'Share dish',
+                                      visualDensity: VisualDensity.compact,
+                                      icon: Icon(Icons.share_outlined, size: 18, color: AppTheme.onSurfaceOf(context)),
+                                      onPressed: () => SharePlus.instance.share(ShareParams(text: mealShareText(meal))),
                                     ),
                                     Material(
                                       color: Colors.transparent,

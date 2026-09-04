@@ -287,7 +287,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                           children: [
                             Text(
                               item.title.isNotEmpty ? item.title : 'Meal Item',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain),
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.onSurfaceOf(context)),
                             ),
                             if (isOfferActive)
                               Container(
