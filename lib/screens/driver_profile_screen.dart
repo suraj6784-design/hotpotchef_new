@@ -8,6 +8,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'map_picker_screen.dart';
 import 'driver_id_card_screen.dart';
 import '../utils/app_theme.dart';
+import '../utils/gst_invoice.dart';
 import '../widgets/avatar_upload.dart';
 import '../widgets/change_password_dialog.dart';
 
@@ -98,9 +99,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
         _emergencyPhoneController.text = userData['emergency_phone']?.toString() ?? '';
         
         final rawAadhaar = userData['aadhaar_masked']?.toString() ?? userData['aadhaar_number']?.toString() ?? '';
-        _aadhaarMaskedController.text = rawAadhaar.length > 4 
-            ? 'XXXX-XXXX-${rawAadhaar.substring(rawAadhaar.length - 4)}' 
-            : 'XXXX-XXXX-XXXX';
+        _aadhaarMaskedController.text = maskAadhaar(rawAadhaar);
 
         _panController.text = userData['pan_number']?.toString() ?? userData['pan']?.toString() ?? '';
         _bloodGroup = userData['blood_group']?.toString() ?? 'O+';
@@ -213,7 +212,6 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     final insurance = _insurancePolicyController.text.trim();
     
     final aadhaarInput = _aadhaarMaskedController.text.trim();
-    final bool isNewAadhaar = aadhaarInput.length == 12 && !aadhaarInput.contains('X');
 
     final fullAddress = "$house, $street, $city, $state - $pin";
 
@@ -247,7 +245,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
         'dl_number': dlNumber,
         'driving_license_no': dlNumber,
         'insurance_policy_no': insurance,
-        if (isNewAadhaar) 'aadhaar_number': aadhaarInput,
+        if (isFullAadhaar(aadhaarInput)) 'aadhaar_masked': maskAadhaar(aadhaarInput),
         'role': 'Driver',
         if (_avatarUrl != null) 'avatar_url': _avatarUrl,
         'updated_at': DateTime.now().toIso8601String(),
@@ -443,7 +441,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                         flex: 3,
                         child: _buildTextField(
                           controller: _aadhaarMaskedController,
-                          label: 'Aadhaar Number',
+                          label: 'Aadhaar (last 4 stored only)',
                           prefixIcon: Icons.credit_card,
                           keyboardType: TextInputType.number,
                           maxLength: 12,

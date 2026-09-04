@@ -33,6 +33,10 @@ LegalDocument legalDocumentFor(LegalDocumentType type) {
             'Prices shown at checkout include food, packaging, optional delivery, tips, and any HotPot Coins you apply. Payment is collected through Razorpay. Placing an order is an offer to buy that meal; the chef may accept or decline.',
           ),
           LegalSection(
+            'Invoices',
+            'If the kitchen has given a GSTIN, your PDF is a tax invoice with HSN 9963 and 5% GST shown as CGST and SGST from the inclusive price. If no GSTIN is on file, you receive a bill of supply, not a GST tax invoice.',
+          ),
+          LegalSection(
             'Availability',
             'Portions are limited. If a meal sells out after you start checkout, you will not be charged, or a captured payment will be refunded to the original method.',
           ),
@@ -53,7 +57,7 @@ LegalDocument legalDocumentFor(LegalDocumentType type) {
         sections: [
           LegalSection(
             'What we collect',
-            'We collect your name, email, phone, saved addresses, order history, HotPot Coins balance, device push token, and approximate location when you use maps or delivery. Payment card data is handled by Razorpay, not stored on our servers.',
+            'We collect your name, email, phone, saved addresses, order history, HotPot Coins balance, device push token, and approximate location when you use maps or delivery. Delivery partners may provide Aadhaar; we store only the last four digits, never the full number. Payment card data is handled by Razorpay, not stored on our servers.',
           ),
           LegalSection(
             'How we use it',

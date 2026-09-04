@@ -1,15 +1,10 @@
 // lib/screens/customer_orders_tab.dart
 
-import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:pdf/pdf.dart' as pw;
-import 'package:pdf/widgets.dart' as pw;
-import 'package:path_provider/path_provider.dart';
-import 'package:open_file/open_file.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'dart:convert';
@@ -22,6 +17,7 @@ import '../widgets/meal_review_dialog.dart';
 import '../services/chef_directory.dart';
 import '../services/order_lifecycle.dart';
 import '../services/reorder_service.dart';
+import '../services/invoice_pdf_service.dart';
 import '../providers/cart_provider.dart';
 import 'checkout_screen.dart';
 
@@ -313,107 +309,16 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
     double packagingFee,
     double deliveryFee,
     double grandTotal,
-  ) async {
-    showDialog(
+  ) {
+    return InvoicePdfService.download(
       context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const Center(child: CircularProgressIndicator(color: AppTheme.primary)),
+      orderId: orderId,
+      date: date,
+      items: items,
+      itemsTotal: itemsTotal,
+      packagingFee: packagingFee,
+      deliveryFee: deliveryFee,
     );
-
-    try {
-      final pdf = pw.Document();
-      pdf.addPage(
-        pw.Page(
-          pageFormat: pw.PdfPageFormat.a4,
-          build: (pw.Context context) {
-            return pw.Padding(
-              padding: const pw.EdgeInsets.all(24),
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Text('HOTPOTCHEF INVOICE', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
-                  pw.SizedBox(height: 12),
-                  pw.Text('Order ID: $orderId'),
-                  pw.Text('Date: $date'),
-                  pw.SizedBox(height: 20),
-                  pw.Divider(),
-                  ...items.map((item) {
-                    double price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
-                    int qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
-                    return pw.Padding(
-                      padding: const pw.EdgeInsets.symmetric(vertical: 4),
-                      child: pw.Row(
-                        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                        children: [
-                          pw.Text('$qty x ${item['title']}'),
-                          pw.Text('Rs. ${(price * qty).toInt()}'),
-                        ],
-                      ),
-                    );
-                  }),
-                  pw.Divider(),
-                  pw.SizedBox(height: 10),
-                  pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('Items Total'), pw.Text('Rs. ${itemsTotal.toInt()}')]),
-                  pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('Packaging'), pw.Text('Rs. ${packagingFee.toInt()}')]),
-                  pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('Delivery'), pw.Text('Rs. ${deliveryFee.toInt()}')]),
-                  pw.Divider(thickness: 2),
-                  pw.Row(
-                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                    children: [
-                      pw.Text('Grand Total', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                      pw.Text('Rs. ${grandTotal.toInt()}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                    ],
-                  ),
-                  pw.SizedBox(height: 10),
-                  pw.Center(child: pw.Text('Payment Mode: Online / Prepaid', style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
-                  pw.Center(child: pw.Text('Payment Status: PAID', style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
-                ],
-              ),
-            );
-          },
-        ),
-      );
-
-      final bytes = await pdf.save();
-      final dir = await getTemporaryDirectory();
-      final filePath = '${dir.path}/HotPotChef_Invoice_$orderId.pdf';
-
-      final file = File(filePath);
-      await file.writeAsBytes(bytes);
-
-      if (context.mounted) Navigator.pop(context);
-
-      if (context.mounted) {
-        showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Row(children: [Icon(Icons.check_circle, color: Colors.green), SizedBox(width: 8), Text('Invoice Ready')]),
-            content: Text('Your invoice has been generated securely. You can open it to view, save, or share it.',
-                style: TextStyle(fontSize: 13, color: AppTheme.onSurfaceOf(context))),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Dismiss', style: TextStyle(color: Colors.grey))),
-              ElevatedButton.icon(
-                icon: const Icon(Icons.picture_as_pdf, size: 16),
-                label: const Text('Open Invoice'),
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  OpenFile.open(filePath);
-                },
-              ),
-            ],
-          ),
-        );
-      }
-    } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'PDF invoice generation error');
-      if (context.mounted) Navigator.pop(context);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to generate invoice: $e'), backgroundColor: Colors.red),
-        );
-      }
-    }
   }
 
   void _showOrderDetailsBottomSheet(

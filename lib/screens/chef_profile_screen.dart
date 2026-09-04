@@ -9,6 +9,7 @@ import 'package:geocoding/geocoding.dart'; // 🌟 Added for reverse geocoding
 
 import 'map_picker_screen.dart';
 import '../utils/helpers.dart';
+import '../utils/gst_invoice.dart';
 import '../utils/network.dart';
 import '../widgets/avatar_upload.dart';
 import '../widgets/change_password_dialog.dart';
@@ -66,6 +67,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _fssaiController = TextEditingController();
+  final _gstinController = TextEditingController();
   final _gatewayAccountController = TextEditingController();
 
   final _bankAccountController = TextEditingController();
@@ -98,6 +100,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     _nameController.dispose();
     _phoneController.dispose();
     _fssaiController.dispose();
+    _gstinController.dispose();
     _gatewayAccountController.dispose();
     _bankAccountController.dispose();
     _ifscController.dispose();
@@ -119,6 +122,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
         '';
     _phoneController.text = userData?['phone']?.toString() ?? user.userMetadata?['phone']?.toString() ?? '';
     _fssaiController.text = userData?['fssai_number']?.toString() ?? '';
+    _gstinController.text = userData?['gstin']?.toString() ?? '';
     _gatewayAccountController.text = userData?['gateway_account_id']?.toString() ?? '';
 
     _beneficiaryNameController.text = userData?['beneficiary_name']?.toString() ?? '';
@@ -347,6 +351,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
         'full_name': name,
         'phone': phone,
         'fssai_number': fssai,
+        'gstin': _gstinController.text.trim().toUpperCase(),
         'address': formattedAddress,
         'house_no': house,
         'street': street,
@@ -544,6 +549,25 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                       onPressed: () => launchUrl(Uri.parse('https://foscos.fssai.gov.in/'), mode: LaunchMode.externalApplication),
                       child: const Text('Apply or Verify FSSAI License ↗',
                           style: TextStyle(color: Colors.blueAccent, fontSize: 12, decoration: TextDecoration.underline)),
+                    ),
+                  ),
+                  _buildValidatedTextField(
+                    controller: _gstinController,
+                    label: 'GSTIN (for tax invoices)',
+                    prefixIcon: Icons.receipt_long_outlined,
+                    maxLength: 15,
+                    validator: (v) {
+                      final value = v?.trim() ?? '';
+                      if (value.isEmpty) return null;
+                      if (!isValidGstin(value)) return 'Enter a valid 15-character GSTIN';
+                      return null;
+                    },
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.only(top: 4, bottom: 8),
+                    child: Text(
+                      'Leave blank if you are not GST-registered. Customers then get a bill of supply.',
+                      style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
                     ),
                   ),
                   Divider(height: 32, color: divider),
