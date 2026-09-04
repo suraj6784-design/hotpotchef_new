@@ -57,6 +57,8 @@ class DriverDeliveryModel {
   final int totalItemsCount;
   final DeliveryStatus status;
   final DateTime createdAt;
+  final String timeSlot;
+  final String? selectedDate;
 
   const DriverDeliveryModel({
     required this.orderId,
@@ -71,10 +73,20 @@ class DriverDeliveryModel {
     this.totalItemsCount = 1,
     required this.status,
     required this.createdAt,
+    this.timeSlot = '',
+    this.selectedDate,
   });
+
+  Map<String, dynamic> get slotSource => {
+        'created_at': createdAt.toIso8601String(),
+        'time_slot': timeSlot,
+        if (selectedDate != null && selectedDate!.isNotEmpty) 'selected_date': selectedDate,
+      };
 
   factory DriverDeliveryModel.fromJson(Map<String, dynamic> json) {
     final chef = _embeddedMap(json['chefs'] ?? json['chef']);
+    final items = _itemsFrom(json['items'] ?? json['cart_items'] ?? json['order_items']);
+    final first = items.isNotEmpty ? items.first : const <String, dynamic>{};
     return DriverDeliveryModel(
       orderId: json['id']?.toString() ?? '',
       chefId: json['chef_id']?.toString() ?? '',
@@ -82,13 +94,19 @@ class DriverDeliveryModel {
       pickupAddress: json['pickup_address']?.toString() ?? chef?['pickup_address']?.toString() ?? '',
       customerAddress: json['delivery_address']?.toString() ?? '',
       customerId: json['customer_id']?.toString() ?? json['user_id']?.toString() ?? '',
-      chatRoomId: orderChatRoomId(json, items: _itemsFrom(json['items'] ?? json['cart_items'] ?? json['order_items'])),
+      chatRoomId: orderChatRoomId(json, items: items),
       payout: (json['driver_payout'] as num?)?.toDouble() ?? 
               (json['delivery_fee'] as num?)?.toDouble() ?? 40.0,
       distanceKm: (json['estimated_distance_km'] as num?)?.toDouble() ?? 0.0,
-      totalItemsCount: (json['order_items'] as List?)?.length ?? 1,
+      totalItemsCount: (json['order_items'] as List?)?.length ?? items.length,
       status: DeliveryStatus.fromString(json['status']?.toString()),
       createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ?? DateTime.now(),
+      timeSlot: json['time_slot']?.toString() ??
+          first['time_slot']?.toString() ??
+          first['timeSlot']?.toString() ??
+          json['delivery_slot']?.toString() ??
+          '',
+      selectedDate: json['selected_date']?.toString() ?? first['selected_date']?.toString(),
     );
   }
 

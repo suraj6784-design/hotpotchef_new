@@ -1043,6 +1043,40 @@ DateTime? orderSlotStart(Map<String, dynamic> order, {DateTime? now}) {
   return parseClockOnDate(slot, date) ?? DateTime(date.year, date.month, date.day);
 }
 
+String formatDeliverySlotLabel(Map<String, dynamic> order, {DateTime? now}) {
+  final placed = DateTime.tryParse(order['created_at']?.toString() ?? '')?.toLocal() ?? now ?? DateTime.now();
+  final rawSlot = order['time_slot']?.toString() ??
+      order['delivery_slot']?.toString() ??
+      order['selected_slot']?.toString() ??
+      '';
+  return smartTimeSlot(
+    rawSlot.isEmpty ? 'ASAP' : rawSlot,
+    placed,
+    selectedDateStr: order['selected_date']?.toString(),
+  );
+}
+
+String _humanDuration(Duration duration) {
+  final minutes = duration.inMinutes;
+  if (minutes < 1) return 'under a minute';
+  if (minutes < 60) return '$minutes min';
+  final hours = duration.inHours;
+  final rem = minutes % 60;
+  if (hours < 24) return rem == 0 ? '$hours hr' : '$hours hr $rem min';
+  final days = duration.inDays;
+  return days == 1 ? '1 day' : '$days days';
+}
+
+/// Live countdown against the scheduled drop-off, e.g. "12 min left" / "8 min late".
+String formatSlotCountdown(DateTime? slotStart, {DateTime? now}) {
+  if (slotStart == null) return '';
+  final current = now ?? DateTime.now();
+  final diff = slotStart.difference(current);
+  if (diff.inSeconds.abs() < 45) return 'Due now';
+  if (diff.isNegative) return '${_humanDuration(diff.abs())} late';
+  return '${_humanDuration(diff)} left';
+}
+
 class OrderBillBreakdown {
   const OrderBillBreakdown({
     required this.itemsTotal,

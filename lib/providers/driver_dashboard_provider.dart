@@ -199,6 +199,7 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
       return true;
     } catch (e, st) {
       _logDriverError(e, st, 'Failed status update for order: $orderId');
+      state = state.copyWith(errorMessage: 'Could not update this run. Try again.');
       return false;
     }
   }

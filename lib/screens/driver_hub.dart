@@ -1,5 +1,7 @@
 // lib/screens/driver_hub.dart
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -28,6 +30,7 @@ class DriverHubScreen extends ConsumerStatefulWidget {
 class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
   int _selectedIndex = 0;
   bool _isOnline = true;
+  String? _busyOrderId;
 
   @override
   void initState() {
@@ -523,6 +526,8 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               const SizedBox(height: 8),
               Text('Deliver to: ${delivery.customerAddress}',
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.onSurfaceOf(context))),
+              const SizedBox(height: 10),
+              _DeliverySlotRow(order: delivery.slotSource),
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -557,45 +562,123 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 ],
               ),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.navigation, size: 16),
-                      label: const Text('Navigate'),
-                      onPressed: () {
-                        context.push('/tracking', extra: {
-                          'order': {
-                            'id': delivery.orderId,
-                            'delivery_address': delivery.customerAddress,
-                            'pickup_address': delivery.pickupAddress,
-                            'title': delivery.chefName,
-                          },
-                          'isDriver': true,
-                        });
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: GradientButton(
-                      label: isOut ? 'Mark Delivered' : 'Start Delivery',
-                      icon: isOut ? Icons.check_rounded : Icons.delivery_dining_rounded,
-                      gradient: isOut
-                          ? const LinearGradient(colors: [AppTheme.success, Color(0xFF43C478)])
-                          : AppTheme.primaryGradient,
-                      onPressed: () async {
+              OutlinedButton.icon(
+                icon: const Icon(Icons.navigation, size: 16),
+                label: const Text('Navigate'),
+                onPressed: () {
+                  context.push('/tracking', extra: {
+                    'order': {
+                      'id': delivery.orderId,
+                      'delivery_address': delivery.customerAddress,
+                      'pickup_address': delivery.pickupAddress,
+                      'title': delivery.chefName,
+                    },
+                    'isDriver': true,
+                  });
+                },
+              ),
+              const SizedBox(height: 10),
+              GradientButton(
+                label: isOut ? 'Mark Delivered' : 'Start Delivery',
+                icon: isOut ? Icons.check_rounded : Icons.delivery_dining_rounded,
+                height: 48,
+                loading: _busyOrderId == delivery.orderId,
+                gradient: isOut
+                    ? const LinearGradient(colors: [AppTheme.success, Color(0xFF43C478)])
+                    : AppTheme.primaryGradient,
+                onPressed: _busyOrderId != null
+                    ? null
+                    : () async {
+                        setState(() => _busyOrderId = delivery.orderId);
                         final nextStatus = isOut ? DeliveryStatus.delivered : DeliveryStatus.outForDelivery;
-                        await notifier.updateDeliveryStatus(delivery.orderId, nextStatus);
+                        final ok = await notifier.updateDeliveryStatus(delivery.orderId, nextStatus);
+                        if (!mounted) return;
+                        setState(() => _busyOrderId = null);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              ok
+                                  ? (isOut ? 'Marked as delivered.' : 'Out for delivery.')
+                                  : (ref.read(driverDashboardProvider).errorMessage ??
+                                      'Could not update this run. Try again.'),
+                            ),
+                            backgroundColor: ok ? Colors.green : Colors.red,
+                          ),
+                        );
                       },
-                    ),
-                  ),
-                ],
               ),
             ],
           ),
         ).entrance(index: index);
       },
+    );
+  }
+}
+
+class _DeliverySlotRow extends StatefulWidget {
+  const _DeliverySlotRow({required this.order});
+
+  final Map<String, dynamic> order;
+
+  @override
+  State<_DeliverySlotRow> createState() => _DeliverySlotRowState();
+}
+
+class _DeliverySlotRowState extends State<_DeliverySlotRow> {
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final slot = formatDeliverySlotLabel(widget.order);
+    final start = orderSlotStart(widget.order);
+    final left = formatSlotCountdown(start);
+    final late = start != null && start.isBefore(DateTime.now());
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.schedule, size: 18, color: late ? AppTheme.error : AppTheme.primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Slot $slot', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.onSurfaceOf(context))),
+                if (left.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    left,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: late ? AppTheme.error : AppTheme.primary,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
