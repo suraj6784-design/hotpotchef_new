@@ -308,8 +308,10 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
     double itemsTotal,
     double packagingFee,
     double deliveryFee,
-    double grandTotal,
-  ) {
+    double grandTotal, {
+    double tipAmount = 0,
+    double coinsApplied = 0,
+  }) {
     return InvoicePdfService.download(
       context: context,
       orderId: orderId,
@@ -318,6 +320,8 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
       itemsTotal: itemsTotal,
       packagingFee: packagingFee,
       deliveryFee: deliveryFee,
+      tipAmount: tipAmount,
+      coinsApplied: coinsApplied,
     );
   }
 
@@ -629,7 +633,18 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                               ]),
                               if (isDelivered)
                                 GestureDetector(
-                                  onTap: () => _downloadInvoicePDF(context, displayOrderIdStr, dateTimeString, items, itemsTotal, packagingFee, deliveryFee, finalGrandTotal),
+                                  onTap: () => _downloadInvoicePDF(
+                                    context,
+                                    displayOrderIdStr,
+                                    dateTimeString,
+                                    items,
+                                    itemsTotal,
+                                    packagingFee,
+                                    deliveryFee,
+                                    finalGrandTotal,
+                                    tipAmount: bill.tipAmount,
+                                    coinsApplied: bill.coinsApplied,
+                                  ),
                                   child: Container(
                                     padding: const EdgeInsets.all(6),
                                     decoration: BoxDecoration(
@@ -647,6 +662,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Packaging fees', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)), Text('₹${packagingFee.toInt()}', style: TextStyle(color: AppTheme.onSurfaceOf(context), fontSize: 13, fontWeight: FontWeight.w500))]),
                           const SizedBox(height: 10),
                           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Delivery fee', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)), Text('₹${deliveryFee.toInt()}', style: TextStyle(color: AppTheme.onSurfaceOf(context), fontSize: 13, fontWeight: FontWeight.w500))]),
+                          ...orderBillAdjustmentRows(context, bill),
                           Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: AppTheme.hairlineOf(context))),
                           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Grand total', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.onSurfaceOf(context))), Text('₹${finalGrandTotal.toInt()}', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.onSurfaceOf(context)))]),
                           if (isCancelled) ...[

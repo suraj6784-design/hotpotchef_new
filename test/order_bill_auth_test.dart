@@ -44,6 +44,44 @@ void main() {
       expect(bill.grandTotal, 211);
     });
 
+    test('shows coins taken off the paid total', () {
+      final bill = orderBillBreakdown(
+        items: [
+          {'price': 221, 'quantity': 1},
+        ],
+        order: {
+          'total_price': 256,
+          'packaging_fee': 20,
+          'delivery_fee': 30,
+          'coins_applied': 15,
+          'order_type': 'Delivery Partner',
+        },
+        hasDelivery: true,
+      );
+      expect(bill.itemsTotal, 221);
+      expect(bill.packagingFee, 20);
+      expect(bill.deliveryFee, 30);
+      expect(bill.coinsApplied, 15);
+      expect(bill.grandTotal, 256);
+    });
+
+    test('infers coins when the paid total is less than the listed fees', () {
+      final bill = orderBillBreakdown(
+        items: [
+          {'price': 221, 'quantity': 1},
+        ],
+        order: {
+          'total_price': 256,
+          'packaging_fee': 20,
+          'delivery_fee': 30,
+          'order_type': 'Delivery Partner',
+        },
+        hasDelivery: true,
+      );
+      expect(bill.coinsApplied, 15);
+      expect(bill.grandTotal, 256);
+    });
+
     test('does not invent a delivery fee for pickup', () {
       final bill = orderBillBreakdown(
         items: [

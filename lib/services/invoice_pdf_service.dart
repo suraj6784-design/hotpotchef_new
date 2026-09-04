@@ -51,6 +51,7 @@ class InvoicePdfService {
       packagingFee: bill.packagingFee,
       deliveryFee: bill.deliveryFee,
       tipAmount: bill.tipAmount,
+      coinsApplied: bill.coinsApplied,
     );
   }
 
@@ -63,6 +64,7 @@ class InvoicePdfService {
     required double packagingFee,
     required double deliveryFee,
     double tipAmount = 0,
+    double coinsApplied = 0,
   }) async {
     showDialog(
       context: context,
@@ -86,6 +88,7 @@ class InvoicePdfService {
         packagingFee: packagingFee,
         deliveryFee: deliveryFee,
         tipAmount: tipAmount,
+        coinsApplied: coinsApplied,
         chefGstin: chef?['gstin']?.toString(),
         chefName: chefDisplayName(chef),
         fssaiNumber: chef?['fssai_number']?.toString(),
@@ -207,6 +210,7 @@ class InvoicePdfService {
                   _line('SGST @ ${((bill.gstRate / 2) * 100).toStringAsFixed(1)}%', bill.sgst),
                 ],
                 if (bill.tipAmount > 0) _line('Tip (not a taxable supply)', bill.tipAmount),
+                if (bill.coinsApplied > 0) _line('HotPot Coins', -bill.coinsApplied),
                 pw.Divider(thickness: 2),
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,

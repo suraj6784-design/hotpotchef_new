@@ -29,6 +29,7 @@ class GstInvoiceBreakdown {
     required this.packagingFee,
     required this.deliveryFee,
     required this.tipAmount,
+    required this.coinsApplied,
     required this.taxableValue,
     required this.cgst,
     required this.sgst,
@@ -46,6 +47,7 @@ class GstInvoiceBreakdown {
   final double packagingFee;
   final double deliveryFee;
   final double tipAmount;
+  final double coinsApplied;
   final double taxableValue;
   final double cgst;
   final double sgst;
@@ -65,6 +67,7 @@ GstInvoiceBreakdown gstInvoiceBreakdown({
   required double packagingFee,
   required double deliveryFee,
   double tipAmount = 0,
+  double coinsApplied = 0,
   String? chefGstin,
   String? chefName,
   String? fssaiNumber,
@@ -73,6 +76,7 @@ GstInvoiceBreakdown gstInvoiceBreakdown({
   final gstin = normalizedGstin(chefGstin);
   final foodGross = roundMoney(itemsTotal + packagingFee + deliveryFee);
   final tip = roundMoney(tipAmount);
+  final coins = roundMoney(coinsApplied);
   final isTax = gstin != null;
   final taxable = isTax ? roundMoney(foodGross / (1 + restaurantGstRate)) : foodGross;
   final gst = isTax ? roundMoney(foodGross - taxable) : 0.0;
@@ -91,10 +95,11 @@ GstInvoiceBreakdown gstInvoiceBreakdown({
     packagingFee: roundMoney(packagingFee),
     deliveryFee: roundMoney(deliveryFee),
     tipAmount: tip,
+    coinsApplied: coins,
     taxableValue: taxable,
     cgst: cgst,
     sgst: sgst,
-    grandTotal: roundMoney(foodGross + tip),
+    grandTotal: roundMoney(foodGross + tip - coins),
   );
 }
 

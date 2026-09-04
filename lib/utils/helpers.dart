@@ -999,7 +999,7 @@ OrderBillBreakdown orderBillBreakdown({
   final paidTotal = parseMoney(source['total_price'] ?? source['total_amount'] ?? source['grand_total']);
   final packaging = parseMoney(source['packaging_fee'], 20);
   final tip = parseMoney(source['tip_amount'] ?? source['tip']);
-  final coins = parseMoney(source['coins_applied']);
+  var coins = parseMoney(source['coins_applied']);
   final storedDelivery = double.tryParse(source['delivery_fee']?.toString() ?? '');
 
   final service = (source['order_type'] ?? source['service_type'] ?? '').toString().toLowerCase();
@@ -1017,6 +1017,11 @@ OrderBillBreakdown orderBillBreakdown({
     delivery = 30;
   }
 
+  if (coins <= 0 && paidTotal > 0) {
+    final implied = itemsTotal + packaging + delivery + tip - paidTotal;
+    if (implied >= 0.5) coins = implied;
+  }
+
   final grand = paidTotal > 0 ? paidTotal : (itemsTotal + packaging + delivery + tip - coins).clamp(0, double.infinity);
 
   return OrderBillBreakdown(
@@ -1027,6 +1032,39 @@ OrderBillBreakdown orderBillBreakdown({
     coinsApplied: coins,
     grandTotal: grand.toDouble(),
   );
+}
+
+List<Widget> orderBillAdjustmentRows(BuildContext context, OrderBillBreakdown bill) {
+  final ink = AppTheme.onSurfaceOf(context);
+  final rows = <Widget>[];
+  if (bill.tipAmount > 0) {
+    rows.addAll([
+      const SizedBox(height: 10),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Text('Tip', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
+          Text('₹${bill.tipAmount.toInt()}', style: TextStyle(color: ink, fontSize: 13, fontWeight: FontWeight.w500)),
+        ],
+      ),
+    ]);
+  }
+  if (bill.coinsApplied > 0) {
+    rows.addAll([
+      const SizedBox(height: 10),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Text('HotPot Coins', style: TextStyle(color: AppTheme.success, fontSize: 13, fontWeight: FontWeight.w600)),
+          Text(
+            '-₹${bill.coinsApplied.toInt()}',
+            style: const TextStyle(color: AppTheme.success, fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    ]);
+  }
+  return rows;
 }
 
 String friendlyAuthError(Object error) {
