@@ -15,6 +15,31 @@ void main() {
     expect(mealMatchesCustomerDiet(paneer, allergies: 'No onion'), isTrue);
   });
 
+  test('favorites filter turns off after logout', () {
+    expect(feedFavoritesFilterActive(signedIn: false, favoritesOnly: true), isFalse);
+    expect(feedFavoritesFilterActive(signedIn: true, favoritesOnly: true), isTrue);
+  });
+
+  test('empty feed copy matches favorites, category, and guest', () {
+    expect(
+      feedEmptyCopy(signedIn: false, favoritesOnly: true, hasFavorites: false, hasSearch: false).title,
+      'Sign in to see favorites',
+    );
+    expect(
+      feedEmptyCopy(signedIn: true, favoritesOnly: true, hasFavorites: false, hasSearch: false).title,
+      'No favorites yet',
+    );
+    final category = feedEmptyCopy(
+      signedIn: false,
+      favoritesOnly: false,
+      hasFavorites: false,
+      hasSearch: false,
+      category: 'Maharashtrian',
+    );
+    expect(category.title, 'No Maharashtrian meals');
+    expect(category.clearCategory, isTrue);
+  });
+
   test('unread is only for newer messages from someone else', () {
     final lastAt = DateTime.parse('2026-09-05T10:00:00Z');
     expect(

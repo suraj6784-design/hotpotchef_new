@@ -1,5 +1,7 @@
 // lib/screens/customer_feed_tab.dart
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -60,6 +62,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   final Set<String> _closedChefIds = {};
   final Set<String> _chefOpenResolved = {};
   bool _hydratingKitchenHours = false;
+  StreamSubscription<AuthState>? _authSub;
 
   final List<Map<String, dynamic>> _categories = const [
     {'name': 'All', 'icon': Icons.set_meal_outlined},
@@ -83,10 +86,29 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         .eq('status', 'Available');
     _fetchUserAddresses();
     _fetchDietaryPrefs();
+    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      if (!mounted) return;
+      if (data.session == null) {
+        setState(_resetGuestFeedState);
+      } else {
+        _fetchUserAddresses();
+        _fetchDietaryPrefs();
+      }
+    });
+  }
+
+  void _resetGuestFeedState() {
+    _showFavoritesOnly = false;
+    _dietaryPref = '';
+    _allergies = '';
+    _savedAddresses = [];
+    _currentAddress = 'Select Delivery Address';
+    ref.read(selectedDeliveryAddressProvider.notifier).setAddress(null);
   }
 
   @override
   void dispose() {
+    _authSub?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -401,6 +423,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   Widget build(BuildContext context) {
     super.build(context);
     final isLoggedIn = Supabase.instance.client.auth.currentUser != null;
+    final showFavorites = feedFavoritesFilterActive(
+      signedIn: isLoggedIn,
+      favoritesOnly: _showFavoritesOnly,
+    );
 
     return SingleChildScrollView(
       padding: const EdgeInsets.only(bottom: 120),
@@ -426,10 +452,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                     child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        GestureDetector(
+                        Expanded(
+                          child: GestureDetector(
                           onTap: () async {
                             if (!isLoggedIn) {
                               showAuthBottomSheet(context, () {
@@ -540,8 +566,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                 children: [
                                   const Icon(Icons.location_on, color: Colors.white, size: 18),
                                   const SizedBox(width: 4),
-                                  Container(
-                                    constraints: const BoxConstraints(maxWidth: 160),
+                                  Expanded(
                                     child: Text(
                                       _currentAddress,
                                       style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
@@ -556,6 +581,8 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                             ],
                           ),
                         ),
+                        ),
+                        const SizedBox(width: 12),
                         Row(
                           children: [
                             if (isLoggedIn) ...[
@@ -598,7 +625,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                               ),
                               const SizedBox(width: 8),
                               GestureDetector(
-                                onTap: widget.onLogout,
+                                onTap: () {
+                                  setState(_resetGuestFeedState);
+                                  widget.onLogout();
+                                },
                                 child: Container(
                                   padding: const EdgeInsets.all(8),
                                   decoration: BoxDecoration(
@@ -767,14 +797,14 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                     Text(
                       _hasActiveSearch
                           ? 'Search results'
-                          : (_showFavoritesOnly ? 'Your favorites' : 'Fresh from the kitchen'),
+                          : (showFavorites ? 'Your favorites' : 'Fresh from the kitchen'),
                       style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppTheme.onSurfaceOf(context)),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       _hasActiveSearch
                           ? '"${_searchController.text}"'
-                          : (_showFavoritesOnly ? 'Meals you loved' : 'Support your local home chefs'),
+                          : (showFavorites ? 'Meals you loved' : 'Support your local home chefs'),
                       style: const TextStyle(fontSize: 13, color: AppTheme.textMuted),
                     ),
                   ],
@@ -810,9 +840,13 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
               ),
             )
           else if (_hasActiveSearch)
-            _buildMealGrid(_mealsForSelectedAddress(_showFavoritesOnly
-                ? _aiSearchResults.where((m) => widget.favoriteMeals.contains(m['id'].toString())).toList()
-                : _aiSearchResults))
+            _buildMealGrid(
+              _mealsForSelectedAddress(showFavorites
+                  ? _aiSearchResults.where((m) => widget.favoriteMeals.contains(m['id'].toString())).toList()
+                  : _aiSearchResults),
+              isLoggedIn: isLoggedIn,
+              showFavorites: showFavorites,
+            )
           else
             StreamBuilder<List<Map<String, dynamic>>>(
               stream: _mealsStream,
@@ -849,12 +883,16 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                       .toList();
                 }
 
-                if (_showFavoritesOnly) {
+                if (showFavorites) {
                   meals = meals.where((m) => widget.favoriteMeals.contains(m['id'].toString())).toList();
                 }
 
                 meals = _mealsForSelectedAddress(meals);
-                return _buildMealGrid(meals);
+                return _buildMealGrid(
+                  meals,
+                  isLoggedIn: isLoggedIn,
+                  showFavorites: showFavorites,
+                );
               },
             )
         ],
@@ -862,18 +900,37 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     );
   }
 
-  Widget _buildMealGrid(List<Map<String, dynamic>> meals) {
+  Widget _buildMealGrid(
+    List<Map<String, dynamic>> meals, {
+    required bool isLoggedIn,
+    required bool showFavorites,
+  }) {
     if (meals.isEmpty) {
+      final copy = feedEmptyCopy(
+        signedIn: isLoggedIn,
+        favoritesOnly: showFavorites || _showFavoritesOnly,
+        hasFavorites: widget.favoriteMeals.isNotEmpty,
+        hasSearch: _hasActiveSearch,
+        searchQuery: _searchController.text,
+        category: _hasActiveSearch ? 'All' : _selectedCategory,
+        hasDeliveryPin: _hasDeliveryPin,
+      );
       return EmptyState(
-        icon: Icons.search_off_rounded,
-        title: 'No meals found',
-        message: _hasDeliveryPin
-            ? 'No kitchens are delivering to this pin right now. Try another address or category.'
-            : 'Try a different category or search for something else.',
+        icon: copy.promptSignIn || showFavorites ? Icons.favorite_border : Icons.search_off_rounded,
+        title: copy.title,
+        message: copy.message,
+        actionLabel: copy.promptSignIn
+            ? 'Sign In'
+            : copy.clearCategory
+                ? 'Show all meals'
+                : null,
+        onAction: copy.promptSignIn
+            ? () => showAuthBottomSheet(context, () => setState(() {}))
+            : copy.clearCategory
+                ? () => setState(() => _selectedCategory = 'All')
+                : null,
       );
     }
-
-    final isLoggedIn = Supabase.instance.client.auth.currentUser != null;
 
     meals.sort((a, b) {
       final aAvailable = !_checkIfTimePassed(a['time_slot']?.toString()) &&

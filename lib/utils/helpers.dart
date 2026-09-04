@@ -379,6 +379,86 @@ bool mealMatchesCustomerDiet(
   return mealMatchesDietaryPreference(meal, preference) && mealAvoidsAllergies(meal, allergies);
 }
 
+/// Favorites filter must turn off after logout — the Home tab stays alive.
+bool feedFavoritesFilterActive({
+  required bool signedIn,
+  required bool favoritesOnly,
+}) {
+  return signedIn && favoritesOnly;
+}
+
+class FeedEmptyCopy {
+  const FeedEmptyCopy({
+    required this.title,
+    required this.message,
+    this.promptSignIn = false,
+    this.clearCategory = false,
+  });
+
+  final String title;
+  final String message;
+  final bool promptSignIn;
+  final bool clearCategory;
+}
+
+FeedEmptyCopy feedEmptyCopy({
+  required bool signedIn,
+  required bool favoritesOnly,
+  required bool hasFavorites,
+  required bool hasSearch,
+  String searchQuery = '',
+  String category = 'All',
+  bool hasDeliveryPin = false,
+}) {
+  final favorites = feedFavoritesFilterActive(signedIn: signedIn, favoritesOnly: favoritesOnly);
+  final categoryFilter = category != 'All';
+
+  if (!signedIn && favoritesOnly) {
+    return const FeedEmptyCopy(
+      title: 'Sign in to see favorites',
+      message: 'Saved meals show up here after you sign in.',
+      promptSignIn: true,
+    );
+  }
+  if (favorites && !hasFavorites) {
+    return const FeedEmptyCopy(
+      title: 'No favorites yet',
+      message: 'Tap the heart on a dish you love and it will land here.',
+    );
+  }
+  if (favorites) {
+    return FeedEmptyCopy(
+      title: categoryFilter ? 'No $category favorites' : 'No favorites on the menu',
+      message: categoryFilter
+          ? 'None of your saved meals are in $category right now. Try All or another category.'
+          : 'Your saved meals are not on the menu right now.',
+      clearCategory: categoryFilter,
+    );
+  }
+  if (hasSearch) {
+    final q = searchQuery.trim();
+    return FeedEmptyCopy(
+      title: 'No meals found',
+      message: q.isEmpty ? 'Try a different search.' : 'Nothing matched "$q". Try another dish or category.',
+    );
+  }
+  if (categoryFilter) {
+    return FeedEmptyCopy(
+      title: 'No $category meals',
+      message: hasDeliveryPin
+          ? 'No $category kitchens are delivering to this pin right now. Try another category or address.'
+          : 'No $category dishes are on the menu right now. Try All or another category.',
+      clearCategory: true,
+    );
+  }
+  return FeedEmptyCopy(
+    title: 'No meals found',
+    message: hasDeliveryPin
+        ? 'No kitchens are delivering to this pin right now. Try another address or category.'
+        : 'Try a different category or search for something else.',
+  );
+}
+
 bool _haystackHasAny(String haystack, Iterable<String> needles) {
   for (final needle in needles) {
     if (needle.isEmpty) continue;

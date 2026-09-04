@@ -421,75 +421,69 @@ class _AuthScreenState extends State<AuthScreen> {
     final title = widget.sheetTitle ?? (_isLogin ? 'Sign in to continue' : 'Join HotPotChef');
     final subtitle = widget.sheetSubtitle ??
         (_isLogin ? 'Your cart stays on this screen.' : 'Create an account to finish your order.');
+    final media = MediaQuery.of(context);
+    final keyboard = media.viewInsets.bottom;
+    final maxSheetHeight = (media.size.height - keyboard - media.padding.top - 8).clamp(280.0, media.size.height);
 
-    return Material(
-      color: bg,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-      clipBehavior: Clip.antiAlias,
-      child: Scaffold(
-        backgroundColor: bg,
-        resizeToAvoidBottomInset: true,
-        body: Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+    return Padding(
+      padding: EdgeInsets.only(bottom: keyboard),
+      child: Material(
+        color: bg,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        clipBehavior: Clip.antiAlias,
         child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.92),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 10),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: muted.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 14, 8, 0),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          constraints: BoxConstraints(maxHeight: maxSheetHeight),
+          child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+            child: AutofillGroup(
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(title, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: titleColor)),
-                          const SizedBox(height: 4),
-                          Text(subtitle, style: TextStyle(fontSize: 13, height: 1.35, color: muted)),
-                        ],
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: muted.withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(99),
+                        ),
                       ),
                     ),
-                    IconButton(
-                      tooltip: 'Close',
-                      onPressed: _isLoading ? null : () => Navigator.pop(context),
-                      icon: Icon(Icons.close, color: muted),
+                    const SizedBox(height: 14),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(title, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: titleColor)),
+                              const SizedBox(height: 4),
+                              Text(subtitle, style: TextStyle(fontSize: 13, height: 1.35, color: muted)),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Close',
+                          onPressed: _isLoading ? null : () => Navigator.pop(context),
+                          icon: Icon(Icons.close, color: muted),
+                        ),
+                      ],
                     ),
+                    const SizedBox(height: 12),
+                    _buildCredentialCard(isDark),
+                    const SizedBox(height: 4),
+                    ..._buildAuthLinks(compact: true),
                   ],
                 ),
               ),
-              Flexible(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-                  child: AutofillGroup(
-                    child: Form(
-                      key: _formKey,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _buildCredentialCard(isDark),
-                          const SizedBox(height: 4),
-                          ..._buildAuthLinks(compact: true),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
-      ),
       ),
     );
   }
