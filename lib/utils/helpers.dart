@@ -74,6 +74,60 @@ String mealShareUri(String? mealId) {
   return 'hotpotchef://app/meal/$id';
 }
 
+/// Must also be allow-listed in the Supabase Auth redirect URLs.
+const passwordResetRedirectUri = 'hotpotchef://app/reset-password';
+
+bool isPasswordRecoveryPath(String path) {
+  return path == '/reset-password' || path == '/reset-callback';
+}
+
+String? resetPasswordValidationError({
+  required String password,
+  required String confirm,
+}) {
+  if (password.trim().length < 8) {
+    return 'Password must be at least 8 characters long.';
+  }
+  if (password.trim() != confirm.trim()) {
+    return 'Passwords do not match.';
+  }
+  return null;
+}
+
+String? normalizeReferralCode(String? raw) {
+  final code = (raw ?? '').trim().toUpperCase().replaceAll(RegExp(r'\s+'), '');
+  return code.isEmpty ? null : code;
+}
+
+bool isPlausibleReferralCode(String code) {
+  return RegExp(r'^[A-Z0-9]{6,16}$').hasMatch(code);
+}
+
+String referralInviteText(String code) {
+  return "Craving authentic home-cooked food? Join HotPotChef and enter my code $code when you sign up to get 50 HotPot Coins on your first order.";
+}
+
+Map<String, dynamic> signupUserPayload({
+  required String id,
+  required String email,
+  required String name,
+  required String phone,
+  required String role,
+  String? referredBy,
+  String? createdAt,
+}) {
+  return {
+    'id': id,
+    'email': email,
+    'name': name,
+    'full_name': name,
+    'phone': phone,
+    'role': role,
+    if (createdAt != null) 'created_at': createdAt,
+    if (referredBy != null) 'referred_by': referredBy,
+  };
+}
+
 String mealShareText(Map<String, dynamic> meal) {
   final title = mealDisplayTitle(meal);
   final chef = chefDisplayName(meal);

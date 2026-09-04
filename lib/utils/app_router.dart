@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../models/app_role.dart';
 import '../screens/auth_screen.dart';
+import '../screens/reset_password_screen.dart';
 import '../screens/customer_hub.dart';
 import '../screens/chef_hub.dart';
 import '../screens/driver_hub.dart';
@@ -59,6 +60,11 @@ class AppRouter {
         return '/auth';
       }
 
+      // Recovery session is authenticated — stay on the new-password screen.
+      if (isPasswordRecoveryPath(path)) {
+        return path == '/reset-callback' ? '/reset-password' : null;
+      }
+
       // 2. Enforce correct role-based landing on app startup or auth navigation
       if (isAuthenticated) {
         if (path == '/auth') {
@@ -77,6 +83,14 @@ class AppRouter {
       GoRoute(
         path: '/auth',
         builder: (context, state) => const AuthScreen(),
+      ),
+      GoRoute(
+        path: '/reset-password',
+        builder: (context, state) => const ResetPasswordScreen(),
+      ),
+      GoRoute(
+        path: '/reset-callback',
+        builder: (context, state) => const ResetPasswordScreen(),
       ),
       GoRoute(
         path: '/customer-hub',

@@ -51,6 +51,7 @@ class _AuthScreenState extends State<AuthScreen> {
   final _passwordController = TextEditingController();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _referralController = TextEditingController();
 
   @override
   void dispose() {
@@ -58,6 +59,7 @@ class _AuthScreenState extends State<AuthScreen> {
     _passwordController.dispose();
     _nameController.dispose();
     _phoneController.dispose();
+    _referralController.dispose();
     super.dispose();
   }
 
@@ -126,6 +128,13 @@ class _AuthScreenState extends State<AuthScreen> {
         // --- SIGN-UP FLOW WITH EXPLICIT ROLE ---
         final name = _nameController.text.trim();
         final phone = _phoneController.text.trim();
+        final String? referredBy;
+        try {
+          referredBy = await _resolveSignupReferralCode();
+        } on FormatException catch (e) {
+          _showAuthError(e.message);
+          return;
+        }
 
         final response = await _supabase.auth.signUp(
           email: email,
@@ -156,15 +165,17 @@ class _AuthScreenState extends State<AuthScreen> {
           }
 
           // Initialize user record in public.users table with selected role
-          await _supabase.from('users').upsert({
-            'id': response.user!.id,
-            'email': email,
-            'name': name,
-            'full_name': name,
-            'phone': phone,
-            'role': _selectedRole.storageValue,
-            'created_at': DateTime.now().toIso8601String(),
-          }).withTimeout(NetworkTimeouts.standard);
+          await _supabase.from('users').upsert(
+            signupUserPayload(
+              id: response.user!.id,
+              email: email,
+              name: name,
+              phone: phone,
+              role: _selectedRole.storageValue,
+              referredBy: referredBy,
+              createdAt: DateTime.now().toIso8601String(),
+            ),
+          ).withTimeout(NetworkTimeouts.standard);
 
           unawaited(PushNotificationService.syncTokenForCurrentUser());
           _leaveAuthAfterSuccess();
@@ -177,6 +188,27 @@ class _AuthScreenState extends State<AuthScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<String?> _resolveSignupReferralCode() async {
+    final code = normalizeReferralCode(_referralController.text);
+    if (code == null) return null;
+    if (!isPlausibleReferralCode(code)) {
+      throw const FormatException('That referral code does not look right.');
+    }
+    try {
+      final exists = await _supabase
+          .rpc('referral_code_exists', params: {'p_code': code})
+          .withTimeout(NetworkTimeouts.standard);
+      if (exists != true) {
+        throw const FormatException('That referral code was not found. Clear it or check the code.');
+      }
+    } on FormatException {
+      rethrow;
+    } catch (_) {
+      // RPC not applied yet: still store the typed code so friend counts work if it matches.
+    }
+    return code;
   }
 
   // --- Forgot Password Logic ---
@@ -192,19 +224,19 @@ class _AuthScreenState extends State<AuthScreen> {
     try {
       await _supabase.auth.resetPasswordForEmail(
         email,
-        redirectTo: 'io.supabase.hotpotchef://reset-callback/',
+        redirectTo: passwordResetRedirectUri,
       ).withTimeout(NetworkTimeouts.standard);
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Password reset instructions sent to your email!'),
+          content: Text('Check your email and open the reset link on this phone.'),
           backgroundColor: Colors.green,
         ),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        SnackBar(content: Text(friendlyAuthError(e)), backgroundColor: Colors.red),
       );
     }
   }
@@ -561,6 +593,23 @@ class _AuthScreenState extends State<AuthScreen> {
               return null;
             },
           ),
+          if (!_isLogin) ...[
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: _referralController,
+              textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(
+                labelText: 'Referral code (optional)',
+                hintText: 'CHEFXXXXXX',
+                prefixIcon: Icon(Icons.card_giftcard_outlined),
+              ),
+              validator: (v) {
+                final code = normalizeReferralCode(v);
+                if (code == null) return null;
+                return isPlausibleReferralCode(code) ? null : 'Enter a valid referral code';
+              },
+            ),
+          ],
           if (_isLogin)
             Align(
               alignment: Alignment.centerRight,

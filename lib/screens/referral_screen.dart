@@ -7,7 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'dart:math';
 
-import '../utils/app_theme.dart';
+import '../utils/helpers.dart';
 
 class ReferralScreen extends StatefulWidget {
   const ReferralScreen({super.key});
@@ -80,11 +80,8 @@ class _ReferralScreenState extends State<ReferralScreen> {
   }
 
   void _shareCode() {
-    final message =
-        "Craving authentic home-cooked food? 🍲 Join HotPotChef using my referral code '$_referralCode' and get 50 HotPot Coins free on your first order! Download now.";
-
     Share.share(
-      message,
+      referralInviteText(_referralCode),
       subject: 'Claim your HotPotChef Bonus!',
     );
   }
@@ -134,7 +131,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                       ),
                       SizedBox(height: 8),
                       Text(
-                        'Invite your friends to HotPotChef. When they place their first order, you both get 50 HotPot Coins!',
+                        'Invite your friends to HotPotChef. They enter your code when they sign up. When they place their first order, you both get 50 HotPot Coins!',
                         style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
                         textAlign: TextAlign.center,
                       ),
