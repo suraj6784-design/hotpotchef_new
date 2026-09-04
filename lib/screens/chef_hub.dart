@@ -158,7 +158,13 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       return;
     }
     final label = formatOrderId(order['order_id']?.toString(), order['id'].toString());
-    context.push('/chat/$roomId?roomName=${Uri.encodeComponent('Order $label')}');
+    context.push(chatPath(
+      roomId,
+      roomName: 'Order $label',
+      otherUserId: order['customer_id']?.toString(),
+      memberIds: orderChatMemberIds(order),
+      isGroup: true,
+    ));
   }
 
   Widget _orderContactActions(Map<String, dynamic> order) {
@@ -1274,12 +1280,28 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 const Text('Payment received. Confirm the new order on the Orders tab.',
                     style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
               const SizedBox(height: 8),
-              OutlinedButton.icon(
-                icon: const Icon(Icons.chat_bubble_outline, size: 18),
-                label: const Text('Message customer'),
-                onPressed: () => context.push(
-                  '/chat/${req['id']}?roomName=${Uri.encodeComponent(req['title']?.toString() ?? 'Catering lead')}',
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                      label: const Text('Message'),
+                      onPressed: () => context.push(chatPath(
+                        req['id'].toString(),
+                        roomName: req['title']?.toString() ?? 'Catering lead',
+                        otherUserId: req['customer_id']?.toString(),
+                      )),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.phone_outlined, size: 18),
+                      label: const Text('Call'),
+                      onPressed: () => _callCustomer(req['customer_id']?.toString() ?? ''),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

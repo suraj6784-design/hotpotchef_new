@@ -5,7 +5,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../main.dart';
+import '../models/app_role.dart';
+import '../services/auth_session.dart';
 import '../utils/app_router.dart';
+import '../utils/helpers.dart';
 import '../utils/network.dart';
 import '../utils/notification_copy.dart';
 
@@ -20,11 +23,13 @@ class AlertService {
   static final _supabase = Supabase.instance.client;
   static RealtimeChannel? _channel;
   static final Set<String> _shown = <String>{};
+  static AppRole _role = AppRole.customer;
 
   static Future<void> start() async {
     await stop();
     final uid = _supabase.auth.currentUser?.id;
     if (uid == null) return;
+    _role = await AuthSession.resolveRole();
 
     _channel = _supabase
         .channel('in-app-alerts-$uid')
@@ -74,6 +79,22 @@ class AlertService {
           schema: 'public',
           table: 'messages',
           callback: (payload) => _onChatRow(payload.newRecord),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'customer_requests',
+          callback: (payload) => _onLeadRow(payload.newRecord, previous: null, isInsert: true),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'customer_requests',
+          callback: (payload) => _onLeadRow(
+            payload.newRecord,
+            previous: payload.oldRecord,
+            isInsert: false,
+          ),
         );
 
     _channel!.subscribe();
@@ -138,7 +159,67 @@ class AlertService {
     }
   }
 
+  static void _onLeadRow(
+    Map<String, dynamic> row, {
+    Map<String, dynamic>? previous,
+    required bool isInsert,
+  }) {
+    final uid = _supabase.auth.currentUser?.id;
+    if (uid == null) return;
+
+    final copy = leadAlertCopy(
+      status: row['status']?.toString() ?? '',
+      isInsert: isInsert,
+      previousStatus: previous?['status']?.toString(),
+      title: row['title']?.toString() ?? 'Catering lead',
+    );
+    if (copy == null) return;
+
+    final isCustomer = row['customer_id']?.toString() == uid;
+    final isClaimedChef = row['accepted_chef_id']?.toString() == uid;
+    final shouldShow = (copy.notifyAllChefs && _role == AppRole.chef && !isCustomer) ||
+        (copy.notifyClaimedChef && isClaimedChef) ||
+        (copy.notifyCustomer && isCustomer);
+    if (!shouldShow) return;
+
+    _show(
+      'lead-${row['id']}-${row['status']}',
+      copy.title,
+      copy.body,
+    );
+  }
+
   static void _onChatRow(Map<String, dynamic> row) {
+    unawaited(_handleChatRow(row));
+  }
+
+  static Future<Set<String>?> _membersForRoom(String roomId) async {
+    try {
+      final order = await _supabase
+          .from('orders')
+          .select('customer_id, user_id, chef_id, driver_id, delivery_partner_id')
+          .eq('id', roomId)
+          .maybeSingle();
+      if (order != null) return orderChatMemberIds(order);
+
+      final request = await _supabase
+          .from('customer_requests')
+          .select('customer_id, accepted_chef_id')
+          .eq('id', roomId)
+          .maybeSingle();
+      if (request != null) {
+        return {
+          if ((request['customer_id']?.toString() ?? '').isNotEmpty) request['customer_id'].toString(),
+          if ((request['accepted_chef_id']?.toString() ?? '').isNotEmpty) request['accepted_chef_id'].toString(),
+        };
+      }
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chat room member lookup failed');
+    }
+    return null;
+  }
+
+  static Future<void> _handleChatRow(Map<String, dynamic> row) async {
     final uid = _supabase.auth.currentUser?.id;
     final sender = row['sender_id']?.toString();
     final mealId = row['meal_id']?.toString();
@@ -148,9 +229,15 @@ class AlertService {
     final path = _currentPath();
     if (mealId != null && path == '/chat/$mealId') return;
 
+    Set<String>? members;
+    if (mealId != null && mealId.isNotEmpty) {
+      members = await _membersForRoom(mealId);
+    }
+    if (!shouldNotifyChatMember(myId: uid, senderId: sender, memberIds: members)) return;
+
     _show(
       'msg-${row['id']}',
-      'New message',
+      members != null && mealId != null ? orderGroupAlertTitle(mealId) : 'New message',
       chatPreview(row['content']?.toString()),
     );
   }

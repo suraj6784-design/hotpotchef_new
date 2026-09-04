@@ -200,7 +200,7 @@ void main() {
       expect(mealIdFromOrderItem({'id': 'line', 'source_meal_id': 'meal-1'}), 'meal-1');
     });
 
-    test('orderChatRoomId matches the customer meal chat room', () {
+    test('orderChatRoomId uses the order id so everyone shares one group', () {
       expect(
         orderChatRoomId(
           {'id': 'order-row'},
@@ -208,7 +208,33 @@ void main() {
             {'source_meal_id': 'meal-77', 'id': 'line-1'},
           ],
         ),
-        'meal-77',
+        'order-row',
+      );
+    });
+
+    test('orderChatMemberIds collects customer, chef, and driver', () {
+      expect(
+        orderChatMemberIds({
+          'customer_id': 'cust-1',
+          'chef_id': 'chef-1',
+          'driver_id': 'drv-1',
+        }),
+        {'cust-1', 'chef-1', 'drv-1'},
+      );
+    });
+
+    test('shouldNotifyChatMember only alerts people in the order group', () {
+      expect(
+        shouldNotifyChatMember(myId: 'chef-1', senderId: 'cust-1', memberIds: {'cust-1', 'chef-1'}),
+        isTrue,
+      );
+      expect(
+        shouldNotifyChatMember(myId: 'stranger', senderId: 'cust-1', memberIds: {'cust-1', 'chef-1'}),
+        isFalse,
+      );
+      expect(
+        shouldNotifyChatMember(myId: 'cust-1', senderId: 'cust-1', memberIds: {'cust-1', 'chef-1'}),
+        isFalse,
       );
     });
 
@@ -221,6 +247,48 @@ void main() {
         'chef-2',
       );
       expect(otherChatParticipantId([{'sender_id': 'me'}], 'me'), isNull);
+    });
+
+    test('resolveChatCallTarget prefers the known other user', () {
+      expect(
+        resolveChatCallTarget(
+          knownOtherUserId: 'chef-9',
+          messages: [
+            {'sender_id': 'me'},
+          ],
+          myId: 'me',
+        ),
+        'chef-9',
+      );
+      expect(
+        resolveChatCallTarget(
+          knownOtherUserId: 'me',
+          messages: [
+            {'sender_id': 'chef-2'},
+          ],
+          myId: 'me',
+        ),
+        'chef-2',
+      );
+    });
+
+    test('chatPath carries the other user for an empty room', () {
+      final uri = Uri.parse(chatPath('req-1', roomName: 'Catering lead', otherUserId: 'cust-3'));
+      expect(uri.path, '/chat/req-1');
+      expect(uri.queryParameters['roomName'], 'Catering lead');
+      expect(uri.queryParameters['otherUserId'], 'cust-3');
+    });
+
+    test('chatPath marks an order group and lists members', () {
+      final uri = Uri.parse(chatPath(
+        'order-row',
+        roomName: 'Order ABC12345',
+        otherUserId: 'chef-1',
+        memberIds: ['cust-1', 'chef-1', 'drv-1'],
+        isGroup: true,
+      ));
+      expect(uri.queryParameters['group'], '1');
+      expect(parseChatMemberIds(uri.queryParameters['memberIds']), containsAll(['cust-1', 'chef-1', 'drv-1']));
     });
   });
 

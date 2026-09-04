@@ -506,9 +506,17 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                       label: const Text('Chat'),
                       onPressed: () {
                         final roomId = delivery.chatRoomId.isNotEmpty ? delivery.chatRoomId : delivery.orderId;
-                        context.push(
-                          '/chat/$roomId?roomName=${Uri.encodeComponent('Delivery ${delivery.orderId.substring(0, 6).toUpperCase()}')}',
-                        );
+                        context.push(chatPath(
+                          roomId,
+                          roomName: 'Order ${formatOrderId(null, delivery.orderId)}',
+                          otherUserId: delivery.customerId,
+                          memberIds: [
+                            delivery.customerId,
+                            delivery.chefId,
+                            Supabase.instance.client.auth.currentUser?.id ?? '',
+                          ],
+                          isGroup: true,
+                        ));
                       },
                     ),
                   ),

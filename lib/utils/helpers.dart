@@ -98,11 +98,81 @@ String? otherChatParticipantId(Iterable<Map<String, dynamic>> messages, String? 
   return null;
 }
 
-String orderChatRoomId(Map<String, dynamic> order, {List<Map<String, dynamic>>? items}) {
-  if (items != null && items.isNotEmpty) {
-    return mealIdFromOrderItem(items.first) ?? order['id']?.toString() ?? '';
+/// Prefer the user we opened chat with so Call works before anyone has typed.
+String? resolveChatCallTarget({
+  String? knownOtherUserId,
+  required Iterable<Map<String, dynamic>> messages,
+  String? myId,
+}) {
+  final known = knownOtherUserId?.trim() ?? '';
+  if (known.isNotEmpty && known != myId) return known;
+  return otherChatParticipantId(messages, myId);
+}
+
+String chatPath(
+  String roomId, {
+  String roomName = 'Chat',
+  String? otherUserId,
+  Iterable<String>? memberIds,
+  bool isGroup = false,
+}) {
+  final members = (memberIds ?? const <String>[])
+      .map((id) => id.trim())
+      .where((id) => id.isNotEmpty)
+      .toSet();
+  return Uri(
+    path: '/chat/$roomId',
+    queryParameters: {
+      'roomName': roomName,
+      if (otherUserId != null && otherUserId.trim().isNotEmpty) 'otherUserId': otherUserId.trim(),
+      if (members.isNotEmpty) 'memberIds': members.join(','),
+      if (isGroup || members.length > 1) 'group': '1',
+    },
+  ).toString();
+}
+
+List<String> parseChatMemberIds(String? raw) {
+  if (raw == null || raw.trim().isEmpty) return const [];
+  return raw
+      .split(',')
+      .map((id) => id.trim())
+      .where((id) => id.isNotEmpty)
+      .toSet()
+      .toList();
+}
+
+Set<String> orderChatMemberIds(Map<String, dynamic> order) {
+  final ids = <String>{};
+  for (final key in const [
+    'customer_id',
+    'user_id',
+    'chef_id',
+    'driver_id',
+    'delivery_partner_id',
+  ]) {
+    final id = order[key]?.toString().trim() ?? '';
+    if (id.isNotEmpty) ids.add(id);
   }
-  return mealIdFromOrderItem(order) ?? order['id']?.toString() ?? '';
+  return ids;
+}
+
+/// One room per order so customer, chef, and driver share the Order# group.
+String orderChatRoomId(Map<String, dynamic> order, {List<Map<String, dynamic>>? items}) {
+  return resolvedOrderId(order) ??
+      (items != null && items.isNotEmpty ? resolvedOrderId(items.first) : null) ??
+      '';
+}
+
+bool shouldNotifyChatMember({
+  required String? myId,
+  required String? senderId,
+  Set<String>? memberIds,
+}) {
+  if (myId == null || myId.isEmpty || senderId == null || senderId.isEmpty || senderId == myId) {
+    return false;
+  }
+  if (memberIds == null) return true;
+  return memberIds.contains(myId);
 }
 
 DateTime getTrueOrderDateTime(String rawOrderId, String? createdAt) {

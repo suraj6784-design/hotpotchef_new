@@ -66,4 +66,41 @@ void main() {
     expect(chatPreview('x' * 90).endsWith('...'), isTrue);
     expect(chatPreview(''), contains('New message'));
   });
+
+  test('order group alert title uses the Order#', () {
+    expect(orderGroupAlertTitle('aaaaaaaa-bbbb-cccc'), 'Order AAAAAAAA');
+    expect(orderGroupAlertTitle(''), 'New message');
+  });
+
+  test('new catering broadcast alerts kitchens, not the customer', () {
+    final copy = leadAlertCopy(
+      status: 'Open',
+      isInsert: true,
+      title: 'Office lunch',
+    );
+    expect(copy, isNotNull);
+    expect(copy!.notifyAllChefs, isTrue);
+    expect(copy.notifyCustomer, isFalse);
+    expect(copy.body, contains('Office lunch'));
+  });
+
+  test('claimed lead alerts the customer; cancel alerts the chef', () {
+    final claimed = leadAlertCopy(
+      status: 'Accepted',
+      isInsert: false,
+      previousStatus: 'Open',
+      title: 'Office lunch',
+    );
+    expect(claimed!.notifyCustomer, isTrue);
+    expect(claimed.notifyAllChefs, isFalse);
+
+    final cancelled = leadAlertCopy(
+      status: 'Cancelled',
+      isInsert: false,
+      previousStatus: 'Accepted',
+      title: 'Office lunch',
+    );
+    expect(cancelled!.notifyClaimedChef, isTrue);
+    expect(cancelled.notifyCustomer, isFalse);
+  });
 }

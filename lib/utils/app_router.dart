@@ -22,6 +22,7 @@ import '../screens/customer_bulk_request_screen.dart';
 import '../screens/driver_id_card_screen.dart';
 import '../services/auth_session.dart';
 import '../widgets/not_found_page.dart';
+import 'helpers.dart';
 
 class AppRouter {
   static final AuthRefreshNotifier _authRefresh = AuthRefreshNotifier();
@@ -103,7 +104,14 @@ class AppRouter {
         builder: (context, state) {
           final mealId = state.pathParameters['mealId'] ?? '';
           final roomName = state.uri.queryParameters['roomName'] ?? 'Chat';
-          return InAppChatScreen(mealId: mealId, roomName: roomName);
+          final otherUserId = state.uri.queryParameters['otherUserId'];
+          return InAppChatScreen(
+            mealId: mealId,
+            roomName: roomName,
+            otherUserId: otherUserId,
+            memberIds: parseChatMemberIds(state.uri.queryParameters['memberIds']),
+            isGroup: state.uri.queryParameters['group'] == '1',
+          );
         },
       ),
       GoRoute(

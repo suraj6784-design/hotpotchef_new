@@ -196,6 +196,11 @@ export async function dispatchOrderAlert(
   return { sent: targets.length, title: copy.title }
 }
 
+function orderGroupTitle(roomId: string) {
+  const label = roomId.length > 8 ? roomId.slice(0, 8).toUpperCase() : roomId.toUpperCase()
+  return `Order ${label}`
+}
+
 export async function dispatchChatAlert(admin: SupabaseClient, messageId: string) {
   const { data: message } = await admin
     .from('messages')
@@ -206,18 +211,42 @@ export async function dispatchChatAlert(admin: SupabaseClient, messageId: string
 
   const recipients = new Set<string>()
   const mealId = message.meal_id as string | null
+  let title = 'New message'
   if (mealId) {
-    const { data: meal } = await admin.from('meals').select('chef_id').eq('id', mealId).maybeSingle()
-    if (meal?.chef_id) recipients.add(String(meal.chef_id))
+    const { data: order } = await admin
+      .from('orders')
+      .select('customer_id, user_id, chef_id, driver_id, delivery_partner_id')
+      .eq('id', mealId)
+      .maybeSingle()
+    if (order) {
+      title = orderGroupTitle(mealId)
+      for (const key of ['customer_id', 'user_id', 'chef_id', 'driver_id', 'delivery_partner_id'] as const) {
+        if (order[key]) recipients.add(String(order[key]))
+      }
+    } else {
+      const { data: request } = await admin
+        .from('customer_requests')
+        .select('customer_id, accepted_chef_id')
+        .eq('id', mealId)
+        .maybeSingle()
+      if (request) {
+        title = 'Catering chat'
+        if (request.customer_id) recipients.add(String(request.customer_id))
+        if (request.accepted_chef_id) recipients.add(String(request.accepted_chef_id))
+      } else {
+        const { data: meal } = await admin.from('meals').select('chef_id').eq('id', mealId).maybeSingle()
+        if (meal?.chef_id) recipients.add(String(meal.chef_id))
 
-    const { data: peers } = await admin
-      .from('messages')
-      .select('sender_id')
-      .eq('meal_id', mealId)
-      .neq('sender_id', message.sender_id)
-      .limit(20)
-    for (const row of peers ?? []) {
-      if (row.sender_id) recipients.add(String(row.sender_id))
+        const { data: peers } = await admin
+          .from('messages')
+          .select('sender_id')
+          .eq('meal_id', mealId)
+          .neq('sender_id', message.sender_id)
+          .limit(20)
+        for (const row of peers ?? []) {
+          if (row.sender_id) recipients.add(String(row.sender_id))
+        }
+      }
     }
   }
   recipients.delete(String(message.sender_id ?? ''))
@@ -230,8 +259,8 @@ export async function dispatchChatAlert(admin: SupabaseClient, messageId: string
     alert_id: `msg-${message.id}`,
   }
   for (const userId of recipients) {
-    await notifyUser(admin, userId, 'New message', body, data)
+    await notifyUser(admin, userId, title, body, data)
   }
-  return { sent: recipients.size }
+  return { sent: recipients.size, title }
 }
 

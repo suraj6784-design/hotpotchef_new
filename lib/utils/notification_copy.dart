@@ -42,6 +42,13 @@ String chatPreview(String? content) {
   return '${text.substring(0, 77)}...';
 }
 
+String orderGroupAlertTitle(String? roomId) {
+  final id = (roomId ?? '').trim();
+  if (id.isEmpty) return 'New message';
+  final label = id.length > 8 ? id.substring(0, 8).toUpperCase() : id.toUpperCase();
+  return 'Order $label';
+}
+
 OrderAlertCopy? orderAlertCopy({
   required String status,
   required bool isInsert,
@@ -106,6 +113,64 @@ OrderAlertCopy? orderAlertCopy({
       body: 'Your order for $mealTitle is being prepared.',
       notifyChef: false,
       notifyCustomer: true,
+    );
+  }
+  return null;
+}
+
+class LeadAlertCopy {
+  const LeadAlertCopy({
+    required this.title,
+    required this.body,
+    required this.notifyAllChefs,
+    required this.notifyClaimedChef,
+    required this.notifyCustomer,
+  });
+
+  final String title;
+  final String body;
+  final bool notifyAllChefs;
+  final bool notifyClaimedChef;
+  final bool notifyCustomer;
+}
+
+LeadAlertCopy? leadAlertCopy({
+  required String status,
+  required bool isInsert,
+  String? previousStatus,
+  String title = 'Catering lead',
+}) {
+  final current = status.trim().toLowerCase();
+  final previous = previousStatus?.trim().toLowerCase() ?? '';
+  if (!isInsert && current == previous) return null;
+
+  final label = title.trim().isEmpty ? 'Catering lead' : title.trim();
+
+  if (isInsert && (current.isEmpty || current == 'open')) {
+    return LeadAlertCopy(
+      title: 'New catering lead',
+      body: '$label is open. Claim it from Leads.',
+      notifyAllChefs: true,
+      notifyClaimedChef: false,
+      notifyCustomer: false,
+    );
+  }
+  if (current == 'accepted') {
+    return LeadAlertCopy(
+      title: 'Chef claimed your lead',
+      body: 'A kitchen accepted $label. Confirm and pay from My Orders.',
+      notifyAllChefs: false,
+      notifyClaimedChef: false,
+      notifyCustomer: true,
+    );
+  }
+  if (current.contains('cancel')) {
+    return LeadAlertCopy(
+      title: 'Catering lead cancelled',
+      body: '$label was cancelled.',
+      notifyAllChefs: false,
+      notifyClaimedChef: true,
+      notifyCustomer: false,
     );
   }
   return null;

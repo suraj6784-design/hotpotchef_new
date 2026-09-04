@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hotpotchef_new/models/driver_delivery_model.dart';
 
 void main() {
-  test('DriverDeliveryModel reads the customer meal chat room from items', () {
+  test('DriverDeliveryModel uses the order id as the shared chat group', () {
     final delivery = DriverDeliveryModel.fromJson({
       'id': 'order-row',
       'chef_id': 'chef-1',
@@ -15,7 +15,7 @@ void main() {
       ],
     });
 
-    expect(delivery.chatRoomId, 'meal-77');
+    expect(delivery.chatRoomId, 'order-row');
     expect(delivery.customerId, 'cust-1');
   });
 }

@@ -652,9 +652,13 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                               Row(
                                 children: [
                                   GestureDetector(
-                                    onTap: () => context.push(
-                                      '/chat/${mealIdFromOrderItem(items.first) ?? items.first['id']}?roomName=Order%20$displayOrderIdStr',
-                                    ),
+                                    onTap: () => context.push(chatPath(
+                                      items.first['order_id']?.toString() ?? items.first['id']?.toString() ?? '',
+                                      roomName: 'Order $displayOrderIdStr',
+                                      otherUserId: chefId,
+                                      memberIds: orderChatMemberIds(items.first),
+                                      isGroup: true,
+                                    )),
                                     child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.grey.shade300)), child: const Icon(Icons.chat_bubble_outline, color: AppTheme.primary, size: 18)),
                                   ),
                                   const SizedBox(width: 8),
@@ -950,7 +954,11 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                     ),
                     const SizedBox(width: 8),
                     GestureDetector(
-                      onTap: () => context.push('/chat/${req['id']}?roomName=${Uri.encodeComponent(chefName.toString())}'),
+                      onTap: () => context.push(chatPath(
+                        req['id'].toString(),
+                        roomName: chefName.toString(),
+                        otherUserId: chefId?.toString(),
+                      )),
                       child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.15), shape: BoxShape.circle), child: const Icon(Icons.chat_bubble, color: Colors.blue, size: 16)),
                     ),
                   ],
@@ -1057,6 +1065,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
         enrichedItems.add({
           ...item,
           'order_id': order['id'],
+          'customer_id': order['customer_id'] ?? order['user_id'],
           'chef_id': order['chef_id'],
           'status': order['status'] ?? 'New Order',
           'service_type': order['order_type'] ?? order['service_type'] ?? 'Delivery',
@@ -1077,6 +1086,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
       if (enrichedItems.isEmpty) {
         enrichedItems.add({
           'order_id': order['id'],
+          'customer_id': order['customer_id'] ?? order['user_id'],
           'chef_id': order['chef_id'],
           'status': order['status'] ?? 'New Order',
           'service_type': order['order_type'] ?? 'Delivery',
