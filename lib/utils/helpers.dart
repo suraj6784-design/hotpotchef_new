@@ -1017,12 +1017,18 @@ OrderBillBreakdown orderBillBreakdown({
     delivery = 30;
   }
 
-  if (coins <= 0 && paidTotal > 0) {
+  final extras = packaging + delivery + tip;
+  // Older rows stored food-only in total_price (e.g. ₹221) while packaging still applies.
+  final paidLooksLikeItemsOnly =
+      paidTotal > 0 && (paidTotal - itemsTotal).abs() < 0.5 && extras >= 0.5;
+
+  if (!paidLooksLikeItemsOnly && coins <= 0 && paidTotal > 0) {
     final implied = itemsTotal + packaging + delivery + tip - paidTotal;
     if (implied >= 0.5) coins = implied;
   }
 
-  final grand = paidTotal > 0 ? paidTotal : (itemsTotal + packaging + delivery + tip - coins).clamp(0, double.infinity);
+  final computed = (itemsTotal + packaging + delivery + tip - coins).clamp(0, double.infinity);
+  final grand = (paidTotal > 0 && !paidLooksLikeItemsOnly) ? paidTotal : computed;
 
   return OrderBillBreakdown(
     itemsTotal: itemsTotal,

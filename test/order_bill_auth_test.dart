@@ -82,6 +82,26 @@ void main() {
       expect(bill.grandTotal, 256);
     });
 
+    test('does not treat an item-only total_price as the grand total', () {
+      final bill = orderBillBreakdown(
+        items: [
+          {'price': 221, 'quantity': 1},
+        ],
+        order: {
+          'total_price': 221,
+          'packaging_fee': 20,
+          'delivery_fee': 0,
+          'order_type': 'Delivery (Platform)',
+        },
+        hasDelivery: true,
+      );
+      expect(bill.itemsTotal, 221);
+      expect(bill.packagingFee, 20);
+      expect(bill.deliveryFee, 0);
+      expect(bill.coinsApplied, 0);
+      expect(bill.grandTotal, 241);
+    });
+
     test('does not invent a delivery fee for pickup', () {
       final bill = orderBillBreakdown(
         items: [
