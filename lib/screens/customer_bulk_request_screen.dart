@@ -96,7 +96,7 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
         throw Exception('The requested event time must be set in the future.');
       }
 
-      final payload = {
+      final payload = <String, dynamic>{
         'customer_id': user.id,
         'customer_name': customerName,
         'customer_email': user.email ?? '',
@@ -116,7 +116,7 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
         'created_at': DateTime.now().toIso8601String(),
       };
 
-      await _supabase.from('customer_requests').insert(payload);
+      await _insertCustomerRequest(payload);
 
       if (mounted) {
         _showSnackBar('Bulk request broadcasted successfully! Local chefs have been notified. 🎉');
@@ -124,10 +124,44 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
       }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Bulk Request Broadcast Failure');
-      _showSnackBar('Failed to broadcast request: $e', isError: true);
+      _showSnackBar(_broadcastError(e), isError: true);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _insertCustomerRequest(Map<String, dynamic> payload) async {
+    final body = Map<String, dynamic>.from(payload);
+    for (var attempt = 0; attempt < 8; attempt++) {
+      try {
+        await _supabase.from('customer_requests').insert(body);
+        return;
+      } on PostgrestException catch (e) {
+        if (e.code != 'PGRST204') rethrow;
+        final missing = _missingSchemaColumn(e.message);
+        if (missing == null || !body.containsKey(missing)) rethrow;
+        body.remove(missing);
+      }
+    }
+    throw const PostgrestException(
+      message: 'Could not find a matching customer_requests schema',
+      code: 'PGRST204',
+    );
+  }
+
+  String? _missingSchemaColumn(String? message) {
+    final match = RegExp(r"Could not find the '([^']+)' column").firstMatch(message ?? '');
+    return match?.group(1);
+  }
+
+  String _broadcastError(Object error) {
+    if (error is Exception) {
+      final text = error.toString().replaceFirst('Exception: ', '');
+      if (text.contains('future') || text.contains('sign in') || text.contains('Authentication')) {
+        return text;
+      }
+    }
+    return 'Could not broadcast this request. Please try again.';
   }
 
   void _showSnackBar(String text, {bool isError = false}) {
