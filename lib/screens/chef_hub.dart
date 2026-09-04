@@ -18,6 +18,7 @@ import '../widgets/app_widgets.dart';
 import '../widgets/app_status_badge.dart';
 import '../services/order_lifecycle.dart';
 import '../services/auth_session.dart';
+import '../services/invoice_pdf_service.dart';
 import 'packaging_store_screen.dart';
 import 'chef_publish_meal_screen.dart';
 
@@ -1184,17 +1185,30 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             return AppCard(
               margin: const EdgeInsets.only(bottom: 10),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: CircleAvatar(
-                  backgroundColor: (isCancelled ? AppTheme.error : AppTheme.success).withValues(alpha: 0.12),
-                  child: Icon(isCancelled ? Icons.cancel : Icons.check_circle,
-                      color: isCancelled ? AppTheme.error : AppTheme.success),
-                ),
-                title: Text(_orderTitle(h), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                subtitle: Text(formatOrderDate(h['created_at']?.toString() ?? '')),
-                trailing: Text('₹${_orderTotal(h).toStringAsFixed(2)}',
-                    style: const TextStyle(fontWeight: FontWeight.w800)),
+              child: Column(
+                children: [
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: CircleAvatar(
+                      backgroundColor: (isCancelled ? AppTheme.error : AppTheme.success).withValues(alpha: 0.12),
+                      child: Icon(isCancelled ? Icons.cancel : Icons.check_circle,
+                          color: isCancelled ? AppTheme.error : AppTheme.success),
+                    ),
+                    title: Text(_orderTitle(h), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    subtitle: Text(formatOrderDate(h['created_at']?.toString() ?? '')),
+                    trailing: Text('₹${_orderTotal(h).toStringAsFixed(2)}',
+                        style: const TextStyle(fontWeight: FontWeight.w800)),
+                  ),
+                  if (!isCancelled)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: () => InvoicePdfService.downloadForOrder(context, h),
+                        icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
+                        label: const Text('Invoice'),
+                      ),
+                    ),
+                ],
               ),
             ).entrance(index: entry.key);
           }),

@@ -200,6 +200,15 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
     }
   }
 
+  String _copyableRoomLabel() {
+    final name = widget.roomName.trim();
+    if (name.toLowerCase().startsWith('order ')) {
+      final label = name.substring(6).trim();
+      if (label.isNotEmpty) return label;
+    }
+    return formatOrderId(null, widget.mealId);
+  }
+
   // --- UI Tree ---
 
   @override
@@ -221,9 +230,24 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              widget.roomName,
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor),
+            GestureDetector(
+              onTap: () => copyOrderNumber(context, _copyableRoomLabel()),
+              child: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      widget.roomName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor),
+                    ),
+                  ),
+                  if (widget.isGroup) ...[
+                    const SizedBox(width: 6),
+                    Icon(Icons.copy, size: 14, color: muted),
+                  ],
+                ],
+              ),
             ),
             if (widget.isGroup)
               Text(

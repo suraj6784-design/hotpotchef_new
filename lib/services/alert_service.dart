@@ -157,14 +157,20 @@ class AlertService {
         '${row['id']}-${row['status']}',
         copy.title,
         copy.body,
-        path: alertOpenPath({'order_id': row['id']?.toString()}, role: 'chef'),
+        path: alertOpenPath(
+          {'order_id': row['id']?.toString(), 'status': row['status']?.toString()},
+          role: 'chef',
+        ),
       );
     } else if (copy.notifyCustomer && isCustomer) {
       _show(
         '${row['id']}-${row['status']}',
         copy.title,
         copy.body,
-        path: alertOpenPath({'order_id': row['id']?.toString()}, role: 'customer'),
+        path: alertOpenPath(
+          {'order_id': row['id']?.toString(), 'status': row['status']?.toString()},
+          role: 'customer',
+        ),
       );
     }
   }

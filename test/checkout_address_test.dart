@@ -394,8 +394,16 @@ void main() {
       '/customer-hub?tab=orders',
     );
     expect(
+      alertOpenPath({'order_id': 'ord-1', 'status': 'Delivered'}, role: 'Customer'),
+      '/order-history',
+    );
+    expect(
       alertOpenPath({'order_id': 'ord-1'}, role: 'Chef'),
       '/chef-hub?tab=orders',
+    );
+    expect(
+      alertOpenPath({'order_id': 'ord-1', 'status': 'Cancelled'}, role: 'Chef'),
+      '/chef-hub?tab=history',
     );
     expect(
       alertOpenPath({'request_id': 'lead-1'}, role: 'chef'),

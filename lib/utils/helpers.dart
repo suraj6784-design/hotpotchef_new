@@ -206,6 +206,15 @@ int chefHubTabIndex(String? tab) {
   }
 }
 
+bool isPastOrderStatus(String? status) {
+  final current = (status ?? '').trim().toLowerCase();
+  return current.contains('deliver') ||
+      current.contains('complet') ||
+      current.contains('cancel') ||
+      current.contains('reject') ||
+      current.contains('refund');
+}
+
 /// Chat pushes open the Order# room. Order and lead pushes land on the matching hub tab.
 String? alertOpenPath(Map<String, String?> data, {String? role}) {
   final mealId = (data['meal_id'] ?? '').trim();
@@ -225,9 +234,12 @@ String? alertOpenPath(Map<String, String?> data, {String? role}) {
 
   final orderId = (data['order_id'] ?? '').trim();
   if (orderId.isEmpty) return null;
-  if (parsedRole == 'chef' || parsedRole.contains('cook')) return '/chef-hub?tab=orders';
+  final past = isPastOrderStatus(data['status']);
+  if (parsedRole == 'chef' || parsedRole.contains('cook')) {
+    return past ? '/chef-hub?tab=history' : '/chef-hub?tab=orders';
+  }
   if (parsedRole.contains('driver') || parsedRole.contains('delivery')) return '/driver-hub';
-  return '/customer-hub?tab=orders';
+  return past ? '/order-history' : '/customer-hub?tab=orders';
 }
 
 bool isStackAlertPath(String path) {

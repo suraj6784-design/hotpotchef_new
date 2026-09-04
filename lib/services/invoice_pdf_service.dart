@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -13,6 +14,46 @@ import '../utils/gst_invoice.dart';
 import '../utils/helpers.dart';
 
 class InvoicePdfService {
+  static List<Map<String, dynamic>> _itemsFrom(Map<String, dynamic> order) {
+    final raw = order['items'] ?? order['cart_items'];
+    try {
+      final decoded = raw is String ? jsonDecode(raw) : raw;
+      if (decoded is List) {
+        return decoded.whereType<Map>().map((row) {
+          final item = Map<String, dynamic>.from(row);
+          if ((item['chef_id']?.toString() ?? '').isEmpty && (order['chef_id']?.toString() ?? '').isNotEmpty) {
+            item['chef_id'] = order['chef_id'];
+          }
+          return item;
+        }).toList();
+      }
+    } catch (_) {}
+    return [
+      {
+        'title': order['title'] ?? 'Meal order',
+        'quantity': order['quantity'] ?? 1,
+        'price': order['total_price'] ?? order['total_amount'],
+        'chef_id': order['chef_id'],
+      },
+    ];
+  }
+
+  static Future<void> downloadForOrder(BuildContext context, Map<String, dynamic> order) {
+    final items = _itemsFrom(order);
+    final bill = orderBillBreakdown(items: items, order: order);
+    final orderId = formatOrderId(order['order_id']?.toString(), order['id']?.toString() ?? '');
+    return download(
+      context: context,
+      orderId: orderId,
+      date: formatOrderDate(order['created_at']?.toString()),
+      items: items,
+      itemsTotal: bill.itemsTotal,
+      packagingFee: bill.packagingFee,
+      deliveryFee: bill.deliveryFee,
+      tipAmount: bill.tipAmount,
+    );
+  }
+
   static Future<void> download({
     required BuildContext context,
     required String orderId,
