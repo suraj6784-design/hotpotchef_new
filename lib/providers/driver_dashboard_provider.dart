@@ -72,11 +72,14 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
         state = state.copyWith(isLoading: true, errorMessage: null);
       }
 
+      final mine = 'driver_id.eq.${user.id},delivery_partner_id.eq.${user.id}';
+
       // 1. Available Pool (Unassigned & Ready for Pickup)
       final availableFuture = _supabase
           .from('orders')
           .select()
           .isFilter('driver_id', null)
+          .isFilter('delivery_partner_id', null)
           .ilike('status', '%ready%')
           .order('created_at', ascending: false)
           .limit(25);
@@ -85,7 +88,7 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
       final activeFuture = _supabase
           .from('orders')
           .select()
-          .eq('driver_id', user.id)
+          .or(mine)
           .not('status', 'ilike', '%delivered%')
           .not('status', 'ilike', '%cancelled%')
           .order('created_at', ascending: false);
@@ -94,22 +97,15 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
       final completedRecentFuture = _supabase
           .from('orders')
           .select()
-          .eq('driver_id', user.id)
+          .or(mine)
           .ilike('status', '%delivered%')
           .order('created_at', ascending: false)
           .limit(15);
 
-      // 4. Server-Side Aggregate Count for Performance
-      final completedCountFuture = _supabase
-          .from('orders')
-          .count(CountOption.exact)
-          .eq('driver_id', user.id)
-          .ilike('status', '%delivered%');
-
-      // 5. Driver Total Earnings (Fetched via RPC or Driver Profile aggregation)
+      // 4. Driver Total Earnings (best-effort; missing profile columns must not blank Home)
       final earningsFuture = _supabase
           .from('driver_profiles')
-          .select('wallet_balance, total_lifetime_earnings')
+          .select()
           .eq('user_id', user.id)
           .maybeSingle();
 
@@ -117,7 +113,6 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
         availableFuture,
         activeFuture,
         completedRecentFuture,
-        completedCountFuture,
         earningsFuture,
       ].cast<Future<dynamic>>());
 
@@ -137,14 +132,10 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
           .map((e) => DriverDeliveryModel.fromJson(Map<String, dynamic>.from(e)))
           .toList();
 
-      final countRaw = results[3];
-      final totalCompletedCount = countRaw is int
-          ? countRaw
-          : countRaw is PostgrestResponse
-              ? countRaw.count
-              : int.tryParse(countRaw.toString()) ?? 0;
-      
-      final profileData = results[4] as Map<String, dynamic>?;
+      final profileData = results[3] is Map
+          ? Map<String, dynamic>.from(results[3] as Map)
+          : null;
+      final totalCompletedCount = recentList.length;
       final earnings = (profileData?['wallet_balance'] as num?)?.toDouble() ??
           (profileData?['total_lifetime_earnings'] as num?)?.toDouble() ??
           (totalCompletedCount * 40.0); // Safe fallback
