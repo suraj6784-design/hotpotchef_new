@@ -262,7 +262,10 @@ int chefHubTabIndex(String? tab) {
 
 bool isPastOrderStatus(String? status) {
   final current = (status ?? '').trim().toLowerCase();
-  return current.contains('deliver') ||
+  if (current.contains('out for delivery') || current.contains('out_for_delivery')) {
+    return false;
+  }
+  return current.contains('delivered') ||
       current.contains('complet') ||
       current.contains('cancel') ||
       current.contains('reject') ||
@@ -293,7 +296,95 @@ String? alertOpenPath(Map<String, String?> data, {String? role}) {
     return past ? '/chef-hub?tab=history' : '/chef-hub?tab=orders';
   }
   if (parsedRole.contains('driver') || parsedRole.contains('delivery')) return '/driver-hub';
+  if (!past && isLiveTrackingStatus(data['status'])) {
+    return '/tracking?orderId=$orderId';
+  }
   return past ? '/order-history' : '/customer-hub?tab=orders';
+}
+
+bool isLiveTrackingStatus(String? status) {
+  final current = (status ?? '').trim().toLowerCase();
+  if (current.contains('cancel') ||
+      current.contains('reject') ||
+      current.contains('delivered') ||
+      current.contains('complet')) {
+    return false;
+  }
+  return current.contains('ready') || current.contains('assigned') || current.contains('out');
+}
+
+String mealDietHaystack(Map<String, dynamic> meal) {
+  final tags = meal['health_tags'] ?? meal['tags'] ?? meal['ingredients'];
+  final tagText = tags is List ? tags.join(' ') : tags?.toString() ?? '';
+  return [
+    mealDisplayTitle(meal),
+    meal['description']?.toString() ?? '',
+    meal['category']?.toString() ?? '',
+    tagText,
+  ].join(' ').toLowerCase();
+}
+
+List<String> allergyTokens(String? raw) {
+  return (raw ?? '')
+      .toLowerCase()
+      .split(RegExp(r'[,;/&+]|\band\b'))
+      .map((token) => token.trim().replaceFirst(RegExp(r'^(no|without|not)\s+'), ''))
+      .where((token) => token.length >= 3 || token == 'egg')
+      .toList();
+}
+
+bool mealMatchesDietaryPreference(Map<String, dynamic> meal, String? preference) {
+  final pref = (preference ?? '').trim().toLowerCase();
+  if (pref.isEmpty || pref == 'non-vegetarian' || pref == 'non vegetarian') return true;
+  if (meal['is_veg'] == false) return false;
+  final haystack = mealDietHaystack(meal);
+  if (pref == 'vegan') {
+    return !_haystackHasAny(haystack, const [
+      'dairy',
+      'milk',
+      'ghee',
+      'butter',
+      'paneer',
+      'cheese',
+      'curd',
+      'egg',
+      'honey',
+    ]);
+  }
+  if (pref == 'jain') {
+    return !_haystackHasAny(haystack, const [
+      'onion',
+      'garlic',
+      'potato',
+      'aloo',
+      'ginger',
+      'root',
+    ]);
+  }
+  return true;
+}
+
+bool mealAvoidsAllergies(Map<String, dynamic> meal, String? allergies) {
+  final tokens = allergyTokens(allergies);
+  if (tokens.isEmpty) return true;
+  final haystack = mealDietHaystack(meal);
+  return !_haystackHasAny(haystack, tokens);
+}
+
+bool mealMatchesCustomerDiet(
+  Map<String, dynamic> meal, {
+  String? preference,
+  String? allergies,
+}) {
+  return mealMatchesDietaryPreference(meal, preference) && mealAvoidsAllergies(meal, allergies);
+}
+
+bool _haystackHasAny(String haystack, Iterable<String> needles) {
+  for (final needle in needles) {
+    if (needle.isEmpty) continue;
+    if (haystack.contains(needle)) return true;
+  }
+  return false;
 }
 
 bool isStackAlertPath(String path) {
@@ -309,6 +400,7 @@ class ChatInboxItem {
     required this.memberIds,
     this.otherUserId,
     this.lastAt,
+    this.lastSenderId,
     this.isGroup = true,
   });
 
@@ -318,6 +410,7 @@ class ChatInboxItem {
   final List<String> memberIds;
   final String? otherUserId;
   final DateTime? lastAt;
+  final String? lastSenderId;
   final bool isGroup;
 }
 
@@ -390,6 +483,7 @@ List<ChatInboxItem> mergeChatInboxRooms({
         memberIds: existing.memberIds,
         otherUserId: existing.otherUserId,
         lastAt: DateTime.tryParse(message['created_at']?.toString() ?? '') ?? existing.lastAt,
+        lastSenderId: message['sender_id']?.toString() ?? existing.lastSenderId,
         isGroup: existing.isGroup,
       );
     } else {
@@ -399,6 +493,7 @@ List<ChatInboxItem> mergeChatInboxRooms({
         preview: preview,
         memberIds: const [],
         lastAt: DateTime.tryParse(message['created_at']?.toString() ?? ''),
+        lastSenderId: message['sender_id']?.toString(),
         isGroup: false,
       );
     }
@@ -411,6 +506,18 @@ List<ChatInboxItem> mergeChatInboxRooms({
       return bAt.compareTo(aAt);
     });
   return list;
+}
+
+bool chatRoomHasUnread({
+  required String myId,
+  DateTime? lastAt,
+  String? lastSenderId,
+  DateTime? lastReadAt,
+}) {
+  if (lastAt == null) return false;
+  if (lastSenderId != null && lastSenderId == myId) return false;
+  if (lastReadAt == null) return true;
+  return lastAt.isAfter(lastReadAt);
 }
 
 List<String> parseChatMemberIds(String? raw) {

@@ -60,9 +60,20 @@ class OrderRepository {
     }
   }
 
-  /// Atomic claim: only succeeds when `driver_id` is still null.
+  /// Atomic claim: only succeeds when `driver_id` is still null and the partner is online.
   Future<bool> acceptDelivery({required String orderId, required String driverId}) async {
     try {
+      try {
+        final viaRpc = await _supabase.rpc('accept_delivery_order', params: {'p_order_id': orderId});
+        if (viaRpc == true) {
+          AlertService.notifyOrder(orderId: orderId, type: 'UPDATE');
+          return true;
+        }
+        if (viaRpc == false) return false;
+      } catch (_) {
+        // RPC not applied yet: fall back to the client-side race-safe update.
+      }
+
       final response = await _supabase
           .from('orders')
           .update({

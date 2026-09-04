@@ -235,7 +235,7 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text(
-                                'Net Earnings',
+                                'Gross sales',
                                 style: TextStyle(
                                   color: AppTheme.textMuted,
                                   fontSize: 12,

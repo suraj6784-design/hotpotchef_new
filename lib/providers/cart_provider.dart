@@ -11,6 +11,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../models/cart_state.dart';
 import '../models/cart_enums.dart';
 import '../services/cart_service.dart';
+import '../services/shared_cart_service.dart';
 
 void _logCartError(dynamic error, StackTrace stackTrace, String reason) {
   if (kDebugMode) {
@@ -24,10 +25,13 @@ final cartProvider = NotifierProvider<CartNotifier, CartState>(CartNotifier.new)
 class CartNotifier extends Notifier<CartState> {
   final _supabase = Supabase.instance.client;
   final _cartService = CartService();
+  final _sharedCartService = SharedCartService();
 
   Timer? _debounceTimer;
   RealtimeChannel? _stockChannel;
+  StreamSubscription<List<CartItemModel>>? _sharedCartSub;
   bool _isInitialized = false;
+  bool _applyingSharedCart = false;
 
   static const String _kLocalCartKey = 'local_cart_items_v2';
 
@@ -35,6 +39,7 @@ class CartNotifier extends Notifier<CartState> {
   CartState build() {
     ref.onDispose(() {
       _stockChannel?.unsubscribe();
+      _sharedCartSub?.cancel();
       _debounceTimer?.cancel();
     });
 
@@ -113,7 +118,37 @@ class CartNotifier extends Notifier<CartState> {
           _logCartError(e, st, 'Debounced remote cart sync failed');
         }
       }
+      final room = state.sharedRoomCode;
+      if (room != null && room.isNotEmpty && !_applyingSharedCart) {
+        try {
+          await _sharedCartService.updateSharedCart(room, state.items);
+        } catch (e, st) {
+          _logCartError(e, st, 'Debounced shared cart sync failed');
+        }
+      }
     });
+  }
+
+  Future<void> attachSharedRoom(String roomCode) async {
+    final code = roomCode.trim().toUpperCase();
+    if (code.isEmpty) return;
+    state = state.copyWith(sharedRoomCode: code);
+    _sharedCartSub?.cancel();
+    _sharedCartSub = _sharedCartService.streamSharedCart(code).listen((items) {
+      if (_applyingSharedCart) return;
+      _applyingSharedCart = true;
+      state = state.copyWith(items: items, sharedRoomCode: code);
+      _persistLocal();
+      _applyingSharedCart = false;
+    }, onError: (e, st) {
+      _logCartError(e, st, 'Shared cart stream failed');
+    });
+  }
+
+  void detachSharedRoom() {
+    _sharedCartSub?.cancel();
+    _sharedCartSub = null;
+    state = state.copyWith(clearSharedRoom: true);
   }
 
   // --- Scoped Realtime Stock Synchronization ---

@@ -70,7 +70,9 @@ android {
             signingConfig = if (keystorePropertiesFile.exists()) {
                 signingConfigs.getByName("release")
             } else {
-                signingConfigs.getByName("debug")
+                throw GradleException(
+                    "Release builds need android/key.properties and an upload .jks. Debug signing is not allowed for Play/APK release."
+                )
             }
             
             isMinifyEnabled = true

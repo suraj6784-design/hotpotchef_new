@@ -222,6 +222,7 @@ class CartState {
   final double tipAmount;
   final double userCoinBalance;
   final bool applyCoins;
+  final String? sharedRoomCode;
 
   const CartState({
     this.items = const [],
@@ -230,6 +231,7 @@ class CartState {
     this.tipAmount = 0.0,
     this.userCoinBalance = 0.0,
     this.applyCoins = false,
+    this.sharedRoomCode,
   });
 
   CartState copyWith({
@@ -239,6 +241,8 @@ class CartState {
     double? tipAmount,
     double? userCoinBalance,
     bool? applyCoins,
+    String? sharedRoomCode,
+    bool clearSharedRoom = false,
   }) {
     return CartState(
       items: items ?? this.items,
@@ -247,6 +251,7 @@ class CartState {
       tipAmount: tipAmount ?? this.tipAmount,
       userCoinBalance: userCoinBalance ?? this.userCoinBalance,
       applyCoins: applyCoins ?? this.applyCoins,
+      sharedRoomCode: clearSharedRoom ? null : (sharedRoomCode ?? this.sharedRoomCode),
     );
   }
 

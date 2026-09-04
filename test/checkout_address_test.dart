@@ -394,6 +394,10 @@ void main() {
       '/customer-hub?tab=orders',
     );
     expect(
+      alertOpenPath({'order_id': 'ord-1', 'status': 'Out for Delivery'}, role: 'Customer'),
+      '/tracking?orderId=ord-1',
+    );
+    expect(
       alertOpenPath({'order_id': 'ord-1', 'status': 'Delivered'}, role: 'Customer'),
       '/order-history',
     );

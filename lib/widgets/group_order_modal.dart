@@ -32,7 +32,8 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
     try {
       final cartState = ref.read(cartProvider);
       final roomCode = await _sharedCartService.createSharedCart(cartState.items);
-      
+      await ref.read(cartProvider.notifier).attachSharedRoom(roomCode);
+
       if (!mounted) return;
       Navigator.pop(context);
       _showRoomCodeDialog(roomCode);
@@ -81,8 +82,9 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
         _showSnackBar('$names could not be added to your cart.', isError: true);
         return;
       }
+      await ref.read(cartProvider.notifier).attachSharedRoom(code);
       final extra = skipped.isEmpty ? '' : ' Skipped: ${skipped.join(', ')}.';
-      _showSnackBar('Joined $code with $added item${added == 1 ? '' : 's'}.$extra', isError: false);
+      _showSnackBar('Joined $code. Later adds stay in sync.$extra', isError: false);
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to join group order');
       if (!mounted) return;

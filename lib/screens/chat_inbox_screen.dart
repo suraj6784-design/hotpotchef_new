@@ -4,9 +4,11 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../services/chat_read_store.dart';
 import '../utils/helpers.dart';
 import '../utils/network.dart';
 import '../widgets/app_widgets.dart';
+import '../widgets/customer_ui_components.dart';
 
 class ChatInboxScreen extends StatefulWidget {
   const ChatInboxScreen({super.key});
@@ -20,6 +22,7 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
   bool _loading = true;
   String? _error;
   List<ChatInboxItem> _rooms = const [];
+  Map<String, DateTime> _lastRead = const {};
 
   @override
   void initState() {
@@ -62,7 +65,7 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
             .limit(40),
         _supabase
             .from('messages')
-            .select('meal_id, content, created_at')
+            .select('meal_id, content, created_at, sender_id')
             .eq('sender_id', myId)
             .order('created_at', ascending: false)
             .limit(120),
@@ -81,7 +84,7 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
       if (roomIds.isNotEmpty) {
         final roomMessages = _asMaps(await _supabase
             .from('messages')
-            .select('meal_id, content, created_at')
+            .select('meal_id, content, created_at, sender_id')
             .inFilter('meal_id', roomIds)
             .order('created_at', ascending: false)
             .limit(200));
@@ -95,9 +98,12 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
         messages: messages,
       );
 
+      final lastRead = await ChatReadStore.lastReadByRoom(rooms.map((room) => room.roomId));
+
       if (!mounted) return;
       setState(() {
         _rooms = rooms;
+        _lastRead = lastRead;
         _loading = false;
       });
     } catch (e, stack) {
@@ -182,13 +188,18 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
                             borderRadius: BorderRadius.circular(16),
                             child: InkWell(
                               borderRadius: BorderRadius.circular(16),
-                              onTap: () => context.push(chatPath(
-                                room.roomId,
-                                roomName: room.title,
-                                otherUserId: room.otherUserId,
-                                memberIds: room.memberIds,
-                                isGroup: room.isGroup,
-                              )),
+                              onTap: () async {
+                                await ChatReadStore.markRead(room.roomId);
+                                if (!context.mounted) return;
+                                await context.push(chatPath(
+                                  room.roomId,
+                                  roomName: room.title,
+                                  otherUserId: room.otherUserId,
+                                  memberIds: room.memberIds,
+                                  isGroup: room.isGroup,
+                                ));
+                                if (mounted) _load();
+                              },
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                                 decoration: BoxDecoration(
@@ -227,9 +238,24 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
                                       ),
                                     ),
                                     const SizedBox(width: 8),
-                                    Text(
-                                      _stamp(room.lastAt),
-                                      style: TextStyle(color: ink.withValues(alpha: 0.5), fontSize: 11, fontWeight: FontWeight.w600),
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                      children: [
+                                        Text(
+                                          _stamp(room.lastAt),
+                                          style: TextStyle(color: ink.withValues(alpha: 0.5), fontSize: 11, fontWeight: FontWeight.w600),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        UnreadChatIndicator(
+                                          mealId: room.roomId,
+                                          hasUnread: chatRoomHasUnread(
+                                            myId: _supabase.auth.currentUser?.id ?? '',
+                                            lastAt: room.lastAt,
+                                            lastSenderId: room.lastSenderId,
+                                            lastReadAt: _lastRead[room.roomId],
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),

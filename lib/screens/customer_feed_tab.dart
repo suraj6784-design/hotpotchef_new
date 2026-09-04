@@ -46,6 +46,8 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   String _selectedCategory = 'All';
   String _currentAddress = 'Select Delivery Address';
   List<Map<String, dynamic>> _savedAddresses = [];
+  String _dietaryPref = '';
+  String _allergies = '';
   bool _showFavoritesOnly = false;
 
   final TextEditingController _searchController = TextEditingController();
@@ -80,6 +82,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         .stream(primaryKey: ['id'])
         .eq('status', 'Available');
     _fetchUserAddresses();
+    _fetchDietaryPrefs();
   }
 
   @override
@@ -198,7 +201,9 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         setState(() {
           _savedAddresses = normalized;
           if (_savedAddresses.isNotEmpty && (_currentAddress == 'Select Delivery Address' || _currentAddress.isEmpty)) {
-            _currentAddress = _savedAddresses.first['address']?.toString() ?? 'Select Delivery Address';
+            final preferred = preferredCheckoutAddress(_savedAddresses);
+            final label = preferred?['address']?.toString() ?? formatSavedAddress(preferred);
+            _currentAddress = label.isEmpty ? 'Select Delivery Address' : label;
           }
           final selected = _selectedAddressMap;
           if (selected != null) {
@@ -215,7 +220,26 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     for (final addr in _savedAddresses) {
       if (addr['address']?.toString() == _currentAddress) return addr;
     }
-    return _savedAddresses.isEmpty ? null : _savedAddresses.first;
+    return preferredCheckoutAddress(_savedAddresses);
+  }
+
+  Future<void> _fetchDietaryPrefs() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) return;
+      final row = await Supabase.instance.client
+          .from('users')
+          .select('dietary_preference, allergies')
+          .eq('id', user.id)
+          .maybeSingle();
+      if (!mounted || row == null) return;
+      setState(() {
+        _dietaryPref = row['dietary_preference']?.toString() ?? '';
+        _allergies = row['allergies']?.toString() ?? '';
+      });
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to fetch dietary preferences');
+    }
   }
 
   bool get _hasDeliveryPin {
@@ -312,7 +336,9 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       _hydrateChefKitchenPins(meals);
       _hydrateKitchenHours(meals);
     });
-    final pinned = _openKitchenMeals(meals.map(_pinnedMeal).toList());
+    final pinned = _openKitchenMeals(
+      meals.where((meal) => mealMatchesCustomerDiet(meal, preference: _dietaryPref, allergies: _allergies)).map(_pinnedMeal).toList(),
+    );
     if (!_hasDeliveryPin) return pinned;
     final dest = _selectedAddressMap;
     final endLat = addressCoordinate(dest, latitude: true);

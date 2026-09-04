@@ -153,10 +153,13 @@ class AppRouter {
           try {
             final extra = state.extra;
             final mapExtra = extra is Map ? Map<String, dynamic>.from(extra) : <String, dynamic>{};
+            final orderId = state.uri.queryParameters['orderId'];
 
             final order = mapExtra['order'] is Map
                 ? Map<String, dynamic>.from(mapExtra['order'] as Map)
-                : <String, dynamic>{};
+                : (orderId != null && orderId.isNotEmpty)
+                    ? <String, dynamic>{'id': orderId, 'order_id': orderId}
+                    : <String, dynamic>{};
             final isDriver = mapExtra['isDriver'] == true;
             final isDineInNavigation = mapExtra['isDineInNavigation'] == true;
 

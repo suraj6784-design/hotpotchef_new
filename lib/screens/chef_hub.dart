@@ -1280,19 +1280,32 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   icon: Icons.handshake_rounded,
                   gradient: const LinearGradient(colors: [AppTheme.success, Color(0xFF43C478)]),
                   onPressed: () async {
-                    final res = await _supabase
-                        .from('customer_requests')
-                        .update({
-                          'status': 'Accepted',
-                          'accepted_chef_id': _currentUserId,
-                          'accepted_chef_name': _chefDisplayName,
-                        })
-                        .eq('id', req['id'])
-                        .eq('status', 'Open')
-                        .select();
+                    var claimed = false;
+                    try {
+                      claimed = await _supabase.rpc(
+                            'claim_customer_request',
+                            params: {
+                              'p_request_id': req['id'],
+                              'p_chef_name': _chefDisplayName,
+                            },
+                          ) ==
+                          true;
+                    } catch (_) {
+                      final res = await _supabase
+                          .from('customer_requests')
+                          .update({
+                            'status': 'Accepted',
+                            'accepted_chef_id': _currentUserId,
+                            'accepted_chef_name': _chefDisplayName,
+                          })
+                          .eq('id', req['id'])
+                          .eq('status', 'Open')
+                          .select();
+                      claimed = res.isNotEmpty;
+                    }
 
                     if (context.mounted) {
-                      if (res.isEmpty) {
+                      if (!claimed) {
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lead was already claimed.')));
                       } else {
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lead claimed. The customer can now pay from My Orders.')));

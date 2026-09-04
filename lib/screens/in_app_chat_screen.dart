@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/alert_service.dart';
+import '../services/chat_read_store.dart';
 import '../utils/helpers.dart';
 import '../utils/network.dart';
 
@@ -43,6 +44,7 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
   void initState() {
     super.initState();
     ChatAlertScope.activeMealId = widget.mealId;
+    ChatReadStore.markRead(widget.mealId);
   }
 
   @override

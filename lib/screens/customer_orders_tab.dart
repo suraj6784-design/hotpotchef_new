@@ -498,26 +498,8 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                 icon: const Icon(Icons.map, size: 20),
                                 label: const Text('Track Live Location'),
                                 onPressed: () {
-                                  final orderUuid = resolvedOrderId(trackableItem) ??
-                                      resolvedOrderId(items.first);
-                                  Map<String, dynamic>? fullOrder;
-                                  for (final row in _activeOrders) {
-                                    if (row['id']?.toString() == orderUuid) {
-                                      fullOrder = row;
-                                      break;
-                                    }
-                                  }
-                                  context.push('/tracking', extra: {
-                                    'order': fullOrder ??
-                                        {
-                                          ...trackableItem,
-                                          'id': orderUuid,
-                                          'order_id': orderUuid,
-                                        },
-                                    'isDriver': false,
-                                    'isDineInNavigation': status.toLowerCase().contains('ready') &&
-                                        !(items.first['service_type']?.toString().toLowerCase().contains('delivery') ?? false),
-                                  });
+                                  Navigator.pop(ctx);
+                                  _openTracking(trackableItem, items);
                                 },
                               ),
                             ),
@@ -571,6 +553,17 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                     onTap: () => _initiateCall(chefId),
                                     child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.grey.shade300)), child: const Icon(Icons.phone_outlined, color: Colors.redAccent, size: 18)),
                                   ),
+                                  if (_driverIdOf(items.first) != null) ...[
+                                    const SizedBox(width: 8),
+                                    GestureDetector(
+                                      onTap: () => _initiateCall(_driverIdOf(items.first)!),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.grey.shade300)),
+                                        child: const Icon(Icons.sports_motorsports_outlined, color: Colors.blueAccent, size: 18),
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               )
                             ],
@@ -774,6 +767,34 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
         ),
       ),
     );
+  }
+
+  String? _driverIdOf(Map<String, dynamic> item) {
+    final driverId = item['driver_id']?.toString() ?? item['delivery_partner_id']?.toString() ?? '';
+    return driverId.isEmpty ? null : driverId;
+  }
+
+  void _openTracking(Map<String, dynamic> trackableItem, List<Map<String, dynamic>> items) {
+    final orderUuid = resolvedOrderId(trackableItem) ?? resolvedOrderId(items.first);
+    Map<String, dynamic>? fullOrder;
+    for (final row in _activeOrders) {
+      if (row['id']?.toString() == orderUuid) {
+        fullOrder = row;
+        break;
+      }
+    }
+    final status = items.first['status']?.toString() ?? '';
+    context.push('/tracking', extra: {
+      'order': fullOrder ??
+          {
+            ...trackableItem,
+            'id': orderUuid,
+            'order_id': orderUuid,
+          },
+      'isDriver': false,
+      'isDineInNavigation': status.toLowerCase().contains('ready') &&
+          !(items.first['service_type']?.toString().toLowerCase().contains('delivery') ?? false),
+    });
   }
 
   Future<void> _initiateCall(String targetUserId) async {
@@ -1210,6 +1231,30 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                               ],
                             ),
                           ),
+                          if (trackableItem != null) ...[
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () => _openTracking(trackableItem!, items),
+                                    icon: const Icon(Icons.map_outlined, size: 16),
+                                    label: const Text('Track'),
+                                  ),
+                                ),
+                                if (_driverIdOf(items.first) != null) ...[
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      onPressed: () => _initiateCall(_driverIdOf(items.first)!),
+                                      icon: const Icon(Icons.phone_outlined, size: 16),
+                                      label: const Text('Call driver'),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ],
                           const SizedBox(height: 12),
                           Divider(height: 1, color: AppTheme.hairlineOf(context)),
                           const SizedBox(height: 8),
