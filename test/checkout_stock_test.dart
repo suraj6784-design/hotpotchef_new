@@ -26,4 +26,32 @@ void main() {
       );
     });
   });
+
+  group('checkoutCartPayload', () {
+    test('keeps chef and meal ids without spreading the cart line id as a meal id', () {
+      final payload = checkoutCartPayload([
+        {
+          'id': 'line_not_a_uuid',
+          'chef_id': '11111111-1111-1111-1111-111111111111',
+          'meal_id': '22222222-2222-2222-2222-222222222222',
+          'title': 'AnyDish',
+          'quantity': 1,
+          'price': 221,
+          'chef_name': 'newchef16',
+        },
+      ]);
+      expect(payload.single['chef_id'], '11111111-1111-1111-1111-111111111111');
+      expect(payload.single['source_meal_id'], '22222222-2222-2222-2222-222222222222');
+      expect(payload.single.containsKey('rawMealDetails'), isFalse);
+    });
+  });
+
+  group('checkoutErrorMessage', () {
+    test('strips the Exception prefix from record failures', () {
+      expect(
+        checkoutErrorMessage(Exception('We could not record this order, so the payment was refunded. It should return in 5–7 business days.')),
+        'We could not record this order, so the payment was refunded. It should return in 5–7 business days.',
+      );
+    });
+  });
 }

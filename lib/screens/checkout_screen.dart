@@ -380,7 +380,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   List<Map<String, dynamic>> _checkoutCartItems() {
-    return widget.cartItems.map((item) {
+    final dated = widget.cartItems.map((item) {
       final rawDate = item['scheduledDate'] ??
           item['scheduled_date'] ??
           item['selected_date'] ??
@@ -406,11 +406,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
       return {
         ...item,
-        'source_meal_id': item['source_meal_id'] ?? item['meal_id'] ?? item['mealId'] ?? item['id'],
         'selected_date': selectedDateStr,
         'time_slot': finalTimeSlot,
       };
     }).toList();
+    return checkoutCartPayload(dated);
   }
 
   Map<String, dynamic> _placeOrderParams({
@@ -490,8 +490,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         ));
       }
       if (data != null && data['refunded'] == true) {
+        final detail = data['error']?.toString().trim();
         throw Exception(
-          'We could not record this order, so the payment was refunded. It should return in 5–7 business days.',
+          (detail != null &&
+                  detail.isNotEmpty &&
+                  !detail.toLowerCase().contains('could not record'))
+              ? 'We could not record this order ($detail), so the payment was refunded. It should return in 5–7 business days.'
+              : 'We could not record this order, so the payment was refunded. It should return in 5–7 business days.',
         );
       }
       throw Exception(data?['error'] ?? lastError ?? 'Could not record paid order');
@@ -504,8 +509,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         ));
       }
       if (details?['refunded'] == true) {
+        final detail = details?['error']?.toString().trim();
         throw Exception(
-          'We could not record this order, so the payment was refunded. It should return in 5–7 business days.',
+          (detail != null &&
+                  detail.isNotEmpty &&
+                  !detail.toLowerCase().contains('could not record'))
+              ? 'We could not record this order ($detail), so the payment was refunded. It should return in 5–7 business days.'
+              : 'We could not record this order, so the payment was refunded. It should return in 5–7 business days.',
         );
       }
       throw Exception(details?['error'] ?? lastError ?? e.reasonPhrase ?? 'Could not record paid order');
@@ -551,8 +561,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         final soldOut = isSoldOutCheckoutError(e);
         _showSnackBar(
           soldOut
-              ? '$e'
-              : '${networkErrorMessage(e)}\nReference: ${response.paymentId}',
+              ? checkoutErrorMessage(e)
+              : '${checkoutErrorMessage(e)}\nReference: ${response.paymentId}',
           isError: true,
           duration: const Duration(seconds: 8),
         );

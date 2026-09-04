@@ -293,6 +293,59 @@ String soldOutCheckoutMessage({required bool charged, bool refunded = false}) {
   return 'This meal just sold out. Nothing was charged — pick another portion or chef.';
 }
 
+String checkoutErrorMessage(Object error) {
+  var text = networkErrorMessage(error).trim();
+  if (text.startsWith('Exception: ')) {
+    text = text.substring('Exception: '.length);
+  }
+  return text;
+}
+
+dynamic _jsonSafeValue(dynamic value) {
+  if (value == null || value is num || value is bool) return value;
+  if (value is String) return value;
+  if (value is DateTime) return value.toIso8601String();
+  if (value is List) return value.map(_jsonSafeValue).toList();
+  if (value is Map) {
+    return value.map((key, nested) => MapEntry(key.toString(), _jsonSafeValue(nested)));
+  }
+  return value.toString();
+}
+
+/// Keeps only JSON-safe checkout fields so paid-order recording cannot fail on meal blobs.
+List<Map<String, dynamic>> checkoutCartPayload(List<Map<String, dynamic>> items) {
+  return items.map((item) {
+    final nested = item['rawMealDetails'] ??
+        item['mealDetails'] ??
+        item['meal_details'] ??
+        const <String, dynamic>{};
+    final nestedMap = nested is Map ? Map<String, dynamic>.from(nested) : const <String, dynamic>{};
+    final chefId = item['chef_id'] ?? item['chefId'] ?? nestedMap['chef_id'] ?? nestedMap['chefId'];
+    final mealId = item['source_meal_id'] ??
+        item['meal_id'] ??
+        item['mealId'] ??
+        nestedMap['id'] ??
+        nestedMap['meal_id'];
+    return {
+      'chef_id': chefId,
+      'chefId': chefId,
+      'chef_name': chefDisplayName({...nestedMap, ...item}),
+      'meal_id': mealId,
+      'source_meal_id': mealId,
+      'title': item['title'] ?? item['name'] ?? nestedMap['title'],
+      'quantity': item['quantity'] ?? 1,
+      'price': item['price'] ?? item['base_price'] ?? item['basePrice'] ?? nestedMap['price'],
+      'base_price': item['base_price'] ?? item['basePrice'] ?? item['price'] ?? nestedMap['price'],
+      'discounted_price': item['discounted_price'] ?? item['discountedPrice'] ?? nestedMap['discounted_price'],
+      'selected_service_type': item['selected_service_type'] ?? item['service_type'] ?? item['serviceType'],
+      'service_type': item['service_type'] ?? item['selected_service_type'] ?? item['serviceType'],
+      'time_slot': item['time_slot'] ?? item['timeSlot'] ?? nestedMap['exact_time'] ?? nestedMap['time_slot'],
+      'selected_date': item['selected_date'] ?? item['selectedDate'] ?? item['scheduled_date'],
+      'selectedAddOns': _jsonSafeValue(item['selectedAddOns'] ?? item['selected_add_ons'] ?? const []),
+    };
+  }).toList();
+}
+
 double parseMoney(dynamic value, [double fallback = 0]) {
   return double.tryParse(value?.toString() ?? '') ?? fallback;
 }
