@@ -283,10 +283,15 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     Object? existingId,
   }) async {
     final client = Supabase.instance.client;
+    final line1 = addressData['address_line1']?.toString().trim();
     final payload = {
       'user_id': addressData['user_id'],
       'house_no': addressData['house_no'],
       'street': addressData['street'],
+      'address_line1': (line1 != null && line1.isNotEmpty)
+          ? line1
+          : '${addressData['house_no']}, ${addressData['street']}'.trim(),
+      'address_line2': addressData['landmark'],
       'city': addressData['city'],
       'state': addressData['state'],
       'postal_code': addressData['postal_code'],
@@ -294,6 +299,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
       'landmark': addressData['landmark'],
       'latitude': addressData['latitude'],
       'longitude': addressData['longitude'],
+      if (addressData['updated_at'] != null) 'updated_at': addressData['updated_at'],
       if (addressData.containsKey('is_default')) 'is_default': addressData['is_default'],
     };
 
@@ -315,22 +321,32 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
       return data;
     }
 
-    Future<Map<String, dynamic>> writeWithPinFallback(Map<String, dynamic> data) async {
-      try {
-        return await write(data);
-      } catch (_) {
-        final alt = {
-          ...data,
-          'pincode': data['postal_code'],
-        }..remove('postal_code');
-        return await write(alt);
+    Future<Map<String, dynamic>> writeKnownColumns(Map<String, dynamic> data) async {
+      final body = Map<String, dynamic>.from(data);
+      Object? lastError;
+      for (var attempt = 0; attempt < 8; attempt++) {
+        try {
+          return await write(body);
+        } on PostgrestException catch (e) {
+          lastError = e;
+          if (e.code != 'PGRST204') rethrow;
+          final match = RegExp(r"Could not find the '([^']+)' column").firstMatch(e.message);
+          final missing = match?.group(1);
+          if (missing == null || !body.containsKey(missing)) rethrow;
+          body.remove(missing);
+        }
       }
+      throw lastError ??
+          const PostgrestException(message: 'Could not save this address', code: 'PGRST204');
     }
 
     try {
-      return await writeWithPinFallback(payload);
-    } catch (_) {
-      return await writeWithPinFallback(Map<String, dynamic>.from(payload)..remove('is_default'));
+      return await writeKnownColumns(payload);
+    } on PostgrestException catch (e) {
+      if (e.code == 'PGRST204' || payload.containsKey('is_default')) {
+        return await writeKnownColumns(Map<String, dynamic>.from(payload)..remove('is_default'));
+      }
+      rethrow;
     }
   }
 
@@ -400,7 +416,11 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to save address: $e'),
+            content: Text(
+              e.toString().contains('authentication') || e.toString().contains('sign in')
+                  ? 'Please sign in to save this address.'
+                  : 'Could not save this address. Please try again.',
+            ),
             backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating,
           ),
