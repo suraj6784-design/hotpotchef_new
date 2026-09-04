@@ -35,24 +35,41 @@ class OrderRepository {
       }
 
       final lowered = newStatus.toLowerCase();
-      if (lowered == 'delivered' || lowered == 'completed') {
-        updateData['delivered_at'] = DateTime.now().toUtc().toIso8601String();
+      final completing = lowered == 'delivered' || lowered == 'completed';
+
+      if (completing) {
+        try {
+          final done = await _supabase.rpc('complete_delivery_order', params: {'p_order_id': orderId});
+          if (done == true) {
+            AlertService.notifyOrder(orderId: orderId, type: 'UPDATE');
+            unawaited(_releaseChefPayout(orderId));
+            return;
+          }
+        } catch (_) {}
       }
 
-      if (driverId != null) {
-        await _supabase
-            .from('orders')
-            .update(updateData)
-            .eq('id', orderId)
-            .filter('driver_id', 'is', null);
-      } else {
-        await _supabase.from('orders').update(updateData).eq('id', orderId);
+      Future<void> write(Map<String, dynamic> payload) async {
+        if (driverId != null) {
+          await _supabase
+              .from('orders')
+              .update(payload)
+              .eq('id', orderId)
+              .filter('driver_id', 'is', null);
+        } else {
+          await _supabase.from('orders').update(payload).eq('id', orderId);
+        }
       }
-      AlertService.notifyOrder(orderId: orderId, type: 'UPDATE');
 
-      if (lowered == 'delivered' || lowered == 'completed') {
+      await write(updateData);
+
+      if (completing) {
+        try {
+          await write({'delivered_at': DateTime.now().toUtc().toIso8601String()});
+        } catch (_) {}
         unawaited(_releaseChefPayout(orderId));
       }
+
+      AlertService.notifyOrder(orderId: orderId, type: 'UPDATE');
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to update order status to $newStatus');
       if (kDebugMode) debugPrint('Order update error: $e');

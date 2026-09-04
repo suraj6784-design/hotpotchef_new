@@ -89,6 +89,14 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   ServiceType _orderService(Map<String, dynamic> order) =>
       ServiceType.fromString(order['order_type']?.toString() ?? order['service_type']?.toString());
 
+  String _orderUpdateError(Object error) {
+    final text = error.toString();
+    if (text.contains('delivered_at') || text.contains('PGRST204')) {
+      return 'Could not mark this order delivered. Try again.';
+    }
+    return 'Could not update this order. Try again.';
+  }
+
   String _orderTitle(Map<String, dynamic> order) {
     final items = _parseItems(order['items']);
     if (items.isEmpty) return order['title']?.toString() ?? 'Meal Order';
@@ -357,7 +365,9 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Update failed: $e'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_orderUpdateError(e)), backgroundColor: Colors.red),
+        );
       }
     }
   }
@@ -387,7 +397,9 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Update failed: $e'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_orderUpdateError(e)), backgroundColor: Colors.red),
+        );
       }
     }
   }
@@ -872,25 +884,22 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               _orderContactActions(order),
               const SizedBox(height: 10),
               if (svc == ServiceType.deliverySelf)
-                Row(
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.navigation, size: 16),
-                        label: const Text('Navigate'),
-                        onPressed: () => _openChefDeliveryMap(order),
-                      ),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.navigation, size: 16),
+                      label: const Text('Navigate'),
+                      onPressed: () => _openChefDeliveryMap(order),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: GradientButton(
-                        label: dispatchLabel,
-                        icon: isOut ? Icons.check_rounded : Icons.delivery_dining_rounded,
-                        gradient: isOut
-                            ? const LinearGradient(colors: [AppTheme.success, Color(0xFF43C478)])
-                            : const LinearGradient(colors: [Color(0xFF00897B), Color(0xFF26A69A)]),
-                        onPressed: () => _dispatchOrder(order),
-                      ),
+                    const SizedBox(height: 10),
+                    GradientButton(
+                      label: dispatchLabel,
+                      icon: isOut ? Icons.check_rounded : Icons.delivery_dining_rounded,
+                      gradient: isOut
+                          ? const LinearGradient(colors: [AppTheme.success, Color(0xFF43C478)])
+                          : const LinearGradient(colors: [Color(0xFF00897B), Color(0xFF26A69A)]),
+                      onPressed: () => _dispatchOrder(order),
                     ),
                   ],
                 )
