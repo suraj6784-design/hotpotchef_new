@@ -107,12 +107,17 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
 
         _vehicleModelController.text = userData['vehicle_model']?.toString() ?? '';
         _vehicleRegNoController.text = userData['vehicle_reg_no']?.toString() ?? userData['vehicle_number']?.toString() ?? '';
-        _dlNumberController.text = userData['driving_license_no']?.toString() ?? userData['license_no']?.toString() ?? '';
+        _dlNumberController.text = userData['driving_license_no']?.toString() ??
+            userData['dl_number']?.toString() ??
+            userData['license_no']?.toString() ??
+            '';
         _insurancePolicyController.text = userData['insurance_policy_no']?.toString() ?? '';
         _vehicleType = userData['vehicle_type']?.toString() ?? '2-Wheeler (Petrol)';
 
-        _latitude = (userData['lat'] as num?)?.toDouble();
-        _longitude = (userData['lng'] as num?)?.toDouble();
+        _latitude = (userData['lat'] as num?)?.toDouble() ??
+            (userData['latitude'] as num?)?.toDouble();
+        _longitude = (userData['lng'] as num?)?.toDouble() ??
+            (userData['longitude'] as num?)?.toDouble();
 
         _houseController.text = userData['house_no']?.toString() ?? '';
         _streetController.text = userData['street']?.toString() ?? userData['address']?.toString() ?? '';
@@ -232,9 +237,13 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
         'pincode': pin,
         'lat': _latitude,
         'lng': _longitude,
+        'latitude': _latitude,
+        'longitude': _longitude,
         'vehicle_type': _vehicleType,
         'vehicle_model': vehicleModel,
+        'vehicle_number': vehicleReg,
         'vehicle_reg_no': vehicleReg,
+        'dl_number': dlNumber,
         'driving_license_no': dlNumber,
         'insurance_policy_no': insurance,
         if (isNewAadhaar) 'aadhaar_number': aadhaarInput,

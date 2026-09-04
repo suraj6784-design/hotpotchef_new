@@ -131,8 +131,10 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     _avatarUrl = userData?['avatar_url']?.toString();
     _payoutEnabled = userData?['payout_enabled'] == true || _gatewayAccountController.text.isNotEmpty;
 
-    _latitude = (userData?['lat'] as num?)?.toDouble();
-    _longitude = (userData?['lng'] as num?)?.toDouble();
+    _latitude = (userData?['lat'] as num?)?.toDouble() ??
+        (userData?['latitude'] as num?)?.toDouble();
+    _longitude = (userData?['lng'] as num?)?.toDouble() ??
+        (userData?['longitude'] as num?)?.toDouble();
 
     _houseController.text = userData?['house_no']?.toString() ?? '';
     _streetController.text = userData?['street']?.toString() ?? userData?['address']?.toString() ?? '';
@@ -349,6 +351,8 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
         'pincode': pin,
         'lat': _latitude,
         'lng': _longitude,
+        'latitude': _latitude,
+        'longitude': _longitude,
         if (_avatarUrl != null) 'avatar_url': _avatarUrl,
         'updated_at': DateTime.now().toIso8601String(),
       };
