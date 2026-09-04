@@ -123,7 +123,9 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
 
       final availableList = (results[0] as List)
           .map((e) => Map<String, dynamic>.from(e))
-          .where((e) => ServiceType.fromString(e['service_type']?.toString()).usesDeliveryPartner)
+          .where((e) => ServiceType.fromString(
+                e['order_type']?.toString() ?? e['service_type']?.toString(),
+              ).usesDeliveryPartner)
           .map(DriverDeliveryModel.fromJson)
           .toList();
 

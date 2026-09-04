@@ -13,6 +13,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import '../utils/helpers.dart';
+import '../utils/support.dart';
 
 class LiveTrackingScreen extends StatefulWidget {
   final Map<String, dynamic> order;
@@ -62,23 +63,21 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   }
 
   Future<void> _hydrateOrderIfNeeded() async {
-    final id = _order['id']?.toString();
+    final id = resolvedOrderId(_order);
     if (id == null || id.isEmpty) return;
 
-    // The delivery address lives inside the `items` JSON on legacy orders, so
-    // make sure we have the full row (which carries `items` and `customer_id`).
-    if (_order['items'] == null || _order['customer_id'] == null) {
-      try {
-        final row = await _supabase.from('orders').select().eq('id', id).maybeSingle();
-        if (row != null) {
-          _order = {..._order, ...row};
-        }
-      } catch (e, stack) {
-        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed hydrating tracking order');
+    try {
+      final row = await _supabase.from('orders').select().eq('id', id).maybeSingle();
+      if (row != null) {
+        _order = {..._order, ...row, 'id': row['id']};
+      } else {
+        _order['id'] = id;
       }
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed hydrating tracking order');
+      _order['id'] = id;
     }
 
-    // Pull the customer's contact details + saved coordinates for fallbacks.
     await _loadCustomerInfo();
   }
 
@@ -360,6 +359,12 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
       distanceFilter: 15, // Throttle pings to 15-meter movements to save quota
     );
 
+    final orderId = resolvedOrderId(_order);
+    if (orderId != null && orderId.isNotEmpty) {
+      _locationChannel ??= _supabase.channel('order_$orderId');
+      _locationChannel!.subscribe();
+    }
+
     _positionStream = Geolocator.getPositionStream(locationSettings: locationSettings).listen((Position position) {
       if (!mounted) return;
       LatLng newPos = LatLng(position.latitude, position.longitude);
@@ -371,7 +376,9 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
       }
 
       // Broadcast telemetry over Supabase Realtime channel
-      _locationChannel ??= _supabase.channel('order_${_order['id']}');
+      final orderId = resolvedOrderId(_order);
+      if (orderId == null || orderId.isEmpty) return;
+      _locationChannel ??= _supabase.channel('order_$orderId');
       _locationChannel!.sendBroadcastMessage(
         event: 'location_update',
         payload: {'lat': position.latitude, 'lng': position.longitude},
@@ -380,7 +387,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   }
 
   void _listenToDriverTelemetry() {
-    final orderId = _order['id']?.toString() ?? '';
+    final orderId = resolvedOrderId(_order) ?? '';
     if (orderId.isEmpty) return;
 
     _locationChannel = _supabase.channel('order_$orderId');
@@ -519,7 +526,11 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
           IconButton(
             icon: const Icon(Icons.support_agent, color: AppTheme.primary),
             onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Connecting to support...')));
+              showContactSupportSheet(
+                context,
+                orderNumber: formatOrderId(_order['order_id']?.toString(), resolvedOrderId(_order) ?? ''),
+                orderUuid: resolvedOrderId(_order),
+              );
             },
           ),
         ],

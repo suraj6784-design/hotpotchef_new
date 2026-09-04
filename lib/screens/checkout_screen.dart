@@ -289,6 +289,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (user == null) throw Exception('Authentication session expired');
       if (widget.cartItems.isEmpty) throw Exception('Your cart is empty');
 
+      if (_applyCoins && _grandTotal < 1) {
+        await _placeCoinsOnlyOrder();
+        return;
+      }
+
       // Edge function calculates canonical price server-side to prevent tampering
       final response = await _supabase.functions.invoke(
         'create-split-order',
@@ -366,6 +371,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   void _handleExternalWallet(ExternalWalletResponse response) {
     if (!mounted) return;
+    _releaseInventoryHold();
     setState(() => _isCheckingOut = false);
     _showSnackBar('Redirecting to wallet: ${response.walletName}');
   }
@@ -436,7 +442,37 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     };
   }
 
-  Future<Map<String, dynamic>?> _placeOrderWithRetries({
+  Future<void> _placeCoinsOnlyOrder() async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) throw Exception('Authentication session expired');
+    _placingOrder = true;
+    final paymentId = 'coins_${user.id}_${DateTime.now().millisecondsSinceEpoch}';
+    try {
+      final placed = await _placeOrderRpc(
+        paymentId: paymentId,
+        razorpayOrderId: null,
+        signature: null,
+      );
+      if (placed == null || placed['success'] != true) {
+        throw Exception(placed?['error'] ?? 'Could not record the coin-paid order.');
+      }
+      _orderRecorded = true;
+      final orderId = placed['order_id']?.toString();
+      if (orderId != null && orderId.isNotEmpty) {
+        AlertService.notifyOrder(orderId: orderId, type: 'INSERT');
+      }
+      if (mounted) {
+        widget.onOrderPlacedSuccess();
+        Navigator.pop(context);
+        _showSnackBar('Order placed with HotPot Coins.', isError: false);
+      }
+    } finally {
+      _placingOrder = false;
+      if (mounted) setState(() => _isCheckingOut = false);
+    }
+  }
+
+  Future<Map<String, dynamic>?> _placeOrderRpc({
     required String paymentId,
     required String? razorpayOrderId,
     required String? signature,
@@ -457,14 +493,23 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         }
         lastError = rpcResponse is Map ? rpcResponse['error'] : rpcResponse;
         if (rpcResponse is Map && isSoldOutCheckoutError(rpcResponse['error'], Map<String, dynamic>.from(rpcResponse))) {
-          break;
+          return Map<String, dynamic>.from(rpcResponse);
         }
       } catch (e) {
         lastError = e;
       }
       await Future<void>.delayed(Duration(milliseconds: 400 * (attempt + 1)));
     }
+    if (lastError != null) throw lastError;
+    return null;
+  }
 
+  Future<Map<String, dynamic>?> _placeOrderWithRetries({
+    required String paymentId,
+    required String? razorpayOrderId,
+    required String? signature,
+  }) async {
+    Object? lastError;
     try {
       final recover = await _supabase.functions.invoke(
         'recover-payment',
@@ -483,6 +528,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       ).withTimeout(NetworkTimeouts.payment);
       final data = recover.data is Map ? Map<String, dynamic>.from(recover.data as Map) : null;
       if (data != null && data['success'] == true) return data;
+      lastError = data?['error'];
       if (isSoldOutCheckoutError(data?['error'], data)) {
         throw Exception(soldOutCheckoutMessage(
           charged: true,
@@ -499,7 +545,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               : 'We could not record this order, so the payment was refunded. It should return in 5–7 business days.',
         );
       }
-      throw Exception(data?['error'] ?? lastError ?? 'Could not record paid order');
     } on FunctionException catch (e) {
       final details = e.details is Map ? Map<String, dynamic>.from(e.details as Map) : null;
       if (isSoldOutCheckoutError(details?['error'] ?? e, details)) {
@@ -518,7 +563,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               : 'We could not record this order, so the payment was refunded. It should return in 5–7 business days.',
         );
       }
-      throw Exception(details?['error'] ?? lastError ?? e.reasonPhrase ?? 'Could not record paid order');
+      lastError = details?['error'] ?? e.reasonPhrase ?? e;
+    } catch (e) {
+      if (e is Exception && e.toString().contains('refunded')) rethrow;
+      lastError = e;
+    }
+
+    try {
+      return await _placeOrderRpc(
+        paymentId: paymentId,
+        razorpayOrderId: razorpayOrderId,
+        signature: signature,
+      );
+    } catch (e) {
+      throw Exception(lastError ?? e ?? 'Could not record paid order');
     }
   }
 
@@ -1045,7 +1103,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           const SizedBox(width: 16),
           Expanded(
             child: GradientButton(
-              label: 'Pay & Place Order',
+              label: (_applyCoins && _grandTotal < 1) ? 'Place order with coins' : 'Pay & Place Order',
               icon: Icons.lock_rounded,
               loading: _isCheckingOut,
               onPressed: _isCheckingOut ? null : _startRazorpayPayment,

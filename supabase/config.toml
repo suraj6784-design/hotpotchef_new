@@ -470,3 +470,18 @@ entrypoint = "./functions/razorpay-webhook/index.ts"
 enabled = true
 verify_jwt = true
 entrypoint = "./functions/release-chef-payout/index.ts"
+
+[functions.create-chef-account]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/create-chef-account/index.ts"
+
+[functions.ai-tag-meal]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/ai-tag-meal/index.ts"
+
+[functions.ai-search]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/ai-search/index.ts"

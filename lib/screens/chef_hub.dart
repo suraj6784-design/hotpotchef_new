@@ -283,7 +283,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   Future<void> _dispatchOrder(Map<String, dynamic> order) async {
     try {
       final current = order['status']?.toString() ?? '';
-      final svc = ServiceType.fromString(order['service_type']?.toString());
+      final svc = ServiceType.fromString(order['order_type']?.toString() ?? order['service_type']?.toString());
       final next = OrderLifecycle.nextDispatchStatus(current, svc);
       await _orderLifecycle.dispatch(
         orderId: order['id'].toString(),

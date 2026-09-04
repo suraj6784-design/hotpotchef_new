@@ -157,4 +157,23 @@ void main() {
       );
     });
   });
+
+  group('resolvedOrderId', () {
+    test('prefers order_id on enriched line items', () {
+      expect(
+        resolvedOrderId({'id': 'meal-row', 'order_id': 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'}),
+        'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      );
+    });
+
+    test('uses id on a raw orders row', () {
+      expect(resolvedOrderId({'id': 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'}), 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee');
+    });
+  });
+
+  group('mealIdFromOrderItem', () {
+    test('prefers source_meal_id from checkout payload', () {
+      expect(mealIdFromOrderItem({'id': 'line', 'source_meal_id': 'meal-1'}), 'meal-1');
+    });
+  });
 }

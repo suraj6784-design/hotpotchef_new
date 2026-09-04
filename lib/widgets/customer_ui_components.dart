@@ -193,7 +193,7 @@ void showChefProfileDialog(BuildContext context, String chefId, String chefName,
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  'FSSAI: ${fssai.isNotEmpty ? fssai : 'Verified Partner'}',
+                  'FSSAI: ${fssai.isNotEmpty ? fssai : 'Licence not listed'}',
                   style: TextStyle(
                     fontSize: 13,
                     color: isDark ? Colors.grey.shade300 : AppTheme.textMainLight,
@@ -248,7 +248,7 @@ class _MealDetailsModalContentState extends State<_MealDetailsModalContent> {
     final price = double.tryParse(meal['price']?.toString() ?? '0') ?? 0.0;
     final chefName = chefDisplayName(meal);
     final chefId = meal['chef_id']?.toString() ?? '';
-    final fssai = meal['fssai_number']?.toString() ?? 'Verified Partner';
+    final fssai = meal['fssai_number']?.toString() ?? '';
     final serviceType = meal['service_type']?.toString() ?? 'Delivery, Pickup';
     final timeSlot = meal['time_slot']?.toString() ?? 'Available Today';
 
@@ -351,8 +351,16 @@ class _MealDetailsModalContentState extends State<_MealDetailsModalContent> {
                                           color: isDark ? AppTheme.textMainDark : AppTheme.textMain,
                                         )),
                                     const SizedBox(height: 4),
-                                    const Text('FSSAI Verified Partner • Tap for info',
-                                        style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.w600)),
+                                    Text(
+                                      fssai.isNotEmpty
+                                          ? 'FSSAI $fssai • Tap for info'
+                                          : 'FSSAI not listed • Tap for chef details',
+                                      style: TextStyle(
+                                        color: fssai.isNotEmpty ? Colors.green : AppTheme.textMuted,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),

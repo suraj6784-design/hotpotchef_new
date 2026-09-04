@@ -242,13 +242,18 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
       ).withTimeout(NetworkTimeouts.payment);
 
       if (response.status == 200 && response.data != null && response.data['success'] == true) {
+        final pending = response.data['pending'] == true;
         setState(() {
-          _payoutEnabled = true;
+          _payoutEnabled = response.data['payout_enabled'] == true;
           if (response.data['account_id'] != null) {
             _gatewayAccountController.text = response.data['account_id'].toString();
           }
         });
-        _showSnackBar('Payout account successfully linked & verified for settlements!');
+        _showSnackBar(
+          pending
+              ? 'Bank details saved. Chef settlements start after Razorpay Route is activated on this account.'
+              : 'Payout account linked for settlements.',
+        );
       } else {
         throw Exception(response.data?['error'] ?? 'Settlement routing rejected');
       }
@@ -479,8 +484,12 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                                     color: Colors.green.withValues(alpha: 0.15),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
-                                  child: Text('Verified Food Partner',
-                                      style: TextStyle(color: verified, fontSize: 11, fontWeight: FontWeight.bold)),
+                                  child: Text(
+                                    _fssaiController.text.trim().isEmpty
+                                        ? 'FSSAI not on file'
+                                        : 'FSSAI listed',
+                                    style: TextStyle(color: verified, fontSize: 11, fontWeight: FontWeight.bold),
+                                  ),
                                 ),
                               ],
                             ),

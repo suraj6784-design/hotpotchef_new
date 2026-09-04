@@ -14,7 +14,9 @@ import '../services/push_notification_service.dart';
 import '../utils/account_hint.dart';
 import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
+import '../utils/legal_content.dart';
 import '../utils/network.dart';
+import '../utils/support.dart';
 import '../widgets/app_widgets.dart';
 
 class AuthScreen extends StatefulWidget {
@@ -41,6 +43,7 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _isLogin = true;
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _acceptedTerms = false;
   String? _authError;
 
   AppRole _selectedRole = AppRole.customer;
@@ -118,6 +121,9 @@ class _AuthScreenState extends State<AuthScreen> {
           _showAuthError('Wrong email or password. Please try again.');
         }
       } else {
+        if (!_acceptedTerms) {
+          _showAuthError('Please accept the Terms & conditions to create an account.');
+        } else {
         // --- SIGN-UP FLOW WITH EXPLICIT ROLE ---
         final name = _nameController.text.trim();
         final phone = _phoneController.text.trim();
@@ -163,6 +169,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
           unawaited(PushNotificationService.syncTokenForCurrentUser());
           _leaveAuthAfterSuccess();
+        }
         }
       }
     } catch (e, stack) {
@@ -564,7 +571,48 @@ class _AuthScreenState extends State<AuthScreen> {
               ),
             )
           else
-            const SizedBox(height: 18),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Checkbox(
+                    value: _acceptedTerms,
+                    onChanged: (value) => setState(() => _acceptedTerms = value == true),
+                  ),
+                  Expanded(
+                    child: Wrap(
+                      children: [
+                        const Text('I agree to the '),
+                        GestureDetector(
+                          onTap: () => openLegalDocument(context, LegalDocumentType.terms),
+                          child: const Text(
+                            'Terms & conditions',
+                            style: TextStyle(
+                              color: AppTheme.primary,
+                              fontWeight: FontWeight.w700,
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                        ),
+                        const Text(' and '),
+                        GestureDetector(
+                          onTap: () => openLegalDocument(context, LegalDocumentType.privacy),
+                          child: const Text(
+                            'Privacy policy',
+                            style: TextStyle(
+                              color: AppTheme.primary,
+                              fontWeight: FontWeight.w700,
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           if (_authError != null) ...[
             Container(
               width: double.infinity,

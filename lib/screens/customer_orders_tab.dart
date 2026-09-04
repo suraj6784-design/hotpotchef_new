@@ -580,8 +580,22 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                                 icon: const Icon(Icons.map, size: 20),
                                 label: const Text('Track Live Location'),
                                 onPressed: () {
+                                  final orderUuid = resolvedOrderId(trackableItem) ??
+                                      resolvedOrderId(items.first);
+                                  Map<String, dynamic>? fullOrder;
+                                  for (final row in _activeOrders) {
+                                    if (row['id']?.toString() == orderUuid) {
+                                      fullOrder = row;
+                                      break;
+                                    }
+                                  }
                                   context.push('/tracking', extra: {
-                                    'order': trackableItem,
+                                    'order': fullOrder ??
+                                        {
+                                          ...trackableItem,
+                                          'id': orderUuid,
+                                          'order_id': orderUuid,
+                                        },
                                     'isDriver': false,
                                     'isDineInNavigation': status.toLowerCase().contains('ready') &&
                                         !(items.first['service_type']?.toString().toLowerCase().contains('delivery') ?? false),
@@ -625,7 +639,9 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                               Row(
                                 children: [
                                   GestureDetector(
-                                    onTap: () => context.push('/chat/${items.first['id']}?roomName=Order%20$displayOrderIdStr'),
+                                    onTap: () => context.push(
+                                      '/chat/${mealIdFromOrderItem(items.first) ?? items.first['id']}?roomName=Order%20$displayOrderIdStr',
+                                    ),
                                     child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.grey.shade300)), child: const Icon(Icons.chat_bubble_outline, color: AppTheme.primary, size: 18)),
                                   ),
                                   const SizedBox(width: 8),
@@ -738,7 +754,7 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                           future: Supabase.instance.client
                               .from('reviews')
                               .select()
-                              .eq('meal_id', items.first['id'])
+                              .eq('meal_id', mealIdFromOrderItem(items.first) ?? items.first['id'])
                               .eq('customer_id', Supabase.instance.client.auth.currentUser?.id ?? '')
                               .maybeSingle(),
                           builder: (context, reviewSnap) {

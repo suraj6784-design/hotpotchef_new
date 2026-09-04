@@ -453,7 +453,6 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
         stream: Supabase.instance.client
             .from('orders')
             .stream(primaryKey: ['id'])
-            .eq('customer_id', user.id)
             .order('created_at', ascending: false),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -472,6 +471,8 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
           final allOrders = snapshot.data ?? [];
 
           final pastOrders = allOrders.where((order) {
+            final owner = order['customer_id']?.toString() ?? order['user_id']?.toString() ?? '';
+            if (owner != user.id) return false;
             final status = order['status']?.toString().toLowerCase() ?? '';
             return status == 'delivered' ||
                 status == 'completed' ||

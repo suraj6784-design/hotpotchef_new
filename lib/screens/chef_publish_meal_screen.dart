@@ -209,6 +209,16 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
       return;
     }
 
+    final fssai = _fssaiController.text.trim();
+    final kitchenAddress = _hostingAddressController.text.trim();
+    if (fssai.isEmpty || kitchenAddress.isEmpty || _pickupLat == null || _pickupLng == null) {
+      _showSnackBar(
+        'Save your FSSAI licence, kitchen address, and map pin in Chef Profile before publishing.',
+        isError: true,
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {

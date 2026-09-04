@@ -72,6 +72,24 @@ String formatOrderId(String? rawOrderId, String fallbackId) {
   return fallbackId.length > 8 ? fallbackId.substring(0, 8).toUpperCase() : fallbackId.toUpperCase();
 }
 
+/// Orders store the UUID in `id`. Enriched line items copy it to `order_id`.
+String? resolvedOrderId(Map<String, dynamic>? data) {
+  if (data == null) return null;
+  final orderId = data['order_id']?.toString().trim() ?? '';
+  if (orderId.isNotEmpty) return orderId;
+  final id = data['id']?.toString().trim() ?? '';
+  return id.isEmpty ? null : id;
+}
+
+String? mealIdFromOrderItem(Map<String, dynamic>? item) {
+  if (item == null) return null;
+  for (final key in const ['source_meal_id', 'meal_id', 'mealId', 'id']) {
+    final value = item[key]?.toString().trim() ?? '';
+    if (value.isNotEmpty) return value;
+  }
+  return null;
+}
+
 DateTime getTrueOrderDateTime(String rawOrderId, String? createdAt) {
   try {
     final parts = rawOrderId.split('-');

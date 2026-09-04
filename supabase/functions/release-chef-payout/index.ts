@@ -25,7 +25,20 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     const admin = createClient(supabaseUrl, serviceKey)
+
+    const authHeader = req.headers.get('Authorization') ?? ''
+    const isServiceRole = serviceKey.length > 0 && authHeader === `Bearer ${serviceKey}`
+    let callerId = ''
+    if (!isServiceRole) {
+      const userClient = createClient(supabaseUrl, anonKey, {
+        global: { headers: { Authorization: authHeader } },
+      })
+      const { data: auth } = await userClient.auth.getUser()
+      if (!auth.user) return jsonResponse({ success: false, error: 'Unauthorized' }, 401)
+      callerId = auth.user.id
+    }
 
     const { data: order, error: orderError } = await admin
       .from('orders')
@@ -34,6 +47,14 @@ serve(async (req) => {
       .maybeSingle()
     if (orderError) throw new Error(orderError.message)
     if (!order) return jsonResponse({ success: false, error: 'Order not found' }, 404)
+
+    if (callerId) {
+      const chefId = String(order.chef_id ?? '')
+      const driverId = String(order.driver_id ?? order.delivery_partner_id ?? '')
+      if (callerId !== chefId && callerId !== driverId) {
+        return jsonResponse({ success: false, error: 'Forbidden' }, 403)
+      }
+    }
 
     const status = String(order.status ?? '').toLowerCase()
     if (status.includes('cancel') || status.includes('reject')) {
@@ -92,7 +113,7 @@ serve(async (req) => {
       .eq('id', order.chef_id)
       .maybeSingle()
     const accountId = chef?.gateway_account_id?.toString() ?? ''
-    if (!accountId) {
+    if (!accountId || accountId.startsWith('acc_mock_')) {
       await admin.from('orders').update({
         payout_status: 'awaiting_account',
         chef_payout: payout.chefPayout,
