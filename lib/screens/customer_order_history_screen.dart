@@ -232,6 +232,24 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                               Text(dateTimeString, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppTheme.textMain)),
                             ],
                           ),
+                          if (isDelivered) ...[
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                const Icon(Icons.done_all, size: 14, color: Colors.green),
+                                const SizedBox(width: 6),
+                                const Text('Delivered: ', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                                Text(
+                                  formatOrderDate(
+                                    orderRecord['delivered_at']?.toString() ??
+                                        orderRecord['updated_at']?.toString() ??
+                                        orderRecord['created_at']?.toString(),
+                                  ),
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Colors.green),
+                                ),
+                              ],
+                            ),
+                          ],
                           if (!isDelivered) ...[
                             const SizedBox(height: 6),
                             Row(

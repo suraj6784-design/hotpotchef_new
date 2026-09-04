@@ -98,6 +98,29 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         0, (sum, it) => sum + (int.tryParse(it['quantity']?.toString() ?? '1') ?? 1));
   }
 
+  String _deliveryAddress(Map<String, dynamic> order) {
+    final top = order['delivery_address']?.toString().trim() ?? '';
+    if (top.isNotEmpty) return top;
+    for (final item in _parseItems(order['items'])) {
+      final addr = item['delivery_address']?.toString().trim() ?? '';
+      if (addr.isNotEmpty) return addr;
+      final formatted = formatSavedAddress(item);
+      if (formatted.isNotEmpty) return formatted;
+    }
+    return formatSavedAddress(order);
+  }
+
+  void _openChefDeliveryMap(Map<String, dynamic> order) {
+    final address = _deliveryAddress(order);
+    context.push('/tracking', extra: {
+      'order': {
+        ...order,
+        if (address.isNotEmpty) 'delivery_address': address,
+      },
+      'isDriver': true,
+    });
+  }
+
   String _customerName(Map<String, dynamic> order) {
     final id = order['customer_id']?.toString() ?? '';
     if (id.isEmpty) return order['customer_name']?.toString() ?? 'Guest';
@@ -737,15 +760,57 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 icon: svc.isDelivery ? Icons.delivery_dining : Icons.storefront,
                 color: isOut ? AppTheme.success : AppTheme.info,
               ),
+              if (svc == ServiceType.deliverySelf) ...[
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.location_on, size: 16, color: Colors.redAccent),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        _deliveryAddress(order).isEmpty
+                            ? 'Delivery address not saved for this order'
+                            : _deliveryAddress(order),
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textMain),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 14),
-              GradientButton(
-                label: dispatchLabel,
-                icon: isOut ? Icons.check_rounded : Icons.delivery_dining_rounded,
-                gradient: isOut
-                    ? const LinearGradient(colors: [AppTheme.success, Color(0xFF43C478)])
-                    : const LinearGradient(colors: [Color(0xFF00897B), Color(0xFF26A69A)]),
-                onPressed: () => _dispatchOrder(order),
-              ),
+              if (svc == ServiceType.deliverySelf)
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.navigation, size: 16),
+                        label: const Text('Navigate'),
+                        onPressed: () => _openChefDeliveryMap(order),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: GradientButton(
+                        label: dispatchLabel,
+                        icon: isOut ? Icons.check_rounded : Icons.delivery_dining_rounded,
+                        gradient: isOut
+                            ? const LinearGradient(colors: [AppTheme.success, Color(0xFF43C478)])
+                            : const LinearGradient(colors: [Color(0xFF00897B), Color(0xFF26A69A)]),
+                        onPressed: () => _dispatchOrder(order),
+                      ),
+                    ),
+                  ],
+                )
+              else
+                GradientButton(
+                  label: dispatchLabel,
+                  icon: isOut ? Icons.check_rounded : Icons.delivery_dining_rounded,
+                  gradient: isOut
+                      ? const LinearGradient(colors: [AppTheme.success, Color(0xFF43C478)])
+                      : const LinearGradient(colors: [Color(0xFF00897B), Color(0xFF26A69A)]),
+                  onPressed: () => _dispatchOrder(order),
+                ),
             ],
           ),
         ).entrance(index: index);
