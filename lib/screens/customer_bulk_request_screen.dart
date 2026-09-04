@@ -6,7 +6,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/helpers.dart';
-import '../utils/app_theme.dart';
 import 'map_picker_screen.dart';
 
 class CustomerBulkRequestScreen extends StatefulWidget {
@@ -145,13 +144,13 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: AppTheme.canvasOf(context),
       appBar: AppBar(
         title: Row(
           children: [
             ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.asset('assets/app_icon.png', height: 24, width: 24)),
             const SizedBox(width: 8),
-            const Text('Broadcast Bulk Pre-Order', style: TextStyle(color: AppTheme.textMain, fontWeight: FontWeight.bold)),
+            Text('Broadcast Bulk Pre-Order', style: TextStyle(color: AppTheme.onSurfaceOf(context), fontWeight: FontWeight.bold)),
           ],
         ),
         backgroundColor: Colors.transparent,
@@ -222,7 +221,7 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     icon: const Icon(Icons.calendar_month, size: 16, color: AppTheme.primary),
-                    label: Text(formatFriendlyDate(_targetDate), style: const TextStyle(fontSize: 13, color: AppTheme.textMain)),
+                    label: Text(formatFriendlyDate(_targetDate), style: TextStyle(fontSize: 13, color: AppTheme.onSurfaceOf(context))),
                     onPressed: () async {
                       final picked = await showDatePicker(
                         context: context,
@@ -242,7 +241,7 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     icon: const Icon(Icons.access_time, size: 16, color: AppTheme.primary),
-                    label: Text(_targetTime.format(context), style: const TextStyle(fontSize: 13, color: AppTheme.textMain)),
+                    label: Text(_targetTime.format(context), style: TextStyle(fontSize: 13, color: AppTheme.onSurfaceOf(context))),
                     onPressed: () async {
                       final picked = await showTimePicker(context: context, initialTime: _targetTime);
                       if (picked != null) setState(() => _targetTime = picked);
@@ -255,6 +254,8 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
 
             DropdownButtonFormField<String>(
               initialValue: _selectedServiceType,
+              dropdownColor: AppTheme.surfaceOf(context),
+              style: TextStyle(fontSize: 14, color: AppTheme.onSurfaceOf(context)),
               decoration: _inputStyle('Fulfillment Type'),
               items: ['Delivery Partner', 'Chef-Self', 'Customer Pickup', 'Dine In']
                   .map((s) => DropdownMenuItem(value: s, child: Text(s, style: const TextStyle(fontSize: 14))))
@@ -269,9 +270,9 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
               maxLines: 2,
               decoration: InputDecoration(
                 labelText: 'Delivery / Event Address *',
-                labelStyle: const TextStyle(fontSize: 13, color: Colors.grey),
+                labelStyle: const TextStyle(fontSize: 13, color: AppTheme.textMuted),
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: AppTheme.surfaceOf(context),
                 prefixIcon: const Icon(Icons.location_on, color: AppTheme.primary),
                 suffixIcon: IconButton(
                   icon: const Icon(Icons.map, color: AppTheme.primary),
@@ -293,7 +294,7 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
                   },
                 ),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppTheme.hairlineOf(context))),
                 focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppTheme.primary, width: 1.5)),
               ),
             ),
@@ -320,11 +321,11 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
   InputDecoration _inputStyle(String label) {
     return InputDecoration(
       labelText: label,
-      labelStyle: const TextStyle(fontSize: 13, color: Colors.grey),
+      labelStyle: const TextStyle(fontSize: 13, color: AppTheme.textMuted),
       filled: true,
-      fillColor: Colors.white,
+      fillColor: AppTheme.surfaceOf(context),
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppTheme.hairlineOf(context))),
       focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppTheme.primary, width: 1.5)),
     );
   }

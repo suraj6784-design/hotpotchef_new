@@ -90,6 +90,13 @@ String? mealIdFromOrderItem(Map<String, dynamic>? item) {
   return null;
 }
 
+String orderChatRoomId(Map<String, dynamic> order, {List<Map<String, dynamic>>? items}) {
+  if (items != null && items.isNotEmpty) {
+    return mealIdFromOrderItem(items.first) ?? order['id']?.toString() ?? '';
+  }
+  return mealIdFromOrderItem(order) ?? order['id']?.toString() ?? '';
+}
+
 DateTime getTrueOrderDateTime(String rawOrderId, String? createdAt) {
   try {
     final parts = rawOrderId.split('-');
@@ -756,14 +763,81 @@ double? addressCoordinate(Map<String, dynamic>? data, {required bool latitude}) 
   return null;
 }
 
+double? kitchenCoordinate(Map<String, dynamic>? data, {required bool latitude}) {
+  if (data == null) return null;
+  final keys = latitude
+      ? const ['pickup_lat', 'kitchen_lat', 'chef_lat', 'latitude', 'lat']
+      : const ['pickup_lng', 'kitchen_lng', 'chef_lng', 'longitude', 'lng', 'long'];
+  for (final key in keys) {
+    final parsed = double.tryParse(data[key]?.toString() ?? '');
+    if (parsed != null && parsed != 0) return parsed;
+  }
+  return null;
+}
+
+bool hasKitchenPin(Map<String, dynamic>? data) {
+  return kitchenCoordinate(data, latitude: true) != null &&
+      kitchenCoordinate(data, latitude: false) != null;
+}
+
+bool isChefKitchenOpen(Map<String, dynamic>? profile) {
+  if (profile == null) return true;
+  if (!profile.containsKey('is_open') && !profile.containsKey('isOpen')) return true;
+  final raw = profile['is_open'] ?? profile['isOpen'];
+  if (raw == null) return true;
+  if (raw is bool) return raw;
+  final text = raw.toString().toLowerCase().trim();
+  if (text == 'false' || text == '0' || text == 'offline' || text == 'closed') return false;
+  return true;
+}
+
+Map<String, double> kitchenPinMealFields(double lat, double lng) {
+  return {
+    'pickup_lat': lat,
+    'pickup_lng': lng,
+  };
+}
+
+Map<String, dynamic> mealWithKitchenPin(
+  Map<String, dynamic> meal, {
+  Map<String, dynamic>? chefPin,
+}) {
+  if (hasKitchenPin(meal) || chefPin == null) return meal;
+  final lat = kitchenCoordinate(chefPin, latitude: true);
+  final lng = kitchenCoordinate(chefPin, latitude: false);
+  if (lat == null || lng == null) return meal;
+  return {
+    ...meal,
+    'pickup_lat': lat,
+    'pickup_lng': lng,
+    'chef_lat': lat,
+    'chef_lng': lng,
+  };
+}
+
 Map<String, dynamic>? preferredCheckoutAddress(
   List<Map<String, dynamic>> addresses, {
   Object? selectedId,
+  Map<String, dynamic>? hint,
 }) {
   if (addresses.isEmpty) return null;
   if (selectedId != null) {
     for (final address in addresses) {
-      if (address['id'] == selectedId) return address;
+      if (address['id']?.toString() == selectedId.toString()) return address;
+    }
+  }
+  if (hint != null) {
+    final matchId = matchingSavedAddressId(addresses, hint);
+    if (matchId != null) {
+      for (final address in addresses) {
+        if (address['id']?.toString() == matchId) return address;
+      }
+    }
+    final hintKey = normalizeAddressKey(formatSavedAddress(hint));
+    if (hintKey.isNotEmpty) {
+      for (final address in addresses) {
+        if (normalizeAddressKey(formatSavedAddress(address)) == hintKey) return address;
+      }
     }
   }
   for (final address in addresses) {
@@ -796,4 +870,41 @@ Map<String, dynamic>? checkoutAddressFromUserProfile(Map<String, dynamic>? user)
     'longitude': user['longitude'] ?? user['lng'],
     'address': user['address'],
   };
+}
+
+/// Builds a checkout payload from a claimed catering / bulk request.
+List<Map<String, dynamic>> checkoutItemsFromCateringRequest(Map<String, dynamic> request) {
+  final quantity = int.tryParse(request['quantity']?.toString() ?? '1') ?? 1;
+  final budget = parseMoney(request['budget']);
+  final unitPrice = quantity > 0 ? roundMoney(budget / quantity) : budget;
+  final chefId = request['accepted_chef_id']?.toString() ?? '';
+  final title = request['title']?.toString() ?? 'Catering order';
+  final service = request['service_type']?.toString() ?? 'Delivery Partner';
+  final target = DateTime.tryParse(request['target_date_time']?.toString() ?? '');
+  final scheduled = target?.toLocal() ?? DateTime.now().add(const Duration(days: 1));
+  final timeSlot =
+      '${scheduled.hour.toString().padLeft(2, '0')}:${scheduled.minute.toString().padLeft(2, '0')}';
+
+  return [
+    {
+      'chef_id': chefId,
+      'chefId': chefId,
+      'chef_name': request['accepted_chef_name'],
+      'title': title,
+      'name': title,
+      'quantity': quantity < 1 ? 1 : quantity,
+      'price': unitPrice,
+      'base_price': unitPrice,
+      'selected_service_type': service,
+      'service_type': service,
+      'serviceType': service,
+      'scheduled_date': scheduled.toIso8601String(),
+      'scheduledDate': scheduled.toIso8601String(),
+      'selected_date': scheduled.toIso8601String(),
+      'time_slot': timeSlot,
+      'timeSlot': timeSlot,
+      'source_request_id': request['id'],
+      'specialInstructions': request['description'],
+    },
+  ];
 }

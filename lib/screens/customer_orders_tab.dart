@@ -23,6 +23,7 @@ import '../services/chef_directory.dart';
 import '../services/order_lifecycle.dart';
 import '../services/reorder_service.dart';
 import '../providers/cart_provider.dart';
+import 'checkout_screen.dart';
 
 class CustomerOrdersTab extends ConsumerStatefulWidget {
   final VoidCallback onProfileTap;
@@ -824,21 +825,51 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
   }
 
   Future<void> _reorderItems(List<Map<String, dynamic>> items) async {
-    final added = await ReorderService.addOrderItemsToCart(
+    final result = await ReorderService.addOrderItemsToCart(
       cart: ref.read(cartProvider.notifier),
       items: items,
     );
     if (!mounted) return;
-    if (added <= 0) {
+    if (result.added <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Those meals are no longer available to reorder.')),
+        SnackBar(content: Text(ReorderService.resultMessage(result))),
       );
       return;
     }
     Navigator.of(context).maybePop();
     widget.onReorderToCart?.call();
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Added $added item${added == 1 ? '' : 's'} to your cart.')),
+      SnackBar(content: Text(ReorderService.resultMessage(result))),
+    );
+  }
+
+  Future<void> _payCateringRequest(Map<String, dynamic> request) async {
+    final chefId = request['accepted_chef_id']?.toString() ?? '';
+    if (chefId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This lead has no chef assigned yet.')),
+      );
+      return;
+    }
+    final items = checkoutItemsFromCateringRequest(request);
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CheckoutScreen(
+          cartItems: items,
+          sourceRequestId: request['id']?.toString(),
+          preferredAddress: {
+            'address': request['delivery_address'],
+            'street': request['delivery_address'],
+            'latitude': request['latitude'],
+            'longitude': request['longitude'],
+          },
+          onOrderPlacedSuccess: () {
+            if (mounted) setState(() {});
+          },
+        ),
+      ),
     );
   }
 
@@ -865,6 +896,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
   Widget _buildBulkRequestCard(Map<String, dynamic> req) {
     final status = req['status']?.toString() ?? 'Open';
     final isAccepted = status.toLowerCase() == 'accepted';
+    final isOrdered = status.toLowerCase() == 'ordered' || status.toLowerCase() == 'paid';
     final isCancelled = status.toLowerCase() == 'cancelled';
     final chefName = req['accepted_chef_name'] ?? 'Pending Chef Acceptance';
     final chefId = req['accepted_chef_id'];
@@ -904,7 +936,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
           Text('Budget: ₹${req['budget']}', style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 14)),
           const SizedBox(height: 8),
           Row(children: [const Icon(Icons.calendar_today, size: 14, color: AppTheme.textMuted), const SizedBox(width: 6), Text('Needed By: ${req['target_date_time']}', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12))]),
-          if (isAccepted) ...[
+          if (isAccepted || isOrdered) ...[
             const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: Colors.black12)),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -913,18 +945,28 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                 Row(
                   children: [
                     GestureDetector(
-                      onTap: () => _initiateCall(chefId),
+                      onTap: () => _initiateCall(chefId?.toString() ?? ''),
                       child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.teal.withValues(alpha: 0.15), shape: BoxShape.circle), child: const Icon(Icons.phone, color: Colors.teal, size: 16)),
                     ),
                     const SizedBox(width: 8),
                     GestureDetector(
-                      onTap: () => context.push('/chat/${req['id']}?roomName=${Uri.encodeComponent(chefName)}'),
+                      onTap: () => context.push('/chat/${req['id']}?roomName=${Uri.encodeComponent(chefName.toString())}'),
                       child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.15), shape: BoxShape.circle), child: const Icon(Icons.chat_bubble, color: Colors.blue, size: 16)),
                     ),
                   ],
                 )
               ],
             ),
+            const SizedBox(height: 12),
+            if (isAccepted)
+              GradientButton(
+                label: 'Confirm & pay chef',
+                icon: Icons.payments_outlined,
+                onPressed: () => _payCateringRequest(req),
+              )
+            else
+              const Text('Paid. This catering job is now a regular kitchen order.',
+                  style: TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w600)),
           ] else if (!isCancelled) ...[
             const SizedBox(height: 12),
             SizedBox(

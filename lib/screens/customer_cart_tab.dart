@@ -8,6 +8,7 @@ import '../utils/helpers.dart';
 import '../models/cart_state.dart';
 import '../models/cart_enums.dart';
 import '../providers/cart_provider.dart';
+import '../providers/delivery_preference.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/group_order_modal.dart';
@@ -415,9 +416,9 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                             decoration: BoxDecoration(
-                              color: AppTheme.background,
+                              color: AppTheme.surfaceOf(context),
                               borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.grey.shade300),
+                              border: Border.all(color: AppTheme.hairlineOf(context)),
                             ),
                             child: Row(
                               children: [
@@ -426,7 +427,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                                 Expanded(
                                   child: Text(
                                     formatFriendlyDate(item.scheduledDate),
-                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textMain),
+                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context)),
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
@@ -479,9 +480,9 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                             decoration: BoxDecoration(
-                              color: AppTheme.background,
+                              color: AppTheme.surfaceOf(context),
                               borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.grey.shade300),
+                              border: Border.all(color: AppTheme.hairlineOf(context)),
                             ),
                             child: Row(
                               children: [
@@ -490,7 +491,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                                 Expanded(
                                   child: Text(
                                     displayTimeSlot, // Reactive UI binding
-                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textMain),
+                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context)),
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
@@ -509,13 +510,13 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                     children: [
                       Text(
                         'Subtotal: ₹${itemSubtotal.toStringAsFixed(0)}',
-                        style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textMain),
+                        style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context)),
                       ),
                       Container(
                         decoration: BoxDecoration(
-                          color: AppTheme.background,
+                          color: AppTheme.surfaceOf(context),
                           borderRadius: BorderRadius.circular(24),
-                          border: Border.all(color: Colors.grey.shade300),
+                          border: Border.all(color: AppTheme.hairlineOf(context)),
                         ),
                         child: Row(
                           children: [
@@ -528,7 +529,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                             Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 8),
                               child: Text('${item.quantity}',
-                                  style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+                                  style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                             ),
                             IconButton(
                               icon: const Icon(Icons.add, color: AppTheme.primary, size: 16),
@@ -651,6 +652,8 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
       MaterialPageRoute(
         builder: (_) => CheckoutScreen(
           cartItems: checkoutItems,
+          preferredAddressId: ref.read(selectedDeliveryAddressProvider)?['id'],
+          preferredAddress: ref.read(selectedDeliveryAddressProvider),
           onOrderPlacedSuccess: () {
             ref.read(cartProvider.notifier).clearCart();
             widget.onOrderPlacedSuccess();

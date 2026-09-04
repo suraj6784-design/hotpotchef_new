@@ -109,7 +109,7 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: AppTheme.canvasOf(context),
       appBar: AppBar(
         title: Row(
           children: [
@@ -118,12 +118,12 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
               child: Image.asset('assets/app_icon.png', height: 24, width: 24),
             ),
             const SizedBox(width: 8),
-            const Text('Packaging Store', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+            Text('Packaging Store', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
           ],
         ),
-        backgroundColor: Colors.white,
-        elevation: 1,
-        iconTheme: const IconThemeData(color: AppTheme.textMain),
+        backgroundColor: AppTheme.surfaceOf(context),
+        elevation: 0,
+        iconTheme: IconThemeData(color: AppTheme.onSurfaceOf(context)),
       ),
       body: StreamBuilder<List<Map<String, dynamic>>>(
         // Scoped stream for remote inventory table if available
@@ -145,7 +145,7 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
                   margin: const EdgeInsets.only(bottom: 20),
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: [Colors.orange.shade50, Colors.red.shade50]),
+                    color: AppTheme.primary.withValues(alpha: Theme.of(context).brightness == Brightness.dark ? 0.14 : 0.08),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
                   ),
@@ -173,9 +173,10 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
               return Container(
                 margin: const EdgeInsets.only(bottom: 14),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: AppTheme.surfaceOf(context),
                   borderRadius: BorderRadius.circular(16),
-                  boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
+                  border: Border.all(color: AppTheme.hairlineOf(context)),
+                  boxShadow: AppTheme.softShadow,
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -186,9 +187,9 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
                         height: 85,
                         width: 85,
                         decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
+                          color: AppTheme.primary.withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.grey.shade200),
+                          border: Border.all(color: AppTheme.hairlineOf(context)),
                           image: imageUrl != null && imageUrl.isNotEmpty
                               ? DecorationImage(image: NetworkImage(imageUrl), fit: BoxFit.cover)
                               : null,
@@ -203,7 +204,7 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(title,
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textMain)),
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.onSurfaceOf(context))),
                             const SizedBox(height: 4),
                             Text(desc,
                                 style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),

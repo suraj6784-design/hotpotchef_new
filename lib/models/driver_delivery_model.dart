@@ -1,6 +1,10 @@
 // lib/models/driver_delivery_model.dart
 
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
+
+import '../utils/helpers.dart';
 
 enum DeliveryStatus {
   readyForPickup,
@@ -47,6 +51,7 @@ class DriverDeliveryModel {
   final String pickupAddress;
   final String customerAddress;
   final String customerId;
+  final String chatRoomId;
   final double payout;
   final double distanceKm;
   final int totalItemsCount;
@@ -60,6 +65,7 @@ class DriverDeliveryModel {
     required this.pickupAddress,
     required this.customerAddress,
     this.customerId = '',
+    this.chatRoomId = '',
     required this.payout,
     this.distanceKm = 0.0,
     this.totalItemsCount = 1,
@@ -75,6 +81,7 @@ class DriverDeliveryModel {
       pickupAddress: json['pickup_address']?.toString() ?? json['chefs']?['pickup_address']?.toString() ?? '',
       customerAddress: json['delivery_address']?.toString() ?? '',
       customerId: json['customer_id']?.toString() ?? json['user_id']?.toString() ?? '',
+      chatRoomId: orderChatRoomId(json, items: _itemsFrom(json['items'] ?? json['cart_items'] ?? json['order_items'])),
       payout: (json['driver_payout'] as num?)?.toDouble() ?? 
               (json['delivery_fee'] as num?)?.toDouble() ?? 40.0,
       distanceKm: (json['estimated_distance_km'] as num?)?.toDouble() ?? 0.0,
@@ -94,6 +101,17 @@ class DriverDeliveryModel {
 
   @override
   int get hashCode => orderId.hashCode ^ status.hashCode;
+}
+
+List<Map<String, dynamic>> _itemsFrom(dynamic raw) {
+  if (raw == null) return const [];
+  try {
+    final decoded = raw is String ? jsonDecode(raw) : raw;
+    if (decoded is List) {
+      return decoded.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    }
+  } catch (_) {}
+  return const [];
 }
 
 @immutable

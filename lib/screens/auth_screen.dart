@@ -12,7 +12,6 @@ import '../models/app_role.dart';
 import '../services/auth_session.dart';
 import '../services/push_notification_service.dart';
 import '../utils/account_hint.dart';
-import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
 import '../utils/legal_content.dart';
 import '../utils/network.dart';
@@ -302,7 +301,7 @@ class _AuthScreenState extends State<AuthScreen> {
     }
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: AppTheme.canvasOf(context),
       body: Stack(
         children: [
           Positioned(

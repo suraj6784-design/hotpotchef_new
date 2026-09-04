@@ -13,10 +13,12 @@ import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
 
 import '../utils/helpers.dart';
+import '../utils/network.dart';
 import '../utils/support.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/app_status_badge.dart';
+import '../widgets/meal_review_dialog.dart';
 import '../services/chef_directory.dart';
 import '../services/reorder_service.dart';
 import '../providers/cart_provider.dart';
@@ -135,6 +137,42 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
         );
       }
     }
+  }
+
+  Future<void> _showReviewDialog(BuildContext context, Map order) async {
+    final submitted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => MealReviewDialog(
+        mealTitle: order['title']?.toString() ?? 'this meal',
+        onSubmit: (rating, comment) async {
+          final supabase = Supabase.instance.client;
+          final user = supabase.auth.currentUser;
+          if (user == null) throw Exception('Please log in to rate meals.');
+
+          try {
+            await supabase.from('reviews').insert({
+              'meal_id': mealIdFromOrderItem(Map<String, dynamic>.from(order)) ?? order['id'],
+              'customer_id': user.id,
+              'chef_id': order['chef_id'],
+              'rating': rating,
+              'comment': comment,
+            });
+          } catch (e) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(networkErrorMessage(e)), backgroundColor: Colors.red),
+              );
+            }
+            rethrow;
+          }
+        },
+      ),
+    );
+
+    if (!context.mounted || submitted != true) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Review submitted!'), backgroundColor: Colors.green),
+    );
   }
 
   void _showOrderDetailsBottomSheet(
@@ -424,6 +462,41 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                         ],
                       ),
                     ),
+                    if (isDelivered && items.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        child: FutureBuilder<Map<String, dynamic>?>(
+                          future: Supabase.instance.client
+                              .from('reviews')
+                              .select()
+                              .eq('meal_id', mealIdFromOrderItem(items.first) ?? items.first['id'])
+                              .eq('customer_id', Supabase.instance.client.auth.currentUser?.id ?? '')
+                              .maybeSingle(),
+                          builder: (reviewContext, reviewSnap) {
+                            if (reviewSnap.connectionState == ConnectionState.waiting) {
+                              return const SizedBox();
+                            }
+                            final existingReview = reviewSnap.data;
+                            if (existingReview != null) {
+                              return OutlinedButton.icon(
+                                icon: const Icon(Icons.star, size: 18),
+                                label: Text('Rated ${existingReview['rating']}/5 Stars'),
+                                onPressed: () => ScaffoldMessenger.of(reviewContext).showSnackBar(
+                                  const SnackBar(content: Text('You have already rated this meal!')),
+                                ),
+                              );
+                            }
+                            return OutlinedButton.icon(
+                              icon: const Icon(Icons.star_border, size: 18),
+                              label: const Text('Rate this meal'),
+                              onPressed: () {
+                                Navigator.pop(ctx);
+                                _showReviewDialog(context, items.first);
+                              },
+                            );
+                          },
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -670,10 +743,24 @@ class _HistoryOrdersListState extends ConsumerState<_HistoryOrdersList> {
                         'Total: ₹${totalPrice.toStringAsFixed(0)}',
                         style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: AppTheme.primary),
                       ),
-                      TextButton.icon(
-                        onPressed: items.isEmpty ? null : () => _reorder(items),
-                        icon: const Icon(Icons.replay, size: 16),
-                        label: const Text('Reorder'),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (isSuccessful)
+                            IconButton(
+                              tooltip: 'Rate this meal',
+                              visualDensity: VisualDensity.compact,
+                              onPressed: items.isEmpty
+                                  ? null
+                                  : () => widget.host._showReviewDialog(context, items.first),
+                              icon: const Icon(Icons.star_border, size: 18),
+                            ),
+                          TextButton.icon(
+                            onPressed: items.isEmpty ? null : () => _reorder(items),
+                            icon: const Icon(Icons.replay, size: 16),
+                            label: const Text('Reorder'),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -687,21 +774,21 @@ class _HistoryOrdersListState extends ConsumerState<_HistoryOrdersList> {
   }
 
   Future<void> _reorder(List<Map<String, dynamic>> items) async {
-    final added = await ReorderService.addOrderItemsToCart(
+    final result = await ReorderService.addOrderItemsToCart(
       cart: ref.read(cartProvider.notifier),
       items: items,
     );
     if (!mounted) return;
-    if (added <= 0) {
+    if (result.added <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Those meals are no longer available to reorder.')),
+        SnackBar(content: Text(ReorderService.resultMessage(result))),
       );
       return;
     }
     CustomerHubScreen.returnToCartAfterLogin = true;
     if (context.mounted) context.go('/customer-hub');
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Added $added item${added == 1 ? '' : 's'} to your cart.')),
+      SnackBar(content: Text(ReorderService.resultMessage(result))),
     );
   }
 }

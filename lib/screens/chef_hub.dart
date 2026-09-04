@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../utils/helpers.dart';
 import '../models/cart_enums.dart';
@@ -112,6 +113,75 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       },
       'isDriver': true,
     });
+  }
+
+  Future<void> _callCustomer(String customerId) async {
+    if (customerId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No customer contact on this order.'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
+    try {
+      final userDoc = await _supabase.from('users').select('phone').eq('id', customerId).maybeSingle();
+      final phoneStr = userDoc?['phone']?.toString() ?? '';
+      if (phoneStr.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No phone number available.'), backgroundColor: Colors.orange),
+          );
+        }
+        return;
+      }
+      final uri = Uri(scheme: 'tel', path: phoneStr);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open phone dialer.'), backgroundColor: Colors.red),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      }
+    }
+  }
+
+  void _openOrderChat(Map<String, dynamic> order) {
+    final items = _parseItems(order['items'] ?? order['cart_items']);
+    final roomId = orderChatRoomId(order, items: items);
+    if (roomId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Chat is not available for this order.'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
+    final label = formatOrderId(order['order_id']?.toString(), order['id'].toString());
+    context.push('/chat/$roomId?roomName=${Uri.encodeComponent('Order $label')}');
+  }
+
+  Widget _orderContactActions(Map<String, dynamic> order) {
+    final customerId = order['customer_id']?.toString() ?? '';
+    return Row(
+      children: [
+        Expanded(
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.chat_bubble_outline, size: 16),
+            label: const Text('Chat'),
+            onPressed: () => _openOrderChat(order),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.phone_outlined, size: 16),
+            label: const Text('Call'),
+            onPressed: () => _callCustomer(customerId),
+          ),
+        ),
+      ],
+    );
   }
 
   String _customerName(Map<String, dynamic> order) {
@@ -385,17 +455,18 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
           return StreamBuilder<List<Map<String, dynamic>>>(
             stream: _supabase
                 .from('customer_requests')
-                .stream(primaryKey: ['id'])
-                .eq('status', 'Open'),
+                .stream(primaryKey: ['id']),
             builder: (context, reqSnapshot) {
-              final openLeadsCount = reqSnapshot.data?.length ?? 0;
+              final visibleLeads = (reqSnapshot.data ?? []).where(_isVisibleLead).toList()
+                ..sort((a, b) => (b['created_at'] ?? '').toString().compareTo((a['created_at'] ?? '').toString()));
+              final openLeadsCount = visibleLeads.where((req) => _leadStatus(req) == 'open').length;
 
               final List<Widget> tabs = [
                 _buildOrdersTab(orders),
                 _buildDispatchTab(orders),
                 _buildMenuTab(),
                 _buildHistoryTab(orders),
-                _buildCustomerLeadsTab(reqSnapshot.data ?? []),
+                _buildCustomerLeadsTab(visibleLeads),
                 const PackagingStoreScreen(),
               ];
 
@@ -657,6 +728,8 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             ),
           ],
           const SizedBox(height: 14),
+          _orderContactActions(order),
+          const SizedBox(height: 10),
           if (isPending)
             Row(
               children: [
@@ -774,6 +847,8 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 ),
               ],
               const SizedBox(height: 14),
+              _orderContactActions(order),
+              const SizedBox(height: 10),
               if (svc == ServiceType.deliverySelf)
                 Row(
                   children: [
@@ -1090,12 +1165,22 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     );
   }
 
+  String _leadStatus(Map<String, dynamic> request) =>
+      request['status']?.toString().toLowerCase().trim() ?? '';
+
+  bool _isVisibleLead(Map<String, dynamic> request) {
+    final status = _leadStatus(request);
+    if (status == 'open') return true;
+    final mine = request['accepted_chef_id']?.toString() == _currentUserId;
+    return mine && (status == 'accepted' || status == 'ordered' || status == 'paid');
+  }
+
   Widget _buildCustomerLeadsTab(List<Map<String, dynamic>> requests) {
     if (requests.isEmpty) {
       return const EmptyState(
         icon: Icons.campaign_outlined,
-        title: 'No open leads',
-        message: 'Bulk catering broadcasts from customers will show up here for you to claim.',
+        title: 'No catering leads',
+        message: 'Open broadcasts and jobs you have claimed will show up here.',
       );
     }
 
@@ -1104,6 +1189,10 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       itemCount: requests.length,
       itemBuilder: (context, index) {
         final req = requests[index];
+        final status = _leadStatus(req);
+        final isOpen = status == 'open';
+        final awaitingPay = status == 'accepted';
+        final paid = status == 'ordered' || status == 'paid';
         return AppCard(
           margin: const EdgeInsets.only(bottom: 12),
           child: Column(
@@ -1119,15 +1208,27 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                       style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w800)),
                 ],
               ),
+              const SizedBox(height: 6),
+              Text(
+                isOpen
+                    ? 'Open • first chef to claim gets it'
+                    : (awaitingPay ? 'Claimed • waiting for customer payment' : 'Paid • cook this from Orders'),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: paid ? AppTheme.success : (awaitingPay ? AppTheme.warning : AppTheme.textMuted),
+                ),
+              ),
               const SizedBox(height: 8),
               Text('Quantity: ${req['quantity']} • Needed by: ${req['target_date_time'] ?? 'ASAP'}',
                   style: const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
               const SizedBox(height: 14),
-              GradientButton(
-                label: 'Claim Lead',
-                icon: Icons.handshake_rounded,
-                gradient: const LinearGradient(colors: [AppTheme.success, Color(0xFF43C478)]),
-                onPressed: () async {
+              if (isOpen)
+                GradientButton(
+                  label: 'Claim Lead',
+                  icon: Icons.handshake_rounded,
+                  gradient: const LinearGradient(colors: [AppTheme.success, Color(0xFF43C478)]),
+                  onPressed: () async {
                     final res = await _supabase
                         .from('customer_requests')
                         .update({
@@ -1143,11 +1244,17 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                       if (res.isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lead was already claimed.')));
                       } else {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lead claimed! Coordinate via chat.')));
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lead claimed. The customer can now pay from My Orders.')));
                       }
                     }
                   },
-              ),
+                )
+              else if (awaitingPay)
+                const Text('Stay ready. The customer pays from My Orders, then this becomes a kitchen order.',
+                    style: TextStyle(fontSize: 12, color: AppTheme.textMuted))
+              else
+                const Text('Payment received. Confirm the new order on the Orders tab.',
+                    style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
               const SizedBox(height: 8),
               OutlinedButton.icon(
                 icon: const Icon(Icons.chat_bubble_outline, size: 18),

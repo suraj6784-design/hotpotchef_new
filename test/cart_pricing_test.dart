@@ -75,4 +75,23 @@ void main() {
       expect(state.getEffectiveItemTotal(item), 100.0);
     });
   });
+
+  test('toMealMap keeps chef, meal id, and price for a group-order join', () {
+    final item = CartItemModel(
+      id: 'line-1',
+      mealId: 'meal-9',
+      chefId: 'chef-3',
+      title: 'Dal fry',
+      basePrice: 180,
+      quantity: 2,
+      scheduledDate: DateTime.now(),
+      serviceType: ServiceType.deliveryPlatform,
+      rawMealDetails: const {'title': 'Old title', 'price': 160},
+    );
+    final meal = item.toMealMap();
+    expect(meal['id'], 'meal-9');
+    expect(meal['chef_id'], 'chef-3');
+    expect(meal['title'], 'Dal fry');
+    expect(meal['price'], 160);
+  });
 }

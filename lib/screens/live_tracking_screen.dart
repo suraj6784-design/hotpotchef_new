@@ -441,7 +441,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.surfaceOf(context),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => DraggableScrollableSheet(
         initialChildSize: 0.65,
@@ -452,13 +452,13 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
           controller: scrollController,
           padding: const EdgeInsets.all(24),
           children: [
-            Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)))),
+            Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: AppTheme.hairlineOf(context), borderRadius: BorderRadius.circular(2)))),
             const SizedBox(height: 16),
             Row(
               children: [
                 Container(
                   padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(10)),
+                  decoration: BoxDecoration(color: AppTheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
                   child: const Icon(Icons.fastfood, color: AppTheme.primary, size: 24),
                 ),
                 const SizedBox(width: 12),
@@ -467,18 +467,18 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text('$title (x$qty)',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain)),
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.onSurfaceOf(context))),
                       const SizedBox(height: 2),
                       Text('Order confirmed & dispatched',
-                          style: TextStyle(color: Colors.green.shade700, fontSize: 12, fontWeight: FontWeight.w600)),
+                          style: TextStyle(color: AppTheme.success, fontSize: 12, fontWeight: FontWeight.w600)),
                     ],
                   ),
                 ),
-                Text('₹${basketValue.toInt()}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textMain)),
+                Text('₹${basketValue.toInt()}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.onSurfaceOf(context))),
               ],
             ),
-            const Divider(height: 32, color: Colors.black12),
-            const Text('Delivery details', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain)),
+            Divider(height: 32, color: AppTheme.hairlineOf(context)),
+            Text('Delivery details', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.onSurfaceOf(context))),
             const SizedBox(height: 12),
             _buildDetailTile(icon: Icons.person_outline, title: customerName, subtitle: customerPhone),
             const SizedBox(height: 10),
@@ -499,17 +499,17 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
       children: [
         Container(
           padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(color: Colors.grey.shade100, shape: BoxShape.circle),
-          child: Icon(icon, size: 18, color: AppTheme.textMain),
+          decoration: BoxDecoration(color: AppTheme.primary.withValues(alpha: 0.08), shape: BoxShape.circle),
+          child: Icon(icon, size: 18, color: AppTheme.onSurfaceOf(context)),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppTheme.textMain)),
+              Text(title, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppTheme.onSurfaceOf(context))),
               const SizedBox(height: 1),
-              Text(subtitle, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+              Text(subtitle, style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
             ],
           ),
         ),
@@ -568,8 +568,8 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(_etaText, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textMain)),
-                                const Text('Live route tracking active', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                                Text(_etaText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.onSurfaceOf(context))),
+                                const Text('Live route tracking active', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
                               ],
                             ),
                           ],

@@ -498,10 +498,29 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               Text('Deliver to: ${delivery.customerAddress}',
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.onSurfaceOf(context))),
               const SizedBox(height: 12),
-              OutlinedButton.icon(
-                icon: const Icon(Icons.phone_outlined, size: 16),
-                label: const Text('Call customer'),
-                onPressed: () => _callCustomer(delivery.customerId),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.chat_bubble_outline, size: 16),
+                      label: const Text('Chat'),
+                      onPressed: () {
+                        final roomId = delivery.chatRoomId.isNotEmpty ? delivery.chatRoomId : delivery.orderId;
+                        context.push(
+                          '/chat/$roomId?roomName=${Uri.encodeComponent('Delivery ${delivery.orderId.substring(0, 6).toUpperCase()}')}',
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.phone_outlined, size: 16),
+                      label: const Text('Call'),
+                      onPressed: () => _callCustomer(delivery.customerId),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
               Row(

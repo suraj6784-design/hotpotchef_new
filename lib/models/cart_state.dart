@@ -78,6 +78,29 @@ class CartItemModel {
     );
   }
 
+  Map<String, dynamic> toMealMap() {
+    if (rawMealDetails.isNotEmpty) {
+      return {
+        ...rawMealDetails,
+        if (mealId.isNotEmpty) 'id': mealId,
+        if (chefId.isNotEmpty) 'chef_id': chefId,
+        if (title.isNotEmpty) 'title': title,
+        'price': rawMealDetails['price'] ?? basePrice,
+        'quantity': rawMealDetails['quantity'] ?? rawMealDetails['max_quantity'] ?? 99,
+      };
+    }
+    return {
+      'id': mealId,
+      'chef_id': chefId,
+      'title': title,
+      'price': basePrice,
+      'discounted_price': discountedPrice,
+      'quantity': 99,
+      'service_type': serviceType.toDisplayString(),
+      'time_slot': timeSlot,
+    };
+  }
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'mealId': mealId,

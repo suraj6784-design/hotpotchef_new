@@ -175,5 +175,89 @@ void main() {
     test('prefers source_meal_id from checkout payload', () {
       expect(mealIdFromOrderItem({'id': 'line', 'source_meal_id': 'meal-1'}), 'meal-1');
     });
+
+    test('orderChatRoomId matches the customer meal chat room', () {
+      expect(
+        orderChatRoomId(
+          {'id': 'order-row'},
+          items: [
+            {'source_meal_id': 'meal-77', 'id': 'line-1'},
+          ],
+        ),
+        'meal-77',
+      );
+    });
+  });
+
+  group('checkoutItemsFromCateringRequest', () {
+    test('splits the budget across portions and keeps the claiming chef', () {
+      final items = checkoutItemsFromCateringRequest({
+        'id': 'req-1',
+        'title': 'Office lunch',
+        'quantity': 10,
+        'budget': 5000,
+        'accepted_chef_id': 'chef-9',
+        'accepted_chef_name': 'Asha Kitchen',
+        'service_type': 'Delivery Partner',
+        'target_date_time': '2026-09-10T07:30:00.000Z',
+      });
+      expect(items, hasLength(1));
+      expect(items.single['chef_id'], 'chef-9');
+      expect(items.single['quantity'], 10);
+      expect(items.single['price'], 500);
+      expect(items.single['source_request_id'], 'req-1');
+    });
+  });
+
+  group('preferredCheckoutAddress', () {
+    test('matches a feed pin hint to a saved address', () {
+      final chosen = preferredCheckoutAddress(
+        [
+          {'id': 'a1', 'street': 'FC Road', 'city': 'Pune', 'is_default': true},
+          {'id': 'a2', 'street': 'Kothrud', 'city': 'Pune', 'latitude': 18.5, 'longitude': 73.8},
+        ],
+        hint: {'street': 'Kothrud', 'city': 'Pune', 'latitude': 18.5, 'longitude': 73.8},
+      );
+      expect(chosen?['id'], 'a2');
+    });
+  });
+
+  group('kitchenCoordinate', () {
+    test('prefers pickup_lat over a chef fallback and skips zeros', () {
+      expect(
+        kitchenCoordinate({'pickup_lat': 18.52, 'chef_lat': 19.1}, latitude: true),
+        18.52,
+      );
+      expect(
+        kitchenCoordinate({'pickup_lat': 0, 'chef_lat': 19.1}, latitude: true),
+        19.1,
+      );
+      expect(hasKitchenPin({'pickup_lat': 0, 'pickup_lng': 0}), isFalse);
+    });
+
+    test('isChefKitchenOpen treats a missing profile as open and respects is_open', () {
+      expect(isChefKitchenOpen(null), isTrue);
+      expect(isChefKitchenOpen({'name': 'Asha'}), isTrue);
+      expect(isChefKitchenOpen({'is_open': true}), isTrue);
+      expect(isChefKitchenOpen({'is_open': false}), isFalse);
+      expect(isChefKitchenOpen({'is_open': 'offline'}), isFalse);
+    });
+
+    test('kitchenPinMealFields writes pickup_lat and pickup_lng', () {
+      expect(kitchenPinMealFields(18.52, 73.85), {
+        'pickup_lat': 18.52,
+        'pickup_lng': 73.85,
+      });
+    });
+
+    test('copies a chef pin onto a meal that has none', () {
+      final pinned = mealWithKitchenPin(
+        {'id': 'meal-1', 'title': 'Dal'},
+        chefPin: {'lat': 18.52, 'lng': 73.85},
+      );
+      expect(hasKitchenPin(pinned), isTrue);
+      expect(pinned['pickup_lat'], 18.52);
+      expect(pinned['pickup_lng'], 73.85);
+    });
   });
 }

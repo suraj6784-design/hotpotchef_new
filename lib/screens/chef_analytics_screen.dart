@@ -194,12 +194,14 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: AppTheme.canvasOf(context),
       appBar: AppBar(
-        title: const Text('Chef Earnings & Analytics'),
+        title: Text('Chef Earnings & Analytics', style: TextStyle(color: AppTheme.onSurfaceOf(context), fontWeight: FontWeight.w800)),
+        backgroundColor: AppTheme.canvasOf(context),
+        foregroundColor: AppTheme.onSurfaceOf(context),
         actions: [
           PopupMenuButton<int>(
-            icon: const Icon(Icons.calendar_today, color: AppTheme.textMain, size: 20),
+            icon: Icon(Icons.calendar_today, color: AppTheme.onSurfaceOf(context), size: 20),
             onSelected: (days) {
               setState(() {
                 _selectedDays = days;
@@ -298,10 +300,10 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                           children: [
                             Text(
                               'Revenue Trend ($_selectedDays Days)',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 15,
-                                color: AppTheme.textMain,
+                                color: AppTheme.onSurfaceOf(context),
                               ),
                             ),
                             const Text(
@@ -367,7 +369,7 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                                   barRods: [
                                     BarChartRodData(
                                       toY: item.amount,
-                                      color: item.amount > 0 ? AppTheme.primary : Colors.grey.shade300,
+                                      color: item.amount > 0 ? AppTheme.primary : AppTheme.hairlineOf(context),
                                       width: _selectedDays > 14 ? 8 : 14,
                                       borderRadius: BorderRadius.circular(4),
                                     ),
@@ -389,12 +391,12 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Top Dishes by Volume',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 15,
-                            color: AppTheme.textMain,
+                            color: AppTheme.onSurfaceOf(context),
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -432,7 +434,7 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                                 ),
                                 subtitle: Text(
                                   'Earned ₹${dish.totalEarned.toStringAsFixed(2)}',
-                                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                                  style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
                                 ),
                                 trailing: Text(
                                   '${dish.totalPortions} Sold',

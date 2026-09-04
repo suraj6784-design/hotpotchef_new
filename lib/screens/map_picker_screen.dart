@@ -161,11 +161,12 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppTheme.canvasOf(context),
       appBar: AppBar(
-        title: const Text('Pin Delivery Location', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textMain)),
-        backgroundColor: Colors.white,
+        title: Text('Pin Delivery Location', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
+        backgroundColor: AppTheme.surfaceOf(context),
         elevation: 0,
-        iconTheme: const IconThemeData(color: AppTheme.textMain),
+        iconTheme: IconThemeData(color: AppTheme.onSurfaceOf(context)),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
@@ -195,19 +196,20 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                   child: Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: AppTheme.surfaceOf(context),
                       borderRadius: BorderRadius.circular(16),
-                      boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 4))],
+                      border: Border.all(color: AppTheme.hairlineOf(context)),
+                      boxShadow: AppTheme.softShadow,
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text('Selected Location',
-                            style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+                            style: TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 4),
                         Text(_draggedAddress,
-                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textMain),
+                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context)),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis),
                         const SizedBox(height: 16),

@@ -18,11 +18,17 @@ import 'address_form_screen.dart';
 class CheckoutScreen extends StatefulWidget {
   final List<Map<String, dynamic>> cartItems;
   final VoidCallback onOrderPlacedSuccess;
+  final Object? preferredAddressId;
+  final Map<String, dynamic>? preferredAddress;
+  final String? sourceRequestId;
 
   const CheckoutScreen({
     super.key,
     required this.cartItems,
     required this.onOrderPlacedSuccess,
+    this.preferredAddressId,
+    this.preferredAddress,
+    this.sourceRequestId,
   });
 
   @override
@@ -134,8 +140,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _savedAddresses = uniqueSavedAddresses(fetchedAddresses);
         _selectedAddressData = preferredCheckoutAddress(
               _savedAddresses,
-              selectedId: _selectedAddressData?['id'],
+              selectedId: _selectedAddressData?['id'] ?? widget.preferredAddressId,
+              hint: widget.preferredAddress,
             ) ??
+            widget.preferredAddress ??
             checkoutAddressFromUserProfile(userData) ??
             _selectedAddressData;
       } else {
@@ -146,6 +154,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           '';
       _userCoinBalance =
           double.tryParse(userData?['hotpot_coins']?.toString() ?? '0') ?? 0.0;
+      if (_instructionsController.text.trim().isEmpty) {
+        final note = widget.cartItems
+            .map((item) => item['specialInstructions']?.toString() ?? '')
+            .firstWhere((text) => text.trim().isNotEmpty, orElse: () => '');
+        if (note.isNotEmpty) _instructionsController.text = note;
+      }
       if (pricingRes != null) _serverPricing = pricingRes;
       _isLoading = false;
     });
@@ -461,6 +475,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (orderId != null && orderId.isNotEmpty) {
         AlertService.notifyOrder(orderId: orderId, type: 'INSERT');
       }
+      await _markSourceRequestOrdered(orderId);
       if (mounted) {
         widget.onOrderPlacedSuccess();
         Navigator.pop(context);
@@ -469,6 +484,22 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     } finally {
       _placingOrder = false;
       if (mounted) setState(() => _isCheckingOut = false);
+    }
+  }
+
+  Future<void> _markSourceRequestOrdered(String? orderId) async {
+    final requestId = widget.sourceRequestId;
+    if (requestId == null || requestId.isEmpty) return;
+    try {
+      await _supabase.from('customer_requests').update({
+        'status': 'Ordered',
+        if (orderId != null && orderId.isNotEmpty) 'order_id': orderId,
+      }).eq('id', requestId);
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to mark catering request as ordered');
+      try {
+        await _supabase.from('customer_requests').update({'status': 'Ordered'}).eq('id', requestId);
+      } catch (_) {}
     }
   }
 
@@ -607,6 +638,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (orderId != null && orderId.isNotEmpty) {
         AlertService.notifyOrder(orderId: orderId, type: 'INSERT');
       }
+      await _markSourceRequestOrdered(orderId);
 
       if (mounted) {
         widget.onOrderPlacedSuccess();
@@ -710,7 +742,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       title: Text(
                         displayStr.isEmpty ? 'Saved address' : displayStr,
                         style: TextStyle(
-                          color: isSelected ? Colors.deepOrange : Colors.black87,
+                          color: isSelected ? Colors.deepOrange : AppTheme.onSurfaceOf(context),
                           fontSize: 13,
                           fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                         ),
@@ -748,9 +780,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.green : Colors.white,
+          color: isSelected ? AppTheme.success : AppTheme.surfaceOf(context),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: isSelected ? Colors.green : Colors.grey.shade300),
+          border: Border.all(color: isSelected ? AppTheme.success : AppTheme.hairlineOf(context)),
           boxShadow: [if (!isSelected) const BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
         ),
         child: Text(
@@ -758,7 +790,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           style: TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 13,
-            color: isSelected ? Colors.white : Colors.black87,
+            color: isSelected ? Colors.white : AppTheme.onSurfaceOf(context),
           ),
         ),
       ),
@@ -795,15 +827,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Row(
+                Row(
                   children: [
-                    Icon(Icons.schedule, color: Colors.deepOrange, size: 20),
-                    SizedBox(width: 8),
+                    const Icon(Icons.schedule, color: Colors.deepOrange, size: 20),
+                    const SizedBox(width: 8),
                     Text('Selected Delivery Schedule',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.onSurfaceOf(context))),
                   ],
                 ),
-                const Divider(height: 16, color: Colors.black12),
+                Divider(height: 16, color: AppTheme.hairlineOf(context)),
                 ...widget.cartItems.map((item) {
                   final title = item['title'] ?? 'Meal';
                   
@@ -828,7 +860,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     padding: const EdgeInsets.only(bottom: 6),
                     child: Text(
                       '• $title\n  🗓️ Date: $dateStr  ⏰ Slot: $timeSlot',
-                      style: const TextStyle(fontSize: 13, color: Colors.black54, height: 1.3),
+                      style: const TextStyle(fontSize: 13, color: AppTheme.textMuted, height: 1.3),
                     ),
                   );
                 }),
@@ -875,7 +907,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       formatSavedAddress(_selectedAddressData).isEmpty
                           ? 'Please add a delivery address'
                           : formatSavedAddress(_selectedAddressData),
-                      style: const TextStyle(color: Colors.grey, fontSize: 14),
+                      style: const TextStyle(color: AppTheme.textMuted, fontSize: 14),
                     ),
                   ),
                 ],
@@ -923,10 +955,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.green.shade50.withValues(alpha: 0.5),
+                color: AppTheme.success.withValues(alpha: Theme.of(context).brightness == Brightness.dark ? 0.12 : 0.08),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.green.shade200),
-                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
+                border: Border.all(color: AppTheme.success.withValues(alpha: 0.35)),
+                boxShadow: AppTheme.softShadow,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -934,14 +966,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Column(
+                      Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text('Reward your delivery hero',
-                              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: Colors.black87)),
-                          SizedBox(height: 2),
-                          Text('100% of the tip amount goes directly to them',
-                              style: TextStyle(fontSize: 11, color: Colors.grey)),
+                              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: AppTheme.onSurfaceOf(context))),
+                          const SizedBox(height: 2),
+                          const Text('100% of the tip amount goes directly to them',
+                              style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
                         ],
                       ),
                       Container(

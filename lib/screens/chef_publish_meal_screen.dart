@@ -7,7 +7,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
-import '../utils/app_theme.dart';
 import '../utils/network.dart';
 import '../utils/helpers.dart';
 import '../models/cart_enums.dart';
@@ -401,6 +400,9 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.existingMeal != null;
+    final titleColor = AppTheme.onSurfaceOf(context);
+    final surface = AppTheme.surfaceOf(context);
+    final hairline = AppTheme.hairlineOf(context);
 
     return Scaffold(
       backgroundColor: AppTheme.canvasOf(context),
@@ -425,9 +427,9 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                 height: 190,
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: surface,
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.grey.shade300),
+                  border: Border.all(color: hairline),
                   image: _selectedImageFile != null
                       ? DecorationImage(
                           image: FileImage(File(_selectedImageFile!.path)),
@@ -485,7 +487,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
             ],
 
             // Basics
-            const Text('Meal Identity', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain)),
+            Text('Meal Identity', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor)),
             const SizedBox(height: 12),
             TextFormField(
               controller: _titleController,
@@ -591,14 +593,16 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: surface,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade300),
+                      border: Border.all(color: hairline),
                     ),
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<String>(
                         value: _selectedCategory,
                         isExpanded: true,
+                        dropdownColor: surface,
+                        style: TextStyle(fontSize: 14, color: titleColor),
                         items: _categories
                             .map((c) => DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontSize: 14))))
                             .toList(),
@@ -638,7 +642,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
             const SizedBox(height: 24),
 
             // Logistics & Schedule
-            const Text('Time slots', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain)),
+            Text('Time slots', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor)),
             const SizedBox(height: 4),
             const Text(
               'When this dish can be ordered and served.',
@@ -648,9 +652,9 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: surface,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade300),
+                border: Border.all(color: hairline),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -696,7 +700,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
             ),
             const SizedBox(height: 20),
 
-            const Text('Delivery options', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain)),
+            Text('Delivery options', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor)),
             const SizedBox(height: 4),
             const Text(
               'How customers can receive this dish. Select every option you can offer.',
@@ -705,9 +709,9 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
             const SizedBox(height: 12),
             Container(
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: surface,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade300),
+                border: Border.all(color: hairline),
               ),
               child: Column(
                 children: ServiceType.values.map((option) {
@@ -715,7 +719,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                     dense: true,
                     activeColor: AppTheme.primary,
                     secondary: Icon(_serviceIcon(option), color: AppTheme.primary, size: 22),
-                    title: Text(option.toDisplayString(), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textMain)),
+                    title: Text(option.toDisplayString(), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: titleColor)),
                     subtitle: Text(option.chefHelpText, style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
                     value: _selectedServices.contains(option),
                     onChanged: (val) {
@@ -734,20 +738,22 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
             const SizedBox(height: 24),
 
             // Pricing Calculator Offer Section
-            const Text('Promotions & Discounts', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain)),
+            Text('Promotions & Discounts', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor)),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: surface,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade300),
+                border: Border.all(color: hairline),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   DropdownButtonFormField<OfferType>(
                     value: _selectedOfferType,
+                    dropdownColor: surface,
+                    style: TextStyle(color: titleColor, fontSize: 14),
                     decoration: _inputStyle('Select Promotion Rule'),
                     items: const [
                       DropdownMenuItem(value: OfferType.none, child: Text('No Offer (Regular Price)')),
@@ -974,11 +980,11 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
   InputDecoration _inputStyle(String label) {
     return InputDecoration(
       labelText: label,
-      labelStyle: const TextStyle(fontSize: 13, color: Colors.grey),
+      labelStyle: TextStyle(fontSize: 13, color: AppTheme.textMuted),
       filled: true,
-      fillColor: Colors.white,
+      fillColor: AppTheme.surfaceOf(context),
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppTheme.hairlineOf(context))),
       focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppTheme.primary, width: 1.5)),
     );
   }

@@ -11,6 +11,7 @@ import '../utils/customer_constants.dart';
 import '../utils/dynamic_ui_engine.dart';
 import '../utils/network.dart';
 import '../providers/cart_provider.dart';
+import '../providers/delivery_preference.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/daily_streak_banner.dart';
@@ -49,6 +50,12 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   bool _isAiSearching = false;
   bool _hasActiveSearch = false;
   List<Map<String, dynamic>> _aiSearchResults = [];
+  final Map<String, Map<String, dynamic>> _chefKitchenPins = {};
+  final Set<String> _chefPinsResolved = {};
+  bool _hydratingChefPins = false;
+  final Set<String> _closedChefIds = {};
+  final Set<String> _chefOpenResolved = {};
+  bool _hydratingKitchenHours = false;
 
   final List<Map<String, dynamic>> _categories = const [
     {'name': 'All', 'icon': Icons.set_meal_outlined},
@@ -191,6 +198,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           if (_savedAddresses.isNotEmpty && (_currentAddress == 'Select Delivery Address' || _currentAddress.isEmpty)) {
             _currentAddress = _savedAddresses.first['address']?.toString() ?? 'Select Delivery Address';
           }
+          final selected = _selectedAddressMap;
+          if (selected != null) {
+            ref.read(selectedDeliveryAddressProvider.notifier).setAddress(selected);
+          }
         });
       }
     } catch (e, stack) {
@@ -207,24 +218,111 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
 
   bool get _hasDeliveryPin {
     final dest = _selectedAddressMap;
-    final lat = (dest?['latitude'] as num?)?.toDouble() ?? (dest?['lat'] as num?)?.toDouble();
-    final lng = (dest?['longitude'] as num?)?.toDouble() ?? (dest?['lng'] as num?)?.toDouble();
+    final lat = addressCoordinate(dest, latitude: true);
+    final lng = addressCoordinate(dest, latitude: false);
     return lat != null && lng != null && lat != 0 && lng != 0;
   }
 
+  Map<String, dynamic> _pinnedMeal(Map<String, dynamic> meal) {
+    final chefId = meal['chef_id']?.toString();
+    return mealWithKitchenPin(
+      meal,
+      chefPin: chefId == null ? null : _chefKitchenPins[chefId],
+    );
+  }
+
+  Future<void> _hydrateChefKitchenPins(List<Map<String, dynamic>> meals) async {
+    final missing = <String>{};
+    for (final meal in meals) {
+      if (hasKitchenPin(meal)) continue;
+      final chefId = meal['chef_id']?.toString();
+      if (chefId == null || chefId.isEmpty || _chefPinsResolved.contains(chefId)) continue;
+      missing.add(chefId);
+    }
+    if (missing.isEmpty || _hydratingChefPins) return;
+    _hydratingChefPins = true;
+    try {
+      final rows = await Supabase.instance.client
+          .from('users')
+          .select('id, lat, lng, latitude, longitude')
+          .inFilter('id', missing.toList());
+      var added = false;
+      for (final row in rows) {
+        final id = row['id']?.toString();
+        if (id == null || id.isEmpty) continue;
+        _chefPinsResolved.add(id);
+        if (!hasKitchenPin(row)) continue;
+        _chefKitchenPins[id] = Map<String, dynamic>.from(row);
+        added = true;
+      }
+      _chefPinsResolved.addAll(missing);
+      if (added && mounted) setState(() {});
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to hydrate chef kitchen pins');
+    } finally {
+      _hydratingChefPins = false;
+    }
+  }
+
+  Future<void> _hydrateKitchenHours(List<Map<String, dynamic>> meals) async {
+    final missing = <String>{};
+    for (final meal in meals) {
+      final chefId = meal['chef_id']?.toString();
+      if (chefId == null || chefId.isEmpty || _chefOpenResolved.contains(chefId)) continue;
+      missing.add(chefId);
+    }
+    if (missing.isEmpty || _hydratingKitchenHours) return;
+    _hydratingKitchenHours = true;
+    try {
+      final rows = await Supabase.instance.client
+          .from('chef_profiles')
+          .select('user_id, is_open')
+          .inFilter('user_id', missing.toList());
+      var closedChanged = false;
+      for (final row in rows) {
+        final id = row['user_id']?.toString();
+        if (id == null || id.isEmpty) continue;
+        _chefOpenResolved.add(id);
+        if (!isChefKitchenOpen(row)) {
+          _closedChefIds.add(id);
+          closedChanged = true;
+        }
+      }
+      _chefOpenResolved.addAll(missing);
+      if (closedChanged && mounted) setState(() {});
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to hydrate kitchen hours');
+      _chefOpenResolved.addAll(missing);
+    } finally {
+      _hydratingKitchenHours = false;
+    }
+  }
+
+  List<Map<String, dynamic>> _openKitchenMeals(List<Map<String, dynamic>> meals) {
+    return meals.where((meal) {
+      final chefId = meal['chef_id']?.toString();
+      return chefId == null || chefId.isEmpty || !_closedChefIds.contains(chefId);
+    }).toList();
+  }
+
   List<Map<String, dynamic>> _mealsForSelectedAddress(List<Map<String, dynamic>> meals) {
-    if (!_hasDeliveryPin) return meals;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _hydrateChefKitchenPins(meals);
+      _hydrateKitchenHours(meals);
+    });
+    final pinned = _openKitchenMeals(meals.map(_pinnedMeal).toList());
+    if (!_hasDeliveryPin) return pinned;
     final dest = _selectedAddressMap;
-    final endLat = (dest?['latitude'] as num?)?.toDouble() ?? (dest?['lat'] as num?)?.toDouble();
-    final endLng = (dest?['longitude'] as num?)?.toDouble() ?? (dest?['lng'] as num?)?.toDouble();
-    if (endLat == null || endLng == null) return meals;
+    final endLat = addressCoordinate(dest, latitude: true);
+    final endLng = addressCoordinate(dest, latitude: false);
+    if (endLat == null || endLng == null) return pinned;
 
     final inRange = <Map<String, dynamic>>[];
     final unknown = <Map<String, dynamic>>[];
-    for (final meal in meals) {
-      final startLat = (meal['pickup_lat'] as num?)?.toDouble() ?? (meal['latitude'] as num?)?.toDouble();
-      final startLng = (meal['pickup_lng'] as num?)?.toDouble() ?? (meal['longitude'] as num?)?.toDouble();
-      if (startLat == null || startLng == null || startLat == 0 || startLng == 0) {
+    for (final meal in pinned) {
+      final startLat = kitchenCoordinate(meal, latitude: true);
+      final startLng = kitchenCoordinate(meal, latitude: false);
+      if (startLat == null || startLng == null) {
         unknown.add(meal);
         continue;
       }
@@ -243,12 +341,12 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
 
   String? _etaLabelForMeal(Map<String, dynamic> meal) {
     final dest = _selectedAddressMap;
-    final startLat = (meal['pickup_lat'] as num?)?.toDouble() ?? (meal['latitude'] as num?)?.toDouble();
-    final startLng = (meal['pickup_lng'] as num?)?.toDouble() ?? (meal['longitude'] as num?)?.toDouble();
-    final endLat = (dest?['latitude'] as num?)?.toDouble() ?? (dest?['lat'] as num?)?.toDouble();
-    final endLng = (dest?['longitude'] as num?)?.toDouble() ?? (dest?['lng'] as num?)?.toDouble();
+    final pinned = _pinnedMeal(meal);
+    final startLat = kitchenCoordinate(pinned, latitude: true);
+    final startLng = kitchenCoordinate(pinned, latitude: false);
+    final endLat = addressCoordinate(dest, latitude: true);
+    final endLng = addressCoordinate(dest, latitude: false);
     if (startLat == null || startLng == null || endLat == null || endLng == null) return null;
-    if (startLat == 0 || startLng == 0 || endLat == 0 || endLng == 0) return null;
 
     final distance = DeliveryEstimatorService.calculateDistanceKm(
       startLat: startLat,
@@ -404,6 +502,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                                 ),
                                                 onTap: () {
                                                   setState(() => _currentAddress = addrStr);
+                                                  ref.read(selectedDeliveryAddressProvider.notifier).setAddress(addrMap);
                                                   Navigator.pop(ctx);
                                                 },
                                               ),
@@ -571,7 +670,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
               child: Text(
-                'Showing kitchens within ${DeliveryEstimatorService.maxDeliveryRadiusKm.toInt()} km of your pin. Dishes without a kitchen pin stay listed.',
+                'Showing kitchens within ${DeliveryEstimatorService.maxDeliveryRadiusKm.toInt()} km of your pin. Offline kitchens are hidden.',
                 style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
               ),
             )

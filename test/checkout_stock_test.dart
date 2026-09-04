@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hotpotchef_new/utils/helpers.dart';
+import 'package:hotpotchef_new/services/reorder_service.dart';
 
 void main() {
   group('sold-out checkout copy', () {
@@ -51,6 +52,38 @@ void main() {
       expect(
         checkoutErrorMessage(Exception('We could not record this order, so the payment was refunded. It should return in 5–7 business days.')),
         'We could not record this order, so the payment was refunded. It should return in 5–7 business days.',
+      );
+    });
+  });
+
+  group('isMealReorderable', () {
+    test('rejects sold out, paused, and empty stock', () {
+      expect(ReorderService.isMealReorderable(null), isFalse);
+      expect(ReorderService.isMealReorderable({'status': 'sold out', 'quantity': 3}), isFalse);
+      expect(ReorderService.isMealReorderable({'status': 'Paused', 'quantity': 3}), isFalse);
+      expect(ReorderService.isMealReorderable({'status': 'Available', 'quantity': 0}), isFalse);
+    });
+
+    test('accepts a live dish with stock', () {
+      expect(ReorderService.isMealReorderable({'status': 'Available', 'quantity': 2}), isTrue);
+    });
+
+    test('suggests other live dishes and names them in the snackbar', () {
+      final alts = ReorderService.alternativeTitles(
+        [
+          {'id': 'gone', 'title': 'Butter chicken', 'status': 'Available', 'quantity': 2},
+          {'id': 'alt-1', 'title': 'Dal tadka', 'status': 'Available', 'quantity': 4},
+          {'id': 'alt-2', 'title': 'Jeera rice', 'status': 'Available', 'quantity': 6},
+          {'id': 'paused', 'title': 'Paused dish', 'status': 'Paused', 'quantity': 5},
+        ],
+        excludeMealIds: {'gone'},
+      );
+      expect(alts, ['Dal tadka', 'Jeera rice']);
+      expect(
+        ReorderService.resultMessage(
+          const ReorderResult(added: 0, skipped: ['Butter chicken'], alternatives: ['Dal tadka', 'Jeera rice']),
+        ),
+        'Butter chicken is no longer available to reorder. Try: Dal tadka, Jeera rice.',
       );
     });
   });

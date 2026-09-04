@@ -8,7 +8,6 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:geocoding/geocoding.dart'; // 🌟 Added for reverse geocoding
 
 import 'map_picker_screen.dart';
-import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
 import '../utils/network.dart';
 import '../widgets/avatar_upload.dart';
@@ -364,6 +363,14 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
 
       await _supabase.from('users').upsert(updateData);
       await _supabase.auth.updateUser(UserAttributes(data: {'name': name, 'phone': phone}));
+      try {
+        await _supabase
+            .from('meals')
+            .update(kitchenPinMealFields(_latitude!, _longitude!))
+            .eq('chef_id', user.id);
+      } catch (e, stack) {
+        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chef kitchen pin meal sync failed');
+      }
 
       if (mounted) {
         setState(() => _isEditing = false);
