@@ -32,6 +32,14 @@ void main() {
       expect(OrderLifecycle.nextKitchenStatus('Preparing'), OrderStatus.readyForPickup);
     });
 
+    test('open driver jobs exclude delivered and cancelled', () {
+      expect(OrderLifecycle.isOpenDriverJob('Pending Chef Approval'), isTrue);
+      expect(OrderLifecycle.isOpenDriverJob('Ready for Pickup'), isTrue);
+      expect(OrderLifecycle.isOpenDriverJob('Out for Delivery'), isTrue);
+      expect(OrderLifecycle.isOpenDriverJob('Delivered'), isFalse);
+      expect(OrderLifecycle.isOpenDriverJob('Cancelled'), isFalse);
+    });
+
     test('dispatch depends on delivery option', () {
       expect(
         OrderLifecycle.nextDispatchStatus('Ready for Pickup', ServiceType.deliveryPlatform),

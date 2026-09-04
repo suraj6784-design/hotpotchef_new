@@ -75,15 +75,18 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
 
       final mine = 'driver_id.eq.${user.id},delivery_partner_id.eq.${user.id}';
 
-      // 1. Available Pool (Unassigned & Ready for Pickup)
+      // 1. Unassigned partner jobs (pending through ready, plus orphaned out-for-delivery)
       final availableFuture = _supabase
           .from('orders')
           .select()
           .isFilter('driver_id', null)
           .isFilter('delivery_partner_id', null)
-          .ilike('status', '%ready%')
+          .not('status', 'ilike', '%delivered%')
+          .not('status', 'ilike', '%cancelled%')
+          .not('status', 'ilike', '%rejected%')
+          .not('status', 'ilike', '%completed%')
           .order('created_at', ascending: false)
-          .limit(25);
+          .limit(40);
 
       // 2. Driver Active Deliveries (In-Progress)
       final activeFuture = _supabase
@@ -119,9 +122,11 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
 
       final availableList = (results[0] as List)
           .map((e) => Map<String, dynamic>.from(e))
-          .where((e) => ServiceType.fromString(
+          .where((e) =>
+              ServiceType.fromString(
                 e['order_type']?.toString() ?? e['service_type']?.toString(),
-              ).usesDeliveryPartner)
+              ).usesDeliveryPartner &&
+              OrderLifecycle.isOpenDriverJob(e['status']?.toString()))
           .map(DriverDeliveryModel.fromJson)
           .toList();
 

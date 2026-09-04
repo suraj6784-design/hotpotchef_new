@@ -56,6 +56,7 @@ class DriverDeliveryModel {
   final double distanceKm;
   final int totalItemsCount;
   final DeliveryStatus status;
+  final String statusLabel;
   final DateTime createdAt;
   final String timeSlot;
   final String? selectedDate;
@@ -72,6 +73,7 @@ class DriverDeliveryModel {
     this.distanceKm = 0.0,
     this.totalItemsCount = 1,
     required this.status,
+    this.statusLabel = '',
     required this.createdAt,
     this.timeSlot = '',
     this.selectedDate,
@@ -99,6 +101,7 @@ class DriverDeliveryModel {
       distanceKm: (json['estimated_distance_km'] as num?)?.toDouble() ?? 0.0,
       totalItemsCount: (json['order_items'] as List?)?.length ?? items.length,
       status: DeliveryStatus.fromString(json['status']?.toString()),
+      statusLabel: json['status']?.toString() ?? '',
       createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ?? DateTime.now(),
       timeSlot: json['time_slot']?.toString() ??
           first['time_slot']?.toString() ??

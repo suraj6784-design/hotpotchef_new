@@ -430,10 +430,12 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
       );
     }
     if (available.isEmpty) {
-      return const EmptyState(
+      return EmptyState(
         icon: Icons.radar_rounded,
         title: 'Scanning nearby kitchens',
-        message: 'New partner deliveries will appear here as chefs release them.',
+        message: 'New partner deliveries will appear here as chefs accept and cook them.',
+        actionLabel: 'Refresh Jobs',
+        onAction: () => ref.read(driverDashboardProvider.notifier).loadDashboardData(),
       );
     }
 
@@ -456,6 +458,11 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                   Text('+₹${delivery.payout.toStringAsFixed(0)} Payout',
                       style: const TextStyle(fontWeight: FontWeight.w900, color: Colors.green, fontSize: 14)),
                 ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                delivery.statusLabel.isEmpty ? delivery.status.toDbValue() : delivery.statusLabel,
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primary),
               ),
               const SizedBox(height: 10),
               Text('Pickup: ${delivery.chefName}',

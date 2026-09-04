@@ -23,6 +23,15 @@ class OrderLifecycle {
     return isPendingKitchen(status) || s == 'confirmed' || s == 'preparing';
   }
 
+  static bool isOpenDriverJob(String? status) {
+    final s = normalize(status);
+    if (s.isEmpty) return false;
+    if (s.contains('delivered') || s.contains('cancelled') || s.contains('rejected') || s.contains('completed')) {
+      return false;
+    }
+    return true;
+  }
+
   static bool isDispatchQueue(String? status) {
     final s = normalize(status);
     return s.contains('ready') ||
