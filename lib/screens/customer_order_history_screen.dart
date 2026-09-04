@@ -465,10 +465,12 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                 child: InkWell(
                   borderRadius: BorderRadius.circular(16),
                   onTap: () {
-                    double itemsTotal = totalPrice;
-                    double packagingFee = items.isNotEmpty ? 20.0 : 0.0;
-                    double deliveryFee = (order['order_type']?.toString().toLowerCase() ?? '').contains('delivery') ? 40.0 : 0.0;
-                    double finalGrandTotal = itemsTotal + packagingFee + deliveryFee;
+                    final hasDelivery = (order['order_type']?.toString().toLowerCase() ?? '').contains('delivery');
+                    final bill = orderBillBreakdown(items: items, order: order, hasDelivery: hasDelivery);
+                    final itemsTotal = bill.itemsTotal;
+                    final packagingFee = bill.packagingFee;
+                    final deliveryFee = bill.deliveryFee;
+                    final finalGrandTotal = bill.grandTotal;
 
                     String deliveryTimeStr = 'ASAP';
                     if (items.isNotEmpty) {

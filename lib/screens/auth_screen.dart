@@ -41,6 +41,7 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _isLogin = true;
   bool _isLoading = false;
   bool _obscurePassword = true;
+  String? _authError;
 
   AppRole _selectedRole = AppRole.customer;
 
@@ -58,29 +59,21 @@ class _AuthScreenState extends State<AuthScreen> {
     super.dispose();
   }
 
-  String _friendlyAuthError(Object error) {
-    if (error is NetworkException) return error.message;
-    final network = networkErrorMessage(error);
-    if (network == NetworkException.timedOutMessage || network == NetworkException.offlineMessage) {
-      return network;
-    }
-    if (error is AuthException) {
-      final msg = error.message.toLowerCase();
-      if (msg.contains('invalid login') || msg.contains('invalid credentials')) {
-        return 'Wrong email or password. Please try again.';
-      }
-      if (msg.contains('email not confirmed')) {
-        return 'Please confirm your email before signing in.';
-      }
-      if (msg.contains('already registered') || msg.contains('already been registered')) {
-        return 'An account with this email already exists. Try signing in.';
-      }
-      if (msg.contains('network') || msg.contains('failed host lookup')) {
-        return 'Network issue. Check your connection and try again.';
-      }
-      if (error.message.trim().isNotEmpty) return error.message;
-    }
-    return 'Sign-in failed. Please check your details and try again.';
+  String _friendlyAuthError(Object error) => friendlyAuthError(error);
+
+  void _showAuthError(String message) {
+    if (!mounted) return;
+    setState(() => _authError = message);
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    messenger?.hideCurrentSnackBar();
+    messenger?.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.redAccent,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 5),
+      ),
+    );
   }
 
   void _leaveAuthAfterSuccess() {
@@ -99,7 +92,10 @@ class _AuthScreenState extends State<AuthScreen> {
   Future<void> _submitAuth() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _authError = null;
+    });
 
     try {
       final email = _emailController.text.trim();
@@ -118,6 +114,8 @@ class _AuthScreenState extends State<AuthScreen> {
         if (response.user != null) {
           unawaited(PushNotificationService.syncTokenForCurrentUser());
           _leaveAuthAfterSuccess();
+        } else {
+          _showAuthError('Wrong email or password. Please try again.');
         }
       } else {
         // --- SIGN-UP FLOW WITH EXPLICIT ROLE ---
@@ -169,15 +167,7 @@ class _AuthScreenState extends State<AuthScreen> {
       }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Authentication failure');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_friendlyAuthError(e)),
-            backgroundColor: Colors.redAccent,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      _showAuthError(_friendlyAuthError(e));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -398,7 +388,10 @@ class _AuthScreenState extends State<AuthScreen> {
       color: bg,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       clipBehavior: Clip.antiAlias,
-      child: Padding(
+      child: Scaffold(
+        backgroundColor: bg,
+        resizeToAvoidBottomInset: true,
+        body: Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
         child: ConstrainedBox(
           constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.92),
@@ -458,6 +451,7 @@ class _AuthScreenState extends State<AuthScreen> {
             ],
           ),
         ),
+      ),
       ),
     );
   }
@@ -571,6 +565,22 @@ class _AuthScreenState extends State<AuthScreen> {
             )
           else
             const SizedBox(height: 18),
+          if (_authError != null) ...[
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.redAccent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.redAccent.withValues(alpha: 0.4)),
+              ),
+              child: Text(
+                _authError!,
+                style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600, fontSize: 13),
+              ),
+            ),
+          ],
           GradientButton(
             label: _isLogin ? 'Sign In' : 'Register as ${_selectedRole.storageValue}',
             icon: _isLogin ? Icons.login_rounded : Icons.person_add_alt_1_rounded,
@@ -585,7 +595,12 @@ class _AuthScreenState extends State<AuthScreen> {
   List<Widget> _buildAuthLinks({required bool compact}) {
     return [
       TextButton(
-        onPressed: _isLoading ? null : () => setState(() => _isLogin = !_isLogin),
+        onPressed: _isLoading
+            ? null
+            : () => setState(() {
+                  _isLogin = !_isLogin;
+                  _authError = null;
+                }),
         child: Text(
           _isLogin ? "Don't have an account? Sign Up" : 'Already have an account? Sign In',
         ),

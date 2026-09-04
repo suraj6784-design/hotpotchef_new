@@ -881,6 +881,11 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
             'delivery_address': order['delivery_address'],
             'driver_id': order['delivery_partner_id'],
             'created_at': order['created_at'] ?? DateTime.now().toIso8601String(),
+            'total_price': order['total_price'],
+            'delivery_fee': order['delivery_fee'],
+            'packaging_fee': order['packaging_fee'],
+            'tip_amount': order['tip_amount'],
+            'coins_applied': order['coins_applied'],
           });
         }
       }
@@ -897,6 +902,11 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
           'title': order['title'] ?? 'Custom Order',
           'quantity': 1,
           'price': order['total_price'] ?? order['price'] ?? 0,
+          'total_price': order['total_price'],
+          'delivery_fee': order['delivery_fee'],
+          'packaging_fee': order['packaging_fee'],
+          'tip_amount': order['tip_amount'],
+          'coins_applied': order['coins_applied'],
         });
       }
 
@@ -949,10 +959,6 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                 Map<String, dynamic>? trackableItem;
 
                 for (var item in items) {
-                  double itemPrice = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
-                  int itemQty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
-                  itemsTotal += (itemPrice * itemQty);
-
                   if (!_canCancelOrder(item)) canCancelGroup = false;
 
                   final status = item['status']?.toString().toLowerCase() ?? '';
@@ -968,9 +974,11 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                 }
                 if (allCancelled) canCancelGroup = false;
 
-                double packagingFee = 20.0;
-                double deliveryFee = hasDelivery ? 40.0 : 0.0;
-                double finalGrandTotal = itemsTotal + packagingFee + deliveryFee;
+                final bill = orderBillBreakdown(items: items, hasDelivery: hasDelivery);
+                itemsTotal = bill.itemsTotal;
+                final packagingFee = bill.packagingFee;
+                final deliveryFee = bill.deliveryFee;
+                final finalGrandTotal = bill.grandTotal;
 
                 String dateTimeString = formatOrderDate(items.first['created_at']?.toString());
 

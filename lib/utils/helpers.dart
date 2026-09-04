@@ -3,6 +3,8 @@
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 
+import 'network.dart';
+
 // Export the theme so all screens automatically inherit it
 export 'app_theme.dart'; 
 
@@ -289,6 +291,102 @@ String soldOutCheckoutMessage({required bool charged, bool refunded = false}) {
     return 'This meal just sold out after payment. We are issuing a refund.';
   }
   return 'This meal just sold out. Nothing was charged — pick another portion or chef.';
+}
+
+double parseMoney(dynamic value, [double fallback = 0]) {
+  return double.tryParse(value?.toString() ?? '') ?? fallback;
+}
+
+class OrderBillBreakdown {
+  const OrderBillBreakdown({
+    required this.itemsTotal,
+    required this.packagingFee,
+    required this.deliveryFee,
+    required this.tipAmount,
+    required this.coinsApplied,
+    required this.grandTotal,
+  });
+
+  final double itemsTotal;
+  final double packagingFee;
+  final double deliveryFee;
+  final double tipAmount;
+  final double coinsApplied;
+  final double grandTotal;
+}
+
+/// Builds the bill from the stored paid total when present, instead of a hardcoded delivery fee.
+OrderBillBreakdown orderBillBreakdown({
+  required List<Map<String, dynamic>> items,
+  Map<String, dynamic>? order,
+  bool hasDelivery = false,
+}) {
+  final source = order ?? (items.isNotEmpty ? items.first : const <String, dynamic>{});
+
+  var itemsTotal = 0.0;
+  for (final item in items) {
+    final price = parseMoney(item['discounted_price'] ?? item['price'] ?? item['unit_price']);
+    final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+    itemsTotal += price * qty;
+  }
+
+  final paidTotal = parseMoney(source['total_price'] ?? source['total_amount'] ?? source['grand_total']);
+  final packaging = parseMoney(source['packaging_fee'], 20);
+  final tip = parseMoney(source['tip_amount'] ?? source['tip']);
+  final coins = parseMoney(source['coins_applied']);
+  final storedDelivery = double.tryParse(source['delivery_fee']?.toString() ?? '');
+
+  final service = (source['order_type'] ?? source['service_type'] ?? '').toString().toLowerCase();
+  final deliveryExpected = hasDelivery || service.contains('delivery');
+
+  double delivery;
+  if (!deliveryExpected) {
+    delivery = storedDelivery ?? 0;
+  } else if (storedDelivery != null) {
+    delivery = storedDelivery;
+  } else if (paidTotal > 0) {
+    delivery = paidTotal - itemsTotal - packaging - tip + coins;
+    if (delivery < 0) delivery = 0;
+  } else {
+    delivery = 30;
+  }
+
+  final grand = paidTotal > 0 ? paidTotal : (itemsTotal + packaging + delivery + tip - coins).clamp(0, double.infinity);
+
+  return OrderBillBreakdown(
+    itemsTotal: itemsTotal,
+    packagingFee: packaging,
+    deliveryFee: delivery,
+    tipAmount: tip,
+    coinsApplied: coins,
+    grandTotal: grand.toDouble(),
+  );
+}
+
+String friendlyAuthError(Object error) {
+  if (error is NetworkException) return error.message;
+  final network = networkErrorMessage(error);
+  if (network == NetworkException.timedOutMessage || network == NetworkException.offlineMessage) {
+    return network;
+  }
+
+  final text = error.toString().toLowerCase();
+  if (text.contains('invalid login') ||
+      text.contains('invalid credentials') ||
+      text.contains('invalid email or password') ||
+      text.contains('wrong email or password')) {
+    return 'Wrong email or password. Please try again.';
+  }
+  if (text.contains('email not confirmed')) {
+    return 'Please confirm your email before signing in.';
+  }
+  if (text.contains('already registered') || text.contains('already been registered')) {
+    return 'An account with this email already exists. Try signing in.';
+  }
+  if (text.contains('network') || text.contains('failed host lookup')) {
+    return 'Network issue. Check your connection and try again.';
+  }
+  return 'Sign-in failed. Please check your details and try again.';
 }
 
 String _cleanAddressPart(dynamic value) {

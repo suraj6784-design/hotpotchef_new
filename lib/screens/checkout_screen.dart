@@ -174,7 +174,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final custLat = addressCoordinate(_selectedAddressData, latitude: true);
     final custLng = addressCoordinate(_selectedAddressData, latitude: false);
     if (custLat == null || custLng == null) {
-      setState(() => _deliveryFee = 40.0);
+      setState(() => _deliveryFee = 30.0);
       return;
     }
 
@@ -218,14 +218,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           }
           calculatedTotal += feeForChef;
         } else {
-          calculatedTotal += 40.0;
+          calculatedTotal += 30.0;
         }
       }
 
       if (mounted) setState(() => _deliveryFee = calculatedTotal);
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Delivery fee calculation error');
-      if (mounted) setState(() => _deliveryFee = 40.0);
+      if (mounted) setState(() => _deliveryFee = 30.0);
     } finally {
       if (mounted) setState(() => _isCalculatingFee = false);
     }
