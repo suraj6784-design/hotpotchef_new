@@ -658,3 +658,32 @@ class _HubDockButton extends StatelessWidget {
     );
   }
 }
+
+/// Password stays dotted unless the eye is held down.
+class HoldToRevealPasswordIcon extends StatelessWidget {
+  const HoldToRevealPasswordIcon({
+    super.key,
+    required this.obscured,
+    required this.onObscuredChanged,
+  });
+
+  final bool obscured;
+  final ValueChanged<bool> onObscuredChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Hold to show password',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => onObscuredChanged(false),
+        onTapUp: (_) => onObscuredChanged(true),
+        onTapCancel: () => onObscuredChanged(true),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Icon(obscured ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+        ),
+      ),
+    );
+  }
+}

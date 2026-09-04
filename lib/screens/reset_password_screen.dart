@@ -175,9 +175,9 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
           decoration: InputDecoration(
             labelText: 'New password (min 8 chars)',
             prefixIcon: const Icon(Icons.lock_reset),
-            suffixIcon: IconButton(
-              icon: Icon(_obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
-              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+            suffixIcon: HoldToRevealPasswordIcon(
+              obscured: _obscurePassword,
+              onObscuredChanged: (hidden) => setState(() => _obscurePassword = hidden),
             ),
           ),
         ),

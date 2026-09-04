@@ -80,17 +80,30 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
-  void _leaveAuthAfterSuccess() {
+  Future<void> _leaveAuthAfterSuccess() async {
     if (!mounted) return;
-    final role = AuthSession.roleFromSession();
+    FocusManager.instance.primaryFocus?.unfocus();
     final router = GoRouter.of(context);
-    if (widget.asSheet || Navigator.of(context).canPop()) {
+    final openedAsSheet = widget.asSheet;
+    var role = AuthSession.roleFromSession();
+    try {
+      role = await AuthSession.resolveRole();
+    } catch (_) {}
+
+    void goHub() {
+      if (!openedAsSheet || role != AppRole.customer) {
+        router.go(role.hubPath);
+      }
+    }
+
+    if (!mounted) {
+      goHub();
+      return;
+    }
+    if (openedAsSheet || Navigator.of(context).canPop()) {
       Navigator.of(context).pop(true);
     }
-    // Stay on the current hub/cart when a guest customer signs in from a sheet.
-    if (!widget.asSheet || role != AppRole.customer) {
-      router.go(role.hubPath);
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => goHub());
   }
 
   Future<void> _submitAuth() async {
@@ -572,9 +585,9 @@ class _AuthScreenState extends State<AuthScreen> {
             decoration: InputDecoration(
               labelText: 'Password',
               prefixIcon: const Icon(Icons.lock_outline),
-              suffixIcon: IconButton(
-                icon: Icon(_obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
-                onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+              suffixIcon: HoldToRevealPasswordIcon(
+                obscured: _obscurePassword,
+                onObscuredChanged: (hidden) => setState(() => _obscurePassword = hidden),
               ),
             ),
             validator: (v) {

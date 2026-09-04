@@ -74,11 +74,12 @@ class DriverDeliveryModel {
   });
 
   factory DriverDeliveryModel.fromJson(Map<String, dynamic> json) {
+    final chef = _embeddedMap(json['chefs'] ?? json['chef']);
     return DriverDeliveryModel(
       orderId: json['id']?.toString() ?? '',
       chefId: json['chef_id']?.toString() ?? '',
-      chefName: json['chef_name']?.toString() ?? json['chefs']?['business_name']?.toString() ?? 'Chef Kitchen',
-      pickupAddress: json['pickup_address']?.toString() ?? json['chefs']?['pickup_address']?.toString() ?? '',
+      chefName: json['chef_name']?.toString() ?? chef?['business_name']?.toString() ?? 'Chef Kitchen',
+      pickupAddress: json['pickup_address']?.toString() ?? chef?['pickup_address']?.toString() ?? '',
       customerAddress: json['delivery_address']?.toString() ?? '',
       customerId: json['customer_id']?.toString() ?? json['user_id']?.toString() ?? '',
       chatRoomId: orderChatRoomId(json, items: _itemsFrom(json['items'] ?? json['cart_items'] ?? json['order_items'])),
@@ -101,6 +102,14 @@ class DriverDeliveryModel {
 
   @override
   int get hashCode => orderId.hashCode ^ status.hashCode;
+}
+
+Map<String, dynamic>? _embeddedMap(dynamic raw) {
+  if (raw is Map) return Map<String, dynamic>.from(raw);
+  if (raw is List && raw.isNotEmpty && raw.first is Map) {
+    return Map<String, dynamic>.from(raw.first as Map);
+  }
+  return null;
 }
 
 List<Map<String, dynamic>> _itemsFrom(dynamic raw) {

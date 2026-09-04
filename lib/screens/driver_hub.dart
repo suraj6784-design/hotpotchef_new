@@ -160,8 +160,11 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
       },
       child: Scaffold(
         backgroundColor: AppTheme.canvasOf(context),
-        body: Column(
+        resizeToAvoidBottomInset: false,
+        body: Stack(
           children: [
+            Column(
+              children: [
             Container(
               padding: EdgeInsets.only(
                 top: MediaQuery.of(context).padding.top + 16,
@@ -252,20 +255,24 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 ],
               ),
             ),
-            Expanded(child: pages[_selectedIndex]),
+                Expanded(child: pages[_selectedIndex]),
+              ],
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 20,
+              child: HubBottomDock(
+                selectedIndex: _selectedIndex,
+                onSelect: (idx) => setState(() => _selectedIndex = idx),
+                destinations: const [
+                  HubDockDestination(icon: Icons.dashboard_outlined, selectedIcon: Icons.dashboard, label: 'Home'),
+                  HubDockDestination(icon: Icons.list_alt_outlined, selectedIcon: Icons.list_alt, label: 'Jobs'),
+                  HubDockDestination(icon: Icons.map_outlined, selectedIcon: Icons.map, label: 'Active'),
+                ],
+              ),
+            ),
           ],
-        ),
-        bottomNavigationBar: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          child: HubBottomDock(
-            selectedIndex: _selectedIndex,
-            onSelect: (idx) => setState(() => _selectedIndex = idx),
-            destinations: const [
-              HubDockDestination(icon: Icons.dashboard_outlined, selectedIcon: Icons.dashboard, label: 'Home'),
-              HubDockDestination(icon: Icons.list_alt_outlined, selectedIcon: Icons.list_alt, label: 'Jobs'),
-              HubDockDestination(icon: Icons.map_outlined, selectedIcon: Icons.map, label: 'Active'),
-            ],
-          ),
         ),
       ),
     );
@@ -278,8 +285,18 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
       onRefresh: () => ref.read(driverDashboardProvider.notifier).loadDashboardData(),
       color: AppTheme.primary,
       child: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
         children: [
+          if (state.errorMessage != null) ...[
+            EmptyState(
+              icon: Icons.wifi_off_rounded,
+              title: 'Couldn\'t load jobs',
+              message: state.errorMessage,
+              actionLabel: 'Retry',
+              onAction: () => ref.read(driverDashboardProvider.notifier).loadDashboardData(),
+            ),
+            const SizedBox(height: 16),
+          ],
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
@@ -416,7 +433,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
       itemCount: available.length,
       itemBuilder: (context, index) {
         final delivery = available[index];
@@ -429,7 +446,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Order #${delivery.orderId.substring(0, 6).toUpperCase()}',
+                  Text('Order #${formatOrderId(null, delivery.orderId)}',
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
                   Text('+₹${delivery.payout.toStringAsFixed(0)} Payout',
                       style: const TextStyle(fontWeight: FontWeight.w900, color: Colors.green, fontSize: 14)),
@@ -479,7 +496,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
       itemCount: active.length,
       itemBuilder: (context, index) {
         final delivery = active[index];
@@ -493,7 +510,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Run #${delivery.orderId.substring(0, 6).toUpperCase()}',
+                  Text('Run #${formatOrderId(null, delivery.orderId)}',
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textMuted)),
                   AppStatusBadge(status: delivery.status.toDbValue()),
                 ],

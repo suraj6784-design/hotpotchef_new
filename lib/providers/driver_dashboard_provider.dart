@@ -75,7 +75,7 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
       // 1. Available Pool (Unassigned & Ready for Pickup)
       final availableFuture = _supabase
           .from('orders')
-          .select('*, chefs(business_name, pickup_address)')
+          .select()
           .isFilter('driver_id', null)
           .ilike('status', '%ready%')
           .order('created_at', ascending: false)
@@ -84,7 +84,7 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
       // 2. Driver Active Deliveries (In-Progress)
       final activeFuture = _supabase
           .from('orders')
-          .select('*, chefs(business_name, pickup_address)')
+          .select()
           .eq('driver_id', user.id)
           .not('status', 'ilike', '%delivered%')
           .not('status', 'ilike', '%cancelled%')
@@ -93,7 +93,7 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
       // 3. Paginated Recent Completed Deliveries
       final completedRecentFuture = _supabase
           .from('orders')
-          .select('*, chefs(business_name, pickup_address)')
+          .select()
           .eq('driver_id', user.id)
           .ilike('status', '%delivered%')
           .order('created_at', ascending: false)
@@ -137,7 +137,12 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
           .map((e) => DriverDeliveryModel.fromJson(Map<String, dynamic>.from(e)))
           .toList();
 
-      final totalCompletedCount = (results[3] as PostgrestResponse).count ?? 0;
+      final countRaw = results[3];
+      final totalCompletedCount = countRaw is int
+          ? countRaw
+          : countRaw is PostgrestResponse
+              ? countRaw.count
+              : int.tryParse(countRaw.toString()) ?? 0;
       
       final profileData = results[4] as Map<String, dynamic>?;
       final earnings = (profileData?['wallet_balance'] as num?)?.toDouble() ??

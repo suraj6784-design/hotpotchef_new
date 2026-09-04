@@ -18,4 +18,16 @@ void main() {
     expect(delivery.chatRoomId, 'order-row');
     expect(delivery.customerId, 'cust-1');
   });
+
+  test('DriverDeliveryModel reads a chefs list embed without crashing', () {
+    final delivery = DriverDeliveryModel.fromJson({
+      'id': 'order-row',
+      'chefs': [
+        {'business_name': 'Home Kitchen', 'pickup_address': 'FC Road'},
+      ],
+      'status': 'Ready for Pickup',
+    });
+    expect(delivery.chefName, 'Home Kitchen');
+    expect(delivery.pickupAddress, 'FC Road');
+  });
 }
