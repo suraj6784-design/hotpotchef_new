@@ -225,7 +225,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
     try {
       final profile = await Supabase.instance.client
           .from('users')
-          .select('address, house_no, street, city, state, pincode, postal_code, lat, lng, latitude, longitude')
+          .select('address, house_no, street, city, state, pincode, lat, lng, latitude, longitude')
           .eq('id', userId)
           .maybeSingle();
       _savedDropoffAddress = checkoutAddressFromUserProfile(profile);

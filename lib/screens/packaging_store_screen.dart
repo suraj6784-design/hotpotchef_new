@@ -64,7 +64,7 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
 
       final userData = await _supabase
           .from('users')
-          .select('name, phone, address, house_no, street, city, state, pincode, postal_code')
+          .select('name, phone, address, house_no, street, city, state, pincode')
           .eq('id', user.id)
           .maybeSingle();
 
@@ -92,7 +92,13 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
       );
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Packaging supply request failed');
-      _showSnackBar(e.toString().replaceFirst('Exception: ', ''), isError: true);
+      final text = e.toString().replaceFirst('Exception: ', '');
+      _showSnackBar(
+        text.contains('kitchen') || text.contains('sign in') || text.contains('Session')
+            ? text
+            : 'Could not start this supply request. Please try again.',
+        isError: true,
+      );
     } finally {
       if (mounted) {
         setState(() {

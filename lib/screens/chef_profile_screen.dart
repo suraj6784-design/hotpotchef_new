@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'map_picker_screen.dart';
 import '../utils/app_page.dart';
+import '../models/app_role.dart';
 import '../utils/helpers.dart';
 import '../utils/pinned_address.dart';
 import '../utils/gst_invoice.dart';
@@ -361,10 +362,10 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
       if (user == null) throw 'Session expired';
 
       final updateData = {
-        'id': user.id,
         'name': name,
         'full_name': name,
         'phone': phone,
+        'role': AppRole.chef.storageValue,
         'fssai_number': fssai,
         'gstin': _gstinController.text.trim().toUpperCase(),
         'address': formattedAddress,
@@ -381,7 +382,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
         'updated_at': DateTime.now().toIso8601String(),
       };
 
-      await _supabase.from('users').upsert(updateData);
+      await _supabase.from('users').update(updateData).eq('id', user.id);
       await _supabase.auth.updateUser(UserAttributes(data: {'name': name, 'phone': phone}));
       try {
         await _supabase
@@ -398,7 +399,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
       }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chef Profile Save Failure');
-      _showSnackBar('Failed to update profile: $e', isError: true);
+      _showSnackBar('Could not save your profile. Please try again.', isError: true);
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
