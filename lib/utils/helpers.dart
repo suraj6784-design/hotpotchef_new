@@ -551,6 +551,14 @@ DateTime? parseSlotStartTime(String timeSlot, {DateTime? baseDate}) {
   return null;
 }
 
+bool isMealAvailableForCart(Map<String, dynamic> meal) {
+  final qty = int.tryParse(meal['quantity']?.toString() ?? '0') ?? 0;
+  final status = meal['status']?.toString().toLowerCase().trim() ?? '';
+  if (qty <= 0) return false;
+  if (status == 'sold out' || status == 'paused' || status == 'unavailable') return false;
+  return !isMealExpired(meal['time_slot']?.toString());
+}
+
 bool isMealExpired(String? timeSlot, {DateTime? orderDate}) {
   if (timeSlot == null || timeSlot.isEmpty) return false;
   final startTime = parseSlotStartTime(timeSlot, baseDate: orderDate);

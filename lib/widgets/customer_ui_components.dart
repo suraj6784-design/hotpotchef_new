@@ -217,6 +217,70 @@ void showChefProfileDialog(BuildContext context, String chefId, String chefName,
 }
 
 // 6. Fully Upgraded Decision-Making Meal Details Modal
+Future<bool> confirmReplaceKitchenCart(BuildContext context) async {
+  final replace = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: AppTheme.surfaceOf(ctx),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Text(
+        'Different kitchen',
+        style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(ctx)),
+      ),
+      content: Text(
+        'Your cart has dishes from another kitchen. Clear the cart and add this dish instead?',
+        style: TextStyle(color: AppTheme.onSurfaceOf(ctx).withValues(alpha: 0.75)),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('Keep cart', style: TextStyle(color: Colors.grey)),
+        ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary, foregroundColor: Colors.white),
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('Clear & add'),
+        ),
+      ],
+    ),
+  );
+  return replace == true;
+}
+
+/// Adds a dish, asking before mixing kitchens. Never reports success if the add failed.
+Future<bool> addMealToCartWithConflict({
+  required BuildContext context,
+  required WidgetRef ref,
+  required Map<String, dynamic> meal,
+  int quantity = 1,
+  List<CartItemAddOn> addOns = const [],
+}) async {
+  if (!isMealAvailableForCart(meal)) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This dish is no longer available.'),
+          backgroundColor: Colors.orangeAccent,
+        ),
+      );
+    }
+    return false;
+  }
+
+  final cart = ref.read(cartProvider.notifier);
+  final existingChef = ref.read(cartProvider).primaryChefId;
+  final chefId = meal['chef_id']?.toString() ?? '';
+  final added = cart.addToCart(meal, quantity, addOns: addOns, clearIfVendorConflict: false);
+  if (added) return true;
+
+  final isConflict = existingChef != null && existingChef.isNotEmpty && chefId.isNotEmpty && existingChef != chefId;
+  if (!isConflict || !context.mounted) return false;
+
+  final replace = await confirmReplaceKitchenCart(context);
+  if (!replace || !context.mounted) return false;
+  return cart.addToCart(meal, quantity, addOns: addOns, clearIfVendorConflict: true);
+}
+
 void showMealDetailsDialog(BuildContext context, Map<String, dynamic> meal, WidgetRef ref) {
   Navigator.push(
     context,
@@ -569,28 +633,38 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.primary,
                     foregroundColor: Colors.white,
+                    disabledBackgroundColor: Colors.grey.shade400,
                     padding: const EdgeInsets.symmetric(vertical: 18),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     elevation: 0,
                   ),
-                  onPressed: () {
-                    widget.ref.read(cartProvider.notifier).addToCart(
-                          meal,
-                          _quantity,
-                          addOns: _chosenAddOns,
-                        );
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Added $_quantity portion(s) to cart!'),
-                        backgroundColor: Colors.green,
-                        behavior: SnackBarBehavior.floating,
-                        duration: const Duration(seconds: 2),
-                      ),
-                    );
-                  },
-                  child: Text('Add to Cart • ₹${(_unitTotal * _quantity).toInt()}',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  onPressed: !isMealAvailableForCart(meal)
+                      ? null
+                      : () async {
+                          final added = await addMealToCartWithConflict(
+                            context: context,
+                            ref: widget.ref,
+                            meal: meal,
+                            quantity: _quantity,
+                            addOns: _chosenAddOns,
+                          );
+                          if (!added || !context.mounted) return;
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Added $_quantity portion(s) to cart!'),
+                              backgroundColor: Colors.green,
+                              behavior: SnackBarBehavior.floating,
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                        },
+                  child: Text(
+                    isMealAvailableForCart(meal)
+                        ? 'Add to Cart • ₹${(_unitTotal * _quantity).toInt()}'
+                        : 'Sold out',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
                 ),
               ),
             ],

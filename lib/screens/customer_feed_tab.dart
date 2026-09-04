@@ -364,46 +364,11 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   }
 
   void _handleAddToCart(Map<String, dynamic> meal) async {
-    final cartNotifier = ref.read(cartProvider.notifier);
-    final cartState = ref.read(cartProvider);
-
-    final success = cartNotifier.addToCart(meal, 1, clearIfVendorConflict: false);
-
-    if (!success && cartState.hasVendorConflict) {
-      final shouldClear = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text('Multi-Chef Cart Notice', style: TextStyle(fontWeight: FontWeight.bold)),
-          content: const Text(
-            'Your cart contains items from another kitchen. Would you like to clear your cart and add this dish instead?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: brandPrimary, foregroundColor: Colors.white),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Clear & Add'),
-            ),
-          ],
-        ),
-      );
-
-      if (shouldClear == true && mounted) {
-        cartNotifier.addToCart(meal, 1, clearIfVendorConflict: true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Cart updated with new kitchen item!'), backgroundColor: Colors.green, duration: Duration(seconds: 1)),
-        );
-      }
-    } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Added to Cart!'), backgroundColor: Colors.green, duration: Duration(seconds: 1)),
-      );
-    }
+    final added = await addMealToCartWithConflict(context: context, ref: ref, meal: meal);
+    if (!added || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Added to Cart!'), backgroundColor: Colors.green, duration: Duration(seconds: 1)),
+    );
   }
 
   @override

@@ -2,6 +2,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hotpotchef_new/models/cart_state.dart';
 import 'package:hotpotchef_new/models/cart_enums.dart';
+import 'package:hotpotchef_new/utils/helpers.dart';
 
 CartItemModel _buildItem({
   required int quantity,
@@ -93,5 +94,24 @@ void main() {
     expect(meal['chef_id'], 'chef-3');
     expect(meal['title'], 'Dal fry');
     expect(meal['price'], 160);
+  });
+
+  test('isMealAvailableForCart refuses sold-out and empty stock', () {
+    expect(
+      isMealAvailableForCart({'id': '1', 'quantity': 3, 'status': 'Available'}),
+      isTrue,
+    );
+    expect(
+      isMealAvailableForCart({'id': '1', 'quantity': 0, 'status': 'Available'}),
+      isFalse,
+    );
+    expect(
+      isMealAvailableForCart({'id': '1', 'quantity': 4, 'status': 'Sold Out'}),
+      isFalse,
+    );
+    expect(
+      isMealAvailableForCart({'id': '1', 'quantity': 2, 'status': 'Paused'}),
+      isFalse,
+    );
   });
 }
