@@ -51,7 +51,8 @@ serve(async (req) => {
     let refundStatus = cancelled.refund_status as string | null
     if (paymentId && !alreadyRefunded) {
       try {
-        const refund = await refundPayment(paymentId)
+        const refundPaise = Math.round(Number(cancelled.total_price || 0) * 100)
+        const refund = await refundPayment(paymentId, refundPaise > 0 ? refundPaise : undefined)
         refundId = refund?.id ?? refundId
         refundStatus = refund?.status ?? 'processed'
         const admin = createClient(supabaseUrl, serviceKey)

@@ -1,5 +1,6 @@
 import '../models/cart_enums.dart';
 import '../models/order_status.dart';
+import '../utils/helpers.dart';
 import 'order_repository.dart';
 
 export '../models/order_status.dart';
@@ -45,6 +46,15 @@ class OrderLifecycle {
     if (s.contains('prepar') || s.contains('ready') || s.contains('out') || s.contains('assigned')) {
       return false;
     }
+    return true;
+  }
+
+  /// Customer may cancel until the kitchen starts, and not after the slot begins.
+  static bool canCustomerCancelOrder(Map<String, dynamic> order, {DateTime? now}) {
+    if (!canCustomerCancel(order['status']?.toString())) return false;
+    final slotStart = orderSlotStart(order, now: now);
+    final current = now ?? DateTime.now();
+    if (slotStart != null && !current.isBefore(slotStart)) return false;
     return true;
   }
 

@@ -9,6 +9,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/app_theme.dart';
 import '../utils/network.dart';
+import '../utils/helpers.dart';
 import '../models/cart_enums.dart';
 import '../models/pricing_models.dart';
 
@@ -214,9 +215,19 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
       final user = _supabase.auth.currentUser;
       if (user == null) throw Exception('Authentication session expired');
 
-      final chefName = user.userMetadata?['name']?.toString() ??
-          user.userMetadata?['full_name']?.toString() ??
-          'Chef Kitchen';
+      var chefName = chefDisplayName({
+        'name': user.userMetadata?['name'],
+        'full_name': user.userMetadata?['full_name'],
+        'email': user.email,
+      }, fallback: 'Home Kitchen');
+      try {
+        final profile = await _supabase
+            .from('users')
+            .select('name, full_name, email')
+            .eq('id', user.id)
+            .maybeSingle();
+        chefName = chefDisplayName(profile, fallback: chefName);
+      } catch (_) {}
 
       String? imageUrl = _existingImageUrl;
 

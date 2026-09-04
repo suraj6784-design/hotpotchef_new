@@ -465,3 +465,8 @@ entrypoint = "./functions/cancel-order/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/razorpay-webhook/index.ts"
+
+[functions.release-chef-payout]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/release-chef-payout/index.ts"

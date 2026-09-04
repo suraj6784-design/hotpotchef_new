@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/app_theme.dart';
+import '../utils/helpers.dart';
 import '../widgets/customer_ui_components.dart';
 
 class AiRecommendationsSection extends ConsumerStatefulWidget {
@@ -151,7 +152,7 @@ class _AiRecommendationsSectionState extends ConsumerState<AiRecommendationsSect
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              meal['chef_name']?.toString() ?? 'Home Chef',
+                              chefDisplayName(meal),
                               style: const TextStyle(color: AppTheme.textMuted, fontSize: 11),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,

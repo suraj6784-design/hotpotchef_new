@@ -60,6 +60,32 @@ void main() {
       expect(OrderLifecycle.canCustomerCancel('Preparing'), isFalse);
     });
 
+    test('customer can cancel a processing order before the slot starts', () {
+      final placed = DateTime(2026, 9, 3, 7, 28);
+      final now = DateTime(2026, 9, 3, 7, 31);
+      expect(
+        OrderLifecycle.canCustomerCancelOrder({
+          'status': 'Pending Chef Approval',
+          'created_at': placed.toIso8601String(),
+          'time_slot': '03/09/2026 | 12:00 PM to 1:00 PM',
+        }, now: now),
+        isTrue,
+      );
+    });
+
+    test('customer cannot cancel after the delivery slot begins', () {
+      final placed = DateTime(2026, 9, 3, 7, 28);
+      final now = DateTime(2026, 9, 3, 12, 5);
+      expect(
+        OrderLifecycle.canCustomerCancelOrder({
+          'status': 'Pending Chef Approval',
+          'created_at': placed.toIso8601String(),
+          'time_slot': '03/09/2026 | 12:00 PM to 1:00 PM',
+        }, now: now),
+        isFalse,
+      );
+    });
+
     test('trackable after kitchen is ready or driver is assigned', () {
       expect(OrderLifecycle.isTrackable('Ready for Pickup'), isTrue);
       expect(OrderLifecycle.isTrackable('Driver Assigned'), isTrue);

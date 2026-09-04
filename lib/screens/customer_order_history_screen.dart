@@ -17,6 +17,7 @@ import '../utils/support.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/app_status_badge.dart';
+import '../services/chef_directory.dart';
 
 class CustomerOrderHistoryScreen extends StatelessWidget {
   const CustomerOrderHistoryScreen({super.key});
@@ -146,7 +147,15 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
     bool isDelivered,
     Map<String, dynamic> orderRecord,
   ) {
-    final chefName = items.isNotEmpty ? (items.first['chef_name'] ?? 'Home Chef') : 'Home Chef';
+    final hasDelivery = (orderRecord['order_type']?.toString().toLowerCase() ?? '').contains('delivery');
+    final bill = orderBillBreakdown(items: items, order: orderRecord, hasDelivery: hasDelivery);
+    itemsTotal = bill.itemsTotal;
+    packagingFee = bill.packagingFee;
+    deliveryFee = bill.deliveryFee;
+    finalGrandTotal = bill.grandTotal;
+
+    final chefId = orderRecord['chef_id']?.toString() ??
+        (items.isNotEmpty ? items.first['chef_id']?.toString() : null);
     final status = orderRecord['status']?.toString() ?? 'Completed';
     final orderType = orderRecord['order_type']?.toString() ?? (items.isNotEmpty ? (items.first['service_type']?.toString() ?? 'Delivery') : 'Delivery');
     final addressValue = orderRecord['delivery_address']?.toString() ?? (items.isNotEmpty ? (items.first['delivery_address']?.toString() ?? 'Unknown Address') : 'Unknown Address');
@@ -222,6 +231,20 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                               Text(dateTimeString, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppTheme.textMain)),
                             ],
                           ),
+                          if (!isDelivered) ...[
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                const Icon(Icons.cancel_outlined, size: 14, color: Colors.redAccent),
+                                const SizedBox(width: 6),
+                                const Text('Cancelled: ', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                                Text(
+                                  formatOrderDate(orderRecord['updated_at']?.toString() ?? orderRecord['created_at']?.toString()),
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Colors.redAccent),
+                                ),
+                              ],
+                            ),
+                          ],
                           const SizedBox(height: 6),
                           Row(
                             children: [
@@ -259,8 +282,24 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(chefName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain)),
-                                const Text('Home Kitchen', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+                                FutureBuilder<String>(
+                                  future: lookupChefDisplayName(
+                                    chefId,
+                                    hint: items.isNotEmpty ? items.first : orderRecord,
+                                  ),
+                                  builder: (context, snap) {
+                                    final name = snap.data ??
+                                        chefDisplayName(
+                                          items.isNotEmpty ? items.first : orderRecord,
+                                          fallback: 'Loading chef...',
+                                        );
+                                    return Text(
+                                      name,
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain),
+                                    );
+                                  },
+                                ),
+                                const Text('Home kitchen', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
                               ],
                             ),
                           ]),
@@ -268,7 +307,7 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                           Text('Order ID: $displayOrderIdStr', style: const TextStyle(color: AppTheme.textMuted, fontSize: 13, fontWeight: FontWeight.bold)),
                           const SizedBox(height: 16),
                           ...items.map((item) {
-                            double parsedPrice = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+                            double parsedPrice = lineItemUnitPrice(item);
                             int parsedQty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
                             final placedDate = getTrueOrderDateTime(
                               orderRecord['order_id']?.toString() ?? '',
@@ -353,6 +392,10 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Delivery fee', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)), Text('₹${deliveryFee.toInt()}', style: const TextStyle(color: AppTheme.textMain, fontSize: 13, fontWeight: FontWeight.w500))]),
                           const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: Colors.black12)),
                           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Grand total', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.textMain)), Text('₹${finalGrandTotal.toInt()}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.textMain))]),
+                          if (!isDelivered) ...[
+                            const SizedBox(height: 10),
+                            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Refund amount', style: TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold)), Text('₹${finalGrandTotal.toInt()}', style: const TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold))]),
+                          ],
                         ],
                       ),
                     ),

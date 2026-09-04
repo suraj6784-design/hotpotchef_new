@@ -18,6 +18,7 @@ import '../utils/support.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/meal_review_dialog.dart';
+import '../services/chef_directory.dart';
 import '../services/order_lifecycle.dart';
 
 class CustomerOrdersTab extends StatefulWidget {
@@ -160,10 +161,21 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
       smartTimeSlot(originalSlot, placedDate, selectedDateStr: selectedDateStr);
 
   bool _canCancelOrder(Map<String, dynamic> order) {
-    return OrderLifecycle.canCustomerCancel(order['status']?.toString());
+    return OrderLifecycle.canCustomerCancelOrder(order);
   }
 
   Future<void> _cancelOrderGroup(List<Map<String, dynamic>> groupItems) async {
+    final hasDelivery = groupItems.any((item) {
+      final service = item['service_type']?.toString().toLowerCase() ?? '';
+      return service.contains('delivery');
+    });
+    final bill = orderBillBreakdown(
+      items: groupItems,
+      order: groupItems.isNotEmpty ? groupItems.first : null,
+      hasDelivery: hasDelivery,
+    );
+    final refundRupees = bill.grandTotal.toInt();
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -173,8 +185,9 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
           SizedBox(width: 8),
           Text('Cancel Order'),
         ]),
-        content: const Text(
-          'Cancel this order? Inventory will be restored and a refund will be issued to the original payment method (usually 5–7 business days).',
+        content: Text(
+          'You can cancel until the chef starts cooking, or until your delivery slot begins.\n\n'
+          'Refund ₹$refundRupees will be sent to the original payment method (usually 5–7 business days).',
         ),
         actions: [
           TextButton(
@@ -376,9 +389,17 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
     bool isDelivered,
     Map<String, dynamic>? trackableItem,
   ) {
-    final chefName = items.first['chef_name'] ?? 'Home Chef';
-    final chefId = items.first['chef_id'] ?? '';
+    final chefId = items.first['chef_id']?.toString() ?? '';
     final status = items.first['status']?.toString() ?? 'Pending';
+    final bill = orderBillBreakdown(
+      items: items,
+      order: items.first,
+      hasDelivery: (items.first['service_type']?.toString().toLowerCase() ?? '').contains('delivery'),
+    );
+    itemsTotal = bill.itemsTotal;
+    packagingFee = bill.packagingFee;
+    deliveryFee = bill.deliveryFee;
+    finalGrandTotal = bill.grandTotal;
     final orderType = items.first['service_type']?.toString() ?? 'Delivery';
 
     IconData statusIcon = Icons.hourglass_empty;
@@ -549,8 +570,18 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(chefName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain)),
-                                    const Text('Home Kitchen', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+                                    FutureBuilder<String>(
+                                      future: lookupChefDisplayName(chefId, hint: items.first),
+                                      builder: (context, snap) {
+                                        final name = snap.data ??
+                                            chefDisplayName(items.first, fallback: 'Loading chef...');
+                                        return Text(
+                                          name,
+                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain),
+                                        );
+                                      },
+                                    ),
+                                    const Text('Home kitchen', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
                                   ],
                                 ),
                               ]),
@@ -579,7 +610,7 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                           ),
                           const SizedBox(height: 16),
                           ...items.map((item) {
-                            double parsedPrice = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+                            double parsedPrice = lineItemUnitPrice(item);
                             int parsedQty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
 
                             final truePlacedDate = getTrueOrderDateTime(item['order_id']?.toString() ?? '', item['created_at']?.toString());
@@ -656,6 +687,10 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Delivery fee', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)), Text('₹${deliveryFee.toInt()}', style: const TextStyle(color: AppTheme.textMain, fontSize: 13, fontWeight: FontWeight.w500))]),
                           const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: Colors.black12)),
                           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Grand total', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.textMain)), Text('₹${finalGrandTotal.toInt()}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.textMain))]),
+                          if (isCancelled) ...[
+                            const SizedBox(height: 10),
+                            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Refund amount', style: TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold)), Text('₹${finalGrandTotal.toInt()}', style: const TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold))]),
+                          ],
                         ],
                       ),
                     ),
@@ -881,6 +916,7 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
             'delivery_address': order['delivery_address'],
             'driver_id': order['delivery_partner_id'],
             'created_at': order['created_at'] ?? DateTime.now().toIso8601String(),
+            'time_slot': order['time_slot'] ?? item['time_slot'],
             'total_price': order['total_price'],
             'delivery_fee': order['delivery_fee'],
             'packaging_fee': order['packaging_fee'],
@@ -901,7 +937,7 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
           'created_at': order['created_at'] ?? DateTime.now().toIso8601String(),
           'title': order['title'] ?? 'Custom Order',
           'quantity': 1,
-          'price': order['total_price'] ?? order['price'] ?? 0,
+          'price': order['price'] ?? 0,
           'total_price': order['total_price'],
           'delivery_fee': order['delivery_fee'],
           'packaging_fee': order['packaging_fee'],
@@ -974,7 +1010,7 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                 }
                 if (allCancelled) canCancelGroup = false;
 
-                final bill = orderBillBreakdown(items: items, hasDelivery: hasDelivery);
+                final bill = orderBillBreakdown(items: items, order: items.first, hasDelivery: hasDelivery);
                 itemsTotal = bill.itemsTotal;
                 final packagingFee = bill.packagingFee;
                 final deliveryFee = bill.deliveryFee;

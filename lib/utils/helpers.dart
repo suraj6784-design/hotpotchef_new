@@ -297,6 +297,119 @@ double parseMoney(dynamic value, [double fallback = 0]) {
   return double.tryParse(value?.toString() ?? '') ?? fallback;
 }
 
+double roundMoney(double value) => (value * 100).round() / 100;
+
+/// Platform take on food + packaging. Delivery fee stays with the platform.
+const double kPlatformMarginRate = 0.15;
+
+const Set<String> _placeholderChefNames = {
+  'home chef',
+  'home kitchen',
+  'home cook',
+  'chef kitchen',
+  'chef',
+  'chef name',
+};
+
+bool isPlaceholderChefName(String? name) {
+  final value = name?.trim().toLowerCase() ?? '';
+  return value.isEmpty || _placeholderChefNames.contains(value);
+}
+
+/// Prefers the chef profile display name, then kitchen name, then the email local-part.
+String chefDisplayName(Map<String, dynamic>? data, {String fallback = 'Home Kitchen'}) {
+  if (data == null) return fallback;
+  for (final key in const [
+    'chef_name',
+    'kitchen_name',
+    'name',
+    'full_name',
+    'display_name',
+    'accepted_chef_name',
+  ]) {
+    final value = data[key]?.toString().trim() ?? '';
+    if (!isPlaceholderChefName(value)) return value;
+  }
+  final email = data['email']?.toString() ?? '';
+  final at = email.indexOf('@');
+  if (at > 0) {
+    final local = email.substring(0, at).trim();
+    if (local.isNotEmpty) return local;
+  }
+  return fallback;
+}
+
+/// Unit price for a cart/order line. Ignores a "discount" that is higher than the listed price.
+double lineItemUnitPrice(Map<String, dynamic> item) {
+  final unit = parseMoney(item['price'] ?? item['unit_price'] ?? item['base_price'] ?? item['basePrice']);
+  final discounted = parseMoney(item['discounted_price'] ?? item['discountedPrice']);
+  if (discounted > 0 && (unit <= 0 || discounted <= unit + 0.001)) {
+    return discounted;
+  }
+  return unit;
+}
+
+class ChefPayoutBreakdown {
+  const ChefPayoutBreakdown({
+    required this.foodAndPackaging,
+    required this.marginRate,
+    required this.margin,
+    required this.chefPayout,
+  });
+
+  final double foodAndPackaging;
+  final double marginRate;
+  final double margin;
+  final double chefPayout;
+}
+
+/// Chef earns food + packaging after platform margin. Delivery fee is not included.
+ChefPayoutBreakdown chefPayoutBreakdown({
+  required double itemsTotal,
+  required double packagingFee,
+  double marginRate = kPlatformMarginRate,
+}) {
+  final base = roundMoney((itemsTotal + packagingFee).clamp(0, double.infinity).toDouble());
+  final payout = roundMoney(base * (1 - marginRate));
+  return ChefPayoutBreakdown(
+    foodAndPackaging: base,
+    marginRate: marginRate,
+    margin: roundMoney(base - payout),
+    chefPayout: payout,
+  );
+}
+
+DateTime? parseClockOnDate(String timeText, DateTime date) {
+  final match = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)', caseSensitive: false).firstMatch(timeText);
+  if (match == null) return null;
+  var hour = int.parse(match.group(1)!);
+  final minute = int.parse(match.group(2)!);
+  final ampm = match.group(3)!.toUpperCase();
+  if (ampm == 'PM' && hour != 12) hour += 12;
+  if (ampm == 'AM' && hour == 12) hour = 0;
+  return DateTime(date.year, date.month, date.day, hour, minute);
+}
+
+/// Start of the scheduled slot, used to stop customer cancel once the window begins.
+DateTime? orderSlotStart(Map<String, dynamic> order, {DateTime? now}) {
+  final placed = DateTime.tryParse(order['created_at']?.toString() ?? '')?.toLocal() ?? now;
+  final rawSlot = order['time_slot']?.toString() ??
+      order['delivery_slot']?.toString() ??
+      order['selected_slot']?.toString() ??
+      '';
+  if (rawSlot.isEmpty && placed == null) return null;
+  final slot = smartTimeSlot(
+    rawSlot.isEmpty ? null : rawSlot,
+    placed ?? DateTime.now(),
+    selectedDateStr: order['selected_date']?.toString(),
+  );
+  final assumedYear = (placed ?? DateTime.now()).year;
+  final date = parseSlotDate(slot, assumedYear) ??
+      (placed != null ? DateTime(placed.year, placed.month, placed.day) : null);
+  if (date == null) return null;
+  return parseClockOnDate(slot, date) ?? DateTime(date.year, date.month, date.day);
+}
+
 class OrderBillBreakdown {
   const OrderBillBreakdown({
     required this.itemsTotal,
@@ -325,7 +438,7 @@ OrderBillBreakdown orderBillBreakdown({
 
   var itemsTotal = 0.0;
   for (final item in items) {
-    final price = parseMoney(item['discounted_price'] ?? item['price'] ?? item['unit_price']);
+    final price = lineItemUnitPrice(item);
     final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
     itemsTotal += price * qty;
   }

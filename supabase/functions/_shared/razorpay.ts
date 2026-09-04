@@ -86,3 +86,31 @@ export async function createRazorpayOrder(amountPaise: number, receipt: string, 
   }
   return data
 }
+
+export async function createPaymentTransfer(paymentId: string, accountId: string, amountPaise: number, notes: Record<string, string>) {
+  const { header } = razorpayAuthHeader()
+  const res = await fetch(`https://api.razorpay.com/v1/payments/${paymentId}/transfers`, {
+    method: 'POST',
+    headers: {
+      Authorization: header,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      transfers: [
+        {
+          account: accountId,
+          amount: amountPaise,
+          currency: 'INR',
+          notes,
+          on_hold: false,
+        },
+      ],
+    }),
+  })
+  const data = await res.json()
+  if (!res.ok) {
+    throw new Error(data?.error?.description || 'Razorpay transfer failed')
+  }
+  const transfer = Array.isArray(data?.items) ? data.items[0] : (Array.isArray(data) ? data[0] : data)
+  return transfer
+}

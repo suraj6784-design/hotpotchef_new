@@ -888,7 +888,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                     showChefProfileDialog(
                                       context,
                                       meal['chef_id']?.toString() ?? '',
-                                      meal['chef_name']?.toString() ?? 'Home Cook',
+                                      chefDisplayName(meal),
                                       meal['fssai_number']?.toString() ?? '',
                                     );
                                   },
@@ -898,7 +898,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                       const SizedBox(width: 4),
                                       Expanded(
                                         child: Text(
-                                          meal['chef_name'] ?? 'Home Cook',
+                                          chefDisplayName(meal),
                                           style: const TextStyle(
                                             color: brandPrimary,
                                             fontSize: 12,

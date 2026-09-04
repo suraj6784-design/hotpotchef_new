@@ -1,5 +1,7 @@
 // lib/services/order_repository.dart
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
@@ -47,6 +49,10 @@ class OrderRepository {
         await _supabase.from('orders').update(updateData).eq('id', orderId);
       }
       AlertService.notifyOrder(orderId: orderId, type: 'UPDATE');
+
+      if (lowered == 'delivered' || lowered == 'completed') {
+        unawaited(_releaseChefPayout(orderId));
+      }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to update order status to $newStatus');
       if (kDebugMode) debugPrint('Order update error: $e');
@@ -105,6 +111,18 @@ class OrderRepository {
     } on FunctionException catch (e) {
       final details = _functionData(e.details);
       throw Exception(details?['error'] ?? e.reasonPhrase ?? 'Cancellation failed');
+    }
+  }
+
+  Future<void> _releaseChefPayout(String orderId) async {
+    try {
+      await _supabase.functions.invoke(
+        'release-chef-payout',
+        body: {'order_id': orderId},
+      ).withTimeout(NetworkTimeouts.payment);
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chef payout after delivery failed');
+      if (kDebugMode) debugPrint('Chef payout error: $e');
     }
   }
 }

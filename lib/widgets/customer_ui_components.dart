@@ -246,7 +246,7 @@ class _MealDetailsModalContentState extends State<_MealDetailsModalContent> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final maxStock = int.tryParse(meal['quantity']?.toString() ?? '10') ?? 10;
     final price = double.tryParse(meal['price']?.toString() ?? '0') ?? 0.0;
-    final chefName = meal['chef_name']?.toString() ?? 'Home Cook';
+    final chefName = chefDisplayName(meal);
     final chefId = meal['chef_id']?.toString() ?? '';
     final fssai = meal['fssai_number']?.toString() ?? 'Verified Partner';
     final serviceType = meal['service_type']?.toString() ?? 'Delivery, Pickup';
