@@ -93,12 +93,31 @@ class AppTheme {
   // ---------------------------------------------------------------------------
   // 5. Reusable decorations
   // ---------------------------------------------------------------------------
+  static Color canvasOf(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? backgroundDark : background;
+
+  static Color onSurfaceOf(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? textMainDark : textMain;
+
+  static Color surfaceOf(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? surfaceDark : surfaceLight;
+
+  static Color surfaceMutedOf(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? surfaceMutedDark : surfaceMutedLight;
+
+  static Color hairlineOf(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+          ? Colors.white.withValues(alpha: 0.08)
+          : const Color(0xFFEDE6E0);
+
   static BoxDecoration cardDecoration({bool isDark = false}) {
     return BoxDecoration(
       color: isDark ? surfaceDark : surfaceLight,
       borderRadius: radiusLg,
       boxShadow: isDark ? const [] : softShadow,
-      border: isDark ? Border.all(color: Colors.white.withValues(alpha: 0.06)) : null,
+      border: Border.all(
+        color: isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFEDE6E0),
+      ),
     );
   }
 

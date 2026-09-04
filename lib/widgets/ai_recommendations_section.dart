@@ -91,11 +91,13 @@ class _AiRecommendationsSectionState extends ConsumerState<AiRecommendationsSect
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
           child: Row(
             children: [
-              const Icon(Icons.auto_awesome, color: Colors.purpleAccent, size: 20),
+              const Icon(Icons.auto_awesome, color: AppTheme.primary, size: 20),
               const SizedBox(width: 8),
-              Text(
-                'Because you like $_favoriteCategory ✨',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppTheme.textMain),
+              Flexible(
+                child: Text(
+                  'Because you like $_favoriteCategory',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppTheme.onSurfaceOf(context)),
+                ),
               ),
             ],
           ),

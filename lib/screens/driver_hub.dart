@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../utils/helpers.dart';
 import '../widgets/customer_ui_components.dart';
@@ -13,6 +15,7 @@ import '../widgets/app_status_badge.dart';
 import '../providers/driver_dashboard_provider.dart';
 import '../models/driver_delivery_model.dart';
 import '../services/auth_session.dart';
+import '../services/delivery_estimator_service.dart';
 import 'driver_profile_screen.dart';
 
 class DriverHubScreen extends ConsumerStatefulWidget {
@@ -25,6 +28,97 @@ class DriverHubScreen extends ConsumerStatefulWidget {
 class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
   int _selectedIndex = 0;
   bool _isOnline = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAvailability();
+  }
+
+  Future<void> _loadAvailability() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+    try {
+      final row = await Supabase.instance.client
+          .from('driver_profiles')
+          .select('is_available')
+          .eq('user_id', user.id)
+          .maybeSingle();
+      if (mounted && row != null) {
+        setState(() => _isOnline = row['is_available'] != false);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _toggleOnline() async {
+    final next = !_isOnline;
+    setState(() => _isOnline = next);
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+    try {
+      await Supabase.instance.client.from('driver_profiles').upsert({
+        'user_id': user.id,
+        'is_available': next,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      });
+    } catch (_) {
+      try {
+        await Supabase.instance.client
+            .from('driver_profiles')
+            .update({'is_available': next})
+            .eq('user_id', user.id);
+      } catch (e) {
+        if (mounted) {
+          setState(() => _isOnline = !next);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not update availability: $e'), backgroundColor: Colors.red),
+          );
+          return;
+        }
+      }
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(next ? 'Online • Receiving dispatches' : 'You are offline'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  Future<void> _callCustomer(String customerId) async {
+    if (customerId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No customer contact on this order.'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
+    try {
+      final userDoc = await Supabase.instance.client.from('users').select('phone').eq('id', customerId).maybeSingle();
+      final phoneStr = userDoc?['phone']?.toString() ?? '';
+      if (phoneStr.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No phone number available.'), backgroundColor: Colors.orange),
+          );
+        }
+        return;
+      }
+      final uri = Uri(scheme: 'tel', path: phoneStr);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open phone dialer.'), backgroundColor: Colors.red),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -65,7 +159,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
         }
       },
       child: Scaffold(
-        backgroundColor: AppTheme.background,
+        backgroundColor: AppTheme.canvasOf(context),
         body: Column(
           children: [
             Container(
@@ -93,15 +187,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                           style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 12),
                       GestureDetector(
-                        onTap: () {
-                          setState(() => _isOnline = !_isOnline);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(_isOnline ? '🟢 Online • Receiving Dispatches' : '🔴 Offline'),
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
-                        },
+                        onTap: _toggleOnline,
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
@@ -160,26 +246,17 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
             Expanded(child: pages[_selectedIndex]),
           ],
         ),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: _selectedIndex,
-          onDestinationSelected: (idx) => setState(() => _selectedIndex = idx),
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.dashboard_outlined),
-              selectedIcon: Icon(Icons.dashboard, color: AppTheme.primary),
-              label: 'Dashboard',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.list_alt_outlined),
-              selectedIcon: Icon(Icons.list_alt, color: AppTheme.primary),
-              label: 'Available',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.map_outlined),
-              selectedIcon: Icon(Icons.map, color: AppTheme.primary),
-              label: 'Active',
-            ),
-          ],
+        bottomNavigationBar: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: HubBottomDock(
+            selectedIndex: _selectedIndex,
+            onSelect: (idx) => setState(() => _selectedIndex = idx),
+            destinations: const [
+              HubDockDestination(icon: Icons.dashboard_outlined, selectedIcon: Icons.dashboard, label: 'Home'),
+              HubDockDestination(icon: Icons.list_alt_outlined, selectedIcon: Icons.list_alt, label: 'Jobs'),
+              HubDockDestination(icon: Icons.map_outlined, selectedIcon: Icons.map, label: 'Active'),
+            ],
+          ),
         ),
       ),
     );
@@ -233,7 +310,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                       const Icon(Icons.local_shipping, color: AppTheme.primary, size: 24),
                       const SizedBox(height: 12),
                       Text('${state.activeDeliveries.length}',
-                          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+                          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                       const SizedBox(height: 4),
                       const Text('Active Runs', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
                     ],
@@ -249,7 +326,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                       const Icon(Icons.inventory_2_outlined, color: Colors.blue, size: 24),
                       const SizedBox(height: 12),
                       Text('${state.availableDeliveries.length}',
-                          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+                          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                       const SizedBox(height: 4),
                       const Text('Available Pool', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
                     ],
@@ -259,8 +336,8 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
             ],
           ),
           const SizedBox(height: 24),
-          const Text('Recent Completed Deliveries',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+          Text('Recent completed deliveries',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.onSurfaceOf(context))),
           const SizedBox(height: 12),
           if (state.recentDeliveries.isEmpty)
             const SizedBox(
@@ -292,7 +369,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(delivery.chefName,
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.textMain)),
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.onSurfaceOf(context))),
                               const SizedBox(height: 2),
                               Text(formatOrderDate(delivery.createdAt.toIso8601String()),
                                   style: const TextStyle(color: AppTheme.textMuted, fontSize: 11)),
@@ -351,11 +428,18 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               ),
               const SizedBox(height: 10),
               Text('Pickup: ${delivery.chefName}',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textMain)),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.onSurfaceOf(context))),
               const SizedBox(height: 4),
               Text(delivery.pickupAddress, style: const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
               const SizedBox(height: 8),
-              Text('Dropoff: ${delivery.customerAddress}', style: const TextStyle(fontSize: 12, color: AppTheme.textMain)),
+              Text('Dropoff: ${delivery.customerAddress}', style: TextStyle(fontSize: 12, color: AppTheme.onSurfaceOf(context))),
+              if (delivery.distanceKm > 0) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '${delivery.distanceKm.toStringAsFixed(1)} km • ~${DeliveryEstimatorService.estimateEtaMinutes(delivery.distanceKm)} min',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primary),
+                ),
+              ],
               const SizedBox(height: 16),
               GradientButton(
                 label: 'Accept Delivery',
@@ -407,13 +491,19 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               ),
               const SizedBox(height: 12),
               Text('Pickup from ${delivery.chefName}',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textMain)),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.onSurfaceOf(context))),
               const SizedBox(height: 4),
               Text(delivery.pickupAddress, style: const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
               const SizedBox(height: 8),
               Text('Deliver to: ${delivery.customerAddress}',
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textMain)),
-              const SizedBox(height: 16),
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.onSurfaceOf(context))),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.phone_outlined, size: 16),
+                label: const Text('Call customer'),
+                onPressed: () => _callCustomer(delivery.customerId),
+              ),
+              const SizedBox(height: 12),
               Row(
                 children: [
                   Expanded(

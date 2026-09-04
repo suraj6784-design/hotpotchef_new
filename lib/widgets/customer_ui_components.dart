@@ -8,7 +8,9 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/helpers.dart';
 import '../utils/app_theme.dart';
+import '../models/cart_enums.dart';
 import '../providers/cart_provider.dart';
+import '../services/reorder_service.dart';
 import '../screens/auth_screen.dart';
 
 // 1. High-Performance Watermarked Image Widget
@@ -239,6 +241,19 @@ class _MealDetailsModalContent extends StatefulWidget {
 
 class _MealDetailsModalContentState extends State<_MealDetailsModalContent> {
   int _quantity = 1;
+  final Set<String> _selectedAddOnIds = {};
+
+  List<CartItemAddOn> get _availableAddOns => ReorderService.parseMealAddOns(
+        widget.meal['add_ons'] ?? widget.meal['addons'] ?? widget.meal['selectedAddOns'],
+      );
+
+  List<CartItemAddOn> get _chosenAddOns =>
+      _availableAddOns.where((addon) => _selectedAddOnIds.contains(addon.id)).toList();
+
+  double get _unitTotal {
+    final price = double.tryParse(widget.meal['price']?.toString() ?? '0') ?? 0.0;
+    return price + _chosenAddOns.fold<double>(0, (sum, addon) => sum + addon.price);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -425,6 +440,64 @@ class _MealDetailsModalContentState extends State<_MealDetailsModalContent> {
                           ),
                         ],
                       ),
+                      if (_availableAddOns.isNotEmpty) ...[
+                        const SizedBox(height: 24),
+                        Text('Customise',
+                            style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                color: isDark ? AppTheme.textMainDark : AppTheme.textMain)),
+                        const SizedBox(height: 10),
+                        ..._availableAddOns.map((addon) {
+                          final selected = _selectedAddOnIds.contains(addon.id);
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: InkWell(
+                              onTap: () => setState(() {
+                                if (selected) {
+                                  _selectedAddOnIds.remove(addon.id);
+                                } else {
+                                  _selectedAddOnIds.add(addon.id);
+                                }
+                              }),
+                              borderRadius: BorderRadius.circular(12),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: selected
+                                      ? AppTheme.primary.withValues(alpha: 0.1)
+                                      : (isDark ? AppTheme.surfaceDark : AppTheme.surfaceMutedLight),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: selected ? AppTheme.primary : AppTheme.hairlineOf(context)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      selected ? Icons.check_circle : Icons.circle_outlined,
+                                      color: selected ? AppTheme.primary : AppTheme.textMuted,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        addon.title,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          color: isDark ? AppTheme.textMainDark : AppTheme.textMain,
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                      addon.price > 0 ? '+₹${addon.price.toInt()}' : 'Free',
+                                      style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.primary),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        }),
+                      ],
                       const SizedBox(height: 24),
                       Text('About this meal',
                           style: TextStyle(
@@ -501,7 +574,11 @@ class _MealDetailsModalContentState extends State<_MealDetailsModalContent> {
                     elevation: 0,
                   ),
                   onPressed: () {
-                    widget.ref.read(cartProvider.notifier).addToCart(meal, _quantity);
+                    widget.ref.read(cartProvider.notifier).addToCart(
+                          meal,
+                          _quantity,
+                          addOns: _chosenAddOns,
+                        );
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
@@ -512,7 +589,7 @@ class _MealDetailsModalContentState extends State<_MealDetailsModalContent> {
                       ),
                     );
                   },
-                  child: Text('Add to Cart • ₹${(price * _quantity).toInt()}',
+                  child: Text('Add to Cart • ₹${(_unitTotal * _quantity).toInt()}',
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 ),
               ),
@@ -682,7 +759,9 @@ class _AppCardState extends State<AppCard> {
           color: widget.backgroundColor ?? (isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight),
           borderRadius: AppTheme.radiusLg,
           boxShadow: isDark ? const [] : AppTheme.softShadow,
-          border: isDark ? Border.all(color: Colors.white.withValues(alpha: 0.06)) : null,
+          border: Border.all(
+            color: isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFEDE6E0),
+          ),
         ),
         child: widget.child,
       ),

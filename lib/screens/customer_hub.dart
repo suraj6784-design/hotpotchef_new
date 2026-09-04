@@ -9,6 +9,7 @@ import '../providers/cart_provider.dart';
 import '../providers/favorites_provider.dart';
 import '../services/auth_session.dart';
 import '../utils/app_theme.dart';
+import '../widgets/app_widgets.dart';
 import 'customer_feed_tab.dart';
 import 'customer_cart_tab.dart';
 import 'customer_orders_tab.dart';
@@ -55,37 +56,6 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
     setState(() => _selectedIndex = index);
   }
 
-  Widget _buildNavIndicator(int index, IconData outlineIcon, IconData solidIcon, String label, {int badgeCount = 0}) {
-    bool isSelected = _selectedIndex == index;
-    return GestureDetector(
-      onTap: () => _onNavigationItemTapped(index),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-        padding: EdgeInsets.symmetric(horizontal: isSelected ? 20 : 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: isSelected ? AppTheme.primary.withValues(alpha: 0.15) : Colors.transparent,
-          borderRadius: BorderRadius.circular(30),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Badge(
-              label: Text('$badgeCount'),
-              isLabelVisible: badgeCount > 0,
-              child: Icon(isSelected ? solidIcon : outlineIcon,
-                  color: isSelected ? AppTheme.primary : Colors.grey, size: 22),
-            ),
-            if (isSelected) ...[
-              const SizedBox(width: 6),
-              Text(label, style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 13)),
-            ]
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final cartState = ref.watch(cartProvider);
@@ -108,11 +78,12 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
       CustomerOrdersTab(
         onProfileTap: _navigateToProfile,
         onLogout: _handleLogout,
+        onReorderToCart: () => _onNavigationItemTapped(1),
       ),
     ];
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: AppTheme.canvasOf(context),
       body: Stack(
         children: [
           IndexedStack(
@@ -120,7 +91,6 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
             children: pages,
           ),
 
-          // Floating Cart Bar (Visible only on Home Tab when items exist)
           if (cartState.items.isNotEmpty && _selectedIndex == 0)
             Positioned(
               bottom: 92,
@@ -131,9 +101,9 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [AppTheme.textMain, Color(0xFF424242)]),
-                    borderRadius: BorderRadius.circular(30),
-                    boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 12, offset: Offset(0, 6))],
+                    gradient: AppTheme.primaryGradient,
+                    borderRadius: BorderRadius.circular(28),
+                    boxShadow: AppTheme.brandGlow(opacity: 0.32),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -150,16 +120,16 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text('${cartState.itemCount} Items', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                              Text('${cartState.itemCount} items in bag', style: const TextStyle(color: Colors.white70, fontSize: 12)),
                               Text('₹${cartState.foodTotal.toStringAsFixed(0)}',
-                                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
                             ],
                           ),
                         ],
                       ),
-                      Row(
-                        children: const [
-                          Text('View Cart', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
+                      const Row(
+                        children: [
+                          Text('View cart', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
                           SizedBox(width: 8),
                           Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 18),
                         ],
@@ -170,29 +140,23 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
               ),
             ),
 
-          // Bottom Navigation Dock
           Positioned(
             bottom: 20,
             left: 0,
             right: 0,
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(40),
-                  boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 20, offset: Offset(0, 8))],
+            child: HubBottomDock(
+              selectedIndex: _selectedIndex,
+              onSelect: _onNavigationItemTapped,
+              destinations: [
+                const HubDockDestination(icon: Icons.cottage_outlined, selectedIcon: Icons.cottage, label: 'Home'),
+                HubDockDestination(
+                  icon: Icons.shopping_basket_outlined,
+                  selectedIcon: Icons.shopping_basket,
+                  label: 'Cart',
+                  badgeCount: cartState.itemCount,
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _buildNavIndicator(0, Icons.cottage_outlined, Icons.cottage, 'Home'),
-                    _buildNavIndicator(1, Icons.shopping_basket_outlined, Icons.shopping_basket, 'Cart',
-                        badgeCount: cartState.itemCount),
-                    _buildNavIndicator(2, Icons.receipt_long_outlined, Icons.receipt_long, 'Orders'),
-                  ],
-                ),
-              ),
+                const HubDockDestination(icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: 'Orders'),
+              ],
             ),
           ),
         ],

@@ -46,6 +46,7 @@ class DriverDeliveryModel {
   final String chefName;
   final String pickupAddress;
   final String customerAddress;
+  final String customerId;
   final double payout;
   final double distanceKm;
   final int totalItemsCount;
@@ -58,6 +59,7 @@ class DriverDeliveryModel {
     required this.chefName,
     required this.pickupAddress,
     required this.customerAddress,
+    this.customerId = '',
     required this.payout,
     this.distanceKm = 0.0,
     this.totalItemsCount = 1,
@@ -72,6 +74,7 @@ class DriverDeliveryModel {
       chefName: json['chef_name']?.toString() ?? json['chefs']?['business_name']?.toString() ?? 'Chef Kitchen',
       pickupAddress: json['pickup_address']?.toString() ?? json['chefs']?['pickup_address']?.toString() ?? '',
       customerAddress: json['delivery_address']?.toString() ?? '',
+      customerId: json['customer_id']?.toString() ?? json['user_id']?.toString() ?? '',
       payout: (json['driver_payout'] as num?)?.toDouble() ?? 
               (json['delivery_fee'] as num?)?.toDouble() ?? 40.0,
       distanceKm: (json['estimated_distance_km'] as num?)?.toDouble() ?? 0.0,

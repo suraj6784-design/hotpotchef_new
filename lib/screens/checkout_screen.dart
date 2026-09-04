@@ -680,7 +680,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.surfaceOf(context),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (context) {
         return SafeArea(
@@ -690,8 +690,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text('Select Delivery Address',
-                    style: TextStyle(color: Colors.black87, fontSize: 18, fontWeight: FontWeight.bold)),
+                Text('Select delivery address',
+                    style: TextStyle(color: AppTheme.onSurfaceOf(context), fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
                 ..._savedAddresses.map((addr) {
                   final isSelected = _selectedAddressData?['id'] == addr['id'];
@@ -700,9 +700,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   return Container(
                     margin: const EdgeInsets.only(bottom: 12),
                     decoration: BoxDecoration(
-                      color: isSelected ? Colors.deepOrange.withValues(alpha: 0.05) : Colors.white,
+                      color: isSelected ? AppTheme.primary.withValues(alpha: 0.08) : AppTheme.surfaceOf(context),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: isSelected ? Colors.deepOrange : Colors.grey.shade300),
+                      border: Border.all(color: isSelected ? AppTheme.primary : AppTheme.hairlineOf(context)),
                     ),
                     child: ListTile(
                       dense: true,
@@ -769,16 +769,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Checkout')),
+        backgroundColor: AppTheme.canvasOf(context),
+        appBar: const HubAppBar(title: 'Checkout'),
         body: const Center(child: CircularProgressIndicator(color: AppTheme.primary)),
       );
     }
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
-      appBar: AppBar(
-        title: const Text('Checkout & Payment'),
-      ),
+      backgroundColor: AppTheme.canvasOf(context),
+      appBar: const HubAppBar(title: 'Checkout & Payment'),
       bottomNavigationBar: _buildPayBar(),
       body: ListView(
         padding: const EdgeInsets.all(20),
@@ -788,9 +787,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             padding: const EdgeInsets.all(16),
             margin: const EdgeInsets.only(bottom: 16),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: AppTheme.surfaceOf(context),
               borderRadius: BorderRadius.circular(16),
-              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
+              border: Border.all(color: AppTheme.hairlineOf(context)),
+              boxShadow: AppTheme.softShadow,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -842,9 +842,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               padding: const EdgeInsets.all(16),
               margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: AppTheme.surfaceOf(context),
                 borderRadius: BorderRadius.circular(16),
-                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
+                border: Border.all(color: AppTheme.hairlineOf(context)),
+                boxShadow: AppTheme.softShadow,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -885,9 +886,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: AppTheme.surfaceOf(context),
               borderRadius: BorderRadius.circular(16),
-              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
+              border: Border.all(color: AppTheme.hairlineOf(context)),
+              boxShadow: AppTheme.softShadow,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -969,9 +971,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: AppTheme.surfaceOf(context),
               borderRadius: BorderRadius.circular(16),
-              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
+              border: Border.all(color: AppTheme.hairlineOf(context)),
+              boxShadow: AppTheme.softShadow,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

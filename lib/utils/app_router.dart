@@ -19,6 +19,7 @@ import '../screens/chef_publish_meal_screen.dart';
 import '../screens/referral_screen.dart';
 import '../screens/customer_order_history_screen.dart';
 import '../screens/customer_bulk_request_screen.dart';
+import '../screens/driver_id_card_screen.dart';
 import '../services/auth_session.dart';
 import '../widgets/not_found_page.dart';
 
@@ -47,6 +48,7 @@ class AppRouter {
         '/chef-analytics',
         '/chef-profile',
         '/driver-profile',
+        '/driver-id-card',
         '/chef-publish-meal',
       ];
       if (!isAuthenticated && protectedChefDriverRoutes.contains(path)) {
@@ -135,6 +137,17 @@ class AppRouter {
       GoRoute(
         path: '/driver-profile',
         builder: (context, state) => const DriverProfileScreen(),
+      ),
+      GoRoute(
+        path: '/driver-id-card',
+        builder: (context, state) {
+          final extra = state.extra is Map ? Map<String, dynamic>.from(state.extra as Map) : <String, dynamic>{};
+          return DriverIdCardScreen(
+            driverName: extra['name']?.toString() ?? 'Delivery Partner',
+            driverPhone: extra['phone']?.toString() ?? '',
+            avatarUrl: extra['avatarUrl']?.toString(),
+          );
+        },
       ),
       GoRoute(
         path: '/chef-analytics',

@@ -1,12 +1,12 @@
 // lib/screens/customer_order_history_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:go_router/go_router.dart';
 import 'dart:io';
 import 'dart:convert';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:pdf/pdf.dart' as pw;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
@@ -18,6 +18,9 @@ import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/app_status_badge.dart';
 import '../services/chef_directory.dart';
+import '../services/reorder_service.dart';
+import '../providers/cart_provider.dart';
+import 'customer_hub.dart';
 
 class CustomerOrderHistoryScreen extends StatelessWidget {
   const CustomerOrderHistoryScreen({super.key});
@@ -156,7 +159,6 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
 
     final chefId = orderRecord['chef_id']?.toString() ??
         (items.isNotEmpty ? items.first['chef_id']?.toString() : null);
-    final status = orderRecord['status']?.toString() ?? 'Completed';
     final orderType = orderRecord['order_type']?.toString() ?? (items.isNotEmpty ? (items.first['service_type']?.toString() ?? 'Delivery') : 'Delivery');
     final addressValue = orderDropoffAddress(orderRecord, items: items);
     final displayAddress = addressValue.isEmpty ? 'Unknown Address' : addressValue;
@@ -172,20 +174,23 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
       builder: (ctx) {
         return Container(
           height: MediaQuery.of(context).size.height * 0.90,
-          decoration: BoxDecoration(color: AppTheme.background, borderRadius: const BorderRadius.vertical(top: Radius.circular(20))),
+          decoration: AppTheme.bottomSheetDecoration(isDark: Theme.of(context).brightness == Brightness.dark),
           child: Column(
             children: [
               Container(
-                decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceOf(context),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                ),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Row(
                       children: [
-                        GestureDetector(onTap: () => Navigator.pop(ctx), child: const Icon(Icons.arrow_back, color: AppTheme.textMain)),
+                        GestureDetector(onTap: () => Navigator.pop(ctx), child: Icon(Icons.arrow_back, color: AppTheme.onSurfaceOf(context))),
                         const SizedBox(width: 12),
-                        const Text('Order History Details', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+                        Text('Order history details', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                       ],
                     ),
                     GestureDetector(
@@ -445,10 +450,8 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
     }
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
-      appBar: AppBar(
-        title: const Text('Order History'),
-      ),
+      backgroundColor: AppTheme.canvasOf(context),
+      appBar: const HubAppBar(title: 'Order History'),
       body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: Supabase.instance.client
             .from('orders')
@@ -488,131 +491,217 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
             );
           }
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: pastOrders.length,
-            itemBuilder: (context, index) {
-              final order = pastOrders[index];
-              final rawId = order['id'].toString();
-              final displayId = formatOrderId(order['order_id']?.toString(), rawId);
-              final status = order['status']?.toString() ?? 'Completed';
-
-              final rawItems = order['items'] ?? order['cart_items'];
-              List<Map<String, dynamic>> items = [];
-              
-              if (rawItems is List) {
-                items = rawItems.map((e) => Map<String, dynamic>.from(e)).toList();
-              } else if (rawItems is String && rawItems.isNotEmpty) {
-                try {
-                  final decoded = jsonDecode(rawItems);
-                  if (decoded is List) {
-                    items = decoded.map((e) => Map<String, dynamic>.from(e)).toList();
-                  }
-                } catch (_) {}
-              }
-
-              final firstItemTitle = items.isNotEmpty ? items.first['title']?.toString() ?? 'Meal Item' : 'Custom Order';
-              final title = items.length > 1
-                  ? '$firstItemTitle (+${items.length - 1} more)'
-                  : firstItemTitle;
-
-              final totalPrice = (order['total_price'] as num?)?.toDouble() ??
-                  (order['total_amount'] as num?)?.toDouble() ??
-                  (order['price'] as num?)?.toDouble() ??
-                  0.0;
-
-              final dateStr = formatOrderDate(order['created_at']?.toString());
-              final isSuccessful = status.toLowerCase().contains('deliver') || status.toLowerCase().contains('complet');
-
-              return AppCard(
-                margin: const EdgeInsets.only(bottom: 14),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(16),
-                  onTap: () {
-                    final hasDelivery = (order['order_type']?.toString().toLowerCase() ?? '').contains('delivery');
-                    final bill = orderBillBreakdown(items: items, order: order, hasDelivery: hasDelivery);
-                    final itemsTotal = bill.itemsTotal;
-                    final packagingFee = bill.packagingFee;
-                    final deliveryFee = bill.deliveryFee;
-                    final finalGrandTotal = bill.grandTotal;
-
-                    String deliveryTimeStr = 'ASAP';
-                    if (items.isNotEmpty) {
-                      final item = items.first;
-                      final truePlacedDate = getTrueOrderDateTime(
-                        order['order_id']?.toString() ?? '',
-                        order['created_at']?.toString(),
-                      );
-                      final baseSlot = item['selected_date'] != null && item['exact_time'] != null
-                          ? "${item['selected_date']} at ${item['exact_time']}"
-                          : (item['time_slot']?.toString() ?? 'ASAP');
-                      deliveryTimeStr = smartTimeSlot(
-                        baseSlot,
-                        truePlacedDate,
-                        selectedDateStr: item['selected_date']?.toString(),
-                      );
-                    }
-
-                    _showOrderDetailsBottomSheet(
-                      context,
-                      displayId,
-                      dateStr,
-                      deliveryTimeStr,
-                      items,
-                      itemsTotal,
-                      packagingFee,
-                      deliveryFee,
-                      finalGrandTotal,
-                      isSuccessful,
-                      order,
-                    );
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(displayId,
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textMuted)),
-                            AppStatusBadge(status: status),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Text(title,
-                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
-                        const SizedBox(height: 4),
-                        Text('Ordered on: $dateStr', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
-                        const SizedBox(height: 12),
-                        const Divider(height: 1, color: Colors.black12),
-                        const SizedBox(height: 10),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Total: ₹${totalPrice.toStringAsFixed(0)}',
-                              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: AppTheme.primary),
-                            ),
-                            Row(
-                              children: const [
-                                Text('View Details', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
-                                SizedBox(width: 4),
-                                Icon(Icons.chevron_right, size: 16, color: Colors.grey),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ).entrance(index: index);
-            },
-          );
+          return _HistoryOrdersList(pastOrders: pastOrders, host: this);
         },
       ),
+    );
+  }
+}
+
+class _HistoryOrdersList extends ConsumerStatefulWidget {
+  final List<Map<String, dynamic>> pastOrders;
+  final CustomerOrderHistoryScreen host;
+
+  const _HistoryOrdersList({required this.pastOrders, required this.host});
+
+  @override
+  ConsumerState<_HistoryOrdersList> createState() => _HistoryOrdersListState();
+}
+
+class _HistoryOrdersListState extends ConsumerState<_HistoryOrdersList> {
+  String _query = '';
+  String _filter = 'All';
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = widget.pastOrders.where((order) {
+      final status = order['status']?.toString().toLowerCase() ?? '';
+      if (_filter == 'Delivered' && !(status.contains('deliver') || status.contains('complet'))) return false;
+      if (_filter == 'Cancelled' && !(status.contains('cancel') || status.contains('reject'))) return false;
+
+      if (_query.trim().isEmpty) return true;
+      final rawItems = order['items'] ?? order['cart_items'];
+      final haystack = '${order['order_id']} ${order['id']} ${order['status']} $rawItems'.toLowerCase();
+      return haystack.contains(_query.trim().toLowerCase());
+    }).toList();
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: filtered.length + 1,
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  onChanged: (value) => setState(() => _query = value),
+                  decoration: const InputDecoration(
+                    hintText: 'Search meals or order ID',
+                    prefixIcon: Icon(Icons.search),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  children: ['All', 'Delivered', 'Cancelled'].map((label) {
+                    final selected = _filter == label;
+                    return ChoiceChip(
+                      label: Text(label),
+                      selected: selected,
+                      onSelected: (_) => setState(() => _filter = label),
+                    );
+                  }).toList(),
+                ),
+                if (filtered.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 32),
+                    child: EmptyState(
+                      icon: Icons.search_off_rounded,
+                      title: 'No matching orders',
+                      message: 'Try another search or filter.',
+                    ),
+                  ),
+              ],
+            ),
+          );
+        }
+
+        final order = filtered[index - 1];
+        final rawId = order['id'].toString();
+        final displayId = formatOrderId(order['order_id']?.toString(), rawId);
+        final status = order['status']?.toString() ?? 'Completed';
+
+        final rawItems = order['items'] ?? order['cart_items'];
+        List<Map<String, dynamic>> items = [];
+
+        if (rawItems is List) {
+          items = rawItems.map((e) => Map<String, dynamic>.from(e)).toList();
+        } else if (rawItems is String && rawItems.isNotEmpty) {
+          try {
+            final decoded = jsonDecode(rawItems);
+            if (decoded is List) {
+              items = decoded.map((e) => Map<String, dynamic>.from(e)).toList();
+            }
+          } catch (_) {}
+        }
+
+        final firstItemTitle = items.isNotEmpty ? items.first['title']?.toString() ?? 'Meal Item' : 'Custom Order';
+        final title = items.length > 1
+            ? '$firstItemTitle (+${items.length - 1} more)'
+            : firstItemTitle;
+
+        final totalPrice = (order['total_price'] as num?)?.toDouble() ??
+            (order['total_amount'] as num?)?.toDouble() ??
+            (order['price'] as num?)?.toDouble() ??
+            0.0;
+
+        final dateStr = formatOrderDate(order['created_at']?.toString());
+        final isSuccessful = status.toLowerCase().contains('deliver') || status.toLowerCase().contains('complet');
+
+        return AppCard(
+          margin: const EdgeInsets.only(bottom: 14),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () {
+              final hasDelivery = (order['order_type']?.toString().toLowerCase() ?? '').contains('delivery');
+              final bill = orderBillBreakdown(items: items, order: order, hasDelivery: hasDelivery);
+              final itemsTotal = bill.itemsTotal;
+              final packagingFee = bill.packagingFee;
+              final deliveryFee = bill.deliveryFee;
+              final finalGrandTotal = bill.grandTotal;
+
+              String deliveryTimeStr = 'ASAP';
+              if (items.isNotEmpty) {
+                final item = items.first;
+                final truePlacedDate = getTrueOrderDateTime(
+                  order['order_id']?.toString() ?? '',
+                  order['created_at']?.toString(),
+                );
+                final baseSlot = item['selected_date'] != null && item['exact_time'] != null
+                    ? "${item['selected_date']} at ${item['exact_time']}"
+                    : (item['time_slot']?.toString() ?? 'ASAP');
+                deliveryTimeStr = smartTimeSlot(
+                  baseSlot,
+                  truePlacedDate,
+                  selectedDateStr: item['selected_date']?.toString(),
+                );
+              }
+
+              widget.host._showOrderDetailsBottomSheet(
+                context,
+                displayId,
+                dateStr,
+                deliveryTimeStr,
+                items,
+                itemsTotal,
+                packagingFee,
+                deliveryFee,
+                finalGrandTotal,
+                isSuccessful,
+                order,
+              );
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(displayId,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textMuted)),
+                      AppStatusBadge(status: status),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Text(title, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
+                  const SizedBox(height: 4),
+                  Text('Ordered on: $dateStr', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+                  const SizedBox(height: 12),
+                  const Divider(height: 1, color: Colors.black12),
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Total: ₹${totalPrice.toStringAsFixed(0)}',
+                        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: AppTheme.primary),
+                      ),
+                      TextButton.icon(
+                        onPressed: items.isEmpty ? null : () => _reorder(items),
+                        icon: const Icon(Icons.replay, size: 16),
+                        label: const Text('Reorder'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ).entrance(index: index);
+      },
+    );
+  }
+
+  Future<void> _reorder(List<Map<String, dynamic>> items) async {
+    final added = await ReorderService.addOrderItemsToCart(
+      cart: ref.read(cartProvider.notifier),
+      items: items,
+    );
+    if (!mounted) return;
+    if (added <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Those meals are no longer available to reorder.')),
+      );
+      return;
+    }
+    CustomerHubScreen.returnToCartAfterLogin = true;
+    if (context.mounted) context.go('/customer-hub');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Added $added item${added == 1 ? '' : 's'} to your cart.')),
     );
   }
 }

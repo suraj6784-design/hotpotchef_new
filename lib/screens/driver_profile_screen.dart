@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import 'map_picker_screen.dart';
+import 'driver_id_card_screen.dart';
 import '../utils/app_theme.dart';
 import '../widgets/avatar_upload.dart';
 import '../widgets/change_password_dialog.dart';
@@ -282,81 +283,13 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
   // --- Digital ID Card Modal ---
 
   void _showDigitalIDCard() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface = isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight;
-    final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
-    final muted = isDark ? Colors.grey.shade400 : AppTheme.textMuted;
-    final verified = isDark ? Colors.greenAccent : Colors.green.shade700;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            const Icon(Icons.badge_outlined, color: AppTheme.primary),
-            const SizedBox(width: 8),
-            Text('Digital Partner ID', style: TextStyle(color: titleColor, fontWeight: FontWeight.bold, fontSize: 18)),
-          ],
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => DriverIdCardScreen(
+          driverName: _nameController.text.isEmpty ? 'Delivery Partner' : _nameController.text,
+          driverPhone: _phoneController.text,
+          avatarUrl: _avatarUrl,
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: CircleAvatar(
-                radius: 36,
-                backgroundColor: AppTheme.primary.withValues(alpha: 0.2),
-                backgroundImage: _avatarUrl != null ? NetworkImage(_avatarUrl!) : null,
-                child: _avatarUrl == null ? const Icon(Icons.person, size: 40, color: AppTheme.primary) : null,
-              ),
-            ),
-            const SizedBox(height: 16),
-            _buildIDRow('Partner Name', _nameController.text.isEmpty ? 'Driver' : _nameController.text, titleColor, muted),
-            _buildIDRow('Phone', _phoneController.text, titleColor, muted),
-            _buildIDRow('Emergency Contact', _emergencyPhoneController.text.isEmpty ? 'Not provided' : _emergencyPhoneController.text, titleColor, muted),
-            _buildIDRow('DL Number', _dlNumberController.text.isEmpty ? 'Pending' : _dlNumberController.text, titleColor, muted),
-            _buildIDRow('Vehicle Reg', _vehicleRegNoController.text.isEmpty ? 'Pending' : _vehicleRegNoController.text, titleColor, muted),
-            _buildIDRow('Blood Group', _bloodGroup, titleColor, muted),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
-              decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.verified, color: verified, size: 16),
-                  const SizedBox(width: 6),
-                  Text('Active Commercial Delivery Partner',
-                      style: TextStyle(color: verified, fontSize: 11, fontWeight: FontWeight.bold)),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Close', style: TextStyle(color: muted))),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildIDRow(String label, String value, Color titleColor, Color muted) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: TextStyle(color: muted, fontSize: 12)),
-          Flexible(
-            child: Text(
-              value,
-              style: TextStyle(color: titleColor, fontWeight: FontWeight.bold, fontSize: 13),
-              textAlign: TextAlign.end,
-            ),
-          ),
-        ],
       ),
     );
   }

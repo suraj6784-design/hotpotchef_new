@@ -673,7 +673,7 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
         _handleSafeBack();
       },
       child: Scaffold(
-        backgroundColor: AppTheme.background,
+        backgroundColor: AppTheme.canvasOf(context),
         appBar: AppBar(
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),

@@ -10,6 +10,7 @@ import '../models/cart_enums.dart';
 import '../providers/cart_provider.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
+import '../widgets/group_order_modal.dart';
 import 'checkout_screen.dart';
 import 'customer_hub.dart';
 
@@ -132,7 +133,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
     final shouldClear = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: AppTheme.surfaceOf(context),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Multi-Chef Cart Notice', style: TextStyle(fontWeight: FontWeight.bold)),
         content: const Text(
@@ -167,20 +168,11 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
 
     if (cartState.items.isEmpty) {
       return Scaffold(
-        appBar: AppBar(
-          title: Row(
-            children: [
-              ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.asset('assets/app_icon.png', height: 24, width: 24)),
-              const SizedBox(width: 8),
-              const Text('Your Cart'),
-            ],
-          ),
-          actions: [
-            if (isLoggedIn) ...[
-              IconButton(icon: const Icon(Icons.person, color: AppTheme.primary), onPressed: widget.onProfileTap),
-              IconButton(icon: const Icon(Icons.logout, color: Colors.grey), onPressed: widget.onLogout),
-            ],
-          ],
+        backgroundColor: AppTheme.canvasOf(context),
+        appBar: HubAppBar(
+          title: 'Your Cart',
+          onProfile: isLoggedIn ? widget.onProfileTap : null,
+          onLogout: isLoggedIn ? widget.onLogout : null,
         ),
         body: EmptyState(
           icon: Icons.shopping_basket_outlined,
@@ -193,20 +185,11 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: [
-            ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.asset('assets/app_icon.png', height: 24, width: 24)),
-            const SizedBox(width: 8),
-            const Text('Your Cart'),
-          ],
-        ),
-        actions: [
-          if (isLoggedIn) ...[
-            IconButton(icon: const Icon(Icons.person, color: AppTheme.primary), onPressed: widget.onProfileTap),
-            IconButton(icon: const Icon(Icons.logout, color: Colors.grey), onPressed: widget.onLogout),
-          ],
-        ],
+      backgroundColor: AppTheme.canvasOf(context),
+      appBar: HubAppBar(
+        title: 'Your Cart',
+        onProfile: isLoggedIn ? widget.onProfileTap : null,
+        onLogout: isLoggedIn ? widget.onLogout : null,
       ),
       body: ListView(
         padding: const EdgeInsets.only(left: 20, right: 20, top: 20, bottom: 100),
@@ -214,8 +197,8 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Items in Cart (${cartState.itemCount})',
-                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppTheme.textMain)),
+              Text('Items in cart (${cartState.itemCount})',
+                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppTheme.onSurfaceOf(context))),
               TextButton.icon(
                 style: TextButton.styleFrom(foregroundColor: Colors.red),
                 icon: const Icon(Icons.delete_sweep, size: 16),
@@ -564,10 +547,38 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
           }),
 
           const SizedBox(height: 4),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.add_circle_outline),
-            label: const Text('Add More Meals'),
-            onPressed: widget.onAddMoreMeals,
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.add_circle_outline),
+                  label: const Text('Add more meals'),
+                  onPressed: widget.onAddMoreMeals,
+                ),
+              ),
+              if (isLoggedIn) ...[
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.groups_outlined),
+                    label: const Text('Group order'),
+                    onPressed: () {
+                      showModalBottomSheet(
+                        context: context,
+                        isScrollControlled: true,
+                        backgroundColor: Colors.transparent,
+                        builder: (_) => Container(
+                          decoration: AppTheme.bottomSheetDecoration(
+                            isDark: Theme.of(context).brightness == Brightness.dark,
+                          ),
+                          child: const GroupOrderModal(),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ],
           ),
           const SizedBox(height: 20),
 

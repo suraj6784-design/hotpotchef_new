@@ -15,6 +15,7 @@ import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/daily_streak_banner.dart';
 import '../widgets/ai_recommendations_section.dart';
+import '../services/delivery_estimator_service.dart';
 import 'address_form_screen.dart';
 import 'customer_bulk_request_screen.dart';
 
@@ -197,6 +198,71 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     }
   }
 
+  Map<String, dynamic>? get _selectedAddressMap {
+    for (final addr in _savedAddresses) {
+      if (addr['address']?.toString() == _currentAddress) return addr;
+    }
+    return _savedAddresses.isEmpty ? null : _savedAddresses.first;
+  }
+
+  bool get _hasDeliveryPin {
+    final dest = _selectedAddressMap;
+    final lat = (dest?['latitude'] as num?)?.toDouble() ?? (dest?['lat'] as num?)?.toDouble();
+    final lng = (dest?['longitude'] as num?)?.toDouble() ?? (dest?['lng'] as num?)?.toDouble();
+    return lat != null && lng != null && lat != 0 && lng != 0;
+  }
+
+  List<Map<String, dynamic>> _mealsForSelectedAddress(List<Map<String, dynamic>> meals) {
+    if (!_hasDeliveryPin) return meals;
+    final dest = _selectedAddressMap;
+    final endLat = (dest?['latitude'] as num?)?.toDouble() ?? (dest?['lat'] as num?)?.toDouble();
+    final endLng = (dest?['longitude'] as num?)?.toDouble() ?? (dest?['lng'] as num?)?.toDouble();
+    if (endLat == null || endLng == null) return meals;
+
+    final inRange = <Map<String, dynamic>>[];
+    final unknown = <Map<String, dynamic>>[];
+    for (final meal in meals) {
+      final startLat = (meal['pickup_lat'] as num?)?.toDouble() ?? (meal['latitude'] as num?)?.toDouble();
+      final startLng = (meal['pickup_lng'] as num?)?.toDouble() ?? (meal['longitude'] as num?)?.toDouble();
+      if (startLat == null || startLng == null || startLat == 0 || startLng == 0) {
+        unknown.add(meal);
+        continue;
+      }
+      final distance = DeliveryEstimatorService.calculateDistanceKm(
+        startLat: startLat,
+        startLng: startLng,
+        endLat: endLat,
+        endLng: endLng,
+      );
+      if (DeliveryEstimatorService.isWithinDeliveryRadius(distance)) {
+        inRange.add(meal);
+      }
+    }
+    return [...inRange, ...unknown];
+  }
+
+  String? _etaLabelForMeal(Map<String, dynamic> meal) {
+    final dest = _selectedAddressMap;
+    final startLat = (meal['pickup_lat'] as num?)?.toDouble() ?? (meal['latitude'] as num?)?.toDouble();
+    final startLng = (meal['pickup_lng'] as num?)?.toDouble() ?? (meal['longitude'] as num?)?.toDouble();
+    final endLat = (dest?['latitude'] as num?)?.toDouble() ?? (dest?['lat'] as num?)?.toDouble();
+    final endLng = (dest?['longitude'] as num?)?.toDouble() ?? (dest?['lng'] as num?)?.toDouble();
+    if (startLat == null || startLng == null || endLat == null || endLng == null) return null;
+    if (startLat == 0 || startLng == 0 || endLat == 0 || endLng == 0) return null;
+
+    final distance = DeliveryEstimatorService.calculateDistanceKm(
+      startLat: startLat,
+      startLng: startLng,
+      endLat: endLat,
+      endLng: endLng,
+    );
+    if (distance <= 0) return null;
+    if (!DeliveryEstimatorService.isWithinDeliveryRadius(distance)) {
+      return 'Outside ${DeliveryEstimatorService.maxDeliveryRadiusKm.toInt()} km';
+    }
+    return '${DeliveryEstimatorService.estimateEtaMinutes(distance)} min';
+  }
+
   void _handleAddToCart(Map<String, dynamic> meal) async {
     final cartNotifier = ref.read(cartProvider.notifier);
     final cartState = ref.read(cartProvider);
@@ -256,16 +322,13 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
               Container(
                 height: 180,
                 width: double.infinity,
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [brandPrimary, brandGradientEnd],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.only(
+                decoration: BoxDecoration(
+                  gradient: AppTheme.primaryGradient,
+                  borderRadius: const BorderRadius.only(
                     bottomLeft: Radius.circular(32),
                     bottomRight: Radius.circular(32),
                   ),
+                  boxShadow: AppTheme.brandGlow(opacity: 0.28),
                 ),
                 child: SafeArea(
                   bottom: false,
@@ -294,22 +357,21 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                               backgroundColor: Colors.transparent,
                               builder: (ctx) => Container(
                                 constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
-                                decoration: const BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                                decoration: AppTheme.bottomSheetDecoration(
+                                  isDark: Theme.of(context).brightness == Brightness.dark,
                                 ),
                                 padding: const EdgeInsets.all(24),
                                 child: Column(
                                   mainAxisSize: MainAxisSize.min,
                                   crossAxisAlignment: CrossAxisAlignment.stretch,
                                   children: [
-                                    const Text('Select Delivery Location',
-                                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textMain)),
+                                    Text('Select delivery location',
+                                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                                     const SizedBox(height: 16),
                                     if (_savedAddresses.isEmpty)
-                                      const Padding(
-                                        padding: EdgeInsets.only(bottom: 16),
-                                        child: Text('No saved addresses yet.', style: TextStyle(color: textMuted)),
+                                      Padding(
+                                        padding: const EdgeInsets.only(bottom: 16),
+                                        child: Text('No saved addresses yet.', style: TextStyle(color: AppTheme.textMuted)),
                                       ),
                                     Flexible(
                                       child: SingleChildScrollView(
@@ -321,10 +383,12 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                             return Container(
                                               margin: const EdgeInsets.only(bottom: 12),
                                               decoration: BoxDecoration(
-                                                color: isSelected ? brandPrimary.withValues(alpha: 0.05) : Colors.white,
+                                                color: isSelected
+                                                    ? AppTheme.primary.withValues(alpha: 0.08)
+                                                    : AppTheme.surfaceOf(context),
                                                 borderRadius: BorderRadius.circular(12),
                                                 border: Border.all(
-                                                    color: isSelected ? brandPrimary : Colors.grey.shade300),
+                                                    color: isSelected ? AppTheme.primary : AppTheme.hairlineOf(context)),
                                               ),
                                               child: ListTile(
                                                 dense: true,
@@ -333,7 +397,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                                 title: Text(
                                                   addrStr,
                                                   style: TextStyle(
-                                                    color: isSelected ? brandPrimary : textMain,
+                                                    color: isSelected ? AppTheme.primary : AppTheme.onSurfaceOf(context),
                                                     fontSize: 13,
                                                     fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                                                   ),
@@ -468,27 +532,31 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                 child: Container(
                   height: 52,
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppTheme.surfaceOf(context),
                     borderRadius: BorderRadius.circular(16),
-                    boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4))],
+                    border: Border.all(color: AppTheme.hairlineOf(context)),
+                    boxShadow: AppTheme.softShadow,
                   ),
                   child: TextField(
                     controller: _searchController,
                     onSubmitted: (val) => _performAiSearch(val),
                     decoration: InputDecoration(
-                      hintText: "What are you craving today? ✨",
-                      hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+                      hintText: 'What are you craving today?',
+                      hintStyle: TextStyle(color: AppTheme.textMuted, fontSize: 14),
+                      filled: false,
                       border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                       suffixIcon: GestureDetector(
                         onTap: () => _performAiSearch(_searchController.text),
                         child: Container(
                           margin: const EdgeInsets.all(6),
                           decoration: BoxDecoration(
-                            gradient: const LinearGradient(colors: [Colors.purpleAccent, brandPrimary]),
+                            gradient: AppTheme.primaryGradient,
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          child: const Icon(Icons.auto_awesome, color: Colors.white, size: 20),
+                          child: const Icon(Icons.search_rounded, color: Colors.white, size: 20),
                         ),
                       ),
                     ),
@@ -499,21 +567,32 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           ),
           const SizedBox(height: 48),
 
+          if (_hasDeliveryPin)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Text(
+                'Showing kitchens within ${DeliveryEstimatorService.maxDeliveryRadiusKm.toInt()} km of your pin. Dishes without a kitchen pin stay listed.',
+                style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+              ),
+            )
+          else if (isLoggedIn)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Text(
+                'Drop a map pin on your delivery address to hide kitchens outside ${DeliveryEstimatorService.maxDeliveryRadiusKm.toInt()} km.',
+                style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+              ),
+            ),
+
           if (isLoggedIn) const DailyStreakBanner(),
           if (isLoggedIn && !_hasActiveSearch) const AiRecommendationsSection(),
 
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.purple.shade700,
-                foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 48),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              ),
-              icon: const Icon(Icons.campaign, size: 20),
-              label: const Text('Broadcast Bulk / Catering Request ✨',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+            child: GradientButton(
+              label: 'Broadcast bulk / catering request',
+              icon: Icons.campaign_outlined,
+              height: 50,
               onPressed: () {
                 if (!isLoggedIn) {
                   showAuthBottomSheet(context, () => setState(() {}));
@@ -545,21 +624,19 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                       margin: const EdgeInsets.only(right: 12),
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       decoration: BoxDecoration(
-                        color: isSelected ? brandPrimary : Colors.white,
+                        color: isSelected ? AppTheme.primary : AppTheme.surfaceOf(context),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: isSelected ? brandPrimary : Colors.grey.shade300),
-                        boxShadow: isSelected
-                            ? [BoxShadow(color: brandPrimary.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 4))]
-                            : [],
+                        border: Border.all(color: isSelected ? AppTheme.primary : AppTheme.hairlineOf(context)),
+                        boxShadow: isSelected ? AppTheme.brandGlow(opacity: 0.28) : const [],
                       ),
                       child: Row(
                         children: [
-                          Icon(cat['icon'], color: isSelected ? Colors.white : textMuted, size: 16),
+                          Icon(cat['icon'], color: isSelected ? Colors.white : AppTheme.textMuted, size: 16),
                           const SizedBox(width: 6),
                           Text(
                             cat['name'],
                             style: TextStyle(
-                              color: isSelected ? Colors.white : textMain,
+                              color: isSelected ? Colors.white : AppTheme.onSurfaceOf(context),
                               fontSize: 13,
                               fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
                             ),
@@ -587,16 +664,16 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                   children: [
                     Text(
                       _hasActiveSearch
-                          ? 'Search Results ✨'
-                          : (_showFavoritesOnly ? 'Your Favorites ❤️' : 'Fresh from the Kitchen'),
-                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: textMain),
+                          ? 'Search results'
+                          : (_showFavoritesOnly ? 'Your favorites' : 'Fresh from the kitchen'),
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppTheme.onSurfaceOf(context)),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       _hasActiveSearch
                           ? '"${_searchController.text}"'
                           : (_showFavoritesOnly ? 'Meals you loved' : 'Support your local home chefs'),
-                      style: const TextStyle(fontSize: 13, color: textMuted),
+                      style: const TextStyle(fontSize: 13, color: AppTheme.textMuted),
                     ),
                   ],
                 ),
@@ -623,17 +700,17 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                 padding: EdgeInsets.all(40),
                 child: Column(
                   children: [
-                    CircularProgressIndicator(color: Colors.purpleAccent),
+                    CircularProgressIndicator(color: AppTheme.primary),
                     SizedBox(height: 16),
-                    Text('Our AI is scanning menus...', style: TextStyle(color: textMuted, fontWeight: FontWeight.bold)),
+                    Text('Scanning menus...', style: TextStyle(color: AppTheme.textMuted, fontWeight: FontWeight.bold)),
                   ],
                 ),
               ),
             )
           else if (_hasActiveSearch)
-            _buildMealGrid(_showFavoritesOnly
+            _buildMealGrid(_mealsForSelectedAddress(_showFavoritesOnly
                 ? _aiSearchResults.where((m) => widget.favoriteMeals.contains(m['id'].toString())).toList()
-                : _aiSearchResults)
+                : _aiSearchResults))
           else
             StreamBuilder<List<Map<String, dynamic>>>(
               stream: _mealsStream,
@@ -674,6 +751,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                   meals = meals.where((m) => widget.favoriteMeals.contains(m['id'].toString())).toList();
                 }
 
+                meals = _mealsForSelectedAddress(meals);
                 return _buildMealGrid(meals);
               },
             )
@@ -684,10 +762,12 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
 
   Widget _buildMealGrid(List<Map<String, dynamic>> meals) {
     if (meals.isEmpty) {
-      return const EmptyState(
+      return EmptyState(
         icon: Icons.search_off_rounded,
         title: 'No meals found',
-        message: 'Try a different category or search for something else.',
+        message: _hasDeliveryPin
+            ? 'No kitchens are delivering to this pin right now. Try another address or category.'
+            : 'Try a different category or search for something else.',
       );
     }
 
@@ -732,6 +812,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
 
             final cartState = ref.watch(cartProvider);
             final hasOffer = cartState.isOfferActive(meal);
+            final etaLabel = _etaLabelForMeal(meal);
 
             return GestureDetector(
               onTap: () => showMealDetailsDialog(context, meal, ref),
@@ -878,7 +959,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                               children: [
                                 Text(
                                   meal['title'] ?? 'Home Meal',
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: textMain),
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.onSurfaceOf(context)),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -926,6 +1007,13 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
+                                    if (etaLabel != null) ...[
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        etaLabel,
+                                        style: const TextStyle(color: AppTheme.primary, fontSize: 11, fontWeight: FontWeight.w700),
+                                      ),
+                                    ],
                                   ],
                                 ),
                                 const SizedBox(height: 4),
@@ -953,8 +1041,8 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                         children: [
                                           Text(
                                             '₹${(double.tryParse(meal['price']?.toString() ?? '0') ?? 0).toInt()}',
-                                            style: const TextStyle(
-                                                fontWeight: FontWeight.w900, fontSize: 16, color: textMain),
+                                            style: TextStyle(
+                                                fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.onSurfaceOf(context)),
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                           ),

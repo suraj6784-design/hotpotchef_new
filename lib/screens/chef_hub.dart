@@ -34,6 +34,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   int _selectedIndex = 0;
   bool _isKitchenOpen = true;
   String _fulfillmentFilter = 'All';
+  String _historyFilter = 'Delivered';
 
   final List<String> _fulfillmentTabs = const [
     'All',
@@ -353,7 +354,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null) {
             return Scaffold(
-              backgroundColor: AppTheme.background,
+              backgroundColor: AppTheme.canvasOf(context),
               body: Column(
                 children: [
                   _buildHeader(),
@@ -365,7 +366,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
 
           if (snapshot.hasError) {
             return Scaffold(
-              backgroundColor: AppTheme.background,
+              backgroundColor: AppTheme.canvasOf(context),
               body: EmptyState(
                 icon: Icons.wifi_off_rounded,
                 title: 'Kitchen connection lost',
@@ -399,7 +400,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               ];
 
               return Scaffold(
-                backgroundColor: AppTheme.background,
+                backgroundColor: AppTheme.canvasOf(context),
                 body: Column(
                   children: [
                     _buildHeader(),
@@ -408,6 +409,8 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 ),
                 bottomNavigationBar: NavigationBar(
                   selectedIndex: _selectedIndex,
+                  backgroundColor: AppTheme.surfaceOf(context),
+                  indicatorColor: AppTheme.primary.withValues(alpha: 0.14),
                   onDestinationSelected: (idx) => setState(() => _selectedIndex = idx),
                   destinations: [
                     NavigationDestination(
@@ -542,15 +545,15 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   duration: const Duration(milliseconds: 200),
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
-                    color: isSelected ? AppTheme.primary : Theme.of(context).colorScheme.surface,
+                    color: isSelected ? AppTheme.primary : AppTheme.surfaceOf(context),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: isSelected ? AppTheme.primary : Colors.grey.shade300),
+                    border: Border.all(color: isSelected ? AppTheme.primary : AppTheme.hairlineOf(context)),
                     boxShadow: isSelected ? AppTheme.brandGlow(opacity: 0.28) : const [],
                   ),
                   child: Text(
                     '$label ($count)',
                     style: TextStyle(
-                      color: isSelected ? Colors.white : AppTheme.textMain,
+                      color: isSelected ? Colors.white : AppTheme.onSurfaceOf(context),
                       fontSize: 12,
                       fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                     ),
@@ -617,7 +620,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('$title (x$quantity)',
-                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppTheme.textMain)),
+                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppTheme.onSurfaceOf(context))),
                     const SizedBox(height: 2),
                     Text(customer, style: const TextStyle(fontSize: 13, color: AppTheme.textMuted)),
                   ],
@@ -650,7 +653,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 borderRadius: AppTheme.radiusSm,
               ),
               child: Text('Note: $instructions',
-                  style: const TextStyle(color: AppTheme.textMain, fontSize: 12, fontStyle: FontStyle.italic)),
+                  style: TextStyle(color: AppTheme.onSurfaceOf(context), fontSize: 12, fontStyle: FontStyle.italic)),
             ),
           ],
           const SizedBox(height: 14),
@@ -764,7 +767,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                         _deliveryAddress(order).isEmpty
                             ? 'Delivery address not saved for this order'
                             : _deliveryAddress(order),
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textMain),
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.onSurfaceOf(context)),
                       ),
                     ),
                   ],
@@ -820,6 +823,21 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     );
   }
 
+  void _duplicateMeal(Map<String, dynamic> meal) {
+    final copy = Map<String, dynamic>.from(meal);
+    copy.remove('id');
+    copy['title'] = '${meal['title'] ?? 'Meal'} (copy)';
+    copy['status'] = 'Paused';
+    _openMealEditor(copy);
+  }
+
+  String get _chefDisplayName {
+    final user = _supabase.auth.currentUser;
+    return user?.userMetadata?['name']?.toString() ??
+        user?.userMetadata?['full_name']?.toString() ??
+        _currentUserEmail.split('@').first;
+  }
+
   Widget _buildMenuTab() {
     return StreamBuilder<List<Map<String, dynamic>>>(
       stream: _supabase
@@ -848,6 +866,8 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               ...items.asMap().entries.map((entry) {
                 final meal = entry.value;
                 final isPaused = meal['status']?.toString().toLowerCase() == 'paused';
+                final stock = int.tryParse(meal['quantity']?.toString() ?? '0') ?? 0;
+                final lowStock = stock > 0 && stock <= 3;
                 final slot = meal['time_slot']?.toString().trim() ?? '';
                 final services = (meal['service_type']?.toString() ?? '')
                     .split(',')
@@ -894,8 +914,17 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                                 const SizedBox(height: 2),
                                 Text(
                                   '₹${meal['price']} • Stock: ${meal['quantity']} remaining',
-                                  style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: lowStock ? AppTheme.warning : AppTheme.textMuted,
+                                    fontWeight: lowStock ? FontWeight.w700 : FontWeight.w500,
+                                  ),
                                 ),
+                                if (lowStock) ...[
+                                  const SizedBox(height: 4),
+                                  const Text('Low stock — restock soon',
+                                      style: TextStyle(fontSize: 11, color: AppTheme.warning, fontWeight: FontWeight.w600)),
+                                ],
                                 if (slot.isNotEmpty) ...[
                                   const SizedBox(height: 6),
                                   Row(
@@ -940,16 +969,34 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppTheme.primary,
-                          side: const BorderSide(color: AppTheme.primary),
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        icon: const Icon(Icons.edit_outlined, size: 18),
-                        label: const Text('Edit dish', style: TextStyle(fontWeight: FontWeight.w700)),
-                        onPressed: () => _openMealEditor(meal),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: AppTheme.primary,
+                                side: const BorderSide(color: AppTheme.primary),
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              icon: const Icon(Icons.edit_outlined, size: 18),
+                              label: const Text('Edit', style: TextStyle(fontWeight: FontWeight.w700)),
+                              onPressed: () => _openMealEditor(meal),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              icon: const Icon(Icons.copy_outlined, size: 18),
+                              label: const Text('Duplicate', style: TextStyle(fontWeight: FontWeight.w700)),
+                              onPressed: () => _duplicateMeal(meal),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -962,14 +1009,20 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   }
 
   Widget _buildHistoryTab(List<Map<String, dynamic>> orders) {
-    final history = orders.where((o) => (o['status']?.toString().toLowerCase() ?? '') == 'delivered').toList();
-    final double revenue = history.fold(0.0, (sum, o) => sum + _orderTotal(o));
+    final delivered = orders.where((o) => (o['status']?.toString().toLowerCase() ?? '') == 'delivered').toList();
+    final cancelled = orders.where((o) {
+      final status = o['status']?.toString().toLowerCase() ?? '';
+      return status.contains('cancel') || status.contains('reject') || status.contains('refund');
+    }).toList();
+    final history = _historyFilter == 'Cancelled' ? cancelled : delivered;
+    final double revenue = delivered.fold(0.0, (sum, o) => sum + _orderTotal(o));
+    final chefShare = revenue * 0.85;
 
-    if (history.isEmpty) {
+    if (delivered.isEmpty && cancelled.isEmpty) {
       return const EmptyState(
         icon: Icons.account_balance_wallet_outlined,
         title: 'No completed sales yet',
-        message: 'Delivered orders will appear here with a running sales total.',
+        message: 'Delivered and cancelled orders will appear here with a running sales total.',
       );
     }
 
@@ -979,33 +1032,60 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         AppCard(
           child: Column(
             children: [
-              const Text('Delivered Order Sales', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
+              const Text('Delivered order sales', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
               const SizedBox(height: 6),
               Text('₹${revenue.toStringAsFixed(2)}',
                   style: const TextStyle(color: AppTheme.success, fontSize: 28, fontWeight: FontWeight.w900)),
-              Text('${history.length} completed orders', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+              Text('${delivered.length} completed • Chef share ~₹${chefShare.toStringAsFixed(0)} after 15% platform fee',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
             ],
           ),
         ).popIn(),
-        const SizedBox(height: 16),
-        ...history.asMap().entries.map((entry) {
-          final h = entry.value;
-          return AppCard(
-            margin: const EdgeInsets.only(bottom: 10),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: CircleAvatar(
-                backgroundColor: AppTheme.success.withValues(alpha: 0.12),
-                child: const Icon(Icons.check_circle, color: AppTheme.success),
-              ),
-              title: Text(_orderTitle(h), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              subtitle: Text(formatOrderDate(h['created_at']?.toString() ?? '')),
-              trailing: Text('₹${_orderTotal(h).toStringAsFixed(2)}',
-                  style: const TextStyle(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            ChoiceChip(
+              label: Text('Delivered (${delivered.length})'),
+              selected: _historyFilter == 'Delivered',
+              onSelected: (_) => setState(() => _historyFilter = 'Delivered'),
             ),
-          ).entrance(index: entry.key);
-        }),
+            const SizedBox(width: 8),
+            ChoiceChip(
+              label: Text('Cancelled (${cancelled.length})'),
+              selected: _historyFilter == 'Cancelled',
+              onSelected: (_) => setState(() => _historyFilter = 'Cancelled'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        if (history.isEmpty)
+          const EmptyState(
+            icon: Icons.filter_alt_off_outlined,
+            title: 'Nothing in this filter',
+            message: 'Switch tabs to see the rest of your kitchen history.',
+          )
+        else
+          ...history.asMap().entries.map((entry) {
+            final h = entry.value;
+            final isCancelled = _historyFilter == 'Cancelled';
+            return AppCard(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: CircleAvatar(
+                  backgroundColor: (isCancelled ? AppTheme.error : AppTheme.success).withValues(alpha: 0.12),
+                  child: Icon(isCancelled ? Icons.cancel : Icons.check_circle,
+                      color: isCancelled ? AppTheme.error : AppTheme.success),
+                ),
+                title: Text(_orderTitle(h), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                subtitle: Text(formatOrderDate(h['created_at']?.toString() ?? '')),
+                trailing: Text('₹${_orderTotal(h).toStringAsFixed(2)}',
+                    style: const TextStyle(fontWeight: FontWeight.w800)),
+              ),
+            ).entrance(index: entry.key);
+          }),
       ],
     );
   }
@@ -1050,7 +1130,11 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 onPressed: () async {
                     final res = await _supabase
                         .from('customer_requests')
-                        .update({'status': 'Accepted', 'accepted_chef_id': _currentUserId})
+                        .update({
+                          'status': 'Accepted',
+                          'accepted_chef_id': _currentUserId,
+                          'accepted_chef_name': _chefDisplayName,
+                        })
                         .eq('id', req['id'])
                         .eq('status', 'Open')
                         .select();
@@ -1063,6 +1147,14 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                       }
                     }
                   },
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                label: const Text('Message customer'),
+                onPressed: () => context.push(
+                  '/chat/${req['id']}?roomName=${Uri.encodeComponent(req['title']?.toString() ?? 'Catering lead')}',
+                ),
               ),
             ],
           ),

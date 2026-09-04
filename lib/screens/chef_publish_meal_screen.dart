@@ -12,6 +12,23 @@ import '../utils/network.dart';
 import '../utils/helpers.dart';
 import '../models/cart_enums.dart';
 import '../models/pricing_models.dart';
+import '../services/reorder_service.dart';
+
+class _AddOnDraft {
+  _AddOnDraft({String? id, String title = '', String price = ''})
+      : id = id ?? 'addon_${DateTime.now().microsecondsSinceEpoch}',
+        title = TextEditingController(text: title),
+        price = TextEditingController(text: price);
+
+  final String id;
+  final TextEditingController title;
+  final TextEditingController price;
+
+  void dispose() {
+    title.dispose();
+    price.dispose();
+  }
+}
 
 class ChefPublishMealScreen extends StatefulWidget {
   final Map<String, dynamic>? existingMeal;
@@ -68,6 +85,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
   ];
 
   final Set<ServiceType> _selectedServices = {ServiceType.deliveryPlatform};
+  final List<_AddOnDraft> _addOns = [];
 
   @override
   void initState() {
@@ -128,6 +146,15 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     if (_selectedServices.isEmpty) {
       _selectedServices.add(ServiceType.deliveryPlatform);
     }
+
+    final existingAddOns = ReorderService.parseMealAddOns(meal['add_ons'] ?? meal['addons']);
+    for (final addon in existingAddOns) {
+      _addOns.add(_AddOnDraft(
+        id: addon.id.isEmpty ? null : addon.id,
+        title: addon.title,
+        price: addon.price > 0 ? addon.price.toStringAsFixed(0) : '',
+      ));
+    }
   }
 
   @override
@@ -141,6 +168,9 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     _discountController.dispose();
     _maxDiscountCapController.dispose();
     _promoController.dispose();
+    for (final addon in _addOns) {
+      addon.dispose();
+    }
     super.dispose();
   }
 
@@ -319,6 +349,14 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
         'promo_code': _promoController.text.trim().toUpperCase(),
         'accepts_hotpot_coins': _acceptsHotpotCoins,
         'offer_valid_until': offerExpiryIso,
+        'add_ons': _addOns
+            .where((addon) => addon.title.text.trim().isNotEmpty)
+            .map((addon) => {
+                  'id': addon.id,
+                  'title': addon.title.text.trim(),
+                  'price': double.tryParse(addon.price.text.trim()) ?? 0,
+                })
+            .toList(),
       };
 
       if (widget.existingMeal != null && widget.existingMeal!['id'] != null) {
@@ -365,11 +403,11 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     final isEditing = widget.existingMeal != null;
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: AppTheme.canvasOf(context),
       appBar: AppBar(
         title: Text(
           isEditing ? 'Edit Meal' : 'Publish New Meal',
-          style: const TextStyle(color: AppTheme.textMain, fontWeight: FontWeight.bold),
+          style: TextStyle(color: AppTheme.onSurfaceOf(context), fontWeight: FontWeight.bold),
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -486,6 +524,63 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Text(
+                  'Add-ons (optional)',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: AppTheme.onSurfaceOf(context)),
+                ),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: () => setState(() => _addOns.add(_AddOnDraft())),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add extra'),
+                ),
+              ],
+            ),
+            Text(
+              'Customers can pick these on the dish page. Leave empty if this meal has no extras.',
+              style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+            ),
+            const SizedBox(height: 8),
+            ..._addOns.asMap().entries.map((entry) {
+              final index = entry.key;
+              final addon = entry.value;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: TextFormField(
+                        controller: addon.title,
+                        decoration: _inputStyle('Extra name (e.g. Extra raita)'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextFormField(
+                        controller: addon.price,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
+                        decoration: _inputStyle('₹'),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Remove extra',
+                      onPressed: () {
+                        setState(() {
+                          addon.dispose();
+                          _addOns.removeAt(index);
+                        });
+                      },
+                      icon: const Icon(Icons.close, color: AppTheme.textMuted),
+                    ),
+                  ],
+                ),
+              );
+            }),
             const SizedBox(height: 16),
 
             // Category & Veg Filter

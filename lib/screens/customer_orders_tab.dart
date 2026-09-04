@@ -3,6 +3,7 @@
 import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:pdf/pdf.dart' as pw;
@@ -20,18 +21,26 @@ import '../widgets/app_widgets.dart';
 import '../widgets/meal_review_dialog.dart';
 import '../services/chef_directory.dart';
 import '../services/order_lifecycle.dart';
+import '../services/reorder_service.dart';
+import '../providers/cart_provider.dart';
 
-class CustomerOrdersTab extends StatefulWidget {
+class CustomerOrdersTab extends ConsumerStatefulWidget {
   final VoidCallback onProfileTap;
   final VoidCallback onLogout;
+  final VoidCallback? onReorderToCart;
 
-  const CustomerOrdersTab({super.key, required this.onProfileTap, required this.onLogout});
+  const CustomerOrdersTab({
+    super.key,
+    required this.onProfileTap,
+    required this.onLogout,
+    this.onReorderToCart,
+  });
 
   @override
-  State<CustomerOrdersTab> createState() => _CustomerOrdersTabState();
+  ConsumerState<CustomerOrdersTab> createState() => _CustomerOrdersTabState();
 }
 
-class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKeepAliveClientMixin {
+class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with AutomaticKeepAliveClientMixin {
   List<Map<String, dynamic>> _activeOrders = [];
   List<Map<String, dynamic>> _activeRequests = [];
   Map<String, dynamic>? _savedDropoffAddress;
@@ -472,20 +481,23 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
       builder: (ctx) {
         return Container(
           height: MediaQuery.of(context).size.height * 0.92,
-          decoration: BoxDecoration(color: AppTheme.background, borderRadius: const BorderRadius.vertical(top: Radius.circular(20))),
+          decoration: AppTheme.bottomSheetDecoration(isDark: Theme.of(context).brightness == Brightness.dark),
           child: Column(
             children: [
               Container(
-                decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceOf(context),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                ),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Row(
                       children: [
-                        GestureDetector(onTap: () => Navigator.pop(ctx), child: const Icon(Icons.arrow_back, color: AppTheme.textMain)),
+                        GestureDetector(onTap: () => Navigator.pop(ctx), child: Icon(Icons.arrow_back, color: AppTheme.onSurfaceOf(context))),
                         const SizedBox(width: 12),
-                        const Text('Order Details', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+                        Text('Order details', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                       ],
                     ),
                     GestureDetector(
@@ -747,6 +759,15 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                         ],
                       ),
                     ),
+                    if (isDelivered || isCancelled)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.replay, size: 18),
+                          label: const Text('Reorder these meals'),
+                          onPressed: () => _reorderItems(items),
+                        ),
+                      ),
                     if (isDelivered)
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -802,6 +823,25 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
     );
   }
 
+  Future<void> _reorderItems(List<Map<String, dynamic>> items) async {
+    final added = await ReorderService.addOrderItemsToCart(
+      cart: ref.read(cartProvider.notifier),
+      items: items,
+    );
+    if (!mounted) return;
+    if (added <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Those meals are no longer available to reorder.')),
+      );
+      return;
+    }
+    Navigator.of(context).maybePop();
+    widget.onReorderToCart?.call();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Added $added item${added == 1 ? '' : 's'} to your cart.')),
+    );
+  }
+
   Future<void> _initiateCall(String targetUserId) async {
     try {
       final userDoc = await Supabase.instance.client.from('users').select('phone').eq('id', targetUserId).maybeSingle();
@@ -844,8 +884,8 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                 children: [
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(color: Colors.purple.shade50, borderRadius: BorderRadius.circular(8)),
-                    child: Text('Bulk Broadcast', style: TextStyle(color: Colors.purple.shade700, fontWeight: FontWeight.bold, fontSize: 11)),
+                    decoration: BoxDecoration(color: AppTheme.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+                    child: const Text('Bulk broadcast', style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 11)),
                   ),
                   const SizedBox(width: 8),
                   Text(displayRequestId, style: const TextStyle(color: AppTheme.textMuted, fontWeight: FontWeight.bold, fontSize: 11)),
@@ -912,7 +952,8 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
 
     if (user == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('My Orders')),
+        backgroundColor: AppTheme.canvasOf(context),
+        appBar: const HubAppBar(title: 'My Orders'),
         body: EmptyState(
           icon: Icons.receipt_long_outlined,
           title: 'Sign in to track orders',
@@ -928,14 +969,16 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
 
     if (_isLoading) {
       return Scaffold(
-        appBar: AppBar(title: const Text('My Orders')),
+        backgroundColor: AppTheme.canvasOf(context),
+        appBar: HubAppBar(title: 'My Orders', onProfile: widget.onProfileTap, onLogout: widget.onLogout),
         body: const Center(child: CircularProgressIndicator(color: AppTheme.primary)),
       );
     }
 
     if (_activeOrders.isEmpty && _activeRequests.isEmpty) {
       return Scaffold(
-        appBar: AppBar(title: const Text('My Orders')),
+        backgroundColor: AppTheme.canvasOf(context),
+        appBar: HubAppBar(title: 'My Orders', onProfile: widget.onProfileTap, onLogout: widget.onLogout),
         body: EmptyState(
           icon: Icons.soup_kitchen_outlined,
           title: 'No active orders',
@@ -1017,19 +1060,8 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
     final sortedKeys = groupedOrders.keys.toList();
 
     return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: [
-            ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.asset('assets/app_icon.png', height: 24, width: 24)),
-            const SizedBox(width: 8),
-            const Text('My Orders'),
-          ],
-        ),
-        actions: [
-          IconButton(icon: const Icon(Icons.person, color: AppTheme.primary), onPressed: widget.onProfileTap),
-          IconButton(icon: const Icon(Icons.logout, color: Colors.grey), onPressed: widget.onLogout),
-        ],
-      ),
+      backgroundColor: AppTheme.canvasOf(context),
+      appBar: HubAppBar(title: 'My Orders', onProfile: widget.onProfileTap, onLogout: widget.onLogout),
       body: RefreshIndicator(
         onRefresh: () async => _initScopedStreams(),
         color: AppTheme.primary,
@@ -1037,7 +1069,7 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
           padding: const EdgeInsets.only(left: 20, right: 20, top: 20, bottom: 100),
           children: [
             if (_activeRequests.isNotEmpty) ...[
-              const Text('My Broadcasts & Catering', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppTheme.textMain)),
+              Text('My broadcasts & catering', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppTheme.onSurfaceOf(context))),
               const SizedBox(height: 12),
               ..._activeRequests.map((req) => _buildBulkRequestCard(req)),
               const SizedBox(height: 24),
@@ -1045,7 +1077,7 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
               const SizedBox(height: 24),
             ],
             if (sortedKeys.isNotEmpty) ...[
-              const Text('Regular Orders', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppTheme.textMain)),
+              Text('Regular orders', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppTheme.onSurfaceOf(context))),
               const SizedBox(height: 12),
               ...sortedKeys.map((key) {
                 final rawOrderIdStr = key;

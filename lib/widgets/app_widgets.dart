@@ -461,3 +461,200 @@ class PillTag extends StatelessWidget {
     );
   }
 }
+
+class BrandMark extends StatelessWidget {
+  final String title;
+  final double iconSize;
+
+  const BrandMark({super.key, required this.title, this.iconSize = 24});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Image.asset('assets/app_icon.png', height: iconSize, width: iconSize),
+        ),
+        const SizedBox(width: 10),
+        Flexible(
+          child: Text(
+            title,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).appBarTheme.titleTextStyle,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class HubAppBar extends StatelessWidget implements PreferredSizeWidget {
+  final String title;
+  final VoidCallback? onProfile;
+  final VoidCallback? onLogout;
+  final List<Widget>? extraActions;
+
+  const HubAppBar({
+    super.key,
+    required this.title,
+    this.onProfile,
+    this.onLogout,
+    this.extraActions,
+  });
+
+  @override
+  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+
+  @override
+  Widget build(BuildContext context) {
+    return AppBar(
+      title: BrandMark(title: title),
+      actions: [
+        ...?extraActions,
+        if (onProfile != null || onLogout != null)
+          HubProfileActions(onProfile: onProfile, onLogout: onLogout),
+      ],
+    );
+  }
+}
+
+class HubProfileActions extends StatelessWidget {
+  final VoidCallback? onProfile;
+  final VoidCallback? onLogout;
+
+  const HubProfileActions({super.key, this.onProfile, this.onLogout});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (onProfile != null)
+          IconButton(
+            tooltip: 'Profile',
+            icon: const Icon(Icons.person_outline_rounded, color: AppTheme.primary),
+            onPressed: onProfile,
+          ),
+        if (onLogout != null)
+          IconButton(
+            tooltip: 'Log out',
+            icon: Icon(Icons.logout_rounded, color: AppTheme.textMuted),
+            onPressed: onLogout,
+          ),
+      ],
+    );
+  }
+}
+
+class HubDockDestination {
+  final IconData icon;
+  final IconData selectedIcon;
+  final String label;
+  final int badgeCount;
+
+  const HubDockDestination({
+    required this.icon,
+    required this.selectedIcon,
+    required this.label,
+    this.badgeCount = 0,
+  });
+}
+
+/// Floating pill navigation used on customer and driver hubs.
+class HubBottomDock extends StatelessWidget {
+  final int selectedIndex;
+  final ValueChanged<int> onSelect;
+  final List<HubDockDestination> destinations;
+
+  const HubBottomDock({
+    super.key,
+    required this.selectedIndex,
+    required this.onSelect,
+    required this.destinations,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final surface = AppTheme.surfaceOf(context);
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: BorderRadius.circular(40),
+          border: Border.all(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white.withValues(alpha: 0.08)
+                : const Color(0xFFEDE6E0),
+          ),
+          boxShadow: AppTheme.softShadow,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 0; i < destinations.length; i++)
+              _HubDockButton(
+                destination: destinations[i],
+                selected: selectedIndex == i,
+                onTap: () => onSelect(i),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HubDockButton extends StatelessWidget {
+  final HubDockDestination destination;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _HubDockButton({
+    required this.destination,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+        padding: EdgeInsets.symmetric(horizontal: selected ? 18 : 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? AppTheme.primary.withValues(alpha: 0.14) : Colors.transparent,
+          borderRadius: BorderRadius.circular(30),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Badge(
+              label: Text('${destination.badgeCount}'),
+              isLabelVisible: destination.badgeCount > 0,
+              child: Icon(
+                selected ? destination.selectedIcon : destination.icon,
+                color: selected ? AppTheme.primary : AppTheme.textMuted,
+                size: 22,
+              ),
+            ),
+            if (selected) ...[
+              const SizedBox(width: 6),
+              Text(
+                destination.label,
+                style: const TextStyle(
+                  color: AppTheme.primary,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
