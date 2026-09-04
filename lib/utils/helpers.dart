@@ -561,26 +561,109 @@ String _cleanAddressPart(dynamic value) {
   return text;
 }
 
+String normalizeAddressKey(String value) {
+  return value
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+      .trim()
+      .replaceAll(RegExp(r'\s+'), ' ');
+}
+
+bool _addressAlreadyContains(List<String> kept, String part) {
+  final needle = normalizeAddressKey(part);
+  if (needle.isEmpty) return true;
+  final haystack = normalizeAddressKey(kept.join(' '));
+  return haystack.contains(needle);
+}
+
 /// Builds a single-line address from `user_addresses` or a `users` profile row.
+/// City, state, and pin are omitted when they are already present in street/house.
 String formatSavedAddress(Map<String, dynamic>? data) {
   if (data == null) return '';
 
-  final parts = <String>[
-    _cleanAddressPart(data['house_no']),
-    _cleanAddressPart(data['street'] ?? data['address_line1'] ?? data['address_line_1']),
-    _cleanAddressPart(data['landmark']),
-    _cleanAddressPart(data['city']),
-    _cleanAddressPart(data['state']),
-  ].where((part) => part.isNotEmpty).toList();
-
-  final pin = _cleanAddressPart(data['postal_code'] ?? data['pincode']);
-  if (pin.isNotEmpty) {
-    if (parts.isEmpty) return pin;
-    return '${parts.join(', ')} - $pin';
+  final parts = <String>[];
+  for (final value in [
+    data['house_no'],
+    data['street'] ?? data['address_line1'] ?? data['address_line_1'],
+    data['landmark'],
+    data['city'],
+    data['state'],
+  ]) {
+    final part = _cleanAddressPart(value);
+    if (part.isEmpty || _addressAlreadyContains(parts, part)) continue;
+    parts.add(part);
   }
 
-  if (parts.isNotEmpty) return parts.join(', ');
-  return _cleanAddressPart(data['address'] ?? data['full_address'] ?? data['formatted_address']);
+  final pin = _cleanAddressPart(data['postal_code'] ?? data['pincode']);
+  if (parts.isEmpty) {
+    final fallback = _cleanAddressPart(data['address'] ?? data['full_address'] ?? data['formatted_address']);
+    if (fallback.isEmpty) return pin;
+    if (pin.isNotEmpty && !normalizeAddressKey(fallback).contains(normalizeAddressKey(pin))) {
+      return '$fallback - $pin';
+    }
+    return fallback;
+  }
+
+  if (pin.isNotEmpty && !_addressAlreadyContains(parts, pin)) {
+    return '${parts.join(', ')} - $pin';
+  }
+  return parts.join(', ');
+}
+
+DateTime _addressTimestamp(Map<String, dynamic> address) {
+  return DateTime.tryParse(_cleanAddressPart(address['updated_at'] ?? address['created_at'])) ??
+      DateTime.fromMillisecondsSinceEpoch(0);
+}
+
+/// Drops duplicate saved-address rows (same id, or the same visible address).
+List<Map<String, dynamic>> uniqueSavedAddresses(Iterable<Map<String, dynamic>> addresses) {
+  final rows = addresses.map((row) => Map<String, dynamic>.from(row)).toList();
+  rows.sort((a, b) {
+    final aDefault = a['is_default'] == true ? 0 : 1;
+    final bDefault = b['is_default'] == true ? 0 : 1;
+    if (aDefault != bDefault) return aDefault - bDefault;
+    return _addressTimestamp(b).compareTo(_addressTimestamp(a));
+  });
+
+  final seenIds = <String>{};
+  final seenKeys = <String>{};
+  final unique = <Map<String, dynamic>>[];
+  for (final row in rows) {
+    final id = row['id']?.toString() ?? '';
+    if (id.isNotEmpty && !seenIds.add(id)) continue;
+    var key = normalizeAddressKey(formatSavedAddress(row));
+    if (key.isEmpty) {
+      key = [
+        addressCoordinate(row, latitude: true)?.toStringAsFixed(5) ?? '',
+        addressCoordinate(row, latitude: false)?.toStringAsFixed(5) ?? '',
+      ].join(',');
+    }
+    if (key.isEmpty || key == ',') continue;
+    if (!seenKeys.add(key)) continue;
+    unique.add(row);
+  }
+  return unique;
+}
+
+String? matchingSavedAddressId(
+  Iterable<Map<String, dynamic>> existing,
+  Map<String, dynamic> candidate,
+) {
+  final candidateKey = normalizeAddressKey(formatSavedAddress(candidate));
+  final candLat = addressCoordinate(candidate, latitude: true);
+  final candLng = addressCoordinate(candidate, latitude: false);
+  for (final row in existing) {
+    final id = row['id']?.toString();
+    if (id == null || id.isEmpty) continue;
+    if (id == candidate['id']?.toString()) continue;
+    final key = normalizeAddressKey(formatSavedAddress(row));
+    if (candidateKey.isNotEmpty && key == candidateKey) return id;
+    final lat = addressCoordinate(row, latitude: true);
+    final lng = addressCoordinate(row, latitude: false);
+    if (candLat == null || candLng == null || lat == null || lng == null) continue;
+    if ((candLat - lat).abs() < 0.00015 && (candLng - lng).abs() < 0.00015) return id;
+  }
+  return null;
 }
 
 double? addressCoordinate(Map<String, dynamic>? data, {required bool latitude}) {

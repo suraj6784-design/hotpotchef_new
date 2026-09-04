@@ -174,15 +174,15 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           .eq('user_id', user.id)
           .withTimeout(NetworkTimeouts.standard);
 
-      List<Map<String, dynamic>> normalized = [];
-      for (var row in response) {
-        final addrStr = "${row['house_no'] ?? ''}, ${row['street'] ?? ''}, ${row['city'] ?? ''}, ${row['state'] ?? ''} - ${row['postal_code'] ?? row['pincode'] ?? ''}";
-        normalized.add({
-          'address': addrStr,
-          'title': row['landmark'] ?? 'Saved Address',
+      List<Map<String, dynamic>> normalized = uniqueSavedAddresses(
+        (response as List).map((row) => Map<String, dynamic>.from(row as Map)),
+      ).map((row) {
+        return {
           ...row,
-        });
-      }
+          'address': formatSavedAddress(row),
+          'title': row['landmark'] ?? 'Saved Address',
+        };
+      }).toList();
 
       if (mounted) {
         setState(() {

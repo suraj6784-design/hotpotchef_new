@@ -305,6 +305,21 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
 
   // --- Database Persistence ---
 
+  Future<Object?> _existingDuplicateId(String userId, Map<String, dynamic> candidate) async {
+    try {
+      final rows = await Supabase.instance.client
+          .from('user_addresses')
+          .select()
+          .eq('user_id', userId);
+      return matchingSavedAddressId(
+        List<Map<String, dynamic>>.from(rows as List),
+        candidate,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<Map<String, dynamic>> _upsertAddress({
     required Map<String, dynamic> addressData,
     Object? existingId,
@@ -386,7 +401,8 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
         'updated_at': DateTime.now().toIso8601String(),
       };
 
-      final existingId = widget.existingAddress?['id'];
+      final existingId = widget.existingAddress?['id'] ??
+          await _existingDuplicateId(user.id, addressData);
       final saved = await _upsertAddress(addressData: addressData, existingId: existingId);
 
       if (!mounted) return;

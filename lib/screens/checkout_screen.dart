@@ -131,9 +131,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     setState(() {
       if (fetchedAddresses != null) {
-        _savedAddresses = fetchedAddresses;
+        _savedAddresses = uniqueSavedAddresses(fetchedAddresses);
         _selectedAddressData = preferredCheckoutAddress(
-              fetchedAddresses,
+              _savedAddresses,
               selectedId: _selectedAddressData?['id'],
             ) ??
             checkoutAddressFromUserProfile(userData) ??

@@ -27,6 +27,55 @@ void main() {
       expect(formatSavedAddress(null), '');
       expect(formatSavedAddress({}), '');
     });
+
+    test('does not repeat city, state, or pin already in the street', () {
+      expect(
+        formatSavedAddress({
+          'house_no': '2',
+          'street': '396/400, Chinchwad, Maharashtra, 411033, Pimpri-Chinchwad',
+          'city': 'Pimpri-Chinchwad',
+          'state': 'Maharashtra',
+          'postal_code': '411033',
+        }),
+        '2, 396/400, Chinchwad, Maharashtra, 411033, Pimpri-Chinchwad',
+      );
+    });
+  });
+
+  group('uniqueSavedAddresses', () {
+    test('keeps one row when the same address was saved three times', () {
+      final unique = uniqueSavedAddresses([
+        {
+          'id': 'a',
+          'house_no': '2',
+          'street': '396/400, Chinchwad, Maharashtra, 411033, Pimpri-Chinchwad',
+          'city': 'Pimpri-Chinchwad',
+          'state': 'Maharashtra',
+          'postal_code': '411033',
+          'updated_at': '2026-01-01T00:00:00Z',
+        },
+        {
+          'id': 'b',
+          'house_no': '2',
+          'street': '396/400, Chinchwad, Maharashtra, 411033, Pimpri-Chinchwad',
+          'city': 'Pimpri-Chinchwad',
+          'state': 'Maharashtra',
+          'postal_code': '411033',
+          'updated_at': '2026-09-04T00:00:00Z',
+        },
+        {
+          'id': 'c',
+          'house_no': '2',
+          'street': '396/400, Chinchwad, Maharashtra, 411033, Pimpri-Chinchwad',
+          'city': 'Pimpri-Chinchwad',
+          'state': 'Maharashtra',
+          'postal_code': '411033',
+          'updated_at': '2026-03-01T00:00:00Z',
+        },
+      ]);
+      expect(unique, hasLength(1));
+      expect(unique.single['id'], 'b');
+    });
   });
 
   group('preferredCheckoutAddress', () {

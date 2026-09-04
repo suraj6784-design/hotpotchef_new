@@ -114,7 +114,7 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
 
       if (mounted) {
         setState(() {
-          _addresses = List<Map<String, dynamic>>.from(addressResponse);
+          _addresses = uniqueSavedAddresses(List<Map<String, dynamic>>.from(addressResponse));
           _orderCount = pastOrdersCount;
           _isLoading = false;
         });
@@ -590,7 +590,7 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
                   child: ListView(
                     shrinkWrap: true,
                     children: _addresses.map((addr) {
-                      final displayStr = "${addr['house_no'] ?? ''}, ${addr['street'] ?? ''}, ${addr['city'] ?? ''}";
+                      final displayStr = formatSavedAddress(addr);
                       return Container(
                         margin: const EdgeInsets.only(bottom: 8),
                         decoration: BoxDecoration(
