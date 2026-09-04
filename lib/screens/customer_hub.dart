@@ -26,6 +26,7 @@ class CustomerHubScreen extends ConsumerStatefulWidget {
 
 class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
   int _selectedIndex = 0;
+  int _ordersEpoch = 0;
 
   @override
   void initState() {
@@ -56,7 +57,10 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
   }
 
   void _onNavigationItemTapped(int index) {
-    setState(() => _selectedIndex = index);
+    setState(() {
+      _selectedIndex = index;
+      if (index == 2) _ordersEpoch++;
+    });
   }
 
   @override
@@ -79,6 +83,7 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
         onLogout: _handleLogout,
       ),
       CustomerOrdersTab(
+        refreshEpoch: _ordersEpoch,
         onProfileTap: _navigateToProfile,
         onLogout: _handleLogout,
         onReorderToCart: () => _onNavigationItemTapped(1),

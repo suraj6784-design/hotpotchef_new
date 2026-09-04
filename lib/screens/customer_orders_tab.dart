@@ -25,12 +25,14 @@ class CustomerOrdersTab extends ConsumerStatefulWidget {
   final VoidCallback onProfileTap;
   final VoidCallback onLogout;
   final VoidCallback? onReorderToCart;
+  final int refreshEpoch;
 
   const CustomerOrdersTab({
     super.key,
     required this.onProfileTap,
     required this.onLogout,
     this.onReorderToCart,
+    this.refreshEpoch = 0,
   });
 
   @override
@@ -45,6 +47,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
 
   StreamSubscription? _ordersSub;
   StreamSubscription? _reqsSub;
+  RealtimeChannel? _ordersChannel;
 
   @override
   bool get wantKeepAlive => true;
@@ -56,77 +59,119 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
   }
 
   @override
+  void didUpdateWidget(CustomerOrdersTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshEpoch != widget.refreshEpoch) {
+      unawaited(_fetchActiveOrders(showSpinner: false));
+    }
+  }
+
+  @override
   void dispose() {
     _ordersSub?.cancel();
     _reqsSub?.cancel();
+    _ordersChannel?.unsubscribe();
     super.dispose();
   }
 
-  // --- Scoped Realtime Subscriptions with Fallbacks ---
+  bool _isActiveStatus(String? status) {
+    final value = status?.toString().toLowerCase() ?? '';
+    return !value.contains('delivered') &&
+        !value.contains('completed') &&
+        !value.contains('cancelled') &&
+        !value.contains('rejected');
+  }
 
-  void _initScopedStreams() async {
+  List<Map<String, dynamic>> _activeRows(Iterable<dynamic> rows) {
+    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).where((row) {
+      return _isActiveStatus(row['status']?.toString());
+    }).toList();
+  }
+
+  Future<void> _fetchActiveOrders({bool showSpinner = true}) async {
     final supabase = Supabase.instance.client;
     final user = supabase.auth.currentUser;
+    if (user == null) {
+      if (mounted) {
+        setState(() {
+          _activeOrders = [];
+          _activeRequests = [];
+          _isLoading = false;
+        });
+      }
+      return;
+    }
 
+    if (showSpinner && mounted) setState(() => _isLoading = true);
+
+    try {
+      List<dynamic> orderRows = const [];
+      try {
+        orderRows = await supabase
+            .from('orders')
+            .select()
+            .eq('customer_id', user.id)
+            .order('created_at', ascending: false);
+      } catch (_) {
+        orderRows = await supabase
+            .from('orders')
+            .select()
+            .or('customer_id.eq.${user.id},user_id.eq.${user.id}')
+            .order('created_at', ascending: false);
+      }
+
+      List<dynamic> requestRows = const [];
+      try {
+        requestRows = await supabase
+            .from('customer_requests')
+            .select()
+            .eq('customer_id', user.id)
+            .order('created_at', ascending: false);
+      } catch (_) {}
+
+      await _loadSavedDropoffAddress(user.id);
+
+      if (!mounted) return;
+      setState(() {
+        _activeOrders = _activeRows(orderRows);
+        _activeRequests = _activeRows(requestRows);
+        _isLoading = false;
+      });
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Customer orders refresh failed');
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _initScopedStreams() {
+    final supabase = Supabase.instance.client;
+    final user = supabase.auth.currentUser;
     if (user == null) {
       if (mounted) setState(() => _isLoading = false);
       return;
     }
 
-    final userId = user.id;
+    unawaited(_fetchActiveOrders());
 
-    try {
-      // 1. Initial manual fetch to guarantee data loads even if stream delays or misses
-      final initialOrders = await supabase
-          .from('orders')
-          .select()
-          .or('customer_id.eq.$userId,user_id.eq.$userId')
-          .order('created_at', ascending: false);
+    _ordersSub?.cancel();
+    _reqsSub?.cancel();
+    _ordersChannel?.unsubscribe();
 
-      await _loadSavedDropoffAddress(userId);
-
-      if (mounted) {
-        final active = (initialOrders as List).where((order) {
-          final status = order['status']?.toString().toLowerCase() ?? '';
-          return !status.contains('delivered') && 
-                 !status.contains('completed') && 
-                 !status.contains('cancelled') && 
-                 !status.contains('rejected');
-        }).map((e) => Map<String, dynamic>.from(e)).toList();
-
-        setState(() {
-          _activeOrders = active;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      debugPrint('Initial orders fetch fallback error: $e');
-    }
-
-    // 2. Scoped Orders Realtime Stream
     _ordersSub = supabase
         .from('orders')
         .stream(primaryKey: ['id'])
         .order('created_at', ascending: false)
         .listen(
       (data) {
-        if (mounted) {
-          final active = data.where((order) {
-            final orderCustomer = order['customer_id']?.toString() ?? order['user_id']?.toString() ?? '';
-            if (orderCustomer != userId) return false;
-
-            final status = order['status']?.toString().toLowerCase() ?? '';
-            return !status.contains('delivered') && 
-                   !status.contains('completed') && 
-                   !status.contains('cancelled') && 
-                   !status.contains('rejected');
-          }).toList();
-
-          setState(() {
-            _activeOrders = active;
-            _isLoading = false;
-          });
-        }
+        if (!mounted) return;
+        final mine = data.where((order) {
+          final owner = order['customer_id']?.toString() ?? order['user_id']?.toString() ?? '';
+          return owner == user.id;
+        });
+        setState(() {
+          _activeOrders = _activeRows(mine);
+          _isLoading = false;
+        });
       },
       onError: (e, stack) {
         FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Customer orders stream error');
@@ -134,33 +179,38 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
       },
     );
 
-    // 3. Scoped Bulk Requests Stream
     _reqsSub = supabase
         .from('customer_requests')
         .stream(primaryKey: ['id'])
-        .eq('customer_id', userId)
+        .eq('customer_id', user.id)
         .order('created_at', ascending: false)
         .listen(
       (data) {
-        if (mounted) {
-          final active = data.where((req) {
-            final status = req['status']?.toString().toLowerCase() ?? '';
-            return !status.contains('delivered') && 
-                   !status.contains('completed') && 
-                   !status.contains('cancelled') && 
-                   !status.contains('rejected');
-          }).toList();
-
-          setState(() {
-            _activeRequests = active;
-            _isLoading = false;
-          });
-        }
+        if (!mounted) return;
+        setState(() {
+          _activeRequests = _activeRows(data);
+          _isLoading = false;
+        });
       },
       onError: (e, stack) {
         FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Customer bulk requests stream error');
       },
     );
+
+    _ordersChannel = supabase
+        .channel('customer-orders-${user.id}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'orders',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'customer_id',
+            value: user.id,
+          ),
+          callback: (_) => unawaited(_fetchActiveOrders(showSpinner: false)),
+        )
+        .subscribe();
   }
 
   Future<void> _loadSavedDropoffAddress(String userId) async {
@@ -778,7 +828,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
             'longitude': request['longitude'],
           },
           onOrderPlacedSuccess: () {
-            if (mounted) setState(() {});
+            unawaited(_fetchActiveOrders(showSpinner: false));
           },
         ),
       ),
@@ -968,12 +1018,9 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
         body: EmptyState(
           icon: Icons.soup_kitchen_outlined,
           title: 'No active orders',
-          message: 'When a chef accepts your meal, it will appear here with live status.',
+          message: 'Placed meals show up here with live kitchen and delivery status.',
           actionLabel: 'Refresh Orders',
-          onAction: () {
-            setState(() => _isLoading = true);
-            _initScopedStreams();
-          },
+          onAction: () => unawaited(_fetchActiveOrders()),
         ),
       );
     }
@@ -1006,7 +1053,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
           'status': order['status'] ?? 'New Order',
           'service_type': order['order_type'] ?? order['service_type'] ?? 'Delivery',
           'delivery_address': resolvedDropoff.isEmpty ? order['delivery_address'] : resolvedDropoff,
-          'driver_id': order['delivery_partner_id'],
+          'driver_id': order['driver_id'] ?? order['delivery_partner_id'],
           'created_at': order['created_at'] ?? DateTime.now().toIso8601String(),
           'updated_at': order['updated_at'],
           'delivered_at': order['delivered_at'],
@@ -1027,7 +1074,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
           'status': order['status'] ?? 'New Order',
           'service_type': order['order_type'] ?? 'Delivery',
           'delivery_address': resolvedDropoff.isEmpty ? order['delivery_address'] : resolvedDropoff,
-          'driver_id': order['delivery_partner_id'],
+          'driver_id': order['driver_id'] ?? order['delivery_partner_id'],
           'created_at': order['created_at'] ?? DateTime.now().toIso8601String(),
           'updated_at': order['updated_at'],
           'delivered_at': order['delivered_at'],
@@ -1051,7 +1098,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
       backgroundColor: AppTheme.canvasOf(context),
       appBar: HubAppBar(title: 'My Orders', onProfile: widget.onProfileTap, onLogout: widget.onLogout),
       body: RefreshIndicator(
-        onRefresh: () async => _initScopedStreams(),
+        onRefresh: () => _fetchActiveOrders(showSpinner: false),
         color: AppTheme.primary,
         child: ListView(
           padding: const EdgeInsets.only(left: 20, right: 20, top: 20, bottom: 100),
