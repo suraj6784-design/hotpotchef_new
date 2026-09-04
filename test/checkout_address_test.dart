@@ -119,4 +119,42 @@ void main() {
       expect(addressCoordinate(address, latitude: false), 73.8);
     });
   });
+
+  group('orderDropoffAddress', () {
+    test('prefers the order delivery_address column', () {
+      expect(
+        orderDropoffAddress({
+          'delivery_address': '2, Chinchwad, 411033',
+        }),
+        '2, Chinchwad, 411033',
+      );
+    });
+
+    test('skips placeholder text and uses a saved-address fallback', () {
+      expect(
+        orderDropoffAddress(
+          {'delivery_address': 'Unknown Location'},
+          fallbackAddress: {
+            'house_no': '2',
+            'street': '396/400, Chinchwad',
+            'city': 'Pimpri-Chinchwad',
+            'postal_code': '411033',
+          },
+        ),
+        '2, 396/400, Chinchwad, Pimpri-Chinchwad - 411033',
+      );
+    });
+
+    test('reads structured fields when delivery_address is missing', () {
+      expect(
+        orderDropoffAddress({
+          'house_no': '12A',
+          'street': 'FC Road',
+          'city': 'Pune',
+          'pincode': '411004',
+        }),
+        '12A, FC Road, Pune - 411004',
+      );
+    });
+  });
 }

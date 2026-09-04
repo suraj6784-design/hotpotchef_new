@@ -34,6 +34,7 @@ class CustomerOrdersTab extends StatefulWidget {
 class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKeepAliveClientMixin {
   List<Map<String, dynamic>> _activeOrders = [];
   List<Map<String, dynamic>> _activeRequests = [];
+  Map<String, dynamic>? _savedDropoffAddress;
   bool _isLoading = true;
 
   StreamSubscription? _ordersSub;
@@ -75,6 +76,8 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
           .select()
           .or('customer_id.eq.$userId,user_id.eq.$userId')
           .order('created_at', ascending: false);
+
+      await _loadSavedDropoffAddress(userId);
 
       if (mounted) {
         final active = (initialOrders as List).where((order) {
@@ -152,6 +155,34 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
         FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Customer bulk requests stream error');
       },
     );
+  }
+
+  Future<void> _loadSavedDropoffAddress(String userId) async {
+    try {
+      final rows = await Supabase.instance.client.from('user_addresses').select().eq('user_id', userId);
+      _savedDropoffAddress = preferredCheckoutAddress(
+        uniqueSavedAddresses(List<Map<String, dynamic>>.from(rows as List)),
+      );
+    } catch (_) {}
+    if (_savedDropoffAddress != null) return;
+    try {
+      final profile = await Supabase.instance.client
+          .from('users')
+          .select('address, house_no, street, city, state, pincode, postal_code, lat, lng, latitude, longitude')
+          .eq('id', userId)
+          .maybeSingle();
+      _savedDropoffAddress = checkoutAddressFromUserProfile(profile);
+    } catch (_) {}
+  }
+
+  String _dropoffLabel(Map<String, dynamic> order, List<Map<String, dynamic>> items) {
+    final value = orderDropoffAddress(order, items: items, fallbackAddress: _savedDropoffAddress);
+    return value.isEmpty ? 'Unknown Location' : value;
+  }
+
+  String _pickupLabel(Map<String, dynamic> order, List<Map<String, dynamic>> items) {
+    final value = orderPickupAddress(order, items: items);
+    return value.isEmpty ? 'Kitchen Location' : value;
   }
 
   // Delegates to the shared helper so slot resolution (including the
@@ -431,8 +462,8 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
     final isPickupOrDineIn = serviceTypeStr.contains('pickup') || serviceTypeStr.contains('dine');
     final addressLabel = isPickupOrDineIn ? 'Pickup Location' : 'Delivery Address';
     final addressValue = isPickupOrDineIn
-        ? (items.first['hosting_address'] ?? items.first['chef_address'] ?? 'Kitchen Location')
-        : (items.first['delivery_address'] ?? 'Unknown Location');
+        ? _pickupLabel(items.first, items)
+        : _dropoffLabel(items.first, items);
 
     showModalBottomSheet(
       context: context,
@@ -910,28 +941,36 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
         parsedItems = jsonDecode(order['items']?.toString() ?? '[]');
       } catch (_) {}
 
-      List<Map<String, dynamic>> enrichedItems = [];
+      List<Map<String, dynamic>> parsedMaps = [];
       for (var item in parsedItems) {
-        if (item is Map) {
-          enrichedItems.add({
-            ...item.cast<String, dynamic>(),
-            'order_id': order['id'],
-            'chef_id': order['chef_id'],
-            'status': order['status'] ?? 'New Order',
-            'service_type': order['order_type'] ?? order['service_type'] ?? 'Delivery',
-            'delivery_address': order['delivery_address'],
-            'driver_id': order['delivery_partner_id'],
-            'created_at': order['created_at'] ?? DateTime.now().toIso8601String(),
-            'updated_at': order['updated_at'],
-            'delivered_at': order['delivered_at'],
-            'time_slot': order['time_slot'] ?? item['time_slot'],
-            'total_price': order['total_price'],
-            'delivery_fee': order['delivery_fee'],
-            'packaging_fee': order['packaging_fee'],
-            'tip_amount': order['tip_amount'],
-            'coins_applied': order['coins_applied'],
-          });
-        }
+        if (item is Map) parsedMaps.add(Map<String, dynamic>.from(item));
+      }
+      final resolvedDropoff = orderDropoffAddress(
+        order,
+        items: parsedMaps,
+        fallbackAddress: _savedDropoffAddress,
+      );
+
+      List<Map<String, dynamic>> enrichedItems = [];
+      for (var item in parsedMaps) {
+        enrichedItems.add({
+          ...item,
+          'order_id': order['id'],
+          'chef_id': order['chef_id'],
+          'status': order['status'] ?? 'New Order',
+          'service_type': order['order_type'] ?? order['service_type'] ?? 'Delivery',
+          'delivery_address': resolvedDropoff.isEmpty ? order['delivery_address'] : resolvedDropoff,
+          'driver_id': order['delivery_partner_id'],
+          'created_at': order['created_at'] ?? DateTime.now().toIso8601String(),
+          'updated_at': order['updated_at'],
+          'delivered_at': order['delivered_at'],
+          'time_slot': order['time_slot'] ?? item['time_slot'],
+          'total_price': order['total_price'],
+          'delivery_fee': order['delivery_fee'],
+          'packaging_fee': order['packaging_fee'],
+          'tip_amount': order['tip_amount'],
+          'coins_applied': order['coins_applied'],
+        });
       }
 
       if (enrichedItems.isEmpty) {
@@ -940,7 +979,7 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
           'chef_id': order['chef_id'],
           'status': order['status'] ?? 'New Order',
           'service_type': order['order_type'] ?? 'Delivery',
-          'delivery_address': order['delivery_address'],
+          'delivery_address': resolvedDropoff.isEmpty ? order['delivery_address'] : resolvedDropoff,
           'driver_id': order['delivery_partner_id'],
           'created_at': order['created_at'] ?? DateTime.now().toIso8601String(),
           'updated_at': order['updated_at'],
@@ -1043,8 +1082,8 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                 final isPickupOrDineIn = serviceTypeStr.contains('pickup') || serviceTypeStr.contains('dine');
                 final addressLabel = isPickupOrDineIn ? 'Pickup: ' : 'Dropoff: ';
                 final addressValue = isPickupOrDineIn
-                    ? (items.first['hosting_address'] ?? items.first['chef_address'] ?? 'Kitchen Location')
-                    : (items.first['delivery_address'] ?? 'Unknown Location');
+                    ? _pickupLabel(items.first, items)
+                    : _dropoffLabel(items.first, items);
 
                 return GestureDetector(
                   onTap: () => _showOrderDetailsBottomSheet(

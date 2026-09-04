@@ -120,18 +120,13 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
     return double.tryParse(value.toString());
   }
 
-  /// The order's destination address: prefer an explicit column, then the
-  /// address embedded in the `items` JSON, then the customer's saved address.
   String? _deliveryAddress() {
-    final top = _order['delivery_address']?.toString();
-    if (top != null && top.isNotEmpty) return top;
-    for (final item in _parseItems(_order['items'])) {
-      final addr = item['delivery_address']?.toString();
-      if (addr != null && addr.isNotEmpty) return addr;
-    }
-    final saved = _customerRow?['address']?.toString();
-    if (saved != null && saved.isNotEmpty) return saved;
-    return null;
+    final value = orderDropoffAddress(
+      _order,
+      items: _parseItems(_order['items']),
+      fallbackAddress: checkoutAddressFromUserProfile(_customerRow),
+    );
+    return value.isEmpty ? null : value;
   }
 
   @override

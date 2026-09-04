@@ -610,6 +610,68 @@ String formatSavedAddress(Map<String, dynamic>? data) {
   return parts.join(', ');
 }
 
+const _placeholderDropoffLabels = {
+  'unknown location',
+  'unknown address',
+  'kitchen location',
+};
+
+String? _explicitDropoff(dynamic value) {
+  final text = _cleanAddressPart(value);
+  if (text.isEmpty) return null;
+  if (_placeholderDropoffLabels.contains(text.toLowerCase())) return null;
+  return text;
+}
+
+/// Drop-off text for a delivery order.
+/// Prefers `delivery_address`, then structured address fields, then a saved-address fallback.
+String orderDropoffAddress(
+  Map<String, dynamic>? order, {
+  Iterable<Map<String, dynamic>> items = const [],
+  Map<String, dynamic>? fallbackAddress,
+}) {
+  final sources = <Map<String, dynamic>>[
+    if (order != null) order,
+    ...items,
+  ];
+  for (final source in sources) {
+    final explicit = _explicitDropoff(source['delivery_address'] ?? source['dropoff_address']);
+    if (explicit != null) return explicit;
+  }
+  for (final source in sources) {
+    final structured = formatSavedAddress({
+      'house_no': source['house_no'],
+      'street': source['street'],
+      'address_line1': source['address_line1'],
+      'landmark': source['landmark'],
+      'city': source['city'],
+      'state': source['state'],
+      'postal_code': source['postal_code'],
+      'pincode': source['pincode'],
+    });
+    if (structured.isNotEmpty) return structured;
+  }
+  if (fallbackAddress != null) {
+    final formatted = formatSavedAddress(fallbackAddress);
+    if (formatted.isNotEmpty) return formatted;
+  }
+  return '';
+}
+
+/// Kitchen address for pickup or dine-in orders.
+String orderPickupAddress(
+  Map<String, dynamic>? order, {
+  Iterable<Map<String, dynamic>> items = const [],
+}) {
+  for (final source in [...items, if (order != null) order]) {
+    final explicit = _explicitDropoff(
+      source['hosting_address'] ?? source['chef_address'] ?? source['kitchen_address'] ?? source['pickup_address'],
+    );
+    if (explicit != null) return explicit;
+  }
+  return '';
+}
+
 DateTime _addressTimestamp(Map<String, dynamic> address) {
   return DateTime.tryParse(_cleanAddressPart(address['updated_at'] ?? address['created_at'])) ??
       DateTime.fromMillisecondsSinceEpoch(0);

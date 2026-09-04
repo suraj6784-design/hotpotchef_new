@@ -158,7 +158,8 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
         (items.isNotEmpty ? items.first['chef_id']?.toString() : null);
     final status = orderRecord['status']?.toString() ?? 'Completed';
     final orderType = orderRecord['order_type']?.toString() ?? (items.isNotEmpty ? (items.first['service_type']?.toString() ?? 'Delivery') : 'Delivery');
-    final addressValue = orderRecord['delivery_address']?.toString() ?? (items.isNotEmpty ? (items.first['delivery_address']?.toString() ?? 'Unknown Address') : 'Unknown Address');
+    final addressValue = orderDropoffAddress(orderRecord, items: items);
+    final displayAddress = addressValue.isEmpty ? 'Unknown Address' : addressValue;
 
     IconData statusIcon = isDelivered ? Icons.check_circle : Icons.cancel;
     Color statusColor = isDelivered ? Colors.green : Colors.red;
@@ -280,7 +281,7 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                               const Icon(Icons.location_on, size: 14, color: Colors.red),
                               const SizedBox(width: 6),
                               Expanded(
-                                child: Text('Address: $addressValue',
+                                child: Text('Address: $displayAddress',
                                     style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis),

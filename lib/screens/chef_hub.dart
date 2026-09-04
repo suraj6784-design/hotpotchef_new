@@ -99,15 +99,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   }
 
   String _deliveryAddress(Map<String, dynamic> order) {
-    final top = order['delivery_address']?.toString().trim() ?? '';
-    if (top.isNotEmpty) return top;
-    for (final item in _parseItems(order['items'])) {
-      final addr = item['delivery_address']?.toString().trim() ?? '';
-      if (addr.isNotEmpty) return addr;
-      final formatted = formatSavedAddress(item);
-      if (formatted.isNotEmpty) return formatted;
-    }
-    return formatSavedAddress(order);
+    return orderDropoffAddress(order, items: _parseItems(order['items']));
   }
 
   void _openChefDeliveryMap(Map<String, dynamic> order) {
