@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import 'app_theme.dart';
 import 'network.dart';
+import 'notification_copy.dart';
 
 // Export the theme so all screens automatically inherit it
 export 'app_theme.dart'; 
@@ -166,6 +167,118 @@ String chatPath(
       if (isGroup || members.length > 1) 'group': '1',
     },
   ).toString();
+}
+
+class ChatInboxItem {
+  const ChatInboxItem({
+    required this.roomId,
+    required this.title,
+    required this.preview,
+    required this.memberIds,
+    this.otherUserId,
+    this.lastAt,
+    this.isGroup = true,
+  });
+
+  final String roomId;
+  final String title;
+  final String preview;
+  final List<String> memberIds;
+  final String? otherUserId;
+  final DateTime? lastAt;
+  final bool isGroup;
+}
+
+List<ChatInboxItem> mergeChatInboxRooms({
+  required String myId,
+  required List<Map<String, dynamic>> orders,
+  required List<Map<String, dynamic>> requests,
+  required List<Map<String, dynamic>> messages,
+}) {
+  final rooms = <String, ChatInboxItem>{};
+
+  for (final order in orders) {
+    final roomId = orderChatRoomId(order);
+    if (roomId.isEmpty) continue;
+    final label = formatOrderId(order['order_id']?.toString(), roomId);
+    final members = orderChatMemberIds(order).toList();
+    final other = members.firstWhere((id) => id != myId, orElse: () => '');
+    rooms[roomId] = ChatInboxItem(
+      roomId: roomId,
+      title: 'Order $label',
+      preview: 'No messages yet. Open the Order# group.',
+      memberIds: members,
+      otherUserId: other.isEmpty ? null : other,
+      lastAt: DateTime.tryParse(order['created_at']?.toString() ?? ''),
+      isGroup: true,
+    );
+  }
+
+  for (final request in requests) {
+    final roomId = request['id']?.toString() ?? '';
+    if (roomId.isEmpty) continue;
+    final members = <String>{
+      if ((request['customer_id']?.toString() ?? '').isNotEmpty) request['customer_id'].toString(),
+      if ((request['accepted_chef_id']?.toString() ?? '').isNotEmpty) request['accepted_chef_id'].toString(),
+    }.toList();
+    final other = members.firstWhere((id) => id != myId, orElse: () => '');
+    final title = request['title']?.toString().trim();
+    rooms[roomId] = ChatInboxItem(
+      roomId: roomId,
+      title: (title == null || title.isEmpty) ? 'Catering lead' : title,
+      preview: 'Catering chat. Message the other person here.',
+      memberIds: members,
+      otherUserId: other.isEmpty ? null : other,
+      lastAt: DateTime.tryParse(request['created_at']?.toString() ?? ''),
+      isGroup: members.length > 1,
+    );
+  }
+
+  final latest = <String, Map<String, dynamic>>{};
+  for (final message in messages) {
+    final roomId = message['meal_id']?.toString() ?? '';
+    if (roomId.isEmpty) continue;
+    final at = DateTime.tryParse(message['created_at']?.toString() ?? '');
+    final existing = latest[roomId];
+    final existingAt = DateTime.tryParse(existing?['created_at']?.toString() ?? '');
+    if (existing == null || (at != null && (existingAt == null || at.isAfter(existingAt)))) {
+      latest[roomId] = message;
+    }
+  }
+
+  for (final entry in latest.entries) {
+    final message = entry.value;
+    final existing = rooms[entry.key];
+    final preview = chatPreview(message['content']?.toString());
+    if (existing != null) {
+      rooms[entry.key] = ChatInboxItem(
+        roomId: existing.roomId,
+        title: existing.title,
+        preview: preview,
+        memberIds: existing.memberIds,
+        otherUserId: existing.otherUserId,
+        lastAt: DateTime.tryParse(message['created_at']?.toString() ?? '') ?? existing.lastAt,
+        isGroup: existing.isGroup,
+      );
+    } else {
+      rooms[entry.key] = ChatInboxItem(
+        roomId: entry.key,
+        title: 'Chat',
+        preview: preview,
+        memberIds: const [],
+        lastAt: DateTime.tryParse(message['created_at']?.toString() ?? ''),
+        isGroup: false,
+      );
+    }
+  }
+
+  final list = rooms.values.toList()
+    ..sort((a, b) {
+      final aAt = a.lastAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bAt = b.lastAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return bAt.compareTo(aAt);
+    });
+  return list;
 }
 
 List<String> parseChatMemberIds(String? raw) {

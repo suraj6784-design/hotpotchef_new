@@ -586,6 +586,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
           ),
           Row(
             children: [
+              _headerIcon(Icons.forum_outlined, 'Order chats', () => context.push('/chats')),
               _headerIcon(Icons.insights, 'Analytics', () => context.push('/chef-analytics')),
               _headerIcon(Icons.person_outline, 'Profile', () => context.push('/chef-profile')),
               _headerIcon(Icons.logout, 'Log Out', () => AuthSession.logout(context)),

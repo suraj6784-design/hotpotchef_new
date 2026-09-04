@@ -217,6 +217,15 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                   Row(
                     children: [
                       GestureDetector(
+                        onTap: () => context.push('/chats'),
+                        child: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle),
+                          child: const Icon(Icons.forum_outlined, color: Colors.white, size: 20),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      GestureDetector(
                         onTap: () {
                           Navigator.push(
                             context,

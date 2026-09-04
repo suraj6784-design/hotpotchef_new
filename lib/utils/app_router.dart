@@ -10,6 +10,7 @@ import '../screens/customer_hub.dart';
 import '../screens/chef_hub.dart';
 import '../screens/driver_hub.dart';
 import '../screens/in_app_chat_screen.dart';
+import '../screens/chat_inbox_screen.dart';
 import '../screens/live_tracking_screen.dart';
 import '../screens/chef_profile_screen.dart';
 import '../screens/driver_profile_screen.dart';
@@ -51,8 +52,9 @@ class AppRouter {
         '/driver-profile',
         '/driver-id-card',
         '/chef-publish-meal',
+        '/chats',
       ];
-      if (!isAuthenticated && protectedChefDriverRoutes.contains(path)) {
+      if (!isAuthenticated && (protectedChefDriverRoutes.contains(path) || path.startsWith('/chat/'))) {
         return '/auth';
       }
 
@@ -98,6 +100,10 @@ class AppRouter {
                   : null;
           return ChefPublishMealScreen(existingMeal: meal);
         },
+      ),
+      GoRoute(
+        path: '/chats',
+        builder: (context, state) => const ChatInboxScreen(),
       ),
       GoRoute(
         path: '/chat/:mealId',

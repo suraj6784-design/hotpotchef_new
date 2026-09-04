@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hotpotchef_new/utils/helpers.dart';
 import 'package:hotpotchef_new/utils/notification_copy.dart';
 
 void main() {
@@ -102,5 +103,58 @@ void main() {
     );
     expect(cancelled!.notifyClaimedChef, isTrue);
     expect(cancelled.notifyCustomer, isFalse);
+  });
+
+  test('inbox lists Order# groups and uses the latest preview', () {
+    final rooms = mergeChatInboxRooms(
+      myId: 'cust',
+      orders: [
+        {
+          'id': 'order-uuid',
+          'order_id': 'ABC12345-xyz',
+          'customer_id': 'cust',
+          'chef_id': 'chef',
+          'created_at': '2026-01-01T00:00:00Z',
+        },
+      ],
+      requests: [
+        {
+          'id': 'req-1',
+          'title': 'Office lunch',
+          'customer_id': 'cust',
+          'accepted_chef_id': 'chef',
+          'created_at': '2026-01-02T00:00:00Z',
+        },
+      ],
+      messages: [
+        {
+          'meal_id': 'ABC12345-xyz',
+          'content': 'On the way',
+          'created_at': '2026-01-03T10:00:00Z',
+        },
+      ],
+    );
+
+    expect(rooms.first.title, 'Order ABC12345');
+    expect(rooms.first.preview, 'On the way');
+    expect(rooms.any((room) => room.title == 'Office lunch'), isTrue);
+  });
+
+  test('inbox keeps a sent message that has no matching order', () {
+    final rooms = mergeChatInboxRooms(
+      myId: 'cust',
+      orders: const [],
+      requests: const [],
+      messages: [
+        {
+          'meal_id': 'legacy-room',
+          'content': 'Still there?',
+          'created_at': '2026-01-04T00:00:00Z',
+        },
+      ],
+    );
+    expect(rooms, hasLength(1));
+    expect(rooms.first.roomId, 'legacy-room');
+    expect(rooms.first.preview, 'Still there?');
   });
 }

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:pdf/pdf.dart' as pw;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -76,6 +77,18 @@ class InvoicePdfService {
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Dismiss', style: TextStyle(color: Colors.grey))),
+            TextButton.icon(
+              icon: const Icon(Icons.share_outlined, size: 16),
+              label: const Text('Share'),
+              onPressed: () {
+                SharePlus.instance.share(
+                  ShareParams(
+                    files: [XFile(filePath)],
+                    text: 'HotPotChef invoice $orderId',
+                  ),
+                );
+              },
+            ),
             ElevatedButton.icon(
               icon: const Icon(Icons.picture_as_pdf, size: 16),
               label: const Text('Open Invoice'),

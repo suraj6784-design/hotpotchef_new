@@ -829,6 +829,14 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
                       },
                     ),
                     Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
+                    _buildListTile(
+                      icon: Icons.forum_outlined,
+                      title: 'Order chats',
+                      subtitle: 'Reopen an Order# group without hunting through history',
+                      isDark: isDark,
+                      onTap: () => context.push('/chats'),
+                    ),
+                    Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
 
                     _buildListTile(
                       icon: Icons.account_balance_wallet_outlined,
