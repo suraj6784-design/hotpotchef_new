@@ -34,24 +34,26 @@ class _LoyaltyBadgeCardState extends State<LoyaltyBadgeCard> {
         return;
       }
 
-      final res = await _supabase
-          .from('user_gamification')
-          .select()
-          .eq('user_id', user.id)
-          .maybeSingle();
+      final results = await Future.wait([
+        _supabase.from('user_gamification').select().eq('user_id', user.id).maybeSingle(),
+        _supabase.from('orders').select('status').eq('customer_id', user.id),
+      ]);
 
       if (!mounted) return;
 
-      if (res != null) {
-        setState(() {
-          _tier = res['loyalty_tier']?.toString() ?? 'Bronze Foodie 🥉';
-          _completedOrders = (res['total_orders_completed'] as num?)?.toInt() ?? 0;
-          _streak = (res['current_streak'] as num?)?.toInt() ?? 0;
-          _isLoading = false;
-        });
-      } else {
-        setState(() => _isLoading = false);
-      }
+      final res = results[0] as Map<String, dynamic>?;
+      final orders = List<Map<String, dynamic>>.from((results[1] as List?) ?? const []);
+      final delivered = orders.where((order) {
+        final status = order['status']?.toString().toLowerCase() ?? '';
+        return status.contains('delivered') || status.contains('completed');
+      }).length;
+
+      setState(() {
+        _tier = res?['loyalty_tier']?.toString() ?? 'Bronze Foodie 🥉';
+        _completedOrders = delivered;
+        _streak = (res?['current_streak'] as num?)?.toInt() ?? 0;
+        _isLoading = false;
+      });
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to fetch gamification tier data');
       if (mounted) setState(() => _isLoading =false);

@@ -48,10 +48,9 @@ class _DailyStreakBannerState extends State<DailyStreakBanner> {
 
         bool alreadyClaimed = false;
         if (lastDate != null) {
-          final localLast = lastDate.toLocal();
-          alreadyClaimed = localLast.year == today.year &&
-              localLast.month == today.month &&
-              localLast.day == today.day;
+          alreadyClaimed = lastDate.year == today.year &&
+              lastDate.month == today.month &&
+              lastDate.day == today.day;
         }
 
         setState(() {
@@ -88,7 +87,8 @@ class _DailyStreakBannerState extends State<DailyStreakBanner> {
 
         _showSnackBar('Streak Claimed! +$reward HotPot Coins Added! 🎉', isError: false);
       } else {
-        final message = response?['message']?.toString() ?? 'Already claimed today!';
+        final message = response?['message']?.toString() ??
+            'Already claimed today. Coins stay in your wallet until you spend them at checkout.';
         _showSnackBar(message, isError: true);
       }
     } catch (e, stack) {
