@@ -1203,13 +1203,13 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                 decoration: BoxDecoration(
-                                  color: AppTheme.background,
+                                  color: AppTheme.surfaceOf(context),
                                   borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.grey.shade300),
+                                  border: Border.all(color: AppTheme.hairlineOf(context)),
                                 ),
                                 child: Text(displayOrderIdStr,
-                                    style: const TextStyle(
-                                        color: AppTheme.textMain, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 1.0)),
+                                    style: TextStyle(
+                                        color: AppTheme.onSurfaceOf(context), fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 1.0)),
                               ),
                               if (items.isNotEmpty)
                                 DeliveryCountdownSticker(
@@ -1229,7 +1229,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text('${items.first['quantity']}x ${items.first['title']}',
-                                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+                                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                                     if (items.length > 1) ...[
                                       const SizedBox(height: 4),
                                       Text('+ ${items.length - 1} more items', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12, fontStyle: FontStyle.italic)),
@@ -1281,7 +1281,11 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                           const SizedBox(height: 12),
                           Container(
                             padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(color: AppTheme.background, borderRadius: BorderRadius.circular(8)),
+                            decoration: BoxDecoration(
+                              color: AppTheme.surfaceOf(context),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: AppTheme.hairlineOf(context)),
+                            ),
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -1290,7 +1294,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                 const SizedBox(width: 6),
                                 Expanded(
                                   child: Text('$addressLabel$addressValue',
-                                      style: const TextStyle(fontSize: 12, color: AppTheme.textMain),
+                                      style: TextStyle(fontSize: 12, color: AppTheme.onSurfaceOf(context)),
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis),
                                 ),

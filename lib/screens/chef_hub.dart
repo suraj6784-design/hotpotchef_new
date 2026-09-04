@@ -249,7 +249,9 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(nextState ? '🟢 Kitchen is Online & Accepting Orders' : '🔴 Kitchen is Offline'),
+            content: Text(nextState
+                ? 'Kitchen is online. Customers can see your dishes again.'
+                : 'Kitchen is offline. Your dishes are hidden from customers.'),
             duration: const Duration(seconds: 2),
           ),
         );
@@ -930,6 +932,22 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               icon: Icons.add_rounded,
               onPressed: () => context.push('/chef-publish-meal'),
             ),
+            if (!_isKitchenOpen) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppTheme.warning.withValues(alpha: 0.12),
+                  borderRadius: AppTheme.radiusMd,
+                  border: Border.all(color: AppTheme.warning.withValues(alpha: 0.4)),
+                ),
+                child: Text(
+                  'Kitchen is offline. Your dishes are hidden on Home until you go back online.',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.onSurfaceOf(context)),
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             if (items.isEmpty)
               const EmptyState(

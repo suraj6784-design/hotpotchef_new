@@ -78,6 +78,30 @@ void main() {
     });
   });
 
+  group('shouldMarkSavedAddressDefault', () {
+    test('marks the first address and fills in when none is default', () {
+      expect(shouldMarkSavedAddressDefault(const []), isTrue);
+      expect(
+        shouldMarkSavedAddressDefault([
+          {'id': 'a', 'is_default': true},
+        ]),
+        isFalse,
+      );
+      expect(
+        shouldMarkSavedAddressDefault([
+          {'id': 'a', 'is_default': false},
+        ]),
+        isTrue,
+      );
+      expect(
+        shouldMarkSavedAddressDefault([
+          {'id': 'a', 'is_default': true},
+        ], editingId: 'a'),
+        isTrue,
+      );
+    });
+  });
+
   group('preferredCheckoutAddress', () {
     test('keeps the currently selected address', () {
       final selected = preferredCheckoutAddress(

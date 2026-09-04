@@ -732,6 +732,20 @@ List<Map<String, dynamic>> uniqueSavedAddresses(Iterable<Map<String, dynamic>> a
   return unique;
 }
 
+/// First saved address, or any save when none is already default, becomes the default drop-off.
+bool shouldMarkSavedAddressDefault(
+  Iterable<Map<String, dynamic>> existing, {
+  Object? editingId,
+}) {
+  final rows = existing.toList();
+  if (rows.isEmpty) return true;
+  final hasDefault = rows.any((row) {
+    if (editingId != null && row['id']?.toString() == editingId.toString()) return false;
+    return row['is_default'] == true;
+  });
+  return !hasDefault;
+}
+
 String? matchingSavedAddressId(
   Iterable<Map<String, dynamic>> existing,
   Map<String, dynamic> candidate,

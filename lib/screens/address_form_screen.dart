@@ -305,21 +305,6 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
 
   // --- Database Persistence ---
 
-  Future<Object?> _existingDuplicateId(String userId, Map<String, dynamic> candidate) async {
-    try {
-      final rows = await Supabase.instance.client
-          .from('user_addresses')
-          .select()
-          .eq('user_id', userId);
-      return matchingSavedAddressId(
-        List<Map<String, dynamic>>.from(rows as List),
-        candidate,
-      );
-    } catch (_) {
-      return null;
-    }
-  }
-
   Future<Map<String, dynamic>> _upsertAddress({
     required Map<String, dynamic> addressData,
     Object? existingId,
@@ -336,6 +321,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
       'landmark': addressData['landmark'],
       'latitude': addressData['latitude'],
       'longitude': addressData['longitude'],
+      if (addressData['is_default'] == true) 'is_default': true,
     };
 
     Future<Map<String, dynamic>> write(Map<String, dynamic> data) async {
@@ -347,14 +333,22 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
       return data;
     }
 
+    Future<Map<String, dynamic>> writeWithPinFallback(Map<String, dynamic> data) async {
+      try {
+        return await write(data);
+      } catch (_) {
+        final alt = {
+          ...data,
+          'pincode': data['postal_code'],
+        }..remove('postal_code');
+        return await write(alt);
+      }
+    }
+
     try {
-      return await write(payload);
+      return await writeWithPinFallback(payload);
     } catch (_) {
-      final alt = {
-        ...payload,
-        'pincode': payload['postal_code'],
-      }..remove('postal_code');
-      return await write(alt);
+      return await writeWithPinFallback(Map<String, dynamic>.from(payload)..remove('is_default'));
     }
   }
 
@@ -397,12 +391,23 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
         'landmark': _landmarkController.text.trim(),
         'latitude': _latitude,
         'longitude': _longitude,
-        // Removed is_default
         'updated_at': DateTime.now().toIso8601String(),
       };
 
+      List<Map<String, dynamic>> existingRows = const [];
+      try {
+        final rows = await Supabase.instance.client
+            .from('user_addresses')
+            .select()
+            .eq('user_id', user.id);
+        existingRows = List<Map<String, dynamic>>.from(rows as List);
+      } catch (_) {}
+
       final existingId = widget.existingAddress?['id'] ??
-          await _existingDuplicateId(user.id, addressData);
+          matchingSavedAddressId(existingRows, addressData);
+      if (shouldMarkSavedAddressDefault(existingRows, editingId: existingId)) {
+        addressData['is_default'] = true;
+      }
       final saved = await _upsertAddress(addressData: addressData, existingId: existingId);
 
       if (!mounted) return;
