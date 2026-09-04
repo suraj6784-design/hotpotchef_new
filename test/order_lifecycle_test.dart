@@ -32,12 +32,24 @@ void main() {
       expect(OrderLifecycle.nextKitchenStatus('Preparing'), OrderStatus.readyForPickup);
     });
 
-    test('open driver jobs exclude delivered and cancelled', () {
-      expect(OrderLifecycle.isOpenDriverJob('Pending Chef Approval'), isTrue);
+    test('open driver jobs start only after the kitchen is ready', () {
+      expect(OrderLifecycle.isOpenDriverJob('Pending Chef Approval'), isFalse);
+      expect(OrderLifecycle.isOpenDriverJob('Confirmed'), isFalse);
+      expect(OrderLifecycle.isOpenDriverJob('Preparing'), isFalse);
       expect(OrderLifecycle.isOpenDriverJob('Ready for Pickup'), isTrue);
+      expect(OrderLifecycle.isOpenDriverJob('Driver Assigned'), isTrue);
       expect(OrderLifecycle.isOpenDriverJob('Out for Delivery'), isTrue);
       expect(OrderLifecycle.isOpenDriverJob('Delivered'), isFalse);
       expect(OrderLifecycle.isOpenDriverJob('Cancelled'), isFalse);
+    });
+
+    test('drivers cannot start or finish a run before the kitchen is ready', () {
+      expect(OrderLifecycle.nextDriverStatus('Pending Chef Approval'), isNull);
+      expect(OrderLifecycle.nextDriverStatus('Confirmed'), isNull);
+      expect(OrderLifecycle.nextDriverStatus('Preparing'), isNull);
+      expect(OrderLifecycle.nextDriverStatus('Ready for Pickup'), OrderStatus.outForDelivery);
+      expect(OrderLifecycle.nextDriverStatus('Driver Assigned'), OrderStatus.outForDelivery);
+      expect(OrderLifecycle.nextDriverStatus('Out for Delivery'), OrderStatus.delivered);
     });
 
     test('dispatch depends on delivery option', () {

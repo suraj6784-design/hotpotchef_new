@@ -18,6 +18,7 @@ import '../providers/driver_dashboard_provider.dart';
 import '../models/driver_delivery_model.dart';
 import '../services/auth_session.dart';
 import '../services/delivery_estimator_service.dart';
+import '../services/order_lifecycle.dart';
 
 class DriverHubScreen extends ConsumerStatefulWidget {
   const DriverHubScreen({super.key});
@@ -433,7 +434,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
       return EmptyState(
         icon: Icons.radar_rounded,
         title: 'Scanning nearby kitchens',
-        message: 'New partner deliveries will appear here as chefs accept and cook them.',
+        message: 'Jobs appear here after a chef confirms the order and marks it Ready for Pickup.',
         actionLabel: 'Refresh Jobs',
         onAction: () => ref.read(driverDashboardProvider.notifier).loadDashboardData(),
       );
@@ -512,7 +513,9 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
       itemCount: active.length,
       itemBuilder: (context, index) {
         final delivery = active[index];
-        final isOut = delivery.status == DeliveryStatus.outForDelivery;
+        final rawStatus = delivery.statusLabel.isEmpty ? delivery.status.toDbValue() : delivery.statusLabel;
+        final isOut = OrderLifecycle.canDriverCompleteRun(rawStatus);
+        final canStart = OrderLifecycle.canDriverStartRun(rawStatus);
 
         return AppCard(
           margin: const EdgeInsets.only(bottom: 16),
@@ -524,7 +527,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 children: [
                   Text('Run #${formatOrderId(null, delivery.orderId)}',
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textMuted)),
-                  AppStatusBadge(status: delivery.status.toDbValue()),
+                  AppStatusBadge(status: rawStatus),
                 ],
               ),
               const SizedBox(height: 12),
@@ -587,35 +590,41 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 },
               ),
               const SizedBox(height: 10),
-              GradientButton(
-                label: isOut ? 'Mark Delivered' : 'Start Delivery',
-                icon: isOut ? Icons.check_rounded : Icons.delivery_dining_rounded,
-                height: 48,
-                loading: _busyOrderId == delivery.orderId,
-                gradient: isOut
-                    ? const LinearGradient(colors: [AppTheme.success, Color(0xFF43C478)])
-                    : AppTheme.primaryGradient,
-                onPressed: _busyOrderId != null
-                    ? null
-                    : () async {
-                        setState(() => _busyOrderId = delivery.orderId);
-                        final nextStatus = isOut ? DeliveryStatus.delivered : DeliveryStatus.outForDelivery;
-                        final ok = await notifier.updateDeliveryStatus(delivery.orderId, nextStatus);
-                        if (!mounted) return;
-                        setState(() => _busyOrderId = null);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              ok
-                                  ? (isOut ? 'Marked as delivered.' : 'Out for delivery.')
-                                  : (ref.read(driverDashboardProvider).errorMessage ??
-                                      'Could not update this run. Try again.'),
+              if (isOut || canStart)
+                GradientButton(
+                  label: isOut ? 'Mark Delivered' : 'Start Delivery',
+                  icon: isOut ? Icons.check_rounded : Icons.delivery_dining_rounded,
+                  height: 48,
+                  loading: _busyOrderId == delivery.orderId,
+                  gradient: isOut
+                      ? const LinearGradient(colors: [AppTheme.success, Color(0xFF43C478)])
+                      : AppTheme.primaryGradient,
+                  onPressed: _busyOrderId != null
+                      ? null
+                      : () async {
+                          setState(() => _busyOrderId = delivery.orderId);
+                          final nextStatus = isOut ? DeliveryStatus.delivered : DeliveryStatus.outForDelivery;
+                          final ok = await notifier.updateDeliveryStatus(delivery.orderId, nextStatus);
+                          if (!mounted) return;
+                          setState(() => _busyOrderId = null);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                ok
+                                    ? (isOut ? 'Marked as delivered.' : 'Out for delivery.')
+                                    : (ref.read(driverDashboardProvider).errorMessage ??
+                                        'Could not update this run. Try again.'),
+                              ),
+                              backgroundColor: ok ? Colors.green : Colors.red,
                             ),
-                            backgroundColor: ok ? Colors.green : Colors.red,
-                          ),
-                        );
-                      },
-              ),
+                          );
+                        },
+                )
+              else
+                const Text(
+                  'The kitchen is still preparing this order. Start Delivery unlocks after Ready for Pickup.',
+                  style: TextStyle(fontSize: 13, color: AppTheme.textMuted, height: 1.35),
+                ),
             ],
           ),
         ).entrance(index: index);

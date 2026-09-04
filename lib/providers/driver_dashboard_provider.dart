@@ -75,12 +75,14 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
 
       final mine = 'driver_id.eq.${user.id},delivery_partner_id.eq.${user.id}';
 
-      // 1. Unassigned partner jobs (pending through ready, plus orphaned out-for-delivery)
+      // 1. Unassigned partner jobs after the kitchen marks Ready for Pickup.
       final availableFuture = _supabase
           .from('orders')
           .select()
           .isFilter('driver_id', null)
           .isFilter('delivery_partner_id', null)
+          .or('status.ilike.%ready%,status.ilike.%assigned%,status.ilike.%out for delivery%,status.ilike.%out_for_delivery%')
+          .not('status', 'ilike', '%pending%')
           .not('status', 'ilike', '%delivered%')
           .not('status', 'ilike', '%cancelled%')
           .not('status', 'ilike', '%rejected%')
@@ -174,7 +176,7 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
       final success = await _lifecycle.acceptDelivery(orderId: orderId, driverId: user.id);
       if (!success) {
         state = state.copyWith(
-          errorMessage: 'Order was already accepted by another partner.',
+          errorMessage: 'This order is not ready for pickup yet, or another partner claimed it.',
         );
         await loadDashboardData(isSilentRefresh: true);
         return false;
@@ -196,11 +198,16 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
     if (user == null) return false;
 
     try {
+      final current = nextStatus == DeliveryStatus.delivered
+          ? OrderStatus.outForDelivery
+          : OrderStatus.driverAssigned;
+      if (OrderLifecycle.nextDriverStatus(current) == null) {
+        state = state.copyWith(errorMessage: 'This run is not at a delivery step yet.');
+        return false;
+      }
       await _lifecycle.advanceDriver(
         orderId: orderId,
-        currentStatus: nextStatus == DeliveryStatus.delivered
-            ? OrderStatus.outForDelivery
-            : OrderStatus.driverAssigned,
+        currentStatus: current,
       );
 
       await loadDashboardData(isSilentRefresh: true);

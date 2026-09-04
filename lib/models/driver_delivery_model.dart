@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import '../utils/helpers.dart';
 
 enum DeliveryStatus {
+  waitingKitchen,
   readyForPickup,
   accepted,
   pickedUp,
@@ -16,17 +17,22 @@ enum DeliveryStatus {
 
   static DeliveryStatus fromString(String? val) {
     final s = val?.toLowerCase().trim() ?? '';
-    if (s.contains('ready')) return DeliveryStatus.readyForPickup;
-    if (s.contains('assigned') || s.contains('accept')) return DeliveryStatus.accepted;
-    if (s.contains('pickup') || s.contains('picked')) return DeliveryStatus.pickedUp;
-    if (s.contains('out')) return DeliveryStatus.outForDelivery;
-    if (s.contains('deliver')) return DeliveryStatus.delivered;
     if (s.contains('cancel')) return DeliveryStatus.cancelled;
-    return DeliveryStatus.readyForPickup;
+    if (s.contains('out')) return DeliveryStatus.outForDelivery;
+    if (s.contains('deliver') || s.contains('completed')) return DeliveryStatus.delivered;
+    if (s.contains('assigned') || s == 'accepted') return DeliveryStatus.accepted;
+    if (s.contains('ready')) return DeliveryStatus.readyForPickup;
+    if (s.contains('pickup') || s.contains('picked')) return DeliveryStatus.pickedUp;
+    if (s.contains('pending') || s.contains('confirm') || s.contains('prepar') || s == 'placed' || s == 'new') {
+      return DeliveryStatus.waitingKitchen;
+    }
+    return DeliveryStatus.waitingKitchen;
   }
 
   String toDbValue() {
     switch (this) {
+      case DeliveryStatus.waitingKitchen:
+        return 'Pending Chef Approval';
       case DeliveryStatus.readyForPickup:
         return 'Ready for Pickup';
       case DeliveryStatus.accepted:

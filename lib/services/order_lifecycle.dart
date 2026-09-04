@@ -23,13 +23,20 @@ class OrderLifecycle {
     return isPendingKitchen(status) || s == 'confirmed' || s == 'preparing';
   }
 
+  /// Unassigned partner jobs drivers may claim: kitchen-ready or orphaned in transit.
   static bool isOpenDriverJob(String? status) {
+    if (isKitchenActive(status)) return false;
+    return isDispatchQueue(status);
+  }
+
+  static bool canDriverStartRun(String? status) {
     final s = normalize(status);
-    if (s.isEmpty) return false;
-    if (s.contains('delivered') || s.contains('cancelled') || s.contains('rejected') || s.contains('completed')) {
-      return false;
-    }
-    return true;
+    return s.contains('ready') || s.contains('assigned') || s.contains('accept');
+  }
+
+  static bool canDriverCompleteRun(String? status) {
+    final s = normalize(status);
+    return s.contains('out') && !s.contains('timeout');
   }
 
   static bool isDispatchQueue(String? status) {
@@ -97,11 +104,8 @@ class OrderLifecycle {
   }
 
   static String? nextDriverStatus(String? current) {
-    final s = normalize(current);
-    if (s.contains('ready') || s.contains('assigned') || s.contains('accept')) {
-      return OrderStatus.outForDelivery;
-    }
-    if (s.contains('out')) return OrderStatus.delivered;
+    if (canDriverStartRun(current)) return OrderStatus.outForDelivery;
+    if (canDriverCompleteRun(current)) return OrderStatus.delivered;
     return null;
   }
 

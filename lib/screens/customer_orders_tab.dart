@@ -423,6 +423,14 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
       statusIcon = Icons.soup_kitchen;
       statusColor = Colors.orange;
       statusText = 'Chef is preparing your food';
+    } else if (status.toLowerCase().contains('confirm')) {
+      statusIcon = Icons.thumb_up_alt_outlined;
+      statusColor = AppTheme.success;
+      statusText = 'Chef accepted your order';
+    } else if (OrderLifecycle.isPendingKitchen(status)) {
+      statusIcon = Icons.hourglass_empty;
+      statusColor = Colors.orange;
+      statusText = 'Waiting for the chef to accept';
     }
 
     final bool isCancelled = status.toLowerCase().contains('cancelled') || status.toLowerCase().contains('rejected');

@@ -96,10 +96,14 @@ class OrderRepository {
           .update({
             'status': OrderStatus.driverAssigned,
             'driver_id': driverId,
+            'delivery_partner_id': driverId,
             'updated_at': DateTime.now().toUtc().toIso8601String(),
           })
           .eq('id', orderId)
           .filter('driver_id', 'is', null)
+          .filter('delivery_partner_id', 'is', null)
+          .or('status.ilike.%ready%,status.ilike.%assigned%,status.ilike.%out for delivery%')
+          .not('status', 'ilike', '%pending%')
           .select('id');
 
       final claimed = List<dynamic>.from(response).isNotEmpty;

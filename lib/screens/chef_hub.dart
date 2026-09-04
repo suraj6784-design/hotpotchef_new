@@ -837,11 +837,13 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       itemCount: dispatches.length,
       itemBuilder: (context, index) {
         final order = dispatches[index];
-        final isOut = OrderLifecycle.normalize(order['status']?.toString()) == 'out for delivery';
+        final status = order['status']?.toString() ?? '';
+        final isOut = OrderLifecycle.normalize(status) == 'out for delivery';
+        final driverAssigned = OrderLifecycle.normalize(status).contains('assigned');
         final svc = _orderService(order);
         final dispatchLabel = () {
           if (isOut) return 'Mark Delivered';
-          if (svc.usesDeliveryPartner) return 'Release to Delivery Partners';
+          if (svc.usesDeliveryPartner) return 'Waiting for a delivery partner';
           if (svc == ServiceType.deliverySelf) return 'Dispatch (Chef-Self)';
           if (svc == ServiceType.dineIn) return 'Mark Dine-In Complete';
           return 'Mark Picked Up';
@@ -912,6 +914,13 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                       onPressed: () => _dispatchOrder(order),
                     ),
                   ],
+                )
+              else if (svc.usesDeliveryPartner && !isOut)
+                Text(
+                  driverAssigned
+                      ? 'A delivery partner has this order. They will start and complete the run.'
+                      : 'Waiting for a delivery partner. Drivers see this job after you mark it Ready for Pickup.',
+                  style: const TextStyle(fontSize: 13, color: AppTheme.textMuted, height: 1.35),
                 )
               else
                 GradientButton(
