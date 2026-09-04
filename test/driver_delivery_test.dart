@@ -44,6 +44,18 @@ void main() {
     expect(formatDeliverySlotLabel(delivery.slotSource), contains('02:00'));
   });
 
+  test('driver payout ignores a stored zero and uses the default', () {
+    expect(driverPayoutFromOrder({'delivery_fee': 0, 'driver_payout': 0}), 40);
+    expect(driverPayoutFromOrder({'delivery_fee': 35}), 35);
+    expect(driverPayoutFromOrder({'driver_payout': 55, 'delivery_fee': 35}), 55);
+  });
+
+  test('fleet earnings prefer a real wallet and otherwise sum run payouts', () {
+    expect(fleetEarningsFrom(wallet: 0, lifetime: 0, deliveryPayouts: const [40]), 40);
+    expect(fleetEarningsFrom(wallet: 120, lifetime: 0, deliveryPayouts: const [40]), 120);
+    expect(fleetEarningsFrom(wallet: 0, lifetime: 200, deliveryPayouts: const [40]), 200);
+  });
+
   test('formatSlotCountdown reports time left and late', () {
     final now = DateTime(2026, 9, 5, 1, 40);
     expect(formatSlotCountdown(now.add(const Duration(minutes: 12)), now: now), '12 min left');

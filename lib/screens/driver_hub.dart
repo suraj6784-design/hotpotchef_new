@@ -319,7 +319,8 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('${state.completedCount} Successful Deliveries',
+                    Text(
+                        '${state.completedCount} Successful ${state.completedCount == 1 ? 'Delivery' : 'Deliveries'}',
                         style: const TextStyle(color: Colors.white70, fontSize: 12)),
                     const Text('Payout: Weekly',
                         style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),

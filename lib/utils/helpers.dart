@@ -930,6 +930,27 @@ double parseMoney(dynamic value, [double fallback = 0]) {
   return double.tryParse(value?.toString() ?? '') ?? fallback;
 }
 
+const double kDefaultDriverPayout = 40;
+
+/// Partner payout for a run. A stored 0 is treated as missing, not as "earned nothing".
+double driverPayoutFromOrder(Map<String, dynamic> order) {
+  final explicit = parseMoney(order['driver_payout'] ?? order['payout']);
+  if (explicit > 0) return explicit;
+  final fee = parseMoney(order['delivery_fee']);
+  if (fee > 0) return fee;
+  return kDefaultDriverPayout;
+}
+
+double fleetEarningsFrom({
+  double wallet = 0,
+  double lifetime = 0,
+  Iterable<double> deliveryPayouts = const [],
+}) {
+  if (lifetime > 0) return lifetime;
+  if (wallet > 0) return wallet;
+  return deliveryPayouts.fold<double>(0, (sum, payout) => sum + payout);
+}
+
 double roundMoney(double value) => (value * 100).round() / 100;
 
 /// Platform take on food + packaging. Delivery fee stays with the platform.

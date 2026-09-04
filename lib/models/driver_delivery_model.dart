@@ -95,8 +95,7 @@ class DriverDeliveryModel {
       customerAddress: json['delivery_address']?.toString() ?? '',
       customerId: json['customer_id']?.toString() ?? json['user_id']?.toString() ?? '',
       chatRoomId: orderChatRoomId(json, items: items),
-      payout: (json['driver_payout'] as num?)?.toDouble() ?? 
-              (json['delivery_fee'] as num?)?.toDouble() ?? 40.0,
+      payout: driverPayoutFromOrder(json),
       distanceKm: (json['estimated_distance_km'] as num?)?.toDouble() ?? 0.0,
       totalItemsCount: (json['order_items'] as List?)?.length ?? items.length,
       status: DeliveryStatus.fromString(json['status']?.toString()),

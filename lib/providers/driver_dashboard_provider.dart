@@ -8,6 +8,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../models/driver_delivery_model.dart';
 import '../models/cart_enums.dart';
 import '../services/order_lifecycle.dart';
+import '../utils/helpers.dart';
 
 void _logDriverError(dynamic error, StackTrace stackTrace, String reason) {
   if (kDebugMode) {
@@ -100,7 +101,7 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
           .or(mine)
           .ilike('status', '%delivered%')
           .order('created_at', ascending: false)
-          .limit(15);
+          .limit(100);
 
       // 4. Driver Total Earnings (best-effort; missing profile columns must not blank Home)
       final earningsFuture = _supabase
@@ -128,22 +129,24 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
           .map((e) => DriverDeliveryModel.fromJson(Map<String, dynamic>.from(e)))
           .toList();
 
-      final recentList = (results[2] as List)
+      final completedList = (results[2] as List)
           .map((e) => DriverDeliveryModel.fromJson(Map<String, dynamic>.from(e)))
           .toList();
+      final recentList = completedList.take(15).toList();
 
       final profileData = results[3] is Map
           ? Map<String, dynamic>.from(results[3] as Map)
           : null;
-      final totalCompletedCount = recentList.length;
-      final earnings = (profileData?['wallet_balance'] as num?)?.toDouble() ??
-          (profileData?['total_lifetime_earnings'] as num?)?.toDouble() ??
-          (totalCompletedCount * 40.0); // Safe fallback
+      final earnings = fleetEarningsFrom(
+        wallet: parseMoney(profileData?['wallet_balance']),
+        lifetime: parseMoney(profileData?['total_lifetime_earnings']),
+        deliveryPayouts: completedList.map((delivery) => delivery.payout),
+      );
 
       state = state.copyWith(
         isLoading: false,
         totalEarnings: earnings,
-        completedCount: totalCompletedCount,
+        completedCount: completedList.length,
         availableDeliveries: availableList,
         activeDeliveries: activeList,
         recentDeliveries: recentList,
