@@ -8,6 +8,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'map_picker_screen.dart';
 import 'driver_id_card_screen.dart';
 import '../utils/app_theme.dart';
+import '../utils/pinned_address.dart';
 import '../utils/gst_invoice.dart';
 import '../widgets/avatar_upload.dart';
 import '../widgets/change_password_dialog.dart';
@@ -145,15 +146,25 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     );
 
     if (result != null && mounted) {
+      _latitude = (result['latitude'] as num?)?.toDouble();
+      _longitude = (result['longitude'] as num?)?.toDouble();
+      var parts = PinnedAddressParts.fromMap(result);
+      if (!parts.hasRegion && _latitude != null && _longitude != null) {
+        parts = await reverseGeocodeLatLng(_latitude!, _longitude!);
+      }
+      if (!mounted) return;
       setState(() {
-        _latitude = (result['latitude'] as num?)?.toDouble();
-        _longitude = (result['longitude'] as num?)?.toDouble();
-        final rawAddr = result['address']?.toString();
-        if (rawAddr != null && rawAddr.isNotEmpty) {
-          _streetController.text = rawAddr;
+        if (parts.street.isNotEmpty && _streetController.text.trim().isEmpty) {
+          _streetController.text = parts.street;
+        } else if (_streetController.text.trim().isEmpty) {
+          final rawAddr = result['address']?.toString();
+          if (rawAddr != null && rawAddr.isNotEmpty) _streetController.text = rawAddr;
         }
+        if (parts.city.isNotEmpty) _cityController.text = parts.city;
+        if (parts.state.isNotEmpty) _stateController.text = parts.state;
+        if (parts.pincode.isNotEmpty) _pincodeController.text = parts.pincode;
       });
-      _showSnackBar('Location coordinates updated.');
+      _showSnackBar('Location pin attached and address details auto-filled!');
     }
   }
 

@@ -5,10 +5,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:geocoding/geocoding.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/app_theme.dart';
+import '../utils/pinned_address.dart';
 
 class MapPickerScreen extends StatefulWidget {
   final double? initialLat;
@@ -25,6 +25,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
   LatLng _currentPosition = const LatLng(18.6298, 73.7997); // Default fallback (Pimpri-Chinchwad)
   bool _isLoading = true;
   String _draggedAddress = 'Locating position...';
+  PinnedAddressParts _pinnedParts = const PinnedAddressParts();
 
   Timer? _debounceTimer;
 
@@ -125,34 +126,27 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
 
   Future<void> _updateAddress(LatLng pos) async {
     try {
-      List<Placemark> placemarks = await placemarkFromCoordinates(pos.latitude, pos.longitude);
-      if (placemarks.isNotEmpty && mounted) {
-        final place = placemarks.first;
-        final addressFormatted = [
-          place.name,
-          place.street,
-          place.subLocality,
-          place.locality,
-          place.administrativeArea,
-          place.postalCode
-        ].where((e) => e != null && e.isNotEmpty && e != place.locality).toSet().join(', ');
-
-        // Ensure city is included
-        final finalAddress = addressFormatted.isNotEmpty
-            ? '$addressFormatted, ${place.locality ?? ''}'.replaceAll(RegExp(r',\s*,'), ',').trim()
-            : '${place.locality ?? ''}, ${place.administrativeArea ?? ''}';
-
-        setState(() {
-          _draggedAddress = finalAddress.isNotEmpty
-              ? finalAddress
-              : "Lat: ${pos.latitude.toStringAsFixed(4)}, Lng: ${pos.longitude.toStringAsFixed(4)}";
-        });
-      }
+      final parts = await reverseGeocodeLatLng(pos.latitude, pos.longitude);
+      if (!mounted) return;
+      final formatted = parts.formatted.isNotEmpty
+          ? parts.formatted
+          : [
+              parts.street,
+              parts.city,
+              parts.state,
+              parts.pincode,
+            ].where((part) => part.isNotEmpty).join(', ');
+      setState(() {
+        _pinnedParts = parts;
+        _draggedAddress = formatted.isNotEmpty
+            ? formatted
+            : 'Lat: ${pos.latitude.toStringAsFixed(4)}, Lng: ${pos.longitude.toStringAsFixed(4)}';
+      });
     } catch (e) {
       if (kDebugMode) debugPrint('Reverse geocode failure: $e');
       if (mounted) {
         setState(() {
-          _draggedAddress = "Lat: ${pos.latitude.toStringAsFixed(4)}, Lng: ${pos.longitude.toStringAsFixed(4)}";
+          _draggedAddress = 'Lat: ${pos.latitude.toStringAsFixed(4)}, Lng: ${pos.longitude.toStringAsFixed(4)}';
         });
       }
     }
@@ -224,6 +218,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                             ),
                             onPressed: () {
                               Navigator.pop(context, {
+                                ..._pinnedParts.toMap(),
                                 'latitude': _currentPosition.latitude,
                                 'longitude': _currentPosition.longitude,
                                 'address': _draggedAddress,

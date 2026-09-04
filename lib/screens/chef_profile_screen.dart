@@ -1,14 +1,15 @@
 // lib/screens/chef_profile_screen.dart
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:geocoding/geocoding.dart'; // 🌟 Added for reverse geocoding
-
 import 'map_picker_screen.dart';
 import '../utils/helpers.dart';
+import '../utils/pinned_address.dart';
 import '../utils/gst_invoice.dart';
 import '../utils/network.dart';
 import '../widgets/avatar_upload.dart';
@@ -144,6 +145,13 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     _cityController.text = userData?['city']?.toString() ?? '';
     _stateController.text = userData?['state']?.toString() ?? '';
     _pincodeController.text = userData?['pincode']?.toString() ?? userData?['postal_code']?.toString() ?? '';
+    if (_latitude != null &&
+        _longitude != null &&
+        (_cityController.text.trim().isEmpty ||
+            _stateController.text.trim().isEmpty ||
+            _pincodeController.text.trim().isEmpty)) {
+      unawaited(_fillAddressFromPin());
+    }
   }
 
   Future<void> _loadProfileAndReviews() async {
@@ -283,39 +291,45 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     );
 
     if (result != null) {
-      setState(() {
-        if (result is Map) {
-          _latitude = (result['latitude'] as num?)?.toDouble();
-          _longitude = (result['longitude'] as num?)?.toDouble();
-        } else {
-          _latitude = result.latitude;
-          _longitude = result.longitude;
-        }
-      });
-
-      // 🌟 Reverse Geocoding to automatically populate city, state, pin, and street/address fields
-      if (_latitude != null && _longitude != null) {
-        try {
-          List<Placemark> placemarks = await placemarkFromCoordinates(_latitude!, _longitude!);
-          if (placemarks.isNotEmpty) {
-            Placemark place = placemarks[0];
-            setState(() {
-              _streetController.text = [place.street, place.subLocality]
-                  .where((e) => e != null && e.isNotEmpty)
-                  .join(', ');
-              _cityController.text = place.locality ?? place.subAdministrativeArea ?? _cityController.text;
-              _stateController.text = place.administrativeArea ?? _stateController.text;
-              _pincodeController.text = place.postalCode ?? _pincodeController.text;
-            });
-          }
-        } catch (e) {
-          debugPrint('Geocoding failed: $e');
-        }
+      if (result is Map) {
+        _latitude = (result['latitude'] as num?)?.toDouble();
+        _longitude = (result['longitude'] as num?)?.toDouble();
+        _applyPinnedParts(PinnedAddressParts.fromMap(result), overwriteStreet: false);
+      } else {
+        _latitude = result.latitude;
+        _longitude = result.longitude;
       }
-
+      await _fillAddressFromPin();
       if (mounted) {
         _showSnackBar('Location pin attached and address details auto-filled!');
       }
+    }
+  }
+
+  void _applyPinnedParts(PinnedAddressParts parts, {bool overwriteStreet = false}) {
+    if (!mounted) return;
+    setState(() {
+      if (parts.street.isNotEmpty && (overwriteStreet || _streetController.text.trim().isEmpty)) {
+        _streetController.text = parts.street;
+      }
+      if (parts.city.isNotEmpty) _cityController.text = parts.city;
+      if (parts.state.isNotEmpty) _stateController.text = parts.state;
+      if (parts.pincode.isNotEmpty) _pincodeController.text = parts.pincode;
+    });
+  }
+
+  Future<void> _fillAddressFromPin() async {
+    if (_latitude == null || _longitude == null) return;
+    if (_cityController.text.trim().isNotEmpty &&
+        _stateController.text.trim().isNotEmpty &&
+        _pincodeController.text.trim().isNotEmpty) {
+      return;
+    }
+    try {
+      final parts = await reverseGeocodeLatLng(_latitude!, _longitude!);
+      _applyPinnedParts(parts);
+    } catch (e) {
+      debugPrint('Geocoding failed: $e');
     }
   }
 

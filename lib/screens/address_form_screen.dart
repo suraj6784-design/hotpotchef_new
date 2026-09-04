@@ -5,13 +5,13 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:geocoding/geocoding.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../utils/helpers.dart';
 import '../utils/app_theme.dart';
+import '../utils/pinned_address.dart';
 import '../widgets/app_dialog.dart';
 import 'map_picker_screen.dart';
 
@@ -187,47 +187,23 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
           }
 
           final components = result['address_components'] as List<dynamic>? ?? [];
-          String streetName = '';
-          String sublocality = '';
-          String locality = '';
-          String adminArea2 = ''; // Often contains district/city in Indian addresses
-          String state = '';
-          String pincode = '';
-          String country = 'India';
-
+          final formatted = result['formatted_address']?.toString() ?? '';
+          final parts = parseGoogleAddressComponents(components, formatted: formatted);
           for (final c in components) {
-            final comp = c as Map<String, dynamic>;
-            final types = (comp['types'] as List<dynamic>?)?.map((e) => e.toString()).toSet() ?? {};
-            final longName = comp['long_name']?.toString() ?? '';
-
-            if (types.contains('premise') || types.contains('subpremise')) {
+            if (c is! Map) continue;
+            final types = (c['types'] as List<dynamic>?)?.map((e) => e.toString()).toSet() ?? {};
+            final longName = c['long_name']?.toString() ?? '';
+            if ((types.contains('premise') || types.contains('subpremise')) && longName.isNotEmpty) {
               _houseController.text = longName;
-            } else if (types.contains('route')) {
-              streetName = longName;
-            } else if (types.contains('sublocality_level_1') || types.contains('sublocality')) {
-              sublocality = longName;
-            } else if (types.contains('locality')) {
-              locality = longName;
-            } else if (types.contains('administrative_area_level_2')) {
-              adminArea2 = longName;
-            } else if (types.contains('administrative_area_level_1')) {
-              state = longName;
-            } else if (types.contains('postal_code')) {
-              pincode = longName;
-            } else if (types.contains('country')) {
-              country = longName;
             }
           }
 
-          final fullStreet = [streetName, sublocality].where((s) => s.isNotEmpty).join(', ');
-          final finalCity = locality.isNotEmpty ? locality : adminArea2;
-
           setState(() {
-            if (fullStreet.isNotEmpty) _streetController.text = fullStreet;
-            if (finalCity.isNotEmpty) _cityController.text = finalCity;
-            if (state.isNotEmpty) _stateController.text = state;
-            if (pincode.isNotEmpty) _pincodeController.text = pincode;
-            if (country.isNotEmpty) _countryController.text = country;
+            if (parts.street.isNotEmpty) _streetController.text = parts.street;
+            if (parts.city.isNotEmpty) _cityController.text = parts.city;
+            if (parts.state.isNotEmpty) _stateController.text = parts.state;
+            if (parts.pincode.isNotEmpty) _pincodeController.text = parts.pincode;
+            if (parts.country.isNotEmpty) _countryController.text = parts.country;
           });
 
           // Reset session token after finishing details fetch to close billing bracket
@@ -274,34 +250,28 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     );
 
     if (result != null && mounted) {
+      _latitude = (result['latitude'] as num?)?.toDouble();
+      _longitude = (result['longitude'] as num?)?.toDouble();
+      var parts = PinnedAddressParts.fromMap(result);
+      if (!parts.hasRegion && _latitude != null && _longitude != null) {
+        parts = await reverseGeocodeLatLng(_latitude!, _longitude!);
+      }
+      if (!mounted) return;
       setState(() {
-        _latitude = (result['latitude'] as num?)?.toDouble();
-        _longitude = (result['longitude'] as num?)?.toDouble();
         final rawAddress = result['address']?.toString();
-        if (rawAddress != null && rawAddress.isNotEmpty) {
+        if (parts.street.isNotEmpty) {
+          _streetController.text = parts.street;
+        } else if (rawAddress != null && rawAddress.isNotEmpty) {
           _streetController.text = rawAddress;
+        }
+        if (rawAddress != null && rawAddress.isNotEmpty) {
           _searchController.text = rawAddress;
         }
+        if (parts.city.isNotEmpty) _cityController.text = parts.city;
+        if (parts.state.isNotEmpty) _stateController.text = parts.state;
+        if (parts.pincode.isNotEmpty) _pincodeController.text = parts.pincode;
+        if (parts.country.isNotEmpty) _countryController.text = parts.country;
       });
-
-      if (_latitude != null && _longitude != null) {
-        try {
-          final placemarks = await placemarkFromCoordinates(_latitude!, _longitude!);
-          if (placemarks.isNotEmpty && mounted) {
-            final place = placemarks.first;
-            setState(() {
-              _cityController.text = place.locality?.isNotEmpty == true
-                  ? place.locality!
-                  : (place.subAdministrativeArea ?? _cityController.text);
-              _pincodeController.text = place.postalCode ?? _pincodeController.text;
-              _stateController.text = place.administrativeArea ?? _stateController.text;
-              _countryController.text = place.country ?? _countryController.text;
-            });
-          }
-        } catch (e) {
-          if (kDebugMode) debugPrint('Reverse geocoding error: $e');
-        }
-      }
     }
   }
 
