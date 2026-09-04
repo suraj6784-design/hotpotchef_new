@@ -22,7 +22,9 @@ import 'packaging_store_screen.dart';
 import 'chef_publish_meal_screen.dart';
 
 class ChefDashboardScreen extends StatefulWidget {
-  const ChefDashboardScreen({super.key});
+  final int initialTab;
+
+  const ChefDashboardScreen({super.key, this.initialTab = 0});
 
   @override
   State<ChefDashboardScreen> createState() => _ChefDashboardScreenState();
@@ -32,7 +34,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   final _supabase = Supabase.instance.client;
   final _orderLifecycle = OrderLifecycle();
 
-  int _selectedIndex = 0;
+  late int _selectedIndex = widget.initialTab;
   bool _isKitchenOpen = true;
   String _fulfillmentFilter = 'All';
   String _historyFilter = 'Delivered';

@@ -68,12 +68,21 @@ String mealDisplayTitle(Map<String, dynamic> meal, {String fallback = 'Meal'}) {
   return fallback;
 }
 
+String mealShareUri(String? mealId) {
+  final id = mealId?.trim() ?? '';
+  if (id.isEmpty) return '';
+  return 'hotpotchef://app/meal/$id';
+}
+
 String mealShareText(Map<String, dynamic> meal) {
   final title = mealDisplayTitle(meal);
   final chef = chefDisplayName(meal);
   final price = parseMoney(meal['discounted_price'] ?? meal['price']);
   final priceBit = price > 0 ? ' — ₹${price.toStringAsFixed(0)}' : '';
-  return 'Try $title from $chef on HotPotChef$priceBit';
+  final link = mealShareUri(meal['id']?.toString() ?? mealIdFromOrderItem(meal));
+  return link.isEmpty
+      ? 'Try $title from $chef on HotPotChef$priceBit'
+      : 'Try $title from $chef on HotPotChef$priceBit\n$link';
 }
 
 String formatOrderId(String? rawOrderId, String fallbackId) {
@@ -167,6 +176,63 @@ String chatPath(
       if (isGroup || members.length > 1) 'group': '1',
     },
   ).toString();
+}
+
+int customerHubTabIndex(String? tab) {
+  switch (tab?.trim().toLowerCase()) {
+    case 'cart':
+      return 1;
+    case 'orders':
+      return 2;
+    default:
+      return 0;
+  }
+}
+
+int chefHubTabIndex(String? tab) {
+  switch (tab?.trim().toLowerCase()) {
+    case 'dispatch':
+      return 1;
+    case 'menu':
+      return 2;
+    case 'history':
+      return 3;
+    case 'leads':
+      return 4;
+    case 'supplies':
+      return 5;
+    default:
+      return 0;
+  }
+}
+
+/// Chat pushes open the Order# room. Order and lead pushes land on the matching hub tab.
+String? alertOpenPath(Map<String, String?> data, {String? role}) {
+  final mealId = (data['meal_id'] ?? '').trim();
+  if (mealId.isNotEmpty) {
+    return chatPath(
+      mealId,
+      roomName: orderGroupAlertTitle(mealId),
+      isGroup: true,
+    );
+  }
+
+  final requestId = (data['request_id'] ?? data['lead_id'] ?? '').trim();
+  final parsedRole = (role ?? '').trim().toLowerCase();
+  if (requestId.isNotEmpty) {
+    return parsedRole == 'chef' ? '/chef-hub?tab=leads' : '/customer-hub?tab=orders';
+  }
+
+  final orderId = (data['order_id'] ?? '').trim();
+  if (orderId.isEmpty) return null;
+  if (parsedRole == 'chef' || parsedRole.contains('cook')) return '/chef-hub?tab=orders';
+  if (parsedRole.contains('driver') || parsedRole.contains('delivery')) return '/driver-hub';
+  return '/customer-hub?tab=orders';
+}
+
+bool isStackAlertPath(String path) {
+  final route = Uri.tryParse(path)?.path ?? path;
+  return route.startsWith('/chat/') || route.startsWith('/meal/');
 }
 
 class ChatInboxItem {

@@ -153,9 +153,19 @@ class AlertService {
     final isChef = row['chef_id']?.toString() == uid;
     final isCustomer = row['customer_id']?.toString() == uid;
     if (copy.notifyChef && isChef) {
-      _show('${row['id']}-${row['status']}', copy.title, copy.body);
+      _show(
+        '${row['id']}-${row['status']}',
+        copy.title,
+        copy.body,
+        path: alertOpenPath({'order_id': row['id']?.toString()}, role: 'chef'),
+      );
     } else if (copy.notifyCustomer && isCustomer) {
-      _show('${row['id']}-${row['status']}', copy.title, copy.body);
+      _show(
+        '${row['id']}-${row['status']}',
+        copy.title,
+        copy.body,
+        path: alertOpenPath({'order_id': row['id']?.toString()}, role: 'customer'),
+      );
     }
   }
 
@@ -186,6 +196,10 @@ class AlertService {
       'lead-${row['id']}-${row['status']}',
       copy.title,
       copy.body,
+      path: alertOpenPath(
+        {'request_id': row['id']?.toString()},
+        role: isClaimedChef || (_role == AppRole.chef && !isCustomer) ? 'chef' : 'customer',
+      ),
     );
   }
 
@@ -239,6 +253,9 @@ class AlertService {
       'msg-${row['id']}',
       members != null && mealId != null ? orderGroupAlertTitle(mealId) : 'New message',
       chatPreview(row['content']?.toString()),
+      path: mealId == null || mealId.isEmpty
+          ? '/chats'
+          : chatPath(mealId, roomName: orderGroupAlertTitle(mealId), isGroup: true),
     );
   }
 
@@ -250,11 +267,39 @@ class AlertService {
     }
   }
 
-  static void showBanner(String id, String title, String body) {
-    _show(id, title, body);
+  static Map<String, String?> _stringData(Map<String, dynamic>? data) {
+    if (data == null) return const {};
+    return data.map((key, value) => MapEntry(key, value?.toString()));
   }
 
-  static void _show(String id, String title, String body) {
+  static void showBanner(String id, String title, String body, {Map<String, dynamic>? data}) {
+    _show(
+      id,
+      title,
+      body,
+      path: alertOpenPath(_stringData(data), role: _role.name),
+    );
+  }
+
+  static Future<void> openFromData(Map<String, dynamic> data) async {
+    final path = alertOpenPath(_stringData(data), role: _role.name);
+    if (path == null || path.isEmpty) return;
+    openAlertRoute(path);
+  }
+
+  static void openAlertRoute(String path) {
+    try {
+      if (isStackAlertPath(path)) {
+        AppRouter.router.push(path);
+      } else {
+        AppRouter.router.go(path);
+      }
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Alert navigation failed');
+    }
+  }
+
+  static void _show(String id, String title, String body, {String? path}) {
     if (!_shown.add(id)) return;
     Future<void>.delayed(const Duration(seconds: 12), () => _shown.remove(id));
 
@@ -265,6 +310,12 @@ class AlertService {
         content: Text(body.isEmpty ? title : '$title — $body'),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 4),
+        action: path == null || path.isEmpty
+            ? null
+            : SnackBarAction(
+                label: 'Open',
+                onPressed: () => openAlertRoute(path),
+              ),
       ),
     );
   }

@@ -1,4 +1,6 @@
 // lib/services/push_notification_service.dart
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
@@ -18,6 +20,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 class PushNotificationService {
   static final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   static final _supabase = Supabase.instance.client;
+  static Map<String, dynamic>? _pendingData;
 
   static Future<void> initialize() async {
     try {
@@ -54,8 +57,14 @@ class PushNotificationService {
             message.data['order_id'] ??
             message.messageId ??
             title;
-        AlertService.showBanner(id, title, body);
+        AlertService.showBanner(id, title, body, data: message.data);
       });
+
+      FirebaseMessaging.onMessageOpenedApp.listen(openFromMessage);
+      final initial = await _messaging.getInitialMessage();
+      if (initial != null) {
+        _pendingData = Map<String, dynamic>.from(initial.data);
+      }
 
       _supabase.auth.onAuthStateChange.listen((data) {
         if (data.session != null) {
@@ -106,6 +115,17 @@ class PushNotificationService {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to update token in database');
       debugPrint('Failed to update token in database: $e');
     }
+  }
+
+  static void openFromMessage(RemoteMessage message) {
+    unawaited(AlertService.openFromData(Map<String, dynamic>.from(message.data)));
+  }
+
+  static void openPendingAlert() {
+    final data = _pendingData;
+    _pendingData = null;
+    if (data == null || data.isEmpty) return;
+    unawaited(AlertService.openFromData(data));
   }
 
   // Clear token on logout so notifications don't go to a signed-out device

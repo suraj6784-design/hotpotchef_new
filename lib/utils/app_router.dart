@@ -11,6 +11,7 @@ import '../screens/chef_hub.dart';
 import '../screens/driver_hub.dart';
 import '../screens/in_app_chat_screen.dart';
 import '../screens/chat_inbox_screen.dart';
+import '../screens/meal_link_screen.dart';
 import '../screens/live_tracking_screen.dart';
 import '../screens/chef_profile_screen.dart';
 import '../screens/driver_profile_screen.dart';
@@ -79,11 +80,17 @@ class AppRouter {
       ),
       GoRoute(
         path: '/customer-hub',
-        builder: (context, state) => const CustomerHubScreen(),
+        builder: (context, state) => CustomerHubScreen(
+          key: ValueKey('customer-${state.uri.query}'),
+          initialTab: customerHubTabIndex(state.uri.queryParameters['tab']),
+        ),
       ),
       GoRoute(
         path: '/chef-hub',
-        builder: (context, state) => const ChefDashboardScreen(),
+        builder: (context, state) => ChefDashboardScreen(
+          key: ValueKey('chef-${state.uri.query}'),
+          initialTab: chefHubTabIndex(state.uri.queryParameters['tab']),
+        ),
       ),
       GoRoute(
         path: '/driver-hub',
@@ -100,6 +107,12 @@ class AppRouter {
                   : null;
           return ChefPublishMealScreen(existingMeal: meal);
         },
+      ),
+      GoRoute(
+        path: '/meal/:mealId',
+        builder: (context, state) => MealLinkScreen(
+          mealId: state.pathParameters['mealId'] ?? '',
+        ),
       ),
       GoRoute(
         path: '/chats',

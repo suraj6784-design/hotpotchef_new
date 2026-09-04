@@ -16,7 +16,9 @@ import 'customer_orders_tab.dart';
 
 class CustomerHubScreen extends ConsumerStatefulWidget {
   static bool returnToCartAfterLogin = false;
-  const CustomerHubScreen({super.key});
+  final int initialTab;
+
+  const CustomerHubScreen({super.key, this.initialTab = 0});
 
   @override
   ConsumerState<CustomerHubScreen> createState() => _CustomerHubScreenState();
@@ -28,6 +30,7 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
   @override
   void initState() {
     super.initState();
+    _selectedIndex = widget.initialTab;
     if (CustomerHubScreen.returnToCartAfterLogin && Supabase.instance.client.auth.currentUser != null) {
       _selectedIndex = 1;
       CustomerHubScreen.returnToCartAfterLogin = false;

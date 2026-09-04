@@ -1,6 +1,5 @@
 // lib/main.dart
 
-import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -57,8 +56,21 @@ void main() async {
   runApp(const ProviderScope(child: HotPotChefApp()));
 }
 
-class HotPotChefApp extends StatelessWidget {
+class HotPotChefApp extends StatefulWidget {
   const HotPotChefApp({super.key});
+
+  @override
+  State<HotPotChefApp> createState() => _HotPotChefAppState();
+}
+
+class _HotPotChefAppState extends State<HotPotChefApp> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      PushNotificationService.openPendingAlert();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

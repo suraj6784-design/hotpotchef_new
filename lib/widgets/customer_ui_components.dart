@@ -223,23 +223,23 @@ void showMealDetailsDialog(BuildContext context, Map<String, dynamic> meal, Widg
     MaterialPageRoute(
       builder: (ctx) => Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        body: _MealDetailsModalContent(meal: meal, ref: ref),
+        body: MealDetailsBody(meal: meal, ref: ref),
       ),
     ),
   );
 }
 
-class _MealDetailsModalContent extends StatefulWidget {
+class MealDetailsBody extends StatefulWidget {
   final Map<String, dynamic> meal;
   final WidgetRef ref;
 
-  const _MealDetailsModalContent({required this.meal, required this.ref});
+  const MealDetailsBody({super.key, required this.meal, required this.ref});
 
   @override
-  State<_MealDetailsModalContent> createState() => _MealDetailsModalContentState();
+  State<MealDetailsBody> createState() => _MealDetailsBodyState();
 }
 
-class _MealDetailsModalContentState extends State<_MealDetailsModalContent> {
+class _MealDetailsBodyState extends State<MealDetailsBody> {
   int _quantity = 1;
   final Set<String> _selectedAddOnIds = {};
 

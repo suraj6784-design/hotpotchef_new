@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:go_router/go_router.dart';
 
 import '../utils/helpers.dart';
 import '../utils/customer_constants.dart';
@@ -567,6 +568,16 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                         Row(
                           children: [
                             if (isLoggedIn) ...[
+                              Container(
+                                decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle),
+                                child: IconButton(
+                                  tooltip: 'Order chats',
+                                  icon: const Icon(Icons.forum_outlined, color: Colors.white, size: 20),
+                                  onPressed: () => context.push('/chats'),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
                               Container(
                                 decoration: BoxDecoration(
                                     color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle),

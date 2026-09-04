@@ -373,5 +373,35 @@ void main() {
       }),
       'Try Dal Tadka from Asha Kitchen on HotPotChef — ₹120',
     );
+    expect(
+      mealShareText({
+        'id': 'meal-77',
+        'title': 'Dal Tadka',
+        'chef_name': 'Asha Kitchen',
+        'price': 120,
+      }),
+      'Try Dal Tadka from Asha Kitchen on HotPotChef — ₹120\nhotpotchef://app/meal/meal-77',
+    );
+  });
+
+  test('alertOpenPath opens the Order# room or the matching hub tab', () {
+    expect(
+      alertOpenPath({'meal_id': 'abc12345-order'}),
+      contains('/chat/abc12345-order'),
+    );
+    expect(
+      alertOpenPath({'order_id': 'ord-1'}, role: 'Customer'),
+      '/customer-hub?tab=orders',
+    );
+    expect(
+      alertOpenPath({'order_id': 'ord-1'}, role: 'Chef'),
+      '/chef-hub?tab=orders',
+    );
+    expect(
+      alertOpenPath({'request_id': 'lead-1'}, role: 'chef'),
+      '/chef-hub?tab=leads',
+    );
+    expect(customerHubTabIndex('orders'), 2);
+    expect(chefHubTabIndex('leads'), 4);
   });
 }
