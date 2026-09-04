@@ -552,9 +552,25 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
     final id = addr['id'];
     final user = _supabase.auth.currentUser;
     if (id == null || user == null) return;
+    final now = DateTime.now().toUtc().toIso8601String();
     try {
-      await _supabase.from('user_addresses').update({'is_default': false}).eq('user_id', user.id);
-      await _supabase.from('user_addresses').update({'is_default': true}).eq('id', id);
+      try {
+        await _supabase.from('user_addresses').update({'is_default': false}).eq('user_id', user.id);
+        await _supabase.from('user_addresses').update({
+          'is_default': true,
+          'updated_at': now,
+        }).eq('id', id);
+      } catch (_) {
+        // Older schemas have no is_default; recency still drives the Home pin.
+        await _supabase.from('user_addresses').update({'updated_at': now}).eq('id', id);
+      }
+      if (mounted) {
+        setState(() {
+          _addresses = [
+            for (final row in _addresses) {...row, 'is_default': row['id'] == id},
+          ];
+        });
+      }
       await _loadProfileData();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

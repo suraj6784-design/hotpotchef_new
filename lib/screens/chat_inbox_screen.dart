@@ -53,8 +53,9 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
       final results = await Future.wait([
         _supabase
             .from('orders')
-            .select('id, order_id, chef_id, customer_id, user_id, driver_id, delivery_partner_id, created_at')
-            .or('customer_id.eq.$myId,user_id.eq.$myId,chef_id.eq.$myId,driver_id.eq.$myId,delivery_partner_id.eq.$myId')
+            // Do not select `order_id` — that column is not on orders.
+            .select()
+            .or('customer_id.eq.$myId,chef_id.eq.$myId,driver_id.eq.$myId')
             .order('created_at', ascending: false)
             .limit(80),
         _supabase

@@ -425,7 +425,7 @@ List<ChatInboxItem> mergeChatInboxRooms({
   for (final order in orders) {
     final roomId = orderChatRoomId(order);
     if (roomId.isEmpty) continue;
-    final label = formatOrderId(order['order_id']?.toString(), roomId);
+    final label = formatOrderId(order['order_id']?.toString() ?? order['id']?.toString(), roomId);
     final members = orderChatMemberIds(order).toList();
     final other = members.firstWhere((id) => id != myId, orElse: () => '');
     rooms[roomId] = ChatInboxItem(
