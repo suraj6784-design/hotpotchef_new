@@ -12,8 +12,11 @@ class SupportConfig {
     return 'hello@hotpotchef.com';
   }
 
-  static String get whatsappDigits =>
-      (dotenv.env['SUPPORT_WHATSAPP'] ?? '').replaceAll(RegExp(r'\D'), '');
+  static String get whatsappDigits {
+    final fromEnv = (dotenv.env['SUPPORT_WHATSAPP'] ?? '').replaceAll(RegExp(r'\D'), '');
+    if (fromEnv.length >= 10) return fromEnv;
+    return '918446609281';
+  }
 
   static bool get hasWhatsApp => whatsappDigits.length >= 10;
 
@@ -55,6 +58,62 @@ String supportContactMessage({String? orderNumber, String? orderUuid}) {
     buffer.write('\nInternal order id: $uuid');
   }
   buffer.write('\nPlease look up this order and follow up.');
+  return buffer.toString();
+}
+
+String newSupplyRequestId([DateTime? now]) {
+  final stamp = (now ?? DateTime.now()).toUtc().millisecondsSinceEpoch.toRadixString(36).toUpperCase();
+  final tail = stamp.length >= 6 ? stamp.substring(stamp.length - 6) : stamp.padLeft(6, '0');
+  return 'SUP-$tail';
+}
+
+String supportSupplyRequestSubject(String requestId) {
+  return 'HotPotChef supply request — $requestId';
+}
+
+String supportSupplyRequestMessage({
+  required String requestId,
+  required String chefName,
+  required String chefEmail,
+  required String chefPhone,
+  required String chefUserId,
+  required String kitchenAddress,
+  required String itemTitle,
+  required String itemSku,
+  required int quantity,
+  String? itemDescription,
+  double? unitPrice,
+}) {
+  final buffer = StringBuffer()
+    ..writeln('HotPotChef packaging supply request')
+    ..writeln()
+    ..writeln('Request ID: $requestId')
+    ..writeln()
+    ..writeln('Chef')
+    ..writeln('Name: ${chefName.trim().isEmpty ? 'Not provided' : chefName.trim()}')
+    ..writeln('Email: ${chefEmail.trim().isEmpty ? 'Not provided' : chefEmail.trim()}')
+    ..writeln('Phone: ${chefPhone.trim().isEmpty ? 'Not provided' : chefPhone.trim()}');
+  if (chefUserId.trim().isNotEmpty) {
+    buffer.writeln('Chef ID: ${chefUserId.trim()}');
+  }
+  buffer
+    ..writeln('Kitchen: ${kitchenAddress.trim().isEmpty ? 'Not provided' : kitchenAddress.trim()}')
+    ..writeln()
+    ..writeln('Requested item')
+    ..writeln('Item: ${itemTitle.trim().isEmpty ? 'Packaging supply' : itemTitle.trim()}');
+  if (itemSku.trim().isNotEmpty) {
+    buffer.writeln('SKU: ${itemSku.trim()}');
+  }
+  if (itemDescription != null && itemDescription.trim().isNotEmpty) {
+    buffer.writeln('Details: ${itemDescription.trim()}');
+  }
+  buffer.writeln('Quantity: $quantity');
+  if (unitPrice != null && unitPrice > 0) {
+    buffer.writeln('Listed price: ₹${unitPrice.toStringAsFixed(0)} each');
+  }
+  buffer
+    ..writeln()
+    ..write('Please confirm availability, total, and kitchen delivery.');
   return buffer.toString();
 }
 

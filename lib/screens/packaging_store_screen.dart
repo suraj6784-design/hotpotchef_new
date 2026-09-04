@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
-import '../utils/app_theme.dart';
+import '../utils/helpers.dart';
+import '../utils/support.dart';
 
 class PackagingStoreScreen extends StatefulWidget {
   const PackagingStoreScreen({super.key});
@@ -15,9 +16,10 @@ class PackagingStoreScreen extends StatefulWidget {
 
 class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
   final _supabase = Supabase.instance.client;
-  bool _isProcessing = false;
+  bool _isLoadingChef = false;
+  String? _busyItemKey;
 
-  final List<Map<String, dynamic>> _mockSupplies = const [
+  final List<Map<String, dynamic>> _catalog = const [
     {
       'id': 'm1',
       'title': 'Eco-Friendly Meal Box (500ml)',
@@ -48,10 +50,13 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
     },
   ];
 
-  Future<void> _placePackagingOrder(Map<String, dynamic> item) async {
-    if (_isProcessing) return;
-
-    setState(() => _isProcessing = true);
+  Future<void> _requestSupply(Map<String, dynamic> item) async {
+    if (_isLoadingChef) return;
+    final itemKey = item['id']?.toString() ?? item['title']?.toString() ?? '';
+    setState(() {
+      _isLoadingChef = true;
+      _busyItemKey = itemKey;
+    });
 
     try {
       final user = _supabase.auth.currentUser;
@@ -59,34 +64,42 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
 
       final userData = await _supabase
           .from('users')
-          .select('address, house_no, street, city, state, pincode')
+          .select('name, phone, address, house_no, street, city, state, pincode, postal_code')
           .eq('id', user.id)
           .maybeSingle();
 
-      final address = userData?['address']?.toString() ?? '';
-      if (address.isEmpty) {
-        throw Exception('Please complete your Kitchen Pickup Address in your profile before ordering supplies.');
+      final kitchen = formatSavedAddress(userData);
+      if (kitchen.isEmpty) {
+        throw Exception('Add your kitchen pickup address in profile before requesting supplies.');
       }
 
-      final price = (item['price'] as num?)?.toDouble() ?? 0.0;
-
-      await _supabase.from('packaging_orders').insert({
-        'chef_id': user.id,
-        'item_id': item['id'],
-        'quantity': 1,
-        'total_price': price,
-        'delivery_address': address,
-        'status': 'Pending',
-        'created_at': DateTime.now().toIso8601String(),
-      });
-
       if (!mounted) return;
-      _showSnackBar('Order placed successfully! Supplies will be delivered to your kitchen.');
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: AppTheme.surfaceOf(context),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        builder: (ctx) => SupplyRequestSheet(
+          item: item,
+          chefName: userData?['name']?.toString() ?? user.userMetadata?['name']?.toString() ?? '',
+          chefEmail: user.email ?? '',
+          chefPhone: userData?['phone']?.toString() ?? user.userMetadata?['phone']?.toString() ?? '',
+          chefUserId: user.id,
+          kitchenAddress: kitchen,
+        ),
+      );
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Packaging supply order failure');
-      _showSnackBar('Error: $e', isError: true);
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Packaging supply request failed');
+      _showSnackBar(e.toString().replaceFirst('Exception: ', ''), isError: true);
     } finally {
-      if (mounted) setState(() => _isProcessing = false);
+      if (mounted) {
+        setState(() {
+          _isLoadingChef = false;
+          _busyItemKey = null;
+        });
+      }
     }
   }
 
@@ -96,7 +109,7 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
       SnackBar(
         content: Text(text),
         backgroundColor: isError ? Colors.redAccent : Colors.green,
-        behavior: SnackBarBehavior.floating ?? SnackBarBehavior.floating,
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
@@ -126,15 +139,10 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
         iconTheme: IconThemeData(color: AppTheme.onSurfaceOf(context)),
       ),
       body: StreamBuilder<List<Map<String, dynamic>>>(
-        // Scoped stream for remote inventory table if available
         stream: _supabase.from('packaging_inventory').stream(primaryKey: ['id']),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator(color: AppTheme.primary));
-          }
-
-          final remoteItems = snapshot.data ?? [];
-          final items = remoteItems.isNotEmpty ? remoteItems : _mockSupplies;
+          final remoteItems = snapshot.hasError ? const <Map<String, dynamic>>[] : (snapshot.data ?? []);
+          final items = remoteItems.isNotEmpty ? remoteItems : _catalog;
 
           return ListView.builder(
             padding: const EdgeInsets.all(16),
@@ -149,15 +157,18 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
                   ),
-                  child: Column(
-                    children: const [
+                  child: const Column(
+                    children: [
                       Icon(Icons.inventory_2_rounded, color: AppTheme.primary, size: 40),
                       SizedBox(height: 10),
                       Text('HotPotChef Supply Store',
                           style: TextStyle(color: AppTheme.primary, fontSize: 18, fontWeight: FontWeight.bold)),
                       SizedBox(height: 4),
-                      Text('Order premium branded packaging delivered directly to your kitchen.',
-                          textAlign: TextAlign.center, style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+                      Text(
+                        'Request branded packaging for your kitchen. We confirm price and delivery on email or WhatsApp.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                      ),
                     ],
                   ),
                 );
@@ -169,6 +180,8 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
               final price = (item['price'] as num?)?.toDouble() ?? 0.0;
               final imageUrl = item['image_url']?.toString();
               final iconData = _parseIcon(item['icon_code'] ?? item['icon']);
+              final itemKey = item['id']?.toString() ?? title;
+              final busy = _isLoadingChef && _busyItemKey == itemKey;
 
               return Container(
                 margin: const EdgeInsets.only(bottom: 14),
@@ -223,14 +236,14 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                                   ),
-                                  onPressed: _isProcessing ? null : () => _placePackagingOrder(item),
-                                  child: _isProcessing
+                                  onPressed: _isLoadingChef ? null : () => _requestSupply(item),
+                                  child: busy
                                       ? const SizedBox(
                                           width: 16,
                                           height: 16,
                                           child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                                         )
-                                      : const Text('Buy Now', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                      : const Text('Request', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                                 ),
                               ],
                             ),
@@ -244,6 +257,129 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
             },
           );
         },
+      ),
+    );
+  }
+}
+
+class SupplyRequestSheet extends StatefulWidget {
+  const SupplyRequestSheet({
+    super.key,
+    required this.item,
+    required this.chefName,
+    required this.chefEmail,
+    required this.chefPhone,
+    required this.chefUserId,
+    required this.kitchenAddress,
+  });
+
+  final Map<String, dynamic> item;
+  final String chefName;
+  final String chefEmail;
+  final String chefPhone;
+  final String chefUserId;
+  final String kitchenAddress;
+
+  @override
+  State<SupplyRequestSheet> createState() => _SupplyRequestSheetState();
+}
+
+class _SupplyRequestSheetState extends State<SupplyRequestSheet> {
+  late final String _requestId = newSupplyRequestId();
+  int _quantity = 1;
+
+  String get _itemTitle => widget.item['title']?.toString() ?? 'Packaging supply';
+  String get _itemSku => widget.item['sku']?.toString() ?? widget.item['id']?.toString() ?? '';
+  String get _itemDescription => widget.item['description']?.toString() ?? '';
+  double? get _unitPrice => (widget.item['price'] as num?)?.toDouble();
+
+  String get _message => supportSupplyRequestMessage(
+        requestId: _requestId,
+        chefName: widget.chefName,
+        chefEmail: widget.chefEmail,
+        chefPhone: widget.chefPhone,
+        chefUserId: widget.chefUserId,
+        kitchenAddress: widget.kitchenAddress,
+        itemTitle: _itemTitle,
+        itemSku: _itemSku,
+        quantity: _quantity,
+        itemDescription: _itemDescription,
+        unitPrice: _unitPrice,
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(24, 12, 24, 16 + MediaQuery.viewInsetsOf(context).bottom),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.black12,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text('Request supplies', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 6),
+            Text(
+              'Send request $_requestId to HotPotChef support. Include quantity, then email or WhatsApp.',
+              style: const TextStyle(color: AppTheme.textMuted, fontSize: 13, height: 1.4),
+            ),
+            const SizedBox(height: 16),
+            Text(_itemTitle, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Text('Quantity', style: TextStyle(fontWeight: FontWeight.w700)),
+                const Spacer(),
+                IconButton(
+                  onPressed: _quantity > 1 ? () => setState(() => _quantity--) : null,
+                  icon: const Icon(Icons.remove_circle_outline),
+                ),
+                Text('$_quantity', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+                IconButton(
+                  onPressed: _quantity < 20 ? () => setState(() => _quantity++) : null,
+                  icon: const Icon(Icons.add_circle_outline),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const CircleAvatar(
+                backgroundColor: Color(0x1AF4511E),
+                child: Icon(Icons.email_outlined, color: Color(0xFFF4511E)),
+              ),
+              title: const Text('Email us', style: TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: Text(SupportConfig.email),
+              onTap: () async {
+                await launchSupportEmail(
+                  subject: supportSupplyRequestSubject(_requestId),
+                  body: _message,
+                );
+              },
+            ),
+            if (SupportConfig.hasWhatsApp)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const CircleAvatar(
+                  backgroundColor: Color(0x1A2E9E5B),
+                  child: Icon(Icons.chat_outlined, color: Color(0xFF2E9E5B)),
+                ),
+                title: const Text('WhatsApp', style: TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: const Text('Message the support line'),
+                onTap: () => launchSupportWhatsApp(message: _message),
+              ),
+          ],
+        ),
       ),
     );
   }
