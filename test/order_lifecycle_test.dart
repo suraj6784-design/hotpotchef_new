@@ -73,6 +73,14 @@ void main() {
         OrderLifecycle.nextDriverStatus('Out for Delivery'),
         OrderStatus.delivered,
       );
+      expect(
+        OrderLifecycle.nextDispatchStatus('Out for Delivery', ServiceType.deliveryPlatform),
+        isNull,
+      );
+      expect(
+        OrderLifecycle.nextDispatchStatus('Out for Delivery', ServiceType.deliverySelf),
+        OrderStatus.delivered,
+      );
     });
 
     test('customer cannot cancel once cooking starts', () {

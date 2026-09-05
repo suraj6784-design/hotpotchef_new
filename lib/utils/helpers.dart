@@ -1375,6 +1375,36 @@ ChefPayoutBreakdown chefPayoutBreakdown({
   );
 }
 
+/// Chefs may start cooking once the requested drop-off is this close.
+const int kChefPrepEarliestMinutes = 120;
+
+/// Ideal last-hour cooking window shown on the chef card.
+const int kChefPrepIdealMinutes = 60;
+
+bool isImmediateDeliverySlot(String? slot) {
+  final text = (slot ?? '').trim().toLowerCase();
+  if (text.isEmpty || text == 'asap' || text == 'now') return true;
+  return text.contains('asap') && !RegExp(r'\d{1,2}:\d{2}').hasMatch(text);
+}
+
+Map<String, dynamic> orderSlotFields(Map<String, dynamic> order) {
+  final items = parseOrderItemsList(order['items'] ?? order['cart_items'] ?? order['order_items']);
+  final first = items.isNotEmpty ? items.first : const <String, dynamic>{};
+  String pick(List<String> keys) {
+    for (final key in keys) {
+      final value = order[key] ?? first[key];
+      if (value != null && value.toString().trim().isNotEmpty) return value.toString();
+    }
+    return '';
+  }
+
+  return {
+    ...order,
+    'time_slot': pick(const ['time_slot', 'timeSlot', 'delivery_slot', 'selected_slot', 'exact_time']),
+    'selected_date': pick(const ['selected_date', 'selectedDate', 'scheduled_date', 'scheduledDate']),
+  };
+}
+
 DateTime? parseClockOnDate(String timeText, DateTime date) {
   final match = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)', caseSensitive: false).firstMatch(timeText);
   if (match == null) return null;
@@ -1388,17 +1418,19 @@ DateTime? parseClockOnDate(String timeText, DateTime date) {
 
 /// Start of the scheduled slot, used to stop customer cancel once the window begins.
 DateTime? orderSlotStart(Map<String, dynamic> order, {DateTime? now}) {
-  final placed = DateTime.tryParse(order['created_at']?.toString() ?? '')?.toLocal() ?? now;
-  final rawSlot = order['time_slot']?.toString() ??
-      order['delivery_slot']?.toString() ??
-      order['selected_slot']?.toString() ??
-      '';
+  final fields = orderSlotFields(order);
+  final placed = DateTime.tryParse(fields['created_at']?.toString() ?? '')?.toLocal() ?? now;
+  final rawSlot = fields['time_slot']?.toString() ?? '';
+  if (isImmediateDeliverySlot(rawSlot) && (fields['selected_date']?.toString() ?? '').isEmpty) {
+    return null;
+  }
   if (rawSlot.isEmpty && placed == null) return null;
   final slot = smartTimeSlot(
     rawSlot.isEmpty ? null : rawSlot,
     placed ?? DateTime.now(),
-    selectedDateStr: order['selected_date']?.toString(),
+    selectedDateStr: fields['selected_date']?.toString(),
   );
+  if (isImmediateDeliverySlot(slot)) return null;
   final assumedYear = (placed ?? DateTime.now()).year;
   final date = parseSlotDate(slot, assumedYear) ??
       (placed != null ? DateTime(placed.year, placed.month, placed.day) : null);
@@ -1407,16 +1439,38 @@ DateTime? orderSlotStart(Map<String, dynamic> order, {DateTime? now}) {
 }
 
 String formatDeliverySlotLabel(Map<String, dynamic> order, {DateTime? now}) {
-  final placed = DateTime.tryParse(order['created_at']?.toString() ?? '')?.toLocal() ?? now ?? DateTime.now();
-  final rawSlot = order['time_slot']?.toString() ??
-      order['delivery_slot']?.toString() ??
-      order['selected_slot']?.toString() ??
-      '';
+  final fields = orderSlotFields(order);
+  final placed = DateTime.tryParse(fields['created_at']?.toString() ?? '')?.toLocal() ?? now ?? DateTime.now();
+  final rawSlot = fields['time_slot']?.toString() ?? '';
+  if (isImmediateDeliverySlot(rawSlot) && (fields['selected_date']?.toString() ?? '').isEmpty) {
+    return 'ASAP';
+  }
   return smartTimeSlot(
     rawSlot.isEmpty ? 'ASAP' : rawSlot,
     placed,
-    selectedDateStr: order['selected_date']?.toString(),
+    selectedDateStr: fields['selected_date']?.toString(),
   );
+}
+
+/// Start Preparing unlocks at 120 minutes before the requested time, and stays
+/// on through the last hour and after the slot (food must still go out).
+bool canChefStartPreparing(Map<String, dynamic> order, {DateTime? now}) {
+  final start = orderSlotStart(order, now: now);
+  if (start == null) return true;
+  final current = now ?? DateTime.now();
+  return !start.subtract(const Duration(minutes: kChefPrepEarliestMinutes)).isAfter(current);
+}
+
+String chefPrepGateHint(Map<String, dynamic> order, {DateTime? now}) {
+  if (canChefStartPreparing(order, now: now)) return '';
+  final start = orderSlotStart(order, now: now);
+  if (start == null) return '';
+  final unlockAt = start.subtract(const Duration(minutes: kChefPrepEarliestMinutes));
+  final wait = formatSlotCountdown(unlockAt, now: now).replaceAll(' left', '');
+  if (wait.isEmpty) {
+    return 'Opens 2 hours before the requested time';
+  }
+  return 'Opens in $wait (2 hours before requested time)';
 }
 
 String _humanDuration(Duration duration) {

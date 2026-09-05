@@ -14,6 +14,7 @@ import '../utils/helpers.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/app_status_badge.dart';
+import '../widgets/order_slot_banner.dart';
 import '../providers/driver_dashboard_provider.dart';
 import '../models/app_role.dart';
 import '../models/driver_delivery_model.dart';
@@ -552,7 +553,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               Text('Deliver to: ${delivery.customerAddress}',
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.onSurfaceOf(context))),
               const SizedBox(height: 10),
-              _DeliverySlotRow(order: delivery.slotSource),
+              OrderSlotBanner(order: delivery.slotSource),
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -642,74 +643,6 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
           ),
         ).entrance(index: index);
       },
-    );
-  }
-}
-
-class _DeliverySlotRow extends StatefulWidget {
-  const _DeliverySlotRow({required this.order});
-
-  final Map<String, dynamic> order;
-
-  @override
-  State<_DeliverySlotRow> createState() => _DeliverySlotRowState();
-}
-
-class _DeliverySlotRowState extends State<_DeliverySlotRow> {
-  Timer? _tick;
-
-  @override
-  void initState() {
-    super.initState();
-    _tick = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (mounted) setState(() {});
-    });
-  }
-
-  @override
-  void dispose() {
-    _tick?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final slot = formatDeliverySlotLabel(widget.order);
-    final start = orderSlotStart(widget.order);
-    final left = formatSlotCountdown(start);
-    final late = start != null && start.isBefore(DateTime.now());
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppTheme.primary.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.schedule, size: 18, color: late ? AppTheme.error : AppTheme.primary),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Slot $slot', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.onSurfaceOf(context))),
-                if (left.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    left,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      color: late ? AppTheme.error : AppTheme.primary,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

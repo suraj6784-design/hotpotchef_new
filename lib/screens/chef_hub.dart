@@ -18,6 +18,7 @@ import '../models/cart_enums.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/app_status_badge.dart';
+import '../widgets/order_slot_banner.dart';
 import '../models/app_role.dart';
 import '../services/order_lifecycle.dart';
 import '../services/auth_session.dart';
@@ -377,6 +378,11 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     try {
       final current = order['status']?.toString() ?? '';
       final next = OrderLifecycle.nextKitchenStatus(current);
+      if (next == OrderStatus.preparing && !canChefStartPreparing(order)) {
+        throw Exception(chefPrepGateHint(order).isEmpty
+            ? 'Too early to start preparing. Wait until 2 hours before the requested time.'
+            : chefPrepGateHint(order));
+      }
       await _orderLifecycle.advanceKitchen(orderId: order['id'].toString(), currentStatus: current);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -396,6 +402,17 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     try {
       final current = order['status']?.toString() ?? '';
       final svc = ServiceType.fromString(order['order_type']?.toString() ?? order['service_type']?.toString());
+      if (svc.usesDeliveryPartner) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Delivery partners mark partner orders delivered.'),
+              backgroundColor: Colors.teal,
+            ),
+          );
+        }
+        return;
+      }
       final next = OrderLifecycle.nextDispatchStatus(current, svc);
       await _orderLifecycle.dispatch(
         orderId: order['id'].toString(),
@@ -797,6 +814,11 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             icon: svc.isDelivery ? Icons.delivery_dining : Icons.storefront,
             color: AppTheme.info,
           ),
+          const SizedBox(height: 10),
+          OrderSlotBanner(
+            order: order,
+            hint: isPending || isPreparing ? null : chefPrepGateHint(order),
+          ),
           if (instructions.isNotEmpty) ...[
             const SizedBox(height: 10),
             Container(
@@ -838,13 +860,10 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             Row(
               children: [
                 Expanded(
-                  child: GradientButton(
-                    label: isPreparing ? 'Ready for Pickup' : 'Start Preparing',
-                    icon: isPreparing ? Icons.check_circle_rounded : Icons.soup_kitchen_rounded,
-                    gradient: isPreparing
-                        ? const LinearGradient(colors: [Color(0xFF00897B), Color(0xFF26A69A)])
-                        : AppTheme.primaryGradient,
-                    onPressed: () => _advanceKitchen(order),
+                  child: _ChefPrepAdvanceButton(
+                    order: order,
+                    isPreparing: isPreparing,
+                    onAdvance: () => _advanceKitchen(order),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -913,6 +932,8 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 icon: svc.isDelivery ? Icons.delivery_dining : Icons.storefront,
                 color: isOut ? AppTheme.success : AppTheme.info,
               ),
+              const SizedBox(height: 10),
+              OrderSlotBanner(order: order),
               if (svc == ServiceType.deliverySelf) ...[
                 const SizedBox(height: 12),
                 Row(
@@ -954,11 +975,13 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                     ),
                   ],
                 )
-              else if (svc.usesDeliveryPartner && !isOut)
+              else if (svc.usesDeliveryPartner)
                 Text(
-                  driverAssigned
-                      ? 'A delivery partner has this order. They will start and complete the run.'
-                      : 'Waiting for a delivery partner. Drivers see this job after you mark it Ready for Pickup.',
+                  isOut
+                      ? 'A delivery partner is on the way. They mark this order delivered.'
+                      : driverAssigned
+                          ? 'A delivery partner has this order. They will start and complete the run.'
+                          : 'Waiting for a delivery partner. Drivers see this job after you mark it Ready for Pickup.',
                   style: const TextStyle(fontSize: 13, color: AppTheme.textMuted, height: 1.35),
                 )
               else
@@ -1499,6 +1522,52 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
           ),
         ).entrance(index: index);
       },
+    );
+  }
+}
+
+class _ChefPrepAdvanceButton extends StatefulWidget {
+  const _ChefPrepAdvanceButton({
+    required this.order,
+    required this.isPreparing,
+    required this.onAdvance,
+  });
+
+  final Map<String, dynamic> order;
+  final bool isPreparing;
+  final VoidCallback onAdvance;
+
+  @override
+  State<_ChefPrepAdvanceButton> createState() => _ChefPrepAdvanceButtonState();
+}
+
+class _ChefPrepAdvanceButtonState extends State<_ChefPrepAdvanceButton> {
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canStart = widget.isPreparing || canChefStartPreparing(widget.order);
+    return GradientButton(
+      label: widget.isPreparing ? 'Ready for Pickup' : 'Start Preparing',
+      icon: widget.isPreparing ? Icons.check_circle_rounded : Icons.soup_kitchen_rounded,
+      gradient: widget.isPreparing
+          ? const LinearGradient(colors: [Color(0xFF00897B), Color(0xFF26A69A)])
+          : AppTheme.primaryGradient,
+      onPressed: canStart ? widget.onAdvance : null,
     );
   }
 }

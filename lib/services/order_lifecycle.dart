@@ -87,7 +87,9 @@ class OrderLifecycle {
   /// pickup / dine-in completes at the kitchen.
   static String? nextDispatchStatus(String? current, ServiceType service) {
     final s = normalize(current);
-    if (s == 'out for delivery') return OrderStatus.delivered;
+    if (s == 'out for delivery') {
+      return service.usesDeliveryPartner ? null : OrderStatus.delivered;
+    }
 
     if (s == 'ready for pickup' || s == 'driver assigned') {
       switch (service) {
