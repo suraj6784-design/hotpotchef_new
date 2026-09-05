@@ -26,6 +26,8 @@ import '../widgets/weekly_plan_banner.dart';
 import '../widgets/last_order_banner.dart';
 import '../widgets/live_offers_flash_banner.dart';
 import '../widgets/festival_hampers_banner.dart';
+import '../widgets/society_nights_banner.dart';
+import '../widgets/shelf_items_banner.dart';
 import '../widgets/rescue_waste_banner.dart';
 import '../widgets/ai_recommendations_section.dart';
 import '../services/delivery_estimator_service.dart';
@@ -89,6 +91,8 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   final List<Map<String, dynamic>> _categories = const [
     {'name': 'All', 'icon': Icons.set_meal_outlined},
     {'name': 'Festival Hamper', 'icon': Icons.card_giftcard_outlined},
+    {'name': 'Society Night', 'icon': Icons.apartment_outlined},
+    {'name': 'Shelf', 'icon': Icons.kitchen_outlined},
     {'name': 'Maharashtrian', 'icon': Icons.kebab_dining_outlined},
     {'name': 'Punjabi', 'icon': Icons.ramen_dining_outlined},
     {'name': 'South Indian', 'icon': Icons.tapas_outlined},
@@ -777,6 +781,14 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           FestivalHampersBanner(
             excludedChefIds: _closedChefIds,
             onHamperTap: (meal) => showMealDetailsDialog(context, meal, ref),
+          ),
+          SocietyNightsBanner(
+            excludedChefIds: _closedChefIds,
+            onNightTap: (meal) => showMealDetailsDialog(context, meal, ref),
+          ),
+          ShelfItemsBanner(
+            excludedChefIds: _closedChefIds,
+            onItemTap: (meal) => showMealDetailsDialog(context, meal, ref),
           ),
           const RescueWasteBanner(),
 

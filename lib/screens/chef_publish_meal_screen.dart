@@ -52,6 +52,8 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
   final _quantityController = TextEditingController();
   final _fssaiController = TextEditingController();
   final _hostingAddressController = TextEditingController();
+  final _societyLabelController = TextEditingController();
+  final _shelfKindController = TextEditingController();
 
   // Promotions & Discounts
   OfferType _selectedOfferType = OfferType.none;
@@ -73,6 +75,8 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
   bool _isLoading = false;
   bool _isVeg = true;
   bool _isHamper = false;
+  bool _isSocietyNight = false;
+  bool _isShelfItem = false;
   final Set<String> _dietTags = {};
   String _selectedCategory = 'Maharashtrian';
   String _activeTimeSlot = '';
@@ -86,6 +90,8 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     'South Indian',
     'North Indian',
     'Festival Hamper',
+    'Society Night',
+    'Shelf',
     'Snacks',
     'Desserts',
     'Healthy & Salads'
@@ -114,12 +120,22 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
 
     _isVeg = meal['is_veg'] ?? true;
     _isHamper = isFestivalHamper(meal);
+    _isSocietyNight = isSocietyNight(meal);
+    _isShelfItem = isShelfItem(meal);
+    _societyLabelController.text = meal['society_label']?.toString() ?? '';
+    _shelfKindController.text = meal['shelf_kind']?.toString() ?? '';
     _dietTags
       ..clear()
       ..addAll(_dietTagsFromMeal(meal));
     _selectedCategory = meal['category']?.toString() ?? 'Maharashtrian';
     if (_isHamper && !_categories.contains(_selectedCategory)) {
       _selectedCategory = 'Festival Hamper';
+    }
+    if (_isSocietyNight && !_categories.contains(_selectedCategory)) {
+      _selectedCategory = 'Society Night';
+    }
+    if (_isShelfItem && !_categories.contains(_selectedCategory)) {
+      _selectedCategory = 'Shelf';
     }
     if (!_categories.contains(_selectedCategory)) {
       _selectedCategory = _categories.first;
@@ -181,6 +197,8 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     _quantityController.dispose();
     _fssaiController.dispose();
     _hostingAddressController.dispose();
+    _societyLabelController.dispose();
+    _shelfKindController.dispose();
     _discountController.dispose();
     _maxDiscountCapController.dispose();
     _promoController.dispose();
@@ -388,6 +406,11 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
         'category': _selectedCategory,
         'is_veg': _isVeg,
         'is_hamper': _isHamper || _selectedCategory == 'Festival Hamper',
+        'is_society_night':
+            _isSocietyNight || _selectedCategory == 'Society Night',
+        'society_label': _societyLabelController.text.trim(),
+        'is_shelf_item': _isShelfItem || _selectedCategory == 'Shelf',
+        'shelf_kind': _shelfKindController.text.trim(),
         'time_slot': _activeTimeSlot,
         'service_type': _selectedServices.map((s) => s.toDisplayString()).join(', '),
         'fssai_number': _fssaiController.text.trim(),
@@ -683,6 +706,8 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                         onChanged: (v) => setState(() {
                           _selectedCategory = v!;
                           if (v == 'Festival Hamper') _isHamper = true;
+                          if (v == 'Society Night') _isSocietyNight = true;
+                          if (v == 'Shelf') _isShelfItem = true;
                         }),
                       ),
                     ),
@@ -733,6 +758,56 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                 }
               }),
             ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _isSocietyNight,
+              activeThumbColor: AppTheme.primary,
+              title: Text('Society / RWA night', style: TextStyle(fontWeight: FontWeight.w800, color: titleColor, fontSize: 14)),
+              subtitle: const Text(
+                'One building, one drop — shows on diner Home under Society Nights.',
+                style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+              ),
+              onChanged: (v) => setState(() => _isSocietyNight = v),
+            ),
+            if (_isSocietyNight || _selectedCategory == 'Society Night') ...[
+              const SizedBox(height: 4),
+              TextFormField(
+                controller: _societyLabelController,
+                decoration: InputDecoration(
+                  labelText: 'Society / building name',
+                  hintText: 'e.g. Green Valley A-wing',
+                  filled: true,
+                  fillColor: surface,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                textCapitalization: TextCapitalization.words,
+              ),
+            ],
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _isShelfItem,
+              activeThumbColor: AppTheme.primary,
+              title: Text('Shelf / pantry item', style: TextStyle(fontWeight: FontWeight.w800, color: titleColor, fontSize: 14)),
+              subtitle: const Text(
+                'Pickle, masala, papad — shows on diner Home under Shelf from Home.',
+                style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+              ),
+              onChanged: (v) => setState(() => _isShelfItem = v),
+            ),
+            if (_isShelfItem || _selectedCategory == 'Shelf') ...[
+              const SizedBox(height: 4),
+              TextFormField(
+                controller: _shelfKindController,
+                decoration: InputDecoration(
+                  labelText: 'Shelf kind',
+                  hintText: 'e.g. Pickle, Masala, Papad',
+                  filled: true,
+                  fillColor: surface,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                textCapitalization: TextCapitalization.words,
+              ),
+            ],
             const SizedBox(height: 16),
             Text('Diet tags', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor)),
             const SizedBox(height: 4),

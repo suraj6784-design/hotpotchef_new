@@ -236,10 +236,22 @@ String mealShareText(Map<String, dynamic> meal) {
   final link = mealShareUri(meal['id']?.toString() ?? mealIdFromOrderItem(meal));
   final priceSlot = price > 0 ? '₹${price.toStringAsFixed(0)} · $slot' : slot;
   final lines = <String>[
-    isFestivalHamper(meal) ? 'Festival hamper: $title from $chef' : '$title from $chef',
+    isFestivalHamper(meal)
+        ? 'Festival hamper: $title from $chef'
+        : (isSocietyNight(meal)
+            ? 'Society night at ${societyNightLabel(meal)}: $title from $chef'
+            : (isShelfItem(meal)
+                ? 'Shelf from home (${shelfItemKind(meal)}): $title from $chef'
+                : '$title from $chef')),
     priceSlot,
     if (code != null) 'Use code $code at checkout',
-    isFestivalHamper(meal) ? 'Gift a home kitchen box — order in 2 taps on HotPotChef' : 'Order in 2 taps on HotPotChef',
+    isFestivalHamper(meal)
+        ? 'Gift a home kitchen box — order in 2 taps on HotPotChef'
+        : (isSocietyNight(meal)
+            ? 'One building, one kitchen drop — order in 2 taps on HotPotChef'
+            : (isShelfItem(meal)
+                ? 'Pickle, masala & pantry from home kitchens — order in 2 taps on HotPotChef'
+                : 'Order in 2 taps on HotPotChef')),
     if (link.isNotEmpty) link,
   ];
   return lines.join('\n');
@@ -726,6 +738,12 @@ bool mealMatchesCuisine(Map<String, dynamic> meal, String? cuisine) {
   if (selected.isEmpty || selected == 'All') return true;
   if (selected.toLowerCase() == 'festival hamper') {
     return isFestivalHamper(meal);
+  }
+  if (selected.toLowerCase() == 'society night') {
+    return isSocietyNight(meal);
+  }
+  if (selected.toLowerCase() == 'shelf' || selected.toLowerCase() == 'pantry') {
+    return isShelfItem(meal);
   }
   final category = meal['category']?.toString().trim().toLowerCase() ?? '';
   final haystack = mealDietHaystack(meal);
@@ -1438,6 +1456,128 @@ String festivalHamperSubhead(Map<String, dynamic> meal) {
   if (title.isNotEmpty && chef.isNotEmpty) return '$title · $chef';
   if (title.isNotEmpty) return title;
   return 'Gift a home kitchen box';
+}
+
+bool _truthyFlag(dynamic flag) {
+  if (flag == true) return true;
+  if (flag == false || flag == null) return false;
+  final text = flag.toString().toLowerCase().trim();
+  return text == 'true' || text == '1' || text == 'yes';
+}
+
+bool isSocietyNight(Map<String, dynamic>? meal) {
+  if (meal == null) return false;
+  if (_truthyFlag(meal['is_society_night'] ?? meal['isSocietyNight'])) return true;
+  final category = meal['category']?.toString().trim().toLowerCase() ?? '';
+  final title = meal['title']?.toString().trim().toLowerCase() ?? '';
+  final label = meal['society_label']?.toString().trim() ?? '';
+  return category.contains('society') ||
+      category.contains('rwa') ||
+      title.contains('society night') ||
+      label.isNotEmpty && category.contains('community');
+}
+
+String societyNightLabel(Map<String, dynamic>? meal) {
+  final label = meal?['society_label']?.toString().trim() ?? '';
+  if (label.isNotEmpty) return label;
+  return 'Society night';
+}
+
+List<Map<String, dynamic>> societyNightMeals(
+  Iterable<Map<String, dynamic>> meals, {
+  Set<String> excludedChefIds = const {},
+  int limit = 8,
+}) {
+  final unique = <String>{};
+  final nights = <Map<String, dynamic>>[];
+  for (final meal in meals) {
+    if (!isSocietyNight(meal)) continue;
+    if (!isCatalogMeal(meal) || !isMealAvailableForCart(meal)) continue;
+    final chefId = meal['chef_id']?.toString() ?? '';
+    if (chefId.isNotEmpty && excludedChefIds.contains(chefId)) continue;
+    final id = meal['id']?.toString() ?? meal['title']?.toString() ?? '';
+    if (id.isNotEmpty && !unique.add(id)) continue;
+    nights.add(meal);
+    if (nights.length >= limit) break;
+  }
+  return nights;
+}
+
+String societyNightHeadline(Map<String, dynamic> meal) {
+  return societyNightLabel(meal);
+}
+
+String societyNightSubhead(Map<String, dynamic> meal) {
+  final title = mealDisplayTitle(meal, fallback: '');
+  final chef = chefDisplayName(meal, fallback: '');
+  final slot = formatDeliverySlotLabel(meal);
+  final parts = <String>[
+    if (title.isNotEmpty) title,
+    if (chef.isNotEmpty) chef,
+    if (slot.isNotEmpty && slot != 'ASAP') slot,
+  ];
+  if (parts.isEmpty) return 'One building · one kitchen · one drop';
+  return parts.join(' · ');
+}
+
+bool isShelfItem(Map<String, dynamic>? meal) {
+  if (meal == null) return false;
+  if (_truthyFlag(meal['is_shelf_item'] ?? meal['isShelfItem'])) return true;
+  final category = meal['category']?.toString().trim().toLowerCase() ?? '';
+  final title = meal['title']?.toString().trim().toLowerCase() ?? '';
+  final kind = meal['shelf_kind']?.toString().trim().toLowerCase() ?? '';
+  final tags = '${meal['health_tags'] ?? meal['tags'] ?? ''}'.toLowerCase();
+  return category.contains('shelf') ||
+      category.contains('pantry') ||
+      kind.isNotEmpty ||
+      title.contains('pickle') ||
+      title.contains('papad') ||
+      title.contains('chutney jar') ||
+      tags.contains('shelf') ||
+      tags.contains('pantry');
+}
+
+String shelfItemKind(Map<String, dynamic>? meal) {
+  final kind = meal?['shelf_kind']?.toString().trim() ?? '';
+  if (kind.isNotEmpty) return kind;
+  final category = meal?['category']?.toString().trim() ?? '';
+  if (category.toLowerCase().contains('shelf') ||
+      category.toLowerCase().contains('pantry')) {
+    return category;
+  }
+  return 'Shelf from home';
+}
+
+List<Map<String, dynamic>> shelfItems(
+  Iterable<Map<String, dynamic>> meals, {
+  Set<String> excludedChefIds = const {},
+  int limit = 8,
+}) {
+  final unique = <String>{};
+  final items = <Map<String, dynamic>>[];
+  for (final meal in meals) {
+    if (!isShelfItem(meal)) continue;
+    if (!isCatalogMeal(meal) || !isMealAvailableForCart(meal)) continue;
+    final chefId = meal['chef_id']?.toString() ?? '';
+    if (chefId.isNotEmpty && excludedChefIds.contains(chefId)) continue;
+    final id = meal['id']?.toString() ?? meal['title']?.toString() ?? '';
+    if (id.isNotEmpty && !unique.add(id)) continue;
+    items.add(meal);
+    if (items.length >= limit) break;
+  }
+  return items;
+}
+
+String shelfItemHeadline(Map<String, dynamic> meal) {
+  return shelfItemKind(meal);
+}
+
+String shelfItemSubhead(Map<String, dynamic> meal) {
+  final title = mealDisplayTitle(meal, fallback: '');
+  final chef = chefDisplayName(meal, fallback: '');
+  if (title.isNotEmpty && chef.isNotEmpty) return '$title · $chef';
+  if (title.isNotEmpty) return title;
+  return 'Pickle, masala & pantry from home kitchens';
 }
 
 bool orderLineIsRescuePlate(Map<String, dynamic> item) {
