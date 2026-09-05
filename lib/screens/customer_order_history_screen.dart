@@ -398,6 +398,24 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                     ),
                     if (isDelivered && items.isNotEmpty)
                       Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                        child: FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: AppTheme.primary,
+                            foregroundColor: Colors.white,
+                            minimumSize: const Size.fromHeight(46),
+                          ),
+                          icon: const Icon(Icons.ios_share, size: 18),
+                          label: const Text('Share your plate', style: TextStyle(fontWeight: FontWeight.w800)),
+                          onPressed: () => showPlateShareSheet(
+                            ctx,
+                            items: items,
+                            chefId: chefId,
+                          ),
+                        ),
+                      ),
+                    if (isDelivered && items.isNotEmpty)
+                      Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         child: OrderItemReviewButtons(
                           items: items,
@@ -645,6 +663,26 @@ class _HistoryOrdersListState extends ConsumerState<_HistoryOrdersList> {
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          if (isSuccessful)
+                            IconButton(
+                              tooltip: 'Share your plate',
+                              visualDensity: VisualDensity.compact,
+                              onPressed: items.isEmpty
+                                  ? null
+                                  : () => showPlateShareSheet(
+                                        context,
+                                        items: [
+                                          for (final item in items)
+                                            {
+                                              ...item,
+                                              'chef_id': order['chef_id'] ?? item['chef_id'],
+                                              'chef_name': order['chef_name'] ?? item['chef_name'],
+                                            },
+                                        ],
+                                        chefId: order['chef_id']?.toString(),
+                                      ),
+                              icon: const Icon(Icons.ios_share, size: 18),
+                            ),
                           if (isSuccessful)
                             IconButton(
                               tooltip: 'Rate this meal',

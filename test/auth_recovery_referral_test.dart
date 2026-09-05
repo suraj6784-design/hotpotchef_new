@@ -80,6 +80,45 @@ void main() {
     expect(referralCoinsFromRewardedFriends(2), 100);
   });
 
+  test('first-order referral ignores cancelled attempts and needs a live first order', () {
+    expect(referralOrderCountsTowardBonus('Pending Chef Approval'), isTrue);
+    expect(referralOrderCountsTowardBonus('Cancelled'), isFalse);
+    expect(
+      referralLiveOrderCount([
+        {'status': 'Cancelled'},
+        {'status': 'Pending Chef Approval'},
+      ]),
+      1,
+    );
+    expect(
+      canGrantFirstOrderReferralBonus(
+        referredBy: 'CHEFAB12',
+        referralRewardedAt: null,
+        liveOrderCount: 1,
+        referrerFound: true,
+      ),
+      isTrue,
+    );
+    expect(
+      canGrantFirstOrderReferralBonus(
+        referredBy: 'CHEFAB12',
+        referralRewardedAt: null,
+        liveOrderCount: 2,
+        referrerFound: true,
+      ),
+      isFalse,
+    );
+    expect(
+      canGrantFirstOrderReferralBonus(
+        referredBy: null,
+        referralRewardedAt: null,
+        liveOrderCount: 1,
+        referrerFound: true,
+      ),
+      isFalse,
+    );
+  });
+
   test('chef and driver signups do not store referral fields', () {
     expect(roleUsesReferral('Chef'), isFalse);
     expect(roleUsesReferral('Driver'), isFalse);

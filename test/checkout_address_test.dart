@@ -377,14 +377,16 @@ void main() {
     });
   });
 
-  test('mealShareText names the dish, kitchen, and price', () {
+  test('mealShareText names the dish, kitchen, price, slot, and code', () {
     expect(
       mealShareText({
         'title': 'Dal Tadka',
         'chef_name': 'Asha Kitchen',
         'price': 120,
+        'time_slot': 'ASAP',
+        'promo_code': 'FESTIVE20',
       }),
-      'Try Dal Tadka from Asha Kitchen on HotPotChef — ₹120',
+      'Dal Tadka from Asha Kitchen\n₹120 · ASAP\nUse code FESTIVE20 at checkout\nOrder in 2 taps on HotPotChef',
     );
     expect(
       mealShareText({
@@ -393,7 +395,38 @@ void main() {
         'chef_name': 'Asha Kitchen',
         'price': 120,
       }),
-      'Try Dal Tadka from Asha Kitchen on HotPotChef — ₹120\nhotpotchef://app/meal/meal-77',
+      contains('hotpotchef://app/meal/meal-77'),
+    );
+    expect(
+      mealWhatsAppShareUri('hello world').toString(),
+      'https://wa.me/?text=hello%20world',
+    );
+  });
+
+  test('plateShareText names chef, FSSAI, and meal deep link after delivery', () {
+    expect(
+      plateShareText(
+        chefName: 'Asha Kitchen',
+        fssai: '11223344556677',
+        items: [
+          {'title': 'Dal Tadka', 'meal_id': 'meal-9'},
+        ],
+      ),
+      'Just finished Dal Tadka from Asha Kitchen on HotPotChef\n'
+      'FSSAI 11223344556677\n'
+      'Home kitchen food — not restaurant haste.\n'
+      'Order in 2 taps\n'
+      'hotpotchef://app/meal/meal-9',
+    );
+    expect(normalizeFssaiNumber('FSSAI 1122-3344-5566-77'), '11223344556677');
+    expect(normalizeFssaiNumber('123'), isNull);
+    expect(
+      plateShareDishLabel([
+        {'title': 'Dal Tadka'},
+        {'title': 'Jeera Rice'},
+        {'title': 'Dal Tadka'},
+      ]),
+      'Dal Tadka & Jeera Rice',
     );
   });
 

@@ -1389,6 +1389,24 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                         ],
                       ),
                       const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF25D366),
+                            side: const BorderSide(color: Color(0xFF25D366)),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          icon: const Icon(Icons.chat, size: 18),
+                          label: const Text('WhatsApp card', style: TextStyle(fontWeight: FontWeight.w700)),
+                          onPressed: () => showMealShareSheet(context, {
+                            ...meal,
+                            'chef_name': _chefDisplayName,
+                          }),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
                       if (isMealBoosted(meal))
                         Text(
                           mealBoostUntilLabel(meal),

@@ -144,12 +144,40 @@ String referralInviteUri(String code) {
 }
 
 String referralInviteText(String code) {
-  return 'Craving authentic home-cooked food? Join HotPotChef with my code $code. We both get 50 HotPot Coins when you place your first order.\n${referralInviteUri(code)}';
+  return 'Craving authentic home-cooked food? Join HotPotChef with my code $code. We both get ${kReferralBonusCoins.toInt()} HotPot Coins when you place your first order.\n${referralInviteUri(code)}';
 }
 
 double referralCoinsFromRewardedFriends(int rewardedFriends, [double bonus = kReferralBonusCoins]) {
   if (rewardedFriends <= 0) return 0;
   return rewardedFriends * bonus;
+}
+
+bool referralOrderCountsTowardBonus(String? status) {
+  final s = (status ?? '').toLowerCase();
+  if (s.contains('cancel') || s.contains('reject')) return false;
+  return true;
+}
+
+int referralLiveOrderCount(Iterable<dynamic> orders) {
+  var count = 0;
+  for (final row in orders) {
+    if (row is! Map) continue;
+    if (referralOrderCountsTowardBonus(row['status']?.toString())) count++;
+  }
+  return count;
+}
+
+bool canGrantFirstOrderReferralBonus({
+  required String? referredBy,
+  DateTime? referralRewardedAt,
+  required int liveOrderCount,
+  required bool referrerFound,
+}) {
+  if (referralRewardedAt != null) return false;
+  final code = normalizeReferralCode(referredBy);
+  if (code == null) return false;
+  if (!referrerFound) return false;
+  return liveOrderCount == 1;
 }
 
 bool roleUsesReferral(String? role) {
@@ -189,15 +217,104 @@ Map<String, dynamic> signupUserPayload({
   };
 }
 
+String mealShareSlotLine(Map<String, dynamic> meal) {
+  final slot = formatDeliverySlotLabel(meal);
+  return slot.trim().isEmpty ? 'ASAP' : slot.trim();
+}
+
+String? mealSharePromoCode(Map<String, dynamic> meal) {
+  return PricingCalculator.mealPromoCode(meal);
+}
+
+/// WhatsApp-ready card: dish, kitchen, price, slot, promo, 2-tap link.
 String mealShareText(Map<String, dynamic> meal) {
   final title = mealDisplayTitle(meal);
   final chef = chefDisplayName(meal);
   final price = PricingCalculator.effectiveUnitPrice(meal, 1);
-  final priceBit = price > 0 ? ' — ₹${price.toStringAsFixed(0)}' : '';
+  final slot = mealShareSlotLine(meal);
+  final code = mealSharePromoCode(meal);
   final link = mealShareUri(meal['id']?.toString() ?? mealIdFromOrderItem(meal));
-  return link.isEmpty
-      ? 'Try $title from $chef on HotPotChef$priceBit'
-      : 'Try $title from $chef on HotPotChef$priceBit\n$link';
+  final priceSlot = price > 0 ? '₹${price.toStringAsFixed(0)} · $slot' : slot;
+  final lines = <String>[
+    '$title from $chef',
+    priceSlot,
+    if (code != null) 'Use code $code at checkout',
+    'Order in 2 taps on HotPotChef',
+    if (link.isNotEmpty) link,
+  ];
+  return lines.join('\n');
+}
+
+Uri mealWhatsAppShareUri(String text) {
+  return Uri.parse('https://wa.me/?text=${Uri.encodeComponent(text)}');
+}
+
+String? normalizeFssaiNumber(String? raw) {
+  final digits = (raw ?? '').replaceAll(RegExp(r'\D'), '');
+  if (digits.length != 14) return null;
+  if (digits[0] != '1' && digits[0] != '2') return null;
+  return digits;
+}
+
+String plateShareDishLabel(Iterable<dynamic> items) {
+  final titles = <String>[];
+  for (final raw in items) {
+    if (raw is! Map) continue;
+    final title = mealDisplayTitle(Map<String, dynamic>.from(raw), fallback: '');
+    if (title.isEmpty) continue;
+    if (!titles.contains(title)) titles.add(title);
+  }
+  if (titles.isEmpty) return 'home-cooked food';
+  if (titles.length == 1) return titles.first;
+  if (titles.length == 2) return '${titles[0]} & ${titles[1]}';
+  return '${titles.first} + ${titles.length - 1} more';
+}
+
+String? plateShareMealId(Iterable<dynamic> items) {
+  for (final raw in items) {
+    if (raw is! Map) continue;
+    final id = mealIdFromOrderItem(Map<String, dynamic>.from(raw));
+    if (id != null && id.isNotEmpty) return id;
+  }
+  return null;
+}
+
+String? plateShareFssaiFromItems(Iterable<dynamic> items) {
+  for (final raw in items) {
+    if (raw is! Map) continue;
+    final item = Map<String, dynamic>.from(raw);
+    for (final key in const ['fssai_number', 'fssai', 'chef_fssai']) {
+      final normalized = normalizeFssaiNumber(item[key]?.toString());
+      if (normalized != null) return normalized;
+    }
+    for (final nestedKey in const ['rawMealDetails', 'mealDetails', 'meal_details']) {
+      final nested = item[nestedKey];
+      if (nested is! Map) continue;
+      final normalized = normalizeFssaiNumber(nested['fssai_number']?.toString());
+      if (normalized != null) return normalized;
+    }
+  }
+  return null;
+}
+
+/// After-delivery card: dish, chef, FSSAI, deep link — for WhatsApp / Instagram.
+String plateShareText({
+  required String chefName,
+  required Iterable<dynamic> items,
+  String? fssai,
+}) {
+  final chef = chefName.trim().isEmpty ? 'a home kitchen' : chefName.trim();
+  final dish = plateShareDishLabel(items);
+  final licence = normalizeFssaiNumber(fssai) ?? plateShareFssaiFromItems(items);
+  final link = mealShareUri(plateShareMealId(items));
+  final lines = <String>[
+    'Just finished $dish from $chef on HotPotChef',
+    if (licence != null) 'FSSAI $licence',
+    'Home kitchen food — not restaurant haste.',
+    'Order in 2 taps',
+    if (link.isNotEmpty) link,
+  ];
+  return lines.join('\n');
 }
 
 String formatOrderId(String? rawOrderId, String fallbackId) {
@@ -1148,6 +1265,95 @@ String offerFlashSubhead(Map<String, dynamic> meal) {
   return title.isEmpty ? 'Tap to see this kitchen special' : title;
 }
 
+bool orderLineIsRescuePlate(Map<String, dynamic> item) {
+  final type = (item['offer_type'] ??
+          item['offerType'] ??
+          (item['rawMealDetails'] is Map ? item['rawMealDetails']['offer_type'] : null) ??
+          (item['mealDetails'] is Map ? item['mealDetails']['offer_type'] : null) ??
+          (item['meal_details'] is Map ? item['meal_details']['offer_type'] : null) ??
+          '')
+      .toString()
+      .toLowerCase();
+  return type.contains('flash');
+}
+
+/// True when the line/order asks for a clock slot (not ASAP) — chef cooks to that demand.
+bool orderIsPreOrderSlot(Map<String, dynamic> orderOrItem) {
+  final fields = orderSlotFields(orderOrItem);
+  final selectedDate = fields['selected_date']?.toString().trim() ?? '';
+  if (selectedDate.isNotEmpty) return true;
+  return !isImmediateDeliverySlot(fields['time_slot']?.toString());
+}
+
+int preOrderedPlatesFromOrderItems(Iterable<dynamic> items) {
+  var total = 0;
+  for (final raw in items) {
+    if (raw is! Map) continue;
+    final item = Map<String, dynamic>.from(raw);
+    if (!orderIsPreOrderSlot(item)) continue;
+    final qty = int.tryParse(item['quantity']?.toString() ?? '') ?? 1;
+    total += qty < 1 ? 1 : qty;
+  }
+  return total;
+}
+
+int preOrderedPlatesFromOrders(Iterable<dynamic> orders) {
+  var total = 0;
+  for (final row in orders) {
+    if (row is! Map) continue;
+    if (!referralOrderCountsTowardBonus(row['status']?.toString())) continue;
+    final order = Map<String, dynamic>.from(row);
+    final items = parseOrderItemsList(order['items'] ?? order['cart_items'] ?? order['order_items']);
+    if (items.isEmpty) {
+      if (orderIsPreOrderSlot(order)) total += 1;
+      continue;
+    }
+    // Prefer line-level slots; if lines omit slot, fall back to order-level.
+    final fromLines = preOrderedPlatesFromOrderItems(items);
+    if (fromLines > 0) {
+      total += fromLines;
+    } else if (orderIsPreOrderSlot(order)) {
+      for (final raw in items) {
+        if (raw is! Map) continue;
+        final qty = int.tryParse(raw['quantity']?.toString() ?? '') ?? 1;
+        total += qty < 1 ? 1 : qty;
+      }
+    }
+  }
+  return total;
+}
+
+int rescuedPlatesFromOrderItems(Iterable<dynamic> items) =>
+    preOrderedPlatesFromOrderItems(items);
+
+int rescuedPlatesFromOrders(Iterable<dynamic> orders) =>
+    preOrderedPlatesFromOrders(orders);
+
+String rescuedMealsHeadline({required int rescuedPlates, required int onOfferPlates}) {
+  if (rescuedPlates > 0) {
+    final plateWord = rescuedPlates == 1 ? 'plate' : 'plates';
+    return 'Saved from waste · $rescuedPlates $plateWord pre-ordered';
+  }
+  if (onOfferPlates > 0) {
+    final plateWord = onOfferPlates == 1 ? 'meal' : 'meals';
+    return '$onOfferPlates slotted $plateWord ready to pre-order';
+  }
+  return 'Pre-order a slot — kitchens cook only what you book';
+}
+
+String rescuedMealsSubhead({required int rescuedPlates, required int onOfferPlates}) {
+  if (rescuedPlates > 0 && onOfferPlates > 0) {
+    return 'Chefs cook to booked demand. $onOfferPlates more slots open now.';
+  }
+  if (rescuedPlates > 0) {
+    return 'Neighbours booked ahead so home kitchens cooked only what was needed.';
+  }
+  if (onOfferPlates > 0) {
+    return 'Book a time slot. Fresh food, no guesswork leftovers.';
+  }
+  return 'HotPotChef is pre-order first — less waste than cooking on hope.';
+}
+
 bool isMealExpired(String? timeSlot, {DateTime? orderDate}) {
   if (timeSlot == null || timeSlot.isEmpty) return false;
   final startTime = parseSlotStartTime(timeSlot, baseDate: orderDate);
@@ -1971,6 +2177,31 @@ String _humanDuration(Duration duration) {
   if (hours < 24) return rem == 0 ? '$hours hr' : '$hours hr $rem min';
   final days = duration.inDays;
   return days == 1 ? '1 day' : '$days days';
+}
+
+bool dinerSlotCountdownActive(String? status) {
+  final s = (status ?? '').toLowerCase();
+  if (s.contains('cancel') || s.contains('reject')) return false;
+  if (s.contains('delivered')) return false;
+  if (s.contains('complet') && !s.contains('out')) return false;
+  return true;
+}
+
+bool dinerSlotIsLate(Map<String, dynamic> order, {DateTime? now}) {
+  final start = orderSlotStart(order, now: now);
+  if (start == null) return false;
+  return start.isBefore(now ?? DateTime.now());
+}
+
+/// Diner-facing promised slot, e.g. "12 min left · 06 Sep 2026, 08:00 PM".
+String dinerPromisedSlotCopy(Map<String, dynamic> order, {DateTime? now, String? status}) {
+  if (!dinerSlotCountdownActive(status ?? order['status']?.toString())) return '';
+  final slot = formatDeliverySlotLabel(order, now: now);
+  final tick = formatSlotCountdown(orderSlotStart(order, now: now), now: now);
+  if (tick.isEmpty) return slot == 'ASAP' ? 'Promised ASAP' : 'Promised $slot';
+  if (tick == 'Due now') return 'Due now · $slot';
+  if (tick.contains('late')) return '$tick · promised $slot';
+  return '$tick · $slot';
 }
 
 /// Live countdown against the scheduled drop-off, e.g. "12 min left" / "8 min late".

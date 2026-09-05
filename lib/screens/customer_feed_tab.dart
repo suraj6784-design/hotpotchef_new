@@ -7,7 +7,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:go_router/go_router.dart';
 
 import '../utils/app_page.dart';
@@ -26,6 +25,7 @@ import '../widgets/daily_streak_banner.dart';
 import '../widgets/weekly_plan_banner.dart';
 import '../widgets/last_order_banner.dart';
 import '../widgets/live_offers_flash_banner.dart';
+import '../widgets/rescue_waste_banner.dart';
 import '../widgets/ai_recommendations_section.dart';
 import '../services/delivery_estimator_service.dart';
 import 'address_form_screen.dart';
@@ -772,6 +772,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             excludedChefIds: _closedChefIds,
             onOfferTap: (meal) => showMealDetailsDialog(context, meal, ref),
           ),
+          const RescueWasteBanner(),
 
           if (_hasDeliveryPin)
             Padding(
@@ -1374,7 +1375,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                       tooltip: 'Share dish',
                                       visualDensity: VisualDensity.compact,
                                       icon: Icon(Icons.share_outlined, size: 18, color: AppTheme.onSurfaceOf(context)),
-                                      onPressed: () => SharePlus.instance.share(ShareParams(text: mealShareText(meal))),
+                                      onPressed: () => showMealShareSheet(context, meal),
                                     ),
                                     Material(
                                       color: Colors.transparent,

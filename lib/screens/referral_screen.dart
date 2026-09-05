@@ -62,17 +62,25 @@ class _ReferralScreenState extends State<ReferralScreen> {
         final countResponse = await _supabase
             .from('users')
             .count(CountOption.exact)
-            .eq('referred_by', code);
+            .ilike('referred_by', code);
 
         var rewardedFriends = 0;
         try {
           rewardedFriends = await _supabase
               .from('users')
               .count(CountOption.exact)
-              .eq('referred_by', code)
+              .ilike('referred_by', code)
               .not('referral_rewarded_at', 'is', null);
         } catch (_) {
-          rewardedFriends = 0;
+          try {
+            rewardedFriends = await _supabase
+                .from('users')
+                .count(CountOption.exact)
+                .eq('referred_by', code)
+                .not('referral_rewarded_at', 'is', null);
+          } catch (_) {
+            rewardedFriends = 0;
+          }
         }
 
         if (!mounted) return;
@@ -128,18 +136,18 @@ class _ReferralScreenState extends State<ReferralScreen> {
                     boxShadow: AppTheme.softShadow,
                   ),
                   child: Column(
-                    children: const [
-                      AppLogo(size: 56, onDark: true),
-                      SizedBox(height: 16),
-                      Text(
+                    children: [
+                      const AppLogo(size: 56, onDark: true),
+                      const SizedBox(height: 16),
+                      const Text(
                         'Give ₹50, Get ₹50!',
                         style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900),
                         textAlign: TextAlign.center,
                       ),
-                      SizedBox(height: 8),
+                      const SizedBox(height: 8),
                       Text(
-                        'Invite your friends to HotPotChef. They enter your code when they sign up. When they place their first order, you both get 50 HotPot Coins!',
-                        style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+                        'Invite neighbours with your code. When they place their first order, you both get ${kReferralBonusCoins.toInt()} HotPot Coins in the wallet (about ₹${kReferralBonusCoins.toInt()} at checkout).',
+                        style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
                         textAlign: TextAlign.center,
                       ),
                     ],
@@ -299,6 +307,21 @@ class _ReferralScreenState extends State<ReferralScreen> {
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  _friendsReferred == 0
+                      ? 'No friends have joined with your code yet. Share the invite, then wait for their first order.'
+                      : _earnedCoins <= 0
+                          ? '$_friendsReferred friend(s) joined. Coins credit when they place their first order.'
+                          : '₹${_earnedCoins.toInt()} credited from friends who already ordered.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.35,
+                    color: isDark ? Colors.grey.shade400 : AppTheme.textMuted,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  textAlign: TextAlign.center,
                 ),
               ],
             ),

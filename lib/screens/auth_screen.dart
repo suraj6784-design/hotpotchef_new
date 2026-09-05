@@ -141,7 +141,8 @@ class _AuthScreenState extends State<AuthScreen> {
         TextInput.finishAutofillContext();
 
         if (response.user != null) {
-          unawaited(_ensurePublicUserProfile());
+          // Write referred_by before the diner can reach checkout, or the first-order bonus is missed.
+          await _ensurePublicUserProfile();
           unawaited(PushNotificationService.syncTokenForCurrentUser());
           _leaveAuthAfterSuccess();
         } else {
@@ -180,9 +181,11 @@ class _AuthScreenState extends State<AuthScreen> {
           if (response.session == null) {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
+                SnackBar(
                   content: Text(
-                    'Account created. Check your email to confirm, then sign in.',
+                    referredBy == null
+                        ? 'Account created. Check your email to confirm, then sign in.'
+                        : 'Account created. Check your email to confirm, then sign in — your referral code $referredBy is saved.',
                   ),
                 ),
               );
@@ -267,7 +270,8 @@ class _AuthScreenState extends State<AuthScreen> {
           name: existing?['name']?.toString() ?? meta['name']?.toString() ?? '',
           phone: existing?['phone']?.toString() ?? meta['phone']?.toString() ?? '',
           role: role,
-          referredBy: referredBy,
+          // Keep an existing referred_by if metadata is empty (email-confirm then sign-in).
+          referredBy: referredBy ?? normalizeReferralCode(existing?['referred_by']?.toString()),
           referralCode: ownCode,
         ),
       );

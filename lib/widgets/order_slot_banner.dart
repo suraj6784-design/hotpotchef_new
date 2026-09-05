@@ -6,10 +6,11 @@ import '../utils/helpers.dart';
 
 /// Requested delivery date/time plus a live countdown.
 class OrderSlotBanner extends StatefulWidget {
-  const OrderSlotBanner({super.key, required this.order, this.hint});
+  const OrderSlotBanner({super.key, required this.order, this.hint, this.diner = false});
 
   final Map<String, dynamic> order;
   final String? hint;
+  final bool diner;
 
   @override
   State<OrderSlotBanner> createState() => _OrderSlotBannerState();
@@ -21,7 +22,7 @@ class _OrderSlotBannerState extends State<OrderSlotBanner> {
   @override
   void initState() {
     super.initState();
-    _tick = Timer.periodic(const Duration(seconds: 30), (_) {
+    _tick = Timer.periodic(Duration(seconds: widget.diner ? 15 : 30), (_) {
       if (mounted) setState(() {});
     });
   }
@@ -37,8 +38,11 @@ class _OrderSlotBannerState extends State<OrderSlotBanner> {
     final slot = formatDeliverySlotLabel(widget.order);
     final start = orderSlotStart(widget.order);
     final left = formatSlotCountdown(start);
-    final late = start != null && start.isBefore(DateTime.now());
+    final late = dinerSlotIsLate(widget.order);
     final hint = (widget.hint ?? '').trim();
+    final title = widget.diner
+        ? (slot == 'ASAP' ? 'Promised ASAP' : 'Promised $slot')
+        : (slot == 'ASAP' ? 'Requested ASAP' : 'Requested $slot');
 
     return Container(
       width: double.infinity,
@@ -57,10 +61,10 @@ class _OrderSlotBannerState extends State<OrderSlotBanner> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  slot == 'ASAP' ? 'Requested ASAP' : 'Requested $slot',
+                  title,
                   style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.onSurfaceOf(context)),
                 ),
-                if (left.isNotEmpty) ...[
+                if (left.isNotEmpty && left != title) ...[
                   const SizedBox(height: 2),
                   Text(
                     left,

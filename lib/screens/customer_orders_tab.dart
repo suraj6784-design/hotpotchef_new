@@ -15,6 +15,7 @@ import '../utils/support.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/last_order_banner.dart';
+import '../widgets/order_slot_banner.dart';
 import '../widgets/meal_review_dialog.dart';
 import '../services/chef_directory.dart';
 import '../services/order_lifecycle.dart';
@@ -538,10 +539,16 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                             children: [
                               const Icon(Icons.event_available, size: 14, color: Colors.green),
                               const SizedBox(width: 6),
-                              const Text('Delivery Slot: ', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
-                              Text(deliveryTimeStr, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
+                              const Text('Promised slot: ', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                              Expanded(
+                                child: Text(deliveryTimeStr, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
+                              ),
                             ],
                           ),
+                          if (dinerSlotCountdownActive(status)) ...[
+                            const SizedBox(height: 10),
+                            OrderSlotBanner(order: items.first, diner: true),
+                          ],
                           const SizedBox(height: 8),
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -747,6 +754,24 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                         ],
                       ),
                     ),
+                    if (isDelivered)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                        child: FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: AppTheme.primary,
+                            foregroundColor: Colors.white,
+                            minimumSize: const Size.fromHeight(46),
+                          ),
+                          icon: const Icon(Icons.ios_share, size: 18),
+                          label: const Text('Share your plate', style: TextStyle(fontWeight: FontWeight.w800)),
+                          onPressed: () => showPlateShareSheet(
+                            ctx,
+                            items: items,
+                            chefId: chefId,
+                          ),
+                        ),
+                      ),
                     if (isDelivered || isCancelled)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -1225,11 +1250,14 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                         color: AppTheme.onSurfaceOf(context), fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 1.0)),
                               ),
                               if (items.isNotEmpty)
-                                DeliveryCountdownSticker(
-                                  timeSlot: smartTimeSlot,
-                                  status: items.first['status'],
-                                  createdAt: items.first['created_at']?.toString(),
-                                  orderId: items.first['order_id']?.toString(),
+                                Flexible(
+                                  child: DeliveryCountdownSticker(
+                                    order: items.first,
+                                    timeSlot: smartTimeSlot,
+                                    status: items.first['status']?.toString(),
+                                    createdAt: items.first['created_at']?.toString(),
+                                    orderId: items.first['order_id']?.toString(),
+                                  ),
                                 ),
                             ],
                           ),

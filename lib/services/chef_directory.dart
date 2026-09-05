@@ -34,3 +34,18 @@ Future<String> lookupChefDisplayName(
   if (hinted.isNotEmpty) return hinted;
   return 'Home Kitchen';
 }
+
+Future<String?> lookupChefFssai(String? chefId) async {
+  final id = chefId?.trim() ?? '';
+  if (id.isEmpty) return null;
+  try {
+    final row = await Supabase.instance.client
+        .from('users')
+        .select('fssai_number')
+        .eq('id', id)
+        .maybeSingle();
+    return normalizeFssaiNumber(row?['fssai_number']?.toString());
+  } catch (_) {
+    return null;
+  }
+}

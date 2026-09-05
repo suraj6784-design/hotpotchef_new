@@ -109,6 +109,27 @@ void main() {
       expect(canChefStartPreparing({'time_slot': 'ASAP'}, now: DateTime(2026, 9, 5, 10)), isTrue);
     });
 
+    test('diner promised slot counts down until the order is done', () {
+      final now = DateTime(2026, 9, 6, 18, 0);
+      final order = {
+        'status': 'Preparing',
+        'created_at': DateTime(2026, 9, 6, 10).toIso8601String(),
+        'time_slot': '06/09/2026 | 8:00 PM',
+        'selected_date': '06/09/2026',
+      };
+      expect(dinerSlotCountdownActive('Preparing'), isTrue);
+      expect(dinerSlotCountdownActive('Out for Delivery'), isTrue);
+      expect(dinerSlotCountdownActive('Delivered'), isFalse);
+      expect(dinerSlotIsLate(order, now: now), isFalse);
+      expect(dinerPromisedSlotCopy(order, now: now), contains('left'));
+      expect(dinerPromisedSlotCopy(order, now: now), contains('8:00 PM'));
+      expect(dinerPromisedSlotCopy({...order, 'status': 'Delivered'}, now: now), '');
+      expect(
+        dinerPromisedSlotCopy(order, now: DateTime(2026, 9, 6, 20, 10)),
+        contains('late'),
+      );
+    });
+
     test('reads the requested slot from line items', () {
       final order = {
         'created_at': DateTime(2026, 9, 5, 8).toIso8601String(),

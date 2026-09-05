@@ -1,11 +1,16 @@
 // lib/widgets/customer_ui_components.dart
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../screens/kitchen_live_screen.dart';
 
@@ -16,10 +21,150 @@ import '../utils/pricing_calculator.dart';
 import '../models/cart_enums.dart';
 import '../providers/cart_provider.dart';
 import '../providers/kitchen_follows_provider.dart';
+import '../services/chef_directory.dart';
 import '../services/reorder_service.dart';
 import 'weekly_plan_sheet.dart';
 import '../screens/auth_screen.dart';
 import 'app_widgets.dart';
+
+Future<void> shareMealOnWhatsApp(Map<String, dynamic> meal) async {
+  final text = mealShareText(meal);
+  final opened = await launchUrl(mealWhatsAppShareUri(text), mode: LaunchMode.externalApplication);
+  if (!opened) {
+    await SharePlus.instance.share(ShareParams(text: text));
+  }
+}
+
+Future<void> shareTextOnWhatsApp(String text) async {
+  final opened = await launchUrl(mealWhatsAppShareUri(text), mode: LaunchMode.externalApplication);
+  if (!opened) {
+    await SharePlus.instance.share(ShareParams(text: text));
+  }
+}
+
+Future<void> showMealShareSheet(BuildContext context, Map<String, dynamic> meal) {
+  final text = mealShareText(meal);
+  return showModalBottomSheet<void>(
+    context: context,
+    builder: (ctx) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Share this dish', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.onSurfaceOf(ctx))),
+            const SizedBox(height: 8),
+            Text(text, style: const TextStyle(fontSize: 13, height: 1.35, color: AppTheme.textMuted)),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white),
+              onPressed: () {
+                Navigator.pop(ctx);
+                shareMealOnWhatsApp(meal);
+              },
+              icon: const Icon(Icons.chat),
+              label: const Text('WhatsApp', style: TextStyle(fontWeight: FontWeight.w800)),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: text));
+                if (ctx.mounted) Navigator.pop(ctx);
+              },
+              icon: const Icon(Icons.copy_outlined),
+              label: const Text('Copy card', style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                SharePlus.instance.share(ShareParams(text: text));
+              },
+              child: const Text('More apps'),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+Future<void> showPlateShareSheet(
+  BuildContext context, {
+  required List<Map<String, dynamic>> items,
+  String? chefId,
+  String? chefNameHint,
+}) async {
+  if (items.isEmpty) return;
+  final hint = items.first;
+  final chefIdResolved = (chefId ?? hint['chef_id'] ?? hint['chefId'])?.toString();
+  final chefName = await lookupChefDisplayName(chefIdResolved, hint: {
+    ...hint,
+    if (chefNameHint != null && chefNameHint.trim().isNotEmpty) 'chef_name': chefNameHint,
+  });
+  final fssai = plateShareFssaiFromItems(items) ?? await lookupChefFssai(chefIdResolved);
+  if (!context.mounted) return;
+  final text = plateShareText(chefName: chefName, items: items, fssai: fssai);
+
+  return showModalBottomSheet<void>(
+    context: context,
+    builder: (ctx) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Share your plate',
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.onSurfaceOf(ctx)),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Tell neighbours who cooked it — with FSSAI when listed.',
+              style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+            ),
+            const SizedBox(height: 10),
+            Text(text, style: const TextStyle(fontSize: 13, height: 1.35, color: AppTheme.textMuted)),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white),
+              onPressed: () {
+                Navigator.pop(ctx);
+                shareTextOnWhatsApp(text);
+              },
+              icon: const Icon(Icons.chat),
+              label: const Text('WhatsApp', style: TextStyle(fontWeight: FontWeight.w800)),
+            ),
+            const SizedBox(height: 8),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFE1306C),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () {
+                Navigator.pop(ctx);
+                SharePlus.instance.share(ShareParams(text: text));
+              },
+              icon: const Icon(Icons.camera_alt_outlined),
+              label: const Text('Instagram / Stories', style: TextStyle(fontWeight: FontWeight.w800)),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: text));
+                if (ctx.mounted) Navigator.pop(ctx);
+              },
+              icon: const Icon(Icons.copy_outlined),
+              label: const Text('Copy card', style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
 
 class DispatchPackedPhoto extends StatelessWidget {
   const DispatchPackedPhoto({
@@ -175,8 +320,9 @@ class UnreadChatIndicator extends StatelessWidget {
   }
 }
 
-// 4. Delivery Countdown Sticker Widget
-class DeliveryCountdownSticker extends StatelessWidget {
+// 4. Promised slot countdown on diner orders
+class DeliveryCountdownSticker extends StatefulWidget {
+  final Map<String, dynamic>? order;
   final String? timeSlot;
   final String? status;
   final String? createdAt;
@@ -184,6 +330,7 @@ class DeliveryCountdownSticker extends StatelessWidget {
 
   const DeliveryCountdownSticker({
     super.key,
+    this.order,
     this.timeSlot,
     this.status,
     this.createdAt,
@@ -191,22 +338,62 @@ class DeliveryCountdownSticker extends StatelessWidget {
   });
 
   @override
+  State<DeliveryCountdownSticker> createState() => _DeliveryCountdownStickerState();
+}
+
+class _DeliveryCountdownStickerState extends State<DeliveryCountdownSticker> {
+  Timer? _tick;
+
+  Map<String, dynamic> get _order => widget.order ??
+      {
+        'time_slot': widget.timeSlot,
+        'status': widget.status,
+        'created_at': widget.createdAt,
+        'order_id': widget.orderId,
+      };
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final status = widget.status ?? _order['status']?.toString();
+    if (!dinerSlotCountdownActive(status)) return const SizedBox.shrink();
+
+    final label = dinerPromisedSlotCopy(_order, status: status);
+    if (label.isEmpty) return const SizedBox.shrink();
+    final late = dinerSlotIsLate(_order);
+    final color = late ? AppTheme.error : AppTheme.primary;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.blue.withValues(alpha: 0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.timer, size: 12, color: Colors.blueAccent),
+          Icon(Icons.timer, size: 12, color: color),
           const SizedBox(width: 4),
-          Text(
-            timeSlot ?? 'ASAP',
-            style: const TextStyle(color: Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.bold),
+          Flexible(
+            child: Text(
+              label,
+              style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),
@@ -1198,6 +1385,21 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => showMealShareSheet(context, meal),
+                  icon: const Icon(Icons.chat, size: 18),
+                  label: const Text('WhatsApp card', style: TextStyle(fontWeight: FontWeight.w800)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF25D366),
+                    side: const BorderSide(color: Color(0xFF25D366)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                ),
               ),
               const SizedBox(height: 10),
               SizedBox(
