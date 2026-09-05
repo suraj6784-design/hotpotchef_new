@@ -162,11 +162,135 @@ class DeliveryCountdownSticker extends StatelessWidget {
 
 // 5. Chef Profile Dialog
 void showChefProfileDialog(BuildContext context, String chefId, String chefName, String fssai) {
-  final isDark = Theme.of(context).brightness == Brightness.dark;
-
   showDialog(
     context: context,
-    builder: (ctx) => AlertDialog(
+    builder: (ctx) => ChefProfilePeekDialog(
+      chefId: chefId,
+      chefName: chefName,
+      fssai: fssai,
+    ),
+  );
+}
+
+class ChefProfilePeekDialog extends StatefulWidget {
+  const ChefProfilePeekDialog({
+    super.key,
+    required this.chefId,
+    required this.chefName,
+    required this.fssai,
+  });
+
+  final String chefId;
+  final String chefName;
+  final String fssai;
+
+  @override
+  State<ChefProfilePeekDialog> createState() => _ChefProfilePeekDialogState();
+}
+
+final Map<String, ChefRatingSummary> _chefRatingCache = {};
+
+class _ChefProfilePeekDialogState extends State<ChefProfilePeekDialog> {
+
+  bool _loading = true;
+  String _name = '';
+  String _fssai = '';
+  String _city = '';
+  String _memberSince = '';
+  ChefRatingSummary _rating = const ChefRatingSummary();
+  List<Map<String, dynamic>> _recentReviews = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _name = widget.chefName;
+    _fssai = widget.fssai;
+    _loadChef();
+  }
+
+  Future<void> _loadChef() async {
+    final chefId = widget.chefId.trim();
+    if (chefId.isEmpty) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
+
+    final cached = _chefRatingCache[chefId];
+    if (cached != null) _rating = cached;
+
+    try {
+      final client = Supabase.instance.client;
+      Map<String, dynamic>? profile;
+      try {
+        final row = await client
+            .from('users')
+            .select('name, full_name, fssai_number, city, created_at')
+            .eq('id', chefId)
+            .maybeSingle();
+        if (row != null) profile = Map<String, dynamic>.from(row);
+      } catch (e, stack) {
+        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to load chef peek user row');
+        try {
+          final row = await client
+              .from('users')
+              .select('name, full_name, fssai_number, created_at')
+              .eq('id', chefId)
+              .maybeSingle();
+          if (row != null) profile = Map<String, dynamic>.from(row);
+        } catch (_) {}
+      }
+
+      List<dynamic> reviewRows = const [];
+      try {
+        reviewRows = await client
+            .from('reviews')
+            .select('rating, comment, created_at')
+            .eq('chef_id', chefId)
+            .order('created_at', ascending: false)
+            .limit(20);
+      } catch (e, stack) {
+        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to load chef peek reviews');
+      }
+      if (!mounted) return;
+
+      final rating = chefRatingSummaryFromRows(reviewRows);
+      _chefRatingCache[chefId] = rating;
+
+      final resolvedName = chefDisplayName({
+        if (profile != null) ...profile,
+        'name': widget.chefName,
+      });
+      final listedFssai = profile?['fssai_number']?.toString().trim() ?? '';
+      final city = profile?['city']?.toString().trim() ?? '';
+      final joined = parseFlexibleDate(profile?['created_at']?.toString());
+
+      setState(() {
+        _name = resolvedName;
+        if (listedFssai.isNotEmpty) _fssai = listedFssai;
+        _city = city;
+        _memberSince = joined == null ? '' : formatAppDate(joined);
+        _rating = rating;
+        _recentReviews = reviewRows
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .where((row) => (row['comment']?.toString().trim() ?? '').isNotEmpty)
+            .take(2)
+            .toList();
+        _loading = false;
+      });
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to load chef peek profile');
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final ink = isDark ? AppTheme.textMainDark : AppTheme.textMain;
+    final muted = isDark ? Colors.grey.shade400 : AppTheme.textMuted;
+
+    return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       backgroundColor: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
       title: Row(
@@ -174,49 +298,128 @@ void showChefProfileDialog(BuildContext context, String chefId, String chefName,
           const CircleAvatar(backgroundColor: AppTheme.primary, child: Icon(Icons.person, color: Colors.white)),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              chefName,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-                color: isDark ? AppTheme.textMainDark : AppTheme.textMain,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _name.isEmpty ? widget.chefName : _name,
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: ink),
+                ),
+                Text('Home kitchen', style: TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600)),
+              ],
             ),
           ),
         ],
       ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Verified Home Chef Partner',
-              style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13)),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              const Icon(Icons.verified, size: 16, color: Colors.blueAccent),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  'FSSAI: ${fssai.isNotEmpty ? fssai : 'Licence not listed'}',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: isDark ? Colors.grey.shade300 : AppTheme.textMainLight,
+      content: SizedBox(
+        width: 360,
+        child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Verified Home Chef Partner',
+              style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+            const SizedBox(height: 14),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: LinearProgressIndicator(minHeight: 2, color: AppTheme.primary),
+              )
+            else ...[
+              Row(
+                children: [
+                  ...List.generate(5, (index) {
+                    final filled = _rating.hasReviews && index < _rating.average.round();
+                    return Icon(
+                      filled ? Icons.star : Icons.star_border,
+                      color: Colors.amber,
+                      size: 18,
+                    );
+                  }),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _rating.label,
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: ink),
+                    ),
                   ),
-                ),
+                ],
               ),
+              if (!_rating.hasReviews)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text('Be the first to rate this kitchen after an order.', style: TextStyle(fontSize: 12, color: muted)),
+                ),
             ],
-          ),
-        ],
+            const SizedBox(height: 12),
+            _infoRow(Icons.verified, 'FSSAI: ${_fssai.isNotEmpty ? _fssai : 'Licence not listed'}', muted),
+            if (_city.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _infoRow(Icons.place_outlined, _city, muted),
+            ],
+            if (_memberSince.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _infoRow(Icons.calendar_month_outlined, 'Partner since $_memberSince', muted),
+            ],
+            if (_recentReviews.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              Text('Recent reviews', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: ink)),
+              const SizedBox(height: 8),
+              ..._recentReviews.map((review) {
+                final stars = int.tryParse(review['rating']?.toString() ?? '') ?? 0;
+                final comment = review['comment']?.toString().trim() ?? '';
+                final when = formatOrderDate(review['created_at']?.toString());
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          ...List.generate(
+                            5,
+                            (index) => Icon(
+                              index < stars ? Icons.star : Icons.star_border,
+                              color: Colors.amber,
+                              size: 12,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(when, style: TextStyle(fontSize: 10, color: muted)),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text('"$comment"', style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: ink)),
+                    ],
+                  ),
+                );
+              }),
+            ],
+          ],
+        ),
+        ),
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(ctx),
+          onPressed: () => Navigator.pop(context),
           child: const Text('Close', style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold)),
         ),
       ],
-    ),
-  );
+    );
+  }
+
+  Widget _infoRow(IconData icon, String text, Color muted) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: Colors.blueAccent),
+        const SizedBox(width: 6),
+        Expanded(child: Text(text, style: TextStyle(fontSize: 13, color: muted))),
+      ],
+    );
+  }
 }
 
 // 6. Fully Upgraded Decision-Making Meal Details Modal
@@ -338,6 +541,47 @@ void showMealDetailsDialog(BuildContext context, Map<String, dynamic> meal, Widg
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         body: MealDetailsBody(meal: meal, ref: ref),
       ),
+    ),
+  );
+}
+
+Widget _mealInfoChip({
+  required IconData icon,
+  required String label,
+  required String value,
+  required Color background,
+  required Color iconColor,
+  required Color textColor,
+}) {
+  return Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: background,
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: iconColor),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: textColor.withValues(alpha: 0.8)),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: textColor, height: 1.3),
+              ),
+            ],
+          ),
+        ),
+      ],
     ),
   );
 }
@@ -542,60 +786,22 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                         ),
                       ),
                       const SizedBox(height: 24),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: isDark ? Colors.blue.shade900.withValues(alpha: 0.3) : Colors.blue.shade50,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.delivery_dining, size: 18, color: Colors.blueAccent),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      serviceType,
-                                      style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.bold,
-                                          color: isDark ? Colors.blue.shade200 : Colors.blue.shade800),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: isDark ? Colors.orange.shade900.withValues(alpha: 0.3) : Colors.orange.shade50,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.access_time, size: 18, color: Colors.orangeAccent),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      timeSlot,
-                                      style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.bold,
-                                          color: isDark ? Colors.orange.shade200 : Colors.orange.shade800),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
+                      _mealInfoChip(
+                        icon: Icons.delivery_dining,
+                        label: 'Delivery option',
+                        value: serviceType,
+                        background: isDark ? Colors.blue.shade900.withValues(alpha: 0.3) : Colors.blue.shade50,
+                        iconColor: Colors.blueAccent,
+                        textColor: isDark ? Colors.blue.shade200 : Colors.blue.shade800,
+                      ),
+                      const SizedBox(height: 10),
+                      _mealInfoChip(
+                        icon: Icons.access_time,
+                        label: 'Time slots',
+                        value: timeSlot,
+                        background: isDark ? Colors.orange.shade900.withValues(alpha: 0.3) : Colors.orange.shade50,
+                        iconColor: Colors.orangeAccent,
+                        textColor: isDark ? Colors.orange.shade200 : Colors.orange.shade800,
                       ),
                       if (_availableAddOns.isNotEmpty) ...[
                         const SizedBox(height: 24),
@@ -801,10 +1007,7 @@ class MealRatingBadge extends StatefulWidget {
 }
 
 class _MealRatingBadgeState extends State<MealRatingBadge> {
-  static final Map<String, Map<String, dynamic>> _ratingCache = {};
-
-  double _rating = 4.8;
-  int _count = 0;
+  ChefRatingSummary _summary = const ChefRatingSummary();
 
   @override
   void initState() {
@@ -816,13 +1019,9 @@ class _MealRatingBadgeState extends State<MealRatingBadge> {
     final chefId = widget.meal['chef_id']?.toString() ?? '';
     if (chefId.isEmpty) return;
 
-    if (_ratingCache.containsKey(chefId)) {
-      if (mounted) {
-        setState(() {
-          _rating = _ratingCache[chefId]!['rating'];
-          _count = _ratingCache[chefId]!['count'];
-        });
-      }
+    final cached = _chefRatingCache[chefId];
+    if (cached != null && mounted) {
+      setState(() => _summary = cached);
       return;
     }
 
@@ -833,24 +1032,9 @@ class _MealRatingBadgeState extends State<MealRatingBadge> {
           .eq('chef_id', chefId);
 
       if (!mounted) return;
-
-      if (res.isNotEmpty) {
-        double sum = 0;
-        for (var r in res) {
-          sum += double.tryParse(r['rating'].toString()) ?? 5.0;
-        }
-        final calculatedRating = sum / res.length;
-        final reviewCount = res.length;
-
-        _ratingCache[chefId] = {'rating': calculatedRating, 'count': reviewCount};
-
-        if (mounted) {
-          setState(() {
-            _rating = calculatedRating;
-            _count = reviewCount;
-          });
-        }
-      }
+      final summary = chefRatingSummaryFromRows(res);
+      _chefRatingCache[chefId] = summary;
+      setState(() => _summary = summary);
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to fetch chef ratings');
     }
@@ -866,15 +1050,15 @@ class _MealRatingBadgeState extends State<MealRatingBadge> {
         const Icon(Icons.star, color: Colors.amber, size: 16),
         const SizedBox(width: 4),
         Text(
-          _rating.toStringAsFixed(1),
+          _summary.hasReviews ? _summary.average.toStringAsFixed(1) : 'New',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 14,
             color: isDark ? AppTheme.textMainDark : AppTheme.textMain,
           ),
         ),
-        if (_count > 0)
-          Text(' ($_count)',
+        if (_summary.hasReviews)
+          Text(' (${_summary.count})',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey.shade400)),
       ],
     );

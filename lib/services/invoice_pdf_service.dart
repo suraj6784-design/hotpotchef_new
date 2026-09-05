@@ -174,6 +174,7 @@ class InvoicePdfService {
     required GstInvoiceBreakdown bill,
     pw.MemoryImage? logo,
   }) async {
+    final orderBill = orderBillBreakdown(items: items);
     final pdf = pw.Document();
     pdf.addPage(
       pw.Page(
@@ -222,7 +223,7 @@ class InvoicePdfService {
                 pw.SizedBox(height: 16),
                 pw.Divider(),
                 ...items.map((item) {
-                  final price = lineItemUnitPrice(item);
+                  final price = lineItemListPrice(item);
                   final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
                   return pw.Padding(
                     padding: const pw.EdgeInsets.symmetric(vertical: 4),
@@ -237,7 +238,9 @@ class InvoicePdfService {
                 }),
                 pw.Divider(),
                 pw.SizedBox(height: 8),
-                _line('Items', bill.itemsTotal),
+                _line('Items', orderBill.displayItemsTotal),
+                if (orderBill.promoDiscount > 0.5)
+                  _line('Promo (${orderBill.promoLabel ?? 'Offer'})', -orderBill.promoDiscount),
                 _line('Packaging', bill.packagingFee),
                 _line('Delivery', bill.deliveryFee),
                 if (bill.isTaxInvoice) ...[

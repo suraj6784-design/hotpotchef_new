@@ -470,4 +470,88 @@ class PricingCalculator {
     if (code == null) return false;
     return items.any((item) => promoCodeMatches(pricingSourceFromLine(item), code));
   }
+
+  static DateTime? parseOfferDate(dynamic raw) {
+    final text = raw?.toString().trim() ?? '';
+    if (text.isEmpty) return null;
+    return DateTime.tryParse(text)?.toLocal();
+  }
+
+  static bool cartPromoCodeIsLive(
+    Iterable<Map<String, dynamic>> items,
+    String? appliedPromoCode, {
+    DateTime? now,
+  }) {
+    final code = normalizedPromoCode(appliedPromoCode);
+    if (code == null) return false;
+    return items.any((item) {
+      final meal = pricingSourceFromLine(item);
+      return promoCodeMatches(meal, code) &&
+          isWithinOfferWindow(meal, referenceTime: now);
+    });
+  }
+
+  /// Unique chef promo codes on cart lines, including expired ones so the diner
+  /// can see why a code cannot be applied.
+  static List<ApplicablePromo> applicablePromosFromCart(
+    Iterable<Map<String, dynamic>> items, {
+    DateTime? now,
+  }) {
+    final seen = <String>{};
+    final result = <ApplicablePromo>[];
+    for (final item in items) {
+      final meal = pricingSourceFromLine(item);
+      final code = mealPromoCode(meal);
+      if (code == null || !seen.add(code)) continue;
+      result.add(
+        ApplicablePromo(
+          code: code,
+          isActive: isWithinOfferWindow(meal, referenceTime: now),
+          validFrom: parseOfferDate(meal['offer_valid_from']),
+          validUntil: parseOfferDate(meal['offer_valid_until']),
+        ),
+      );
+    }
+    result.sort((a, b) {
+      if (a.isActive != b.isActive) return a.isActive ? -1 : 1;
+      return a.code.compareTo(b.code);
+    });
+    return result;
+  }
+}
+
+class ApplicablePromo {
+  const ApplicablePromo({
+    required this.code,
+    required this.isActive,
+    this.validFrom,
+    this.validUntil,
+  });
+
+  final String code;
+  final bool isActive;
+  final DateTime? validFrom;
+  final DateTime? validUntil;
+
+  static const _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+
+  static String _shortDate(DateTime value) {
+    final local = value.toLocal();
+    return '${local.day} ${_months[local.month - 1]}';
+  }
+
+  String validityLabel({DateTime? now}) {
+    final current = now ?? DateTime.now();
+    if (validFrom != null && current.isBefore(validFrom!)) {
+      return 'Starts ${_shortDate(validFrom!)}';
+    }
+    if (validUntil != null) {
+      if (current.isAfter(validUntil!)) return 'Ended ${_shortDate(validUntil!)}';
+      return 'Until ${_shortDate(validUntil!)}';
+    }
+    return isActive ? 'Valid now' : 'Not valid';
+  }
 }

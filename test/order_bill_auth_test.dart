@@ -140,6 +140,48 @@ void main() {
       expect(bill.grandTotal, 370);
     });
 
+    test('shows list price and a separate promo line for a code offer', () {
+      final bill = orderBillBreakdown(
+        items: [
+          {
+            'title': 'FESTIVE50',
+            'base_price': 100,
+            'price': 50,
+            'discounted_price': 50,
+            'quantity': 1,
+            'promo_code': 'FESTIVE50',
+            'applied_promo_code': 'FESTIVE50',
+            'line_gross': 100,
+            'line_net': 50,
+          },
+        ],
+        order: {
+          'total_price': 100,
+          'packaging_fee': 20,
+          'delivery_fee': 30,
+          'order_type': 'Delivery Partner',
+        },
+        hasDelivery: true,
+      );
+      expect(bill.itemsTotal, 50);
+      expect(bill.itemsGross, 100);
+      expect(bill.displayItemsTotal, 100);
+      expect(bill.promoDiscount, 50);
+      expect(bill.promoLabel, 'FESTIVE50');
+      expect(bill.packagingFee, 20);
+      expect(bill.deliveryFee, 30);
+      expect(bill.grandTotal, 100);
+      expect(
+        lineItemListPrice({
+          'base_price': 100,
+          'discounted_price': 50,
+          'quantity': 1,
+          'line_gross': 100,
+        }),
+        100,
+      );
+    });
+
     test('does not invent a delivery fee for pickup', () {
       final bill = orderBillBreakdown(
         items: [
@@ -150,6 +192,20 @@ void main() {
       );
       expect(bill.deliveryFee, 0);
       expect(bill.grandTotal, 170);
+    });
+  });
+
+  group('chefRatingSummaryFromRows', () {
+    test('averages chef ratings and labels a single review', () {
+      final summary = chefRatingSummaryFromRows([
+        {'rating': 5},
+        {'rating': '4'},
+      ]);
+      expect(summary.average, 4.5);
+      expect(summary.count, 2);
+      expect(summary.label, '4.5 · 2 reviews');
+      expect(chefRatingSummaryFromRows([{'rating': 5}]).label, '5.0 · 1 review');
+      expect(chefRatingSummaryFromRows(const []).hasReviews, isFalse);
     });
   });
 

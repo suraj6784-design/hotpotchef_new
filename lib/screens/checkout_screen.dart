@@ -488,16 +488,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           item['scheduled_date'] ??
           item['selected_date'] ??
           item['selectedDate'];
-      String selectedDateStr = 'Today';
+      String selectedDateStr = formatAppDateKey(DateTime.now());
 
       if (rawDate != null) {
-        try {
-          final dt = DateTime.parse(rawDate.toString());
-          selectedDateStr =
-              "${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}";
-        } catch (_) {
-          selectedDateStr = rawDate.toString();
-        }
+        final dt = parseFlexibleDate(rawDate.toString());
+        selectedDateStr = dt != null ? formatAppDateKey(dt) : rawDate.toString();
       }
 
       final rawDetails = item['rawMealDetails'] as Map<String, dynamic>?;
@@ -531,6 +526,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _appliedPromoCode = null;
         _promoIsError = true;
         _promoFeedback = 'This code does not apply to the meals in this cart';
+      });
+      return;
+    }
+    if (!PricingCalculator.cartPromoCodeIsLive(widget.cartItems, code)) {
+      final promo = PricingCalculator.applicablePromosFromCart(widget.cartItems)
+          .where((item) => item.code == code)
+          .firstOrNull;
+      setState(() {
+        _appliedPromoCode = null;
+        _promoIsError = true;
+        _promoFeedback = promo == null
+            ? 'This offer is not valid right now'
+            : 'Code $code is outside the chef\'s dates (${promo.validityLabel()})';
       });
       return;
     }
@@ -969,7 +977,89 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         children: [
           Text('Promo code',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.onSurfaceOf(context))),
-          const SizedBox(height: 10),
+          if (PricingCalculator.applicablePromosFromCart(widget.cartItems).isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Select a chef code. Only offers still inside the chef\'s dates can be applied.',
+              style: TextStyle(color: AppTheme.textMuted, fontSize: 12, height: 1.35),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: PricingCalculator.applicablePromosFromCart(widget.cartItems).map((promo) {
+                final selected = _appliedPromoCode == promo.code;
+                return GestureDetector(
+                  onTap: () {
+                    if (!promo.isActive) {
+                      setState(() {
+                        _appliedPromoCode = null;
+                        _promoIsError = true;
+                        _promoFeedback =
+                            'Code ${promo.code} is outside the chef\'s dates (${promo.validityLabel()})';
+                      });
+                      return;
+                    }
+                    if (selected) {
+                      _clearPromoCode();
+                      return;
+                    }
+                    _promoController.text = promo.code;
+                    _applyPromoCode();
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? AppTheme.success
+                          : promo.isActive
+                              ? AppTheme.surfaceOf(context)
+                              : AppTheme.canvasOf(context),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: selected
+                            ? AppTheme.success
+                            : promo.isActive
+                                ? AppTheme.primary
+                                : AppTheme.hairlineOf(context),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          promo.code,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            color: selected
+                                ? Colors.white
+                                : promo.isActive
+                                    ? AppTheme.onSurfaceOf(context)
+                                    : AppTheme.textMuted,
+                          ),
+                        ),
+                        Text(
+                          promo.validityLabel(),
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: selected
+                                ? Colors.white70
+                                : promo.isActive
+                                    ? AppTheme.success
+                                    : Colors.redAccent,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 10),
+          ] else
+            const SizedBox(height: 10),
           Row(
             children: [
               Expanded(
@@ -1060,23 +1150,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             item['scheduled_date'] ??
             item['selected_date'] ??
             item['selectedDate'];
-                  String dateStr = 'Today';
-                  if (rawDate != null) {
-                    try {
-                      final dt = DateTime.parse(rawDate.toString());
-                      dateStr = "${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}";
-                    } catch (_) {
-                      dateStr = rawDate.toString();
-                    }
-                  }
-
                   final rawDetails = item['rawMealDetails'] as Map<String, dynamic>?;
                   final timeSlot = item['timeSlot'] ?? item['time_slot'] ?? rawDetails?['exact_time'] ?? item['exact_time'] ?? 'ASAP';
+                  final scheduleLabel = smartTimeSlot(
+                    timeSlot?.toString(),
+                    DateTime.now(),
+                    selectedDateStr: rawDate?.toString(),
+                  );
 
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 6),
                     child: Text(
-                      '• $title\n  🗓️ Date: $dateStr  ⏰ Slot: $timeSlot',
+                      '• $title\n  $scheduleLabel',
                       style: const TextStyle(fontSize: 13, color: AppTheme.textMuted, height: 1.3),
                     ),
                   );

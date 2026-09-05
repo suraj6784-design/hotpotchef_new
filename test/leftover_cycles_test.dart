@@ -121,6 +121,35 @@ void main() {
     });
   });
 
+  group('app date format', () {
+    test('placed and delivery slot share dd MMM yyyy, hh:mm a', () {
+      final placed = DateTime(2026, 9, 6, 1, 31);
+      expect(formatAppDateTime(placed), '06 Sep 2026, 01:31 AM');
+      expect(formatOrderDate(placed.toIso8601String()), '06 Sep 2026, 01:31 AM');
+      expect(
+        smartTimeSlot('9:00 AM', placed, selectedDateStr: '06/09/2026'),
+        '06 Sep 2026, 09:00 AM',
+      );
+      expect(
+        formatDeliverySlotLabel({
+          'created_at': placed.toIso8601String(),
+          'time_slot': '06/09/2026 | 9:00 AM',
+          'selected_date': '06/09/2026',
+        }),
+        '06 Sep 2026, 09:00 AM',
+      );
+      expect(
+        formatDeliverySlotLabel({
+          'created_at': placed.toIso8601String(),
+          'items': [
+            {'time_slot': '9:00 AM', 'selected_date': '2026-09-06'},
+          ],
+        }),
+        '06 Sep 2026, 09:00 AM',
+      );
+    });
+  });
+
   group('lineItemUnitPrice', () {
     test('prefers snapshotted discounted_price over camelCase list price', () {
       expect(

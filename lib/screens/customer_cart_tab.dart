@@ -586,13 +586,12 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
             ],
           ),
           const SizedBox(height: 20),
-          if (cartState.items.any((item) => PricingCalculator.mealPromoCode(item.rawMealDetails) != null))
+          if (PricingCalculator.applicablePromosFromCart(
+                cartState.items.map((item) => item.toCheckoutPayload()),
+              ).isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: Text(
-                'Have a chef promo code? Apply it at checkout — it can unlock a gated offer or stack on top of the dish deal.',
-                style: TextStyle(color: AppTheme.textMuted, fontSize: 12, height: 1.35),
-              ),
+              child: _buildCartPromoCodes(cartState),
             ),
 
           // Premium checkout bar (inline so it clears the hub's floating dock)
@@ -610,19 +609,41 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
               children: [
                 const AppLogo(size: 36),
                 const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(cartState.deliveryFeeIsEstimate ? 'Est. total' : 'Total payable',
-                        style: TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w500)),
-                    const SizedBox(height: 2),
-                    Text('₹${cartState.grandTotal.toStringAsFixed(0)}',
-                        style: TextStyle(
+                InkWell(
+                  onTap: () => _showCartBillBreakup(cartState),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              cartState.deliveryFeeIsEstimate ? 'Est. total' : 'Total payable',
+                              style: TextStyle(
+                                color: AppTheme.textMuted,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(Icons.info_outline, size: 14, color: AppTheme.textMuted),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '₹${cartState.grandTotal.toStringAsFixed(0)}',
+                          style: TextStyle(
                             color: Theme.of(context).colorScheme.onSurface,
                             fontSize: 22,
-                            fontWeight: FontWeight.w800)),
-                  ],
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -637,6 +658,144 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildCartPromoCodes(CartState cartState) {
+    final promos = PricingCalculator.applicablePromosFromCart(
+      cartState.items.map((item) => item.toCheckoutPayload()),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Chef codes on these meals — apply a live one at checkout.',
+          style: TextStyle(color: AppTheme.textMuted, fontSize: 12, height: 1.35),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: promos.map((promo) {
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: promo.isActive ? AppTheme.surfaceOf(context) : AppTheme.canvasOf(context),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: promo.isActive ? AppTheme.primary : AppTheme.hairlineOf(context),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    promo.code,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: promo.isActive ? AppTheme.onSurfaceOf(context) : AppTheme.textMuted,
+                    ),
+                  ),
+                  Text(
+                    promo.validityLabel(),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: promo.isActive ? AppTheme.success : Colors.redAccent,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  void _showCartBillBreakup(CartState cartState) {
+    final foodGross = cartState.originalFoodTotal;
+    final foodNet = cartState.foodTotal;
+    final promoSavings = foodGross > foodNet + 0.5 ? foodGross - foodNet : 0.0;
+    final promo = PricingCalculator.applicablePromosFromCart(
+      cartState.items.map((item) => item.toCheckoutPayload()),
+    ).where((item) => item.isActive).map((item) => item.code).firstOrNull;
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final ink = AppTheme.onSurfaceOf(ctx);
+        Widget row(String label, String value, {Color? color, bool bold = false}) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: color ?? AppTheme.textMuted,
+                    fontSize: 13,
+                    fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+                Text(
+                  value,
+                  style: TextStyle(
+                    color: color ?? ink,
+                    fontSize: 13,
+                    fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return Container(
+          decoration: AppTheme.bottomSheetDecoration(
+            isDark: Theme.of(ctx).brightness == Brightness.dark,
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Bill breakup', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: ink)),
+              const SizedBox(height: 16),
+              row('Items', '₹${foodGross.toStringAsFixed(0)}'),
+              if (promoSavings > 0)
+                row(
+                  promo == null ? 'Offer' : 'Promo ($promo)',
+                  '-₹${promoSavings.toStringAsFixed(0)}',
+                  color: AppTheme.success,
+                ),
+              row('Packaging', '₹${cartState.packagingFee.toStringAsFixed(0)}'),
+              if (cartState.hasDelivery)
+                row(
+                  cartState.deliveryFeeIsEstimate ? 'Delivery (est.)' : 'Delivery',
+                  '₹${cartState.estimatedDeliveryFee.toStringAsFixed(0)}',
+                ),
+              if (cartState.tipAmount > 0) row('Tip', '₹${cartState.tipAmount.toStringAsFixed(0)}'),
+              if (cartState.coinsDiscountAmount > 0)
+                row(
+                  'HotPot Coins',
+                  '-₹${cartState.coinsDiscountAmount.toStringAsFixed(0)}',
+                  color: AppTheme.success,
+                ),
+              Divider(height: 20, color: AppTheme.hairlineOf(ctx)),
+              row(
+                cartState.deliveryFeeIsEstimate ? 'Est. total' : 'Total payable',
+                '₹${cartState.grandTotal.toStringAsFixed(0)}',
+                bold: true,
+                color: ink,
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 

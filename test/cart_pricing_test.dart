@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hotpotchef_new/models/cart_state.dart';
 import 'package:hotpotchef_new/models/cart_enums.dart';
 import 'package:hotpotchef_new/utils/helpers.dart';
+import 'package:hotpotchef_new/utils/pricing_calculator.dart';
 
 CartItemModel _buildItem({
   required int quantity,
@@ -346,6 +347,44 @@ void main() {
     expect(state.coinsAcceptedByVendors, isFalse);
     expect(state.coinsDiscountAmount, 0);
     expect(state.grandTotal, 250);
+  });
+
+  test('lists chef promo codes and rejects those outside the offer window', () {
+    final now = DateTime(2026, 9, 6, 2);
+    final items = [
+      {
+        'price': 100,
+        'promo_code': 'FESTIVE50',
+        'offer_type': 'percentage',
+        'discount_value': 50,
+        'offer_valid_from': '2026-09-01T00:00:00.000',
+        'offer_valid_until': '2026-09-10T23:59:59.000',
+      },
+      {
+        'price': 200,
+        'promo_code': 'OLD10',
+        'offer_type': 'percentage',
+        'discount_value': 10,
+        'offer_valid_until': '2026-09-01T00:00:00.000',
+      },
+    ];
+
+    final promos = PricingCalculator.applicablePromosFromCart(items, now: now);
+    expect(promos.map((p) => p.code), ['FESTIVE50', 'OLD10']);
+    expect(promos.firstWhere((p) => p.code == 'FESTIVE50').isActive, isTrue);
+    expect(promos.firstWhere((p) => p.code == 'OLD10').isActive, isFalse);
+    expect(
+      PricingCalculator.cartPromoCodeIsLive(items, 'FESTIVE50', now: now),
+      isTrue,
+    );
+    expect(
+      PricingCalculator.cartPromoCodeIsLive(items, 'OLD10', now: now),
+      isFalse,
+    );
+    expect(
+      promos.firstWhere((p) => p.code == 'OLD10').validityLabel(now: now),
+      'Ended 1 Sep',
+    );
   });
 
   test('isMealAvailableForCart refuses sold-out and empty stock', () {

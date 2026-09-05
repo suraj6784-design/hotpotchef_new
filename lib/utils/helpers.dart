@@ -45,10 +45,25 @@ class Formatters {
     return f.format(value);
   }
 
-  static String shortDateTime(DateTime dt) {
-    return DateFormat('dd MMM, hh:mm a').format(dt);
-  }
+  static String shortDateTime(DateTime dt) => formatAppDateTime(dt);
 }
+
+/// One display pattern for every diner/chef/driver-facing order timestamp
+/// (placed, delivery slot, delivered, cancelled).
+const String kAppDatePattern = 'dd MMM yyyy';
+const String kAppTimePattern = 'hh:mm a';
+const String kAppDateTimePattern = 'dd MMM yyyy, hh:mm a';
+
+/// Stored calendar day. UI always goes through [formatAppDate] / [formatAppDateTime].
+const String kAppDateKeyPattern = 'yyyy-MM-dd';
+
+String formatAppDate(DateTime date) => DateFormat(kAppDatePattern).format(date.toLocal());
+
+String formatAppTime(DateTime date) => DateFormat(kAppTimePattern).format(date.toLocal());
+
+String formatAppDateTime(DateTime date) => DateFormat(kAppDateTimePattern).format(date.toLocal());
+
+String formatAppDateKey(DateTime date) => DateFormat(kAppDateKeyPattern).format(date.toLocal());
 
 class Ui {
   static Widget loadingIndicator({double size = 20}) {
@@ -710,10 +725,9 @@ DateTime getTrueOrderDateTime(String rawOrderId, String? createdAt) {
 }
 
 String formatOrderDate(String? isoString) {
-  if (isoString == null || isoString.isEmpty) return 'Unknown Time';
-  final dt = DateTime.tryParse(isoString);
+  final dt = parseFlexibleDate(isoString);
   if (dt == null) return 'Unknown Time';
-  return DateFormat('dd MMM yyyy, hh:mm a').format(dt.toLocal());
+  return formatAppDateTime(dt);
 }
 
 const Map<String, int> _monthAbbrToNumber = {
@@ -728,9 +742,19 @@ String? extractSlotTime(String slot) {
 }
 
 /// Attempts to parse an absolute calendar date embedded in a slot string, e.g.
-/// "Sun, 16th Aug at 9:04 AM" or "16/08/2026". Returns null when none is found.
+/// "Sun, 16th Aug at 9:04 AM", "16/08/2026", or "06 Sep 2026".
 /// A missing year is assumed to be [assumedYear].
 DateTime? parseSlotDate(String slot, int assumedYear) {
+  final iso = RegExp(r'\b(\d{4})-(\d{2})-(\d{2})\b').firstMatch(slot);
+  if (iso != null) {
+    final y = int.tryParse(iso.group(1)!);
+    final mo = int.tryParse(iso.group(2)!);
+    final d = int.tryParse(iso.group(3)!);
+    if (y != null && mo != null && d != null && mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
+      return DateTime(y, mo, d);
+    }
+  }
+
   // Numeric form: dd/MM or dd/MM/yyyy
   final numeric = RegExp(r'\b(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?\b').firstMatch(slot);
   if (numeric != null) {
@@ -746,17 +770,45 @@ DateTime? parseSlotDate(String slot, int assumedYear) {
     }
   }
 
-  // Named form: "16th Aug", "16 August"
-  final named =
-      RegExp(r'\b(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]{3,})', caseSensitive: false).firstMatch(slot);
+  // Named form: "16th Aug", "06 Sep 2026", "16 August"
+  final named = RegExp(
+    r'\b(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]{3,})(?:\s+(\d{4}))?',
+    caseSensitive: false,
+  ).firstMatch(slot);
   if (named != null) {
     final d = int.tryParse(named.group(1)!);
-    final mo = _monthAbbrToNumber[named.group(2)!.toLowerCase().substring(0, 3)];
-    if (d != null && mo != null && d >= 1 && d <= 31) {
-      return DateTime(assumedYear, mo, d);
+    final monthToken = named.group(2)!.toLowerCase();
+    if (monthToken.length >= 3) {
+      final mo = _monthAbbrToNumber[monthToken.substring(0, 3)];
+      final y = int.tryParse(named.group(3) ?? '') ?? assumedYear;
+      if (d != null && mo != null && d >= 1 && d <= 31) {
+        return DateTime(y, mo, d);
+      }
     }
   }
   return null;
+}
+
+/// Parses ISO, `yyyy-MM-dd`, `dd/MM/yyyy`, `dd MMM yyyy`, Today, or Tomorrow.
+DateTime? parseFlexibleDate(
+  String? raw, {
+  int? assumedYear,
+  DateTime? placedDate,
+}) {
+  final text = raw?.trim() ?? '';
+  if (text.isEmpty) return null;
+  final lower = text.toLowerCase();
+  final base = placedDate ?? DateTime.now();
+  if (lower == 'today') return DateTime(base.year, base.month, base.day);
+  if (lower == 'tomorrow') {
+    final next = base.add(const Duration(days: 1));
+    return DateTime(next.year, next.month, next.day);
+  }
+
+  final iso = DateTime.tryParse(text);
+  if (iso != null) return iso.toLocal();
+
+  return parseSlotDate(text, assumedYear ?? base.year);
 }
 
 /// Resolves a stored slot string into a stable, valid label anchored to
@@ -774,37 +826,41 @@ DateTime? parseSlotDate(String slot, int assumedYear) {
 String smartTimeSlot(String? originalSlot, DateTime placedDate, {String? selectedDateStr}) {
   String slot = originalSlot ?? 'ASAP';
 
-  final hasConcreteSelected = selectedDateStr != null &&
-      selectedDateStr.isNotEmpty &&
-      selectedDateStr.toLowerCase() != 'today' &&
-      selectedDateStr.toLowerCase() != 'tomorrow';
+  final placedDay = DateTime(placedDate.year, placedDate.month, placedDate.day);
+  DateTime? slotDay = parseFlexibleDate(
+    selectedDateStr,
+    assumedYear: placedDate.year,
+    placedDate: placedDate,
+  );
 
-  if (hasConcreteSelected) {
-    if (slot.toLowerCase().contains('today')) {
-      slot = slot.replaceAll(RegExp('today', caseSensitive: false), selectedDateStr);
-    } else if (slot.toLowerCase().contains('tomorrow')) {
-      slot = slot.replaceAll(RegExp('tomorrow', caseSensitive: false), selectedDateStr);
-    } else if (!slot.contains(selectedDateStr)) {
-      slot = '$selectedDateStr | $slot';
+  final lower = slot.toLowerCase();
+  if (slotDay == null) {
+    if (lower.contains('today')) {
+      slotDay = placedDay;
+    } else if (lower.contains('tomorrow')) {
+      slotDay = placedDay.add(const Duration(days: 1));
+    } else {
+      slotDay = parseFlexibleDate(slot, assumedYear: placedDate.year, placedDate: placedDate);
     }
-  } else if (slot.toLowerCase().contains('today')) {
-    slot = slot.replaceAll(
-        RegExp('today', caseSensitive: false), DateFormat('d MMM').format(placedDate));
-  } else if (slot.toLowerCase().contains('tomorrow')) {
-    slot = slot.replaceAll(RegExp('tomorrow', caseSensitive: false),
-        DateFormat('d MMM').format(placedDate.add(const Duration(days: 1))));
   }
 
-  // Invariant: a delivery slot can never be earlier than the order date.
-  final slotDate = parseSlotDate(slot, placedDate.year);
-  if (slotDate != null) {
-    final placedDay = DateTime(placedDate.year, placedDate.month, placedDate.day);
-    final slotDay = DateTime(slotDate.year, slotDate.month, slotDate.day);
-    if (slotDay.isBefore(placedDay)) {
-      final time = extractSlotTime(slot);
-      final dateStr = DateFormat('EEE, d MMM').format(placedDate);
-      slot = time != null ? '$dateStr at $time' : dateStr;
-    }
+  if (slotDay != null) {
+    final dayOnly = DateTime(slotDay.year, slotDay.month, slotDay.day);
+    if (dayOnly.isBefore(placedDay)) slotDay = placedDay;
+  }
+
+  final clock = extractSlotTime(slot);
+  final asap = isImmediateDeliverySlot(slot) && clock == null;
+  if (asap && slotDay == null) return 'ASAP';
+  if (asap && slotDay != null) return '${formatAppDate(slotDay)}, ASAP';
+  if (slotDay != null && clock != null) {
+    final at = parseClockOnDate(clock, slotDay);
+    return at != null ? formatAppDateTime(at) : '${formatAppDate(slotDay)}, $clock';
+  }
+  if (slotDay != null) return formatAppDate(slotDay);
+  if (clock != null) {
+    final at = parseClockOnDate(clock, placedDate);
+    return at != null ? formatAppDateTime(at) : '${formatAppDate(placedDate)}, $clock';
   }
   return slot;
 }
@@ -819,24 +875,23 @@ String formatFriendlyDate(DateTime date) {
   if (diffDays == 1) return 'Tomorrow';
   if (diffDays == -1) return 'Yesterday';
   
-  return DateFormat('dd MMM').format(date);
+  return formatAppDate(date);
+}
+
+DateTime? parseClockOnDate(String timeText, DateTime date) {
+  final match = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)', caseSensitive: false).firstMatch(timeText);
+  if (match == null) return null;
+  var hour = int.parse(match.group(1)!);
+  final minute = int.parse(match.group(2)!);
+  final ampm = match.group(3)!.toUpperCase();
+  if (ampm == 'PM' && hour != 12) hour += 12;
+  if (ampm == 'AM' && hour == 12) hour = 0;
+  final local = date.toLocal();
+  return DateTime(local.year, local.month, local.day, hour, minute);
 }
 
 DateTime? parseSlotStartTime(String timeSlot, {DateTime? baseDate}) {
-  try {
-    final match = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)', caseSensitive: false).firstMatch(timeSlot);
-    if (match != null) {
-      int h = int.parse(match.group(1)!);
-      int m = int.parse(match.group(2)!);
-      String ampm = match.group(3)!.toUpperCase();
-      if (ampm == 'PM' && h != 12) h += 12;
-      if (ampm == 'AM' && h == 12) h = 0;
-      
-      final date = baseDate ?? DateTime.now();
-      return DateTime(date.year, date.month, date.day, h, m);
-    }
-  } catch (_) {}
-  return null;
+  return parseClockOnDate(timeSlot, baseDate ?? DateTime.now());
 }
 
 bool isMealAvailableForCart(Map<String, dynamic> meal) {
@@ -1317,6 +1372,35 @@ String chefDisplayName(Map<String, dynamic>? data, {String fallback = 'Home Kitc
   return fallback;
 }
 
+class ChefRatingSummary {
+  const ChefRatingSummary({this.average = 0, this.count = 0});
+
+  final double average;
+  final int count;
+
+  bool get hasReviews => count > 0;
+
+  String get label {
+    if (!hasReviews) return 'No ratings yet';
+    final reviews = count == 1 ? '1 review' : '$count reviews';
+    return '${average.toStringAsFixed(1)} · $reviews';
+  }
+}
+
+ChefRatingSummary chefRatingSummaryFromRows(Iterable<dynamic> rows) {
+  var sum = 0.0;
+  var count = 0;
+  for (final row in rows) {
+    if (row is! Map) continue;
+    final rating = double.tryParse(row['rating']?.toString() ?? '');
+    if (rating == null) continue;
+    sum += rating;
+    count++;
+  }
+  if (count == 0) return const ChefRatingSummary();
+  return ChefRatingSummary(average: sum / count, count: count);
+}
+
 /// Unit price for a cart/order line. Ignores a "discount" that is higher than the listed price.
 double lineItemUnitPrice(Map<String, dynamic> item) {
   final meal = PricingCalculator.pricingSourceFromLine(item);
@@ -1344,6 +1428,54 @@ double lineItemUnitPrice(Map<String, dynamic> item) {
         (addonsUnit > 0 ? addonsUnit : legacyAddons);
   }
   return unit + (addonsUnit > 0 ? addonsUnit : legacyAddons);
+}
+
+/// Pre-discount list price for a cart/order line (base + add-ons).
+double lineItemListPrice(Map<String, dynamic> item) {
+  final meal = PricingCalculator.pricingSourceFromLine(item);
+  final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+  final storedGross = parseMoney(item['line_gross']);
+  if (storedGross > 0 && qty > 0) {
+    return PricingCalculator.roundCurrency(storedGross / qty);
+  }
+
+  final addonsUnit = parseMoney(item['addons_unit']);
+  final legacyAddons = addonsUnit > 0
+      ? 0.0
+      : PricingCalculator.addOnsTotal(item['selectedAddOns'] ?? item['selected_add_ons']);
+  final extras = addonsUnit > 0 ? addonsUnit : legacyAddons;
+  final base = parseMoney(
+    item['base_price'] ?? item['basePrice'] ?? meal['price'] ?? item['unit_price'] ?? item['price'],
+  );
+  if (base > 0) return PricingCalculator.roundCurrency(base + extras);
+  return lineItemUnitPrice(item);
+}
+
+String? orderPromoLabel({
+  required List<Map<String, dynamic>> items,
+  Map<String, dynamic>? order,
+}) {
+  final source = order ?? (items.isNotEmpty ? items.first : const <String, dynamic>{});
+  final fromOrder = PricingCalculator.normalizedPromoCode(
+    source['applied_promo_code'] ?? source['appliedPromoCode'] ?? source['promo_code'],
+  );
+  if (fromOrder != null) return fromOrder;
+
+  for (final item in items) {
+    final applied = PricingCalculator.normalizedPromoCode(
+      item['applied_promo_code'] ?? item['appliedPromoCode'],
+    );
+    if (applied != null) return applied;
+  }
+  for (final item in items) {
+    final code = PricingCalculator.mealPromoCode(PricingCalculator.pricingSourceFromLine(item));
+    if (code != null) return code;
+  }
+  for (final item in items) {
+    final description = item['offer_description']?.toString().trim() ?? '';
+    if (description.isNotEmpty) return description;
+  }
+  return 'Offer';
 }
 
 class ChefPayoutBreakdown {
@@ -1404,17 +1536,6 @@ Map<String, dynamic> orderSlotFields(Map<String, dynamic> order) {
     'time_slot': pick(const ['time_slot', 'timeSlot', 'delivery_slot', 'selected_slot', 'exact_time']),
     'selected_date': pick(const ['selected_date', 'selectedDate', 'scheduled_date', 'scheduledDate']),
   };
-}
-
-DateTime? parseClockOnDate(String timeText, DateTime date) {
-  final match = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)', caseSensitive: false).firstMatch(timeText);
-  if (match == null) return null;
-  var hour = int.parse(match.group(1)!);
-  final minute = int.parse(match.group(2)!);
-  final ampm = match.group(3)!.toUpperCase();
-  if (ampm == 'PM' && hour != 12) hour += 12;
-  if (ampm == 'AM' && hour == 12) hour = 0;
-  return DateTime(date.year, date.month, date.day, hour, minute);
 }
 
 /// Start of the scheduled slot, used to stop customer cancel once the window begins.
@@ -1503,14 +1624,26 @@ class OrderBillBreakdown {
     required this.tipAmount,
     required this.coinsApplied,
     required this.grandTotal,
+    this.itemsGross = 0,
+    this.promoDiscount = 0,
+    this.promoLabel,
   });
 
+  /// Food portion actually charged (after offer).
   final double itemsTotal;
   final double packagingFee;
   final double deliveryFee;
   final double tipAmount;
   final double coinsApplied;
   final double grandTotal;
+
+  /// Pre-discount food total for the bill display.
+  final double itemsGross;
+  final double promoDiscount;
+  final String? promoLabel;
+
+  double get displayItemsTotal =>
+      itemsGross > itemsTotal + 0.5 ? itemsGross : (itemsGross > 0 ? itemsGross : itemsTotal);
 }
 
 /// Builds the bill from the stored paid total when present, instead of a hardcoded delivery fee.
@@ -1522,11 +1655,19 @@ OrderBillBreakdown orderBillBreakdown({
   final source = order ?? (items.isNotEmpty ? items.first : const <String, dynamic>{});
 
   var itemsTotal = 0.0;
+  var itemsGross = 0.0;
   for (final item in items) {
-    final price = lineItemUnitPrice(item);
     final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
-    itemsTotal += price * qty;
+    itemsTotal += lineItemUnitPrice(item) * qty;
+    itemsGross += lineItemListPrice(item) * qty;
   }
+  if (itemsGross + 0.5 < itemsTotal) itemsGross = itemsTotal;
+  final promoDiscount = PricingCalculator.roundCurrency(
+    itemsGross > itemsTotal ? itemsGross - itemsTotal : 0,
+  );
+  final promoLabel = promoDiscount > 0.5
+      ? orderPromoLabel(items: items, order: source)
+      : null;
 
   final paidTotal = parseMoney(source['total_price'] ?? source['total_amount'] ?? source['grand_total']);
   final packaging = parseMoney(source['packaging_fee'], 20);
@@ -1569,7 +1710,42 @@ OrderBillBreakdown orderBillBreakdown({
     tipAmount: tip,
     coinsApplied: coins,
     grandTotal: grand.toDouble(),
+    itemsGross: itemsGross,
+    promoDiscount: promoDiscount,
+    promoLabel: promoLabel,
   );
+}
+
+List<Widget> orderBillItemRows(BuildContext context, OrderBillBreakdown bill) {
+  final ink = AppTheme.onSurfaceOf(context);
+  return [
+    Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        const Text('Item total', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
+        Text(
+          '₹${bill.displayItemsTotal.toInt()}',
+          style: TextStyle(color: ink, fontSize: 13, fontWeight: FontWeight.w500),
+        ),
+      ],
+    ),
+    if (bill.promoDiscount > 0.5) ...[
+      const SizedBox(height: 10),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            'Promo (${bill.promoLabel ?? 'Offer'})',
+            style: const TextStyle(color: AppTheme.success, fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+          Text(
+            '-₹${bill.promoDiscount.toInt()}',
+            style: const TextStyle(color: AppTheme.success, fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    ],
+  ];
 }
 
 List<Widget> orderBillAdjustmentRows(BuildContext context, OrderBillBreakdown bill) {

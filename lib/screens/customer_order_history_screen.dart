@@ -297,17 +297,12 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                           orderIdCopyRow(context, displayOrderIdStr),
                           const SizedBox(height: 16),
                           ...items.map((item) {
-                            double parsedPrice = lineItemUnitPrice(item);
+                            double parsedPrice = lineItemListPrice(item);
                             int parsedQty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
-                            final placedDate = getTrueOrderDateTime(
-                              orderRecord['order_id']?.toString() ?? '',
-                              orderRecord['created_at']?.toString(),
-                            );
-                            final itemSlot = smartTimeSlot(
-                              item['time_slot']?.toString(),
-                              placedDate,
-                              selectedDateStr: item['selected_date']?.toString(),
-                            );
+                            final itemSlot = formatDeliverySlotLabel({
+                              ...item,
+                              'created_at': orderRecord['created_at'] ?? item['created_at'],
+                            });
 
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 12),
@@ -386,7 +381,7 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                             ],
                           ),
                           const SizedBox(height: 16),
-                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Item total', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)), Text('₹${itemsTotal.toInt()}', style: TextStyle(color: AppTheme.onSurfaceOf(context), fontSize: 13, fontWeight: FontWeight.w500))]),
+                          ...orderBillItemRows(context, bill),
                           const SizedBox(height: 10),
                           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Packaging fees', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)), Text('₹${packagingFee.toInt()}', style: TextStyle(color: AppTheme.onSurfaceOf(context), fontSize: 13, fontWeight: FontWeight.w500))]),
                           const SizedBox(height: 10),
@@ -600,22 +595,11 @@ class _HistoryOrdersListState extends ConsumerState<_HistoryOrdersList> {
               final deliveryFee = bill.deliveryFee;
               final finalGrandTotal = bill.grandTotal;
 
-              String deliveryTimeStr = 'ASAP';
-              if (items.isNotEmpty) {
-                final item = items.first;
-                final truePlacedDate = getTrueOrderDateTime(
-                  order['order_id']?.toString() ?? '',
-                  order['created_at']?.toString(),
-                );
-                final baseSlot = item['selected_date'] != null && item['exact_time'] != null
-                    ? "${item['selected_date']} at ${item['exact_time']}"
-                    : (item['time_slot']?.toString() ?? 'ASAP');
-                deliveryTimeStr = smartTimeSlot(
-                  baseSlot,
-                  truePlacedDate,
-                  selectedDateStr: item['selected_date']?.toString(),
-                );
-              }
+              final deliveryTimeStr = formatDeliverySlotLabel({
+                ...order,
+                if (items.isNotEmpty) ...items.first,
+                'created_at': order['created_at'],
+              });
 
               widget.host._showOrderDetailsBottomSheet(
                 context,

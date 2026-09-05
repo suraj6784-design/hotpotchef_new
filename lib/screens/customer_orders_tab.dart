@@ -249,8 +249,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
   // Delegates to the shared helper so slot resolution (including the
   // "delivery date is never before the order date" guard) stays consistent
   // across every screen.
-  String _getSmartTimeSlot(String? originalSlot, DateTime placedDate, {String? selectedDateStr}) =>
-      smartTimeSlot(originalSlot, placedDate, selectedDateStr: selectedDateStr);
+  String _slotLabel(Map<String, dynamic> item) => formatDeliverySlotLabel(item);
 
   bool _canCancelOrder(Map<String, dynamic> order) {
     return OrderLifecycle.canCustomerCancelOrder(order);
@@ -639,11 +638,10 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                           orderIdCopyRow(context, displayOrderIdStr),
                           const SizedBox(height: 16),
                           ...items.map((item) {
-                            double parsedPrice = lineItemUnitPrice(item);
+                            double parsedPrice = lineItemListPrice(item);
                             int parsedQty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
 
-                            final truePlacedDate = getTrueOrderDateTime(item['order_id']?.toString() ?? '', item['created_at']?.toString());
-                            final smartSlot = _getSmartTimeSlot(item['time_slot'], truePlacedDate, selectedDateStr: item['selected_date']?.toString());
+                            final smartSlot = _slotLabel(item);
 
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 12),
@@ -720,7 +718,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                             ],
                           ),
                           const SizedBox(height: 16),
-                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Item total', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)), Text('₹${itemsTotal.toInt()}', style: TextStyle(color: AppTheme.onSurfaceOf(context), fontSize: 13, fontWeight: FontWeight.w500))]),
+                          ...orderBillItemRows(context, bill),
                           const SizedBox(height: 10),
                           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Packaging fees', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)), Text('₹${packagingFee.toInt()}', style: TextStyle(color: AppTheme.onSurfaceOf(context), fontSize: 13, fontWeight: FontWeight.w500))]),
                           const SizedBox(height: 10),
@@ -1146,6 +1144,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                 final finalGrandTotal = bill.grandTotal;
 
                 String dateTimeString = formatOrderDate(items.first['created_at']?.toString());
+                final String smartTimeSlot = _slotLabel(items.first);
 
                 final groupStatus = items.first['status']?.toString() ?? 'Pending';
                 Color statusColor = Colors.green;
@@ -1153,9 +1152,6 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                   statusColor = Colors.orange;
                 }
                 if (groupStatus.toLowerCase().contains('cancel') || groupStatus.toLowerCase().contains('reject')) statusColor = Colors.red;
-
-                final DateTime truePlacedDate = getTrueOrderDateTime(rawOrderIdStr, items.first['created_at']?.toString());
-                final String smartTimeSlot = _getSmartTimeSlot(items.first['time_slot'], truePlacedDate, selectedDateStr: items.first['selected_date']?.toString());
 
                 final orderType = items.first['service_type']?.toString() ?? 'Delivery';
                 final serviceTypeStr = orderType.toLowerCase();
