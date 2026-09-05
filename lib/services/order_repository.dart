@@ -23,6 +23,7 @@ class OrderRepository {
     required String orderId,
     required String newStatus,
     String? driverId,
+    String? dispatchPhotoUrl,
   }) async {
     try {
       final Map<String, dynamic> updateData = {
@@ -32,6 +33,11 @@ class OrderRepository {
 
       if (driverId != null) {
         updateData['driver_id'] = driverId;
+      }
+      final packedUrl = dispatchPhotoUrl?.trim() ?? '';
+      if (packedUrl.isNotEmpty) {
+        updateData['dispatch_photo_url'] = packedUrl;
+        updateData['dispatch_photo_at'] = DateTime.now().toUtc().toIso8601String();
       }
 
       final lowered = newStatus.toLowerCase();
@@ -60,7 +66,17 @@ class OrderRepository {
         }
       }
 
-      await write(updateData);
+      try {
+        await write(updateData);
+      } catch (e) {
+        if (packedUrl.isNotEmpty && e.toString().contains('dispatch_photo')) {
+          updateData.remove('dispatch_photo_url');
+          updateData.remove('dispatch_photo_at');
+          await write(updateData);
+        } else {
+          rethrow;
+        }
+      }
 
       if (completing) {
         try {

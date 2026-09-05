@@ -20,6 +20,7 @@ import '../providers/cart_provider.dart';
 import '../providers/delivery_preference.dart';
 import '../providers/kitchen_follows_provider.dart';
 import '../widgets/customer_ui_components.dart';
+import 'kitchen_live_screen.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/daily_streak_banner.dart';
 import '../widgets/weekly_plan_banner.dart';
@@ -68,8 +69,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   final Set<String> _chefPinsResolved = {};
   bool _hydratingChefPins = false;
   final Set<String> _closedChefIds = {};
+  final Set<String> _liveChefIds = {};
   final Set<String> _chefOpenResolved = {};
   bool _hydratingKitchenHours = false;
+  bool _liveColumnMissing = false;
   StreamSubscription<AuthState>? _authSub;
 
   final List<Map<String, dynamic>> _dietFilters = const [
@@ -342,22 +345,41 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     if (missing.isEmpty || _hydratingKitchenHours) return;
     _hydratingKitchenHours = true;
     try {
-      final rows = await Supabase.instance.client
-          .from('chef_profiles')
-          .select('user_id, is_open')
-          .inFilter('user_id', missing.toList());
+      List<dynamic> rows;
+      try {
+        rows = await Supabase.instance.client
+            .from('chef_profiles')
+            .select(_liveColumnMissing ? 'user_id, is_open' : 'user_id, is_open, is_live')
+            .inFilter('user_id', missing.toList());
+      } catch (e) {
+        if (!_liveColumnMissing) {
+          _liveColumnMissing = true;
+          rows = await Supabase.instance.client
+              .from('chef_profiles')
+              .select('user_id, is_open')
+              .inFilter('user_id', missing.toList());
+        } else {
+          rethrow;
+        }
+      }
       var closedChanged = false;
+      var liveChanged = false;
       for (final row in rows) {
         final id = row['user_id']?.toString();
         if (id == null || id.isEmpty) continue;
         _chefOpenResolved.add(id);
-        if (!isChefKitchenOpen(row)) {
+        final profile = Map<String, dynamic>.from(row);
+        if (!isChefKitchenOpen(profile)) {
           _closedChefIds.add(id);
           closedChanged = true;
         }
+        if (isKitchenLiveStreaming(profile)) {
+          _liveChefIds.add(id);
+          liveChanged = true;
+        }
       }
       _chefOpenResolved.addAll(missing);
-      if (closedChanged && mounted) setState(() {});
+      if ((closedChanged || liveChanged) && mounted) setState(() {});
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to hydrate kitchen hours');
       _chefOpenResolved.addAll(missing);
@@ -1216,6 +1238,21 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                   ),
                                 ),
                               ),
+                              if (_liveChefIds.contains(meal['chef_id']?.toString()))
+                                Positioned(
+                                  top: 40,
+                                  left: 12,
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      final chefId = meal['chef_id']?.toString() ?? '';
+                                      if (chefId.isEmpty) return;
+                                      context.push(
+                                        kitchenLivePath(chefId, chefName: chefDisplayName(meal)),
+                                      );
+                                    },
+                                    child: const KitchenLiveBadge(),
+                                  ),
+                                ),
                             ],
                           ),
                           Padding(

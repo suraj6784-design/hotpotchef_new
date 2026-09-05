@@ -25,6 +25,9 @@ void main() {
       expect(roleCanOpenAuthenticatedPath(AppRole.customer, '/chats'), isTrue);
       expect(roleCanOpenAuthenticatedPath(AppRole.chef, '/tracking'), isTrue);
       expect(roleCanOpenAuthenticatedPath(AppRole.driver, '/meal/abc'), isTrue);
+      expect(roleCanOpenAuthenticatedPath(AppRole.customer, '/kitchen-live/chef-1'), isTrue);
+      expect(roleCanOpenAuthenticatedPath(AppRole.chef, '/kitchen-live/chef-1'), isTrue);
+      expect(roleCanOpenAuthenticatedPath(AppRole.driver, '/kitchen-live/chef-1'), isTrue);
     });
   });
 }

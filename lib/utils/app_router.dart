@@ -23,6 +23,7 @@ import '../screens/referral_screen.dart';
 import '../screens/customer_order_history_screen.dart';
 import '../screens/customer_bulk_request_screen.dart';
 import '../screens/customer_meal_plans_screen.dart';
+import '../screens/kitchen_live_screen.dart';
 import '../screens/driver_id_card_screen.dart';
 import '../services/auth_session.dart';
 import '../widgets/not_found_page.dart';
@@ -176,6 +177,14 @@ class AppRouter {
         );
       }),
       _fadeRoute('/chef-analytics', (context, state) => const ChefAnalyticsScreen()),
+      _fadeRoute(
+        '/kitchen-live/:chefId',
+        (context, state) => KitchenLiveScreen(
+          chefId: state.pathParameters['chefId'] ?? '',
+          hostRequested: state.uri.queryParameters['host'] == '1',
+          chefName: state.uri.queryParameters['name'] ?? 'Kitchen',
+        ),
+      ),
       _fadeRoute('/referral', (context, state) => const ReferralScreen()),
       _fadeRoute('/order-history', (context, state) => const CustomerOrderHistoryScreen()),
       _fadeRoute('/bulk-request', (context, state) => const CustomerBulkRequestScreen()),

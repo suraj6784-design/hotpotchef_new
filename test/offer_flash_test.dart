@@ -58,5 +58,37 @@ void main() {
       );
       expect(offerFlashHeadline(meal), 'FLASH 30%');
     });
+
+    test('boosted dishes lead the strip even without a promo', () {
+      final now = DateTime(2026, 9, 6, 15);
+      final boosted = {
+        'id': 'boosted',
+        'title': 'Ragi dosa',
+        'quantity': 4,
+        'status': 'Available',
+        'boosted_until': DateTime(2026, 9, 7).toIso8601String(),
+      };
+      final promo = {
+        'id': 'promo',
+        'title': 'FESTIVE50',
+        'quantity': 4,
+        'status': 'Available',
+        'promo_code': 'FESTIVE50',
+        'offer_type': 'flashSale',
+        'discount_value': 50,
+      };
+      final expiredBoost = {
+        'id': 'old',
+        'title': 'Yesterday',
+        'quantity': 4,
+        'status': 'Available',
+        'boosted_until': DateTime(2026, 9, 6).toIso8601String(),
+      };
+      final offers = flashableOfferMeals([promo, expiredBoost, boosted], now: now);
+      expect(offers.map((meal) => meal['id']), ['boosted', 'promo']);
+      expect(offerFlashHeadline(boosted, now: now), 'Boosted today');
+      expect(isMealBoosted(expiredBoost, now: now), isFalse);
+      expect(kChefBoostRupees, 99);
+    });
   });
 }

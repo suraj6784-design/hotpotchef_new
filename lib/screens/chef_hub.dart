@@ -24,6 +24,8 @@ import '../services/order_lifecycle.dart';
 import '../services/auth_session.dart';
 import '../services/alert_service.dart';
 import '../services/invoice_pdf_service.dart';
+import '../services/kitchen_media.dart';
+import '../widgets/chef_boost_sheet.dart';
 import 'packaging_store_screen.dart';
 import 'chef_publish_meal_screen.dart';
 
@@ -42,6 +44,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
 
   late int _selectedIndex = widget.initialTab;
   bool _isKitchenOpen = true;
+  bool _isKitchenLive = false;
   String _fulfillmentFilter = 'All';
   String _historyFilter = 'Delivered';
 
@@ -262,13 +265,26 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   Future<void> _loadKitchenStatus() async {
     if (_currentUserId.isEmpty) return;
     try {
-      final res = await _supabase
-          .from('chef_profiles')
-          .select('is_open')
-          .eq('user_id', _currentUserId)
-          .maybeSingle();
+      Map<String, dynamic>? res;
+      try {
+        res = await _supabase
+            .from('chef_profiles')
+            .select('is_open, is_live')
+            .eq('user_id', _currentUserId)
+            .maybeSingle();
+      } catch (_) {
+        res = await _supabase
+            .from('chef_profiles')
+            .select('is_open')
+            .eq('user_id', _currentUserId)
+            .maybeSingle();
+      }
       if (res != null && mounted) {
-        setState(() => _isKitchenOpen = res['is_open'] == true);
+        final row = res;
+        setState(() {
+          _isKitchenOpen = row['is_open'] == true;
+          _isKitchenLive = isKitchenLiveStreaming(row);
+        });
       }
     } catch (e) {
       debugPrint('Failed to load kitchen status: $e');
@@ -288,8 +304,10 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       await _supabase.from('chef_profiles').upsert({
         'user_id': _currentUserId,
         'is_open': nextState,
+        if (!nextState) 'is_live': false,
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       });
+      if (!nextState && mounted) setState(() => _isKitchenLive = false);
       if (nextState) {
         AlertService.notifyKitchenLive(chefId: _currentUserId);
       }
@@ -316,6 +334,17 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         );
       }
     }
+  }
+
+  Future<void> _openKitchenLive() async {
+    if (_currentUserId.isEmpty) return;
+    setState(() {
+      _isKitchenOpen = true;
+      _isKitchenLive = true;
+    });
+    AlertService.notifyKitchenLive(chefId: _currentUserId);
+    await context.push(kitchenLivePath(_currentUserId, host: true));
+    if (mounted) await _loadKitchenStatus();
   }
 
   Future<bool?> _confirmGoOffline() async {
@@ -416,6 +445,37 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     }
   }
 
+  Future<String?> _capturePackedPhoto(Map<String, dynamic> order) async {
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Packed box photo'),
+        content: const Text(
+          'Take a photo of the sealed box so the diner can see their order is packed before it leaves the kitchen.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Not now')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Open camera')),
+        ],
+      ),
+    );
+    if (proceed != true || !mounted) return null;
+    try {
+      return await capturePackedBoxPhoto(orderId: order['id'].toString());
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Packed box photo upload failed');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not save the packed-box photo. Try again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return null;
+    }
+  }
+
   Future<void> _advanceKitchen(Map<String, dynamic> order) async {
     try {
       final current = order['status']?.toString() ?? '';
@@ -425,7 +485,23 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             ? 'Too early to start preparing. Wait until 2 hours before the requested time.'
             : chefPrepGateHint(order));
       }
-      await _orderLifecycle.advanceKitchen(orderId: order['id'].toString(), currentStatus: current);
+      String? packedUrl;
+      if (next == OrderStatus.readyForPickup) {
+        packedUrl = await _capturePackedPhoto(order);
+        if (packedUrl == null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Take a packed-box photo to mark this order ready.')),
+            );
+          }
+          return;
+        }
+      }
+      await _orderLifecycle.advanceKitchen(
+        orderId: order['id'].toString(),
+        currentStatus: current,
+        dispatchPhotoUrl: packedUrl,
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Status updated to: $next'), backgroundColor: Colors.green),
@@ -435,6 +511,32 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(_orderUpdateError(e)), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _attachDispatchPhoto(Map<String, dynamic> order) async {
+    final url = await _capturePackedPhoto(order);
+    if (url == null || !mounted) return;
+    try {
+      await _supabase.from('orders').update({
+        'dispatch_photo_url': url,
+        'dispatch_photo_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', order['id'].toString());
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Packed-box photo added. The diner can see it now.')),
+        );
+      }
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to attach dispatch photo');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not attach the packed-box photo. Try again.'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -678,31 +780,63 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               const SizedBox(height: 2),
               Text(_currentUserEmail, style: const TextStyle(color: Colors.white70, fontSize: 12)),
               const SizedBox(height: 10),
-              GestureDetector(
-                onTap: _toggleKitchenStatus,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white38),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _isKitchenOpen
-                          ? const Icon(Icons.circle, color: Colors.greenAccent, size: 9)
-                              .animate(onPlay: (c) => c.repeat(reverse: true))
-                              .fade(begin: 0.35, end: 1, duration: 900.ms)
-                          : const Icon(Icons.circle, color: Colors.redAccent, size: 9),
-                      const SizedBox(width: 6),
-                      Text(
-                        _isKitchenOpen ? 'Online • Taking Orders' : 'Offline',
-                        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  GestureDetector(
+                    onTap: _toggleKitchenStatus,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white38),
                       ),
-                    ],
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _isKitchenOpen
+                              ? const Icon(Icons.circle, color: Colors.greenAccent, size: 9)
+                                  .animate(onPlay: (c) => c.repeat(reverse: true))
+                                  .fade(begin: 0.35, end: 1, duration: 900.ms)
+                              : const Icon(Icons.circle, color: Colors.redAccent, size: 9),
+                          const SizedBox(width: 6),
+                          Text(
+                            _isKitchenOpen ? 'Online • Taking Orders' : 'Offline',
+                            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
+                  GestureDetector(
+                    onTap: _openKitchenLive,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: _isKitchenLive ? Colors.red.shade700 : Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white38),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.videocam,
+                            color: _isKitchenLive ? Colors.white : Colors.white70,
+                            size: 14,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            _isKitchenLive ? 'LIVE · 2 min' : 'Go live · 2 min',
+                            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -976,6 +1110,17 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               ),
               const SizedBox(height: 10),
               OrderSlotBanner(order: order),
+              if (hasDispatchPhoto(order)) ...[
+                const SizedBox(height: 10),
+                DispatchPackedPhoto(url: orderDispatchPhotoUrl(order)!, height: 120),
+              ] else ...[
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.photo_camera_outlined, size: 16),
+                  label: const Text('Add packed-box photo'),
+                  onPressed: () => _attachDispatchPhoto(order),
+                ),
+              ],
               if (svc == ServiceType.deliverySelf) ...[
                 const SizedBox(height: 12),
                 Row(
@@ -1243,6 +1388,34 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                           ),
                         ],
                       ),
+                      const SizedBox(height: 8),
+                      if (isMealBoosted(meal))
+                        Text(
+                          mealBoostUntilLabel(meal),
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppTheme.primary),
+                        )
+                      else
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.primary,
+                              foregroundColor: Colors.white,
+                              disabledBackgroundColor: Colors.grey.shade400,
+                              elevation: 0,
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            icon: const Icon(Icons.auto_awesome, size: 18),
+                            label: Text(
+                              'Boost on Home · ₹$kChefBoostRupees',
+                              style: const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            onPressed: isPaused || stock <= 0
+                                ? null
+                                : () => showChefBoostSheet(context, meal),
+                          ),
+                        ),
                     ],
                   ),
                 ).entrance(index: entry.key);
@@ -1604,7 +1777,7 @@ class _ChefPrepAdvanceButtonState extends State<_ChefPrepAdvanceButton> {
   Widget build(BuildContext context) {
     final canStart = widget.isPreparing || canChefStartPreparing(widget.order);
     return GradientButton(
-      label: widget.isPreparing ? 'Ready for Pickup' : 'Start Preparing',
+      label: widget.isPreparing ? 'Photo & ready' : 'Start Preparing',
       icon: widget.isPreparing ? Icons.check_circle_rounded : Icons.soup_kitchen_rounded,
       gradient: widget.isPreparing
           ? const LinearGradient(colors: [Color(0xFF00897B), Color(0xFF26A69A)])

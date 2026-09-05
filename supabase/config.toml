@@ -489,3 +489,8 @@ entrypoint = "./functions/ai-tag-meal/index.ts"
 enabled = true
 verify_jwt = true
 entrypoint = "./functions/ai-search/index.ts"
+
+[functions.meal-boost]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/meal-boost/index.ts"

@@ -122,12 +122,20 @@ class OrderLifecycle {
     return null;
   }
 
-  Future<void> advanceKitchen({required String orderId, required String currentStatus}) async {
+  Future<void> advanceKitchen({
+    required String orderId,
+    required String currentStatus,
+    String? dispatchPhotoUrl,
+  }) async {
     final next = nextKitchenStatus(currentStatus);
     if (next == null) {
       throw Exception('No kitchen transition from "$currentStatus"');
     }
-    await _repo.updateOrderStatus(orderId: orderId, newStatus: next);
+    await _repo.updateOrderStatus(
+      orderId: orderId,
+      newStatus: next,
+      dispatchPhotoUrl: dispatchPhotoUrl,
+    );
   }
 
   Future<void> dispatch({

@@ -58,6 +58,7 @@ void main() {
     );
     expect(ready!.notifyDriver, isTrue);
     expect(ready.notifyCustomer, isTrue);
+    expect(ready.title, 'Your box is packed');
   });
 
   test('unchanged status is silent', () {

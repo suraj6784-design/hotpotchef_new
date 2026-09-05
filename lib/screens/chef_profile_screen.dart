@@ -15,6 +15,7 @@ import '../utils/gst_invoice.dart';
 import '../utils/network.dart';
 import '../widgets/avatar_upload.dart';
 import '../widgets/change_password_dialog.dart';
+import '../services/kitchen_media.dart';
 
 class ChefReviewModel {
   final String id;
@@ -81,8 +82,11 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
   final _cityController = TextEditingController();
   final _stateController = TextEditingController();
   final _pincodeController = TextEditingController();
+  final _storyController = TextEditingController();
+  final _hygieneController = TextEditingController();
 
   String? _avatarUrl;
+  List<String> _kitchenPhotos = [];
   double? _latitude;
   double? _longitude;
   List<ChefReviewModel> _reviews = [];
@@ -112,6 +116,8 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     _cityController.dispose();
     _stateController.dispose();
     _pincodeController.dispose();
+    _storyController.dispose();
+    _hygieneController.dispose();
     super.dispose();
   }
 
@@ -174,6 +180,22 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chef Profile Loading Error');
       if (mounted) _applyUserProfile(null, user);
+    }
+
+    try {
+      final kitchen = await _supabase
+          .from('chef_profiles')
+          .select('kitchen_story, hygiene_note, kitchen_photos')
+          .eq('user_id', user.id)
+          .maybeSingle()
+          .withTimeout(NetworkTimeouts.standard);
+      if (mounted && kitchen != null) {
+        _storyController.text = kitchen['kitchen_story']?.toString() ?? '';
+        _hygieneController.text = kitchen['hygiene_note']?.toString() ?? '';
+        _kitchenPhotos = kitchenPhotosFrom(kitchen['kitchen_photos']);
+      }
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chef kitchen story loading error');
     }
 
     List<ChefReviewModel> reviews = [];
@@ -383,6 +405,17 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
       await _supabase.from('users').update(updateData).eq('id', user.id);
       await _supabase.auth.updateUser(UserAttributes(data: {'name': name, 'phone': phone}));
       try {
+        await _supabase.from('chef_profiles').upsert({
+          'user_id': user.id,
+          'kitchen_story': _storyController.text.trim(),
+          'hygiene_note': _hygieneController.text.trim(),
+          'kitchen_photos': _kitchenPhotos,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        });
+      } catch (e, stack) {
+        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chef kitchen story save failed');
+      }
+      try {
         await _supabase
             .from('meals')
             .update({
@@ -588,6 +621,78 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                       style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
                     ),
                   ),
+                  Divider(height: 32, color: divider),
+                  const Text('Kitchen story',
+                      style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 15)),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Diners see this on your kitchen card. Keep it short and true.',
+                    style: TextStyle(color: muted, fontSize: 12),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildValidatedTextField(
+                    controller: _storyController,
+                    label: 'Who cooks here, and what is tonight\'s story?',
+                    prefixIcon: Icons.menu_book_outlined,
+                    maxLines: 3,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildValidatedTextField(
+                    controller: _hygieneController,
+                    label: 'Hygiene note (gloves, oil, separate veg board…)',
+                    prefixIcon: Icons.health_and_safety_outlined,
+                    maxLines: 2,
+                  ),
+                  if (_kitchenPhotos.isNotEmpty || _isEditing) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 72,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        children: [
+                          ..._kitchenPhotos.asMap().entries.map((entry) {
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: Stack(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: Image.network(entry.value, width: 72, height: 72, fit: BoxFit.cover),
+                                  ),
+                                  if (_isEditing)
+                                    Positioned(
+                                      right: 0,
+                                      top: 0,
+                                      child: GestureDetector(
+                                        onTap: () => setState(() => _kitchenPhotos.removeAt(entry.key)),
+                                        child: const CircleAvatar(
+                                          radius: 10,
+                                          backgroundColor: Colors.black54,
+                                          child: Icon(Icons.close, size: 12, color: Colors.white),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            );
+                          }),
+                          if (_isEditing && _kitchenPhotos.length < 3)
+                            GestureDetector(
+                              onTap: _addKitchenPhoto,
+                              child: Container(
+                                width: 72,
+                                height: 72,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: AppTheme.primary),
+                                ),
+                                child: const Icon(Icons.add_a_photo_outlined, color: AppTheme.primary),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
                   Divider(height: 32, color: divider),
 
                   // Kitchen Dispatch Address Section
@@ -828,12 +933,30 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     );
   }
 
+  Future<void> _addKitchenPhoto() async {
+    final source = await pickKitchenImageSource(context);
+    if (source == null) return;
+    try {
+      final url = await uploadKitchenImage(source: source);
+      if (url == null || !mounted) return;
+      setState(() {
+        if (!_kitchenPhotos.contains(url) && _kitchenPhotos.length < 3) {
+          _kitchenPhotos = [..._kitchenPhotos, url];
+        }
+      });
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chef kitchen photo add failed');
+      if (mounted) _showSnackBar('Could not add that kitchen photo.', isError: true);
+    }
+  }
+
   Widget _buildValidatedTextField({
     required TextEditingController controller,
     required String label,
     IconData? prefixIcon,
     TextInputType keyboardType = TextInputType.text,
     int? maxLength,
+    int maxLines = 1,
     String? Function(String?)? validator,
     List<TextInputFormatter>? inputFormatters,
   }) {
@@ -847,8 +970,9 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
       controller: controller,
       readOnly: !_isEditing,
       enableInteractiveSelection: true,
-      keyboardType: keyboardType,
+      keyboardType: maxLines > 1 ? TextInputType.multiline : keyboardType,
       maxLength: maxLength,
+      maxLines: maxLines,
       validator: validator,
       inputFormatters: inputFormatters,
       style: TextStyle(color: titleColor, fontSize: 14, fontWeight: FontWeight.w500),

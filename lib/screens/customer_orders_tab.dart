@@ -421,10 +421,14 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
       statusIcon = Icons.cancel;
       statusColor = Colors.red;
       statusText = 'Order Cancelled';
-    } else if (OrderLifecycle.isTrackable(status)) {
+    } else if (OrderLifecycle.isTrackable(status) && !status.toLowerCase().contains('ready')) {
       statusIcon = Icons.delivery_dining;
       statusColor = AppTheme.primary;
-      statusText = 'Order is on the way / ready';
+      statusText = 'Order is on the way';
+    } else if (hasDispatchPhoto(items.first) || status.toLowerCase().contains('ready')) {
+      statusIcon = Icons.inventory_2_outlined;
+      statusColor = AppTheme.success;
+      statusText = dispatchPackedLabel(takenAt: orderDispatchPhotoAt(items.first));
     } else if (status.toLowerCase().contains('preparing')) {
       statusIcon = Icons.soup_kitchen;
       statusColor = Colors.orange;
@@ -502,6 +506,13 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                               Expanded(child: Text(statusText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.onSurfaceOf(context)))),
                             ],
                           ),
+                          if (hasDispatchPhoto(items.first)) ...[
+                            const SizedBox(height: 12),
+                            DispatchPackedPhoto(
+                              url: orderDispatchPhotoUrl(items.first)!,
+                              caption: dispatchPackedLabel(takenAt: orderDispatchPhotoAt(items.first)),
+                            ),
+                          ],
                           Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: AppTheme.hairlineOf(context))),
                           
                           // Timings & Delivery Type in Details Sheet
@@ -1237,7 +1248,10 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                       Text('+ ${items.length - 1} more items', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12, fontStyle: FontStyle.italic)),
                                     ],
                                     const SizedBox(height: 4),
-                                    Text('Status: $groupStatus',
+                                    Text(
+                                        hasDispatchPhoto(items.first)
+                                            ? dispatchPackedLabel(takenAt: orderDispatchPhotoAt(items.first))
+                                            : 'Status: $groupStatus',
                                         style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.w700)),
                                   ],
                                 ),

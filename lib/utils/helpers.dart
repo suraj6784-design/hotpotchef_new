@@ -1074,8 +1074,31 @@ bool isCatalogMeal(Map<String, dynamic> meal) {
   return owner.isEmpty;
 }
 
+const int kChefBoostRupees = 99;
+const int kChefBoostPaise = 9900;
+
+DateTime boostEndsAtLocalMidnight(DateTime now) {
+  final local = now.toLocal();
+  return DateTime(local.year, local.month, local.day + 1);
+}
+
+bool isMealBoosted(Map<String, dynamic>? meal, {DateTime? now}) {
+  if (meal == null) return false;
+  final until = DateTime.tryParse(meal['boosted_until']?.toString() ?? '');
+  if (until == null) return false;
+  return !until.toLocal().isBefore((now ?? DateTime.now()).toLocal());
+}
+
+String mealBoostUntilLabel(Map<String, dynamic>? meal, {DateTime? now}) {
+  if (!isMealBoosted(meal, now: now)) return '';
+  final until = DateTime.tryParse(meal?['boosted_until']?.toString() ?? '');
+  if (until == null) return 'Boosted today';
+  return 'Boosted until ${formatAppTime(until)}';
+}
+
 bool mealHasFlashableOffer(Map<String, dynamic> meal, {DateTime? now}) {
   if (!isCatalogMeal(meal) || !isMealAvailableForCart(meal)) return false;
+  if (isMealBoosted(meal, now: now)) return true;
   if (PricingCalculator.mealPromoCode(meal) != null) return true;
   return PricingCalculator.isOfferActive(meal, referenceTime: now);
 }
@@ -1095,12 +1118,21 @@ List<Map<String, dynamic>> flashableOfferMeals(
     final id = meal['id']?.toString() ?? meal['title']?.toString() ?? '';
     if (id.isNotEmpty && !unique.add(id)) continue;
     offers.add(meal);
-    if (offers.length >= limit) break;
   }
-  return offers;
+  offers.sort((a, b) {
+    final aBoosted = isMealBoosted(a, now: now);
+    final bBoosted = isMealBoosted(b, now: now);
+    if (aBoosted != bBoosted) return aBoosted ? -1 : 1;
+    return 0;
+  });
+  if (offers.length <= limit) return offers;
+  return offers.sublist(0, limit);
 }
 
-String offerFlashHeadline(Map<String, dynamic> meal) {
+String offerFlashHeadline(Map<String, dynamic> meal, {DateTime? now}) {
+  if (isMealBoosted(meal, now: now) && PricingCalculator.mealPromoCode(meal) == null) {
+    return 'Boosted today';
+  }
   final code = PricingCalculator.mealPromoCode(meal);
   if (code != null && PricingCalculator.isOfferGated(meal)) {
     return 'Use $code';
@@ -1552,6 +1584,174 @@ class ChefRatingSummary {
     final reviews = count == 1 ? '1 review' : '$count reviews';
     return '${average.toStringAsFixed(1)} · $reviews';
   }
+}
+
+List<String> kitchenPhotosFrom(dynamic raw) {
+  Iterable<dynamic> values = const [];
+  if (raw is Iterable) {
+    values = raw;
+  } else if (raw is String && raw.trim().isNotEmpty) {
+    if (raw.trim().startsWith('[')) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Iterable) values = decoded;
+      } catch (_) {
+        values = [raw];
+      }
+    } else {
+      values = [raw];
+    }
+  }
+  final photos = <String>[];
+  for (final value in values) {
+    final url = value.toString().trim();
+    if (url.startsWith('http') && !photos.contains(url)) photos.add(url);
+    if (photos.length >= 3) break;
+  }
+  return photos;
+}
+
+String kitchenStoryArea({String? city, String? address}) {
+  final town = (city ?? '').trim();
+  if (town.isNotEmpty) return town;
+  final line = (address ?? '').trim();
+  if (line.isEmpty) return '';
+  final parts = line.split(',').map((part) => part.trim()).where((part) => part.isNotEmpty).toList();
+  if (parts.length >= 2) return parts[parts.length - 2];
+  return parts.isEmpty ? '' : parts.first;
+}
+
+int cookedMealCountFromOrders(Iterable<dynamic> rows) {
+  var count = 0;
+  for (final row in rows) {
+    if (row is! Map) continue;
+    final status = row['status']?.toString().toLowerCase() ?? '';
+    if (status.contains('deliver') || status.contains('complet')) count++;
+  }
+  return count;
+}
+
+String cookedMealsLabel(int count) {
+  if (count <= 0) return 'New kitchen';
+  if (count == 1) return 'Cooked 1 meal';
+  return 'Cooked $count meals';
+}
+
+const int kKitchenLivePhotoHours = 4;
+
+bool isKitchenLivePhotoFresh(DateTime? takenAt, {DateTime? now}) {
+  if (takenAt == null) return false;
+  final current = (now ?? DateTime.now()).toLocal();
+  final taken = takenAt.toLocal();
+  final age = current.difference(taken);
+  return !age.isNegative && age <= const Duration(hours: kKitchenLivePhotoHours);
+}
+
+String kitchenLivePhotoLabel(DateTime? takenAt, {DateTime? now}) {
+  if (!isKitchenLivePhotoFresh(takenAt, now: now)) return '';
+  final minutes = (now ?? DateTime.now()).toLocal().difference(takenAt!.toLocal()).inMinutes;
+  if (minutes < 1) return 'Live from the kitchen · just now';
+  if (minutes < 60) return 'Live from the kitchen · ${minutes}m ago';
+  final hours = minutes ~/ 60;
+  return 'Live from the kitchen · ${hours}h ago';
+}
+
+const int kKitchenLiveMaxViewers = 12;
+const int kKitchenLiveMaxSeconds = 120;
+const int kKitchenLiveJoinGuardSeconds = 15;
+
+bool isKitchenLiveStreaming(Map<String, dynamic>? profile, {DateTime? now}) {
+  if (profile == null) return false;
+  final raw = profile['is_live'] ?? profile['isLive'];
+  final live = raw is bool
+      ? raw
+      : raw?.toString().toLowerCase().trim() == 'true' || raw?.toString().trim() == '1';
+  if (!live) return false;
+  final started = DateTime.tryParse(profile['live_started_at']?.toString() ?? '');
+  if (started == null) return true;
+  return !kitchenLiveTimeUp(startedAt: started, now: now);
+}
+
+Duration kitchenLiveRemaining({
+  DateTime? startedAt,
+  DateTime? now,
+  int maxSeconds = kKitchenLiveMaxSeconds,
+}) {
+  if (startedAt == null) return Duration(seconds: maxSeconds);
+  final elapsed = (now ?? DateTime.now()).toUtc().difference(startedAt.toUtc());
+  final left = Duration(seconds: maxSeconds) - elapsed;
+  return left.isNegative ? Duration.zero : left;
+}
+
+bool kitchenLiveTimeUp({DateTime? startedAt, DateTime? now, int maxSeconds = kKitchenLiveMaxSeconds}) {
+  return kitchenLiveRemaining(startedAt: startedAt, now: now, maxSeconds: maxSeconds) <= Duration.zero;
+}
+
+bool kitchenLiveCanAdmitViewer({DateTime? startedAt, DateTime? now}) {
+  return kitchenLiveRemaining(startedAt: startedAt, now: now) >=
+      const Duration(seconds: kKitchenLiveJoinGuardSeconds);
+}
+
+String kitchenLiveCountdownLabel(Duration remaining) {
+  final seconds = remaining.inSeconds < 0 ? 0 : remaining.inSeconds;
+  final minutes = seconds ~/ 60;
+  final rest = seconds % 60;
+  return '$minutes:${rest.toString().padLeft(2, '0')}';
+}
+
+bool canHostKitchenLive({required String chefId, String? userId}) {
+  final kitchen = chefId.trim();
+  final user = (userId ?? '').trim();
+  return kitchen.isNotEmpty && kitchen == user;
+}
+
+String kitchenLiveViewerId({String? userId}) {
+  final id = (userId ?? '').trim();
+  if (id.isNotEmpty) return id;
+  return 'guest-${DateTime.now().microsecondsSinceEpoch}';
+}
+
+bool kitchenLiveSignalForMe({
+  required String myId,
+  required String senderId,
+  String? targetId,
+}) {
+  if (senderId.trim().isEmpty || senderId == myId) return false;
+  final target = (targetId ?? '').trim();
+  return target.isEmpty || target == myId;
+}
+
+String? orderDispatchPhotoUrl(Map<String, dynamic>? order) {
+  if (order == null) return null;
+  final url = (order['dispatch_photo_url'] ?? order['dispatchPhotoUrl'])?.toString().trim() ?? '';
+  return url.startsWith('http') ? url : null;
+}
+
+DateTime? orderDispatchPhotoAt(Map<String, dynamic>? order) {
+  if (order == null) return null;
+  return DateTime.tryParse(order['dispatch_photo_at']?.toString() ?? '');
+}
+
+bool hasDispatchPhoto(Map<String, dynamic>? order) => orderDispatchPhotoUrl(order) != null;
+
+String dispatchPackedLabel({DateTime? takenAt, DateTime? now}) {
+  final when = takenAt?.toLocal();
+  if (when == null) return 'Your box is packed';
+  final minutes = (now ?? DateTime.now()).toLocal().difference(when).inMinutes;
+  if (minutes < 1) return 'Your box is packed · just now';
+  if (minutes < 60) return 'Your box is packed · ${minutes}m ago';
+  return 'Your box is packed';
+}
+
+String kitchenLivePath(String chefId, {bool host = false, String? chefName}) {
+  final id = chefId.trim();
+  final name = (chefName ?? '').trim();
+  final buffer = StringBuffer(host ? '/kitchen-live/$id?host=1' : '/kitchen-live/$id');
+  if (name.isNotEmpty) {
+    buffer.write(host ? '&' : '?');
+    buffer.write('name=${Uri.encodeQueryComponent(name)}');
+  }
+  return buffer.toString();
 }
 
 ChefRatingSummary chefRatingSummaryFromRows(Iterable<dynamic> rows) {

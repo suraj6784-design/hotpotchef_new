@@ -1,10 +1,13 @@
 // lib/widgets/customer_ui_components.dart
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+
+import '../screens/kitchen_live_screen.dart';
 
 import '../utils/helpers.dart';
 import '../utils/app_page.dart';
@@ -17,6 +20,55 @@ import '../services/reorder_service.dart';
 import 'weekly_plan_sheet.dart';
 import '../screens/auth_screen.dart';
 import 'app_widgets.dart';
+
+class DispatchPackedPhoto extends StatelessWidget {
+  const DispatchPackedPhoto({
+    super.key,
+    required this.url,
+    this.height = 160,
+    this.caption = 'Your box is packed',
+  });
+
+  final String url;
+  final double height;
+  final String caption;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: Stack(
+        children: [
+          CachedNetworkImage(
+            imageUrl: url,
+            width: double.infinity,
+            height: height,
+            fit: BoxFit.cover,
+            errorWidget: (_, _, _) => SizedBox(
+              height: height,
+              child: const Center(child: Icon(Icons.inventory_2_outlined)),
+            ),
+          ),
+          Positioned(
+            left: 8,
+            bottom: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                caption,
+                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 // 1. High-Performance Watermarked Image Widget
 class WatermarkedMealImage extends StatelessWidget {
@@ -199,6 +251,13 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
   String _fssai = '';
   String _city = '';
   String _memberSince = '';
+  String _story = '';
+  String _hygiene = '';
+  String _cookedLabel = 'New kitchen';
+  String _liveUrl = '';
+  String _liveLabel = '';
+  bool _isStreaming = false;
+  List<String> _photos = const [];
   ChefRatingSummary _rating = const ChefRatingSummary();
   List<Map<String, dynamic>> _recentReviews = const [];
 
@@ -226,7 +285,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
       try {
         final row = await client
             .from('users')
-            .select('name, full_name, fssai_number, city, created_at')
+            .select('name, full_name, fssai_number, city, address, created_at')
             .eq('id', chefId)
             .maybeSingle();
         if (row != null) profile = Map<String, dynamic>.from(row);
@@ -253,6 +312,34 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
       } catch (e, stack) {
         FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to load chef peek reviews');
       }
+
+      Map<String, dynamic>? kitchen;
+      try {
+        final row = await client
+            .from('chef_profiles')
+            .select('kitchen_story, hygiene_note, kitchen_photos, live_photo_url, live_photo_at, is_live')
+            .eq('user_id', chefId)
+            .maybeSingle();
+        if (row != null) kitchen = Map<String, dynamic>.from(row);
+      } catch (e, stack) {
+        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to load kitchen story');
+        try {
+          final row = await client
+              .from('chef_profiles')
+              .select('kitchen_story, hygiene_note, kitchen_photos, live_photo_url, live_photo_at')
+              .eq('user_id', chefId)
+              .maybeSingle();
+          if (row != null) kitchen = Map<String, dynamic>.from(row);
+        } catch (_) {}
+      }
+
+      var cooked = 0;
+      try {
+        final orders = await client.from('orders').select('status').eq('chef_id', chefId);
+        cooked = cookedMealCountFromOrders(orders);
+      } catch (e, stack) {
+        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to count cooked meals');
+      }
       if (!mounted) return;
 
       final rating = chefRatingSummaryFromRows(reviewRows);
@@ -263,14 +350,26 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
         'name': widget.chefName,
       });
       final listedFssai = profile?['fssai_number']?.toString().trim() ?? '';
-      final city = profile?['city']?.toString().trim() ?? '';
+      final city = kitchenStoryArea(
+        city: profile?['city']?.toString(),
+        address: profile?['address']?.toString(),
+      );
       final joined = parseFlexibleDate(profile?['created_at']?.toString());
+      final liveAt = DateTime.tryParse(kitchen?['live_photo_at']?.toString() ?? '');
+      final liveUrl = kitchen?['live_photo_url']?.toString() ?? '';
 
       setState(() {
         _name = resolvedName;
         if (listedFssai.isNotEmpty) _fssai = listedFssai;
         _city = city;
         _memberSince = joined == null ? '' : formatAppDate(joined);
+        _story = kitchen?['kitchen_story']?.toString().trim() ?? '';
+        _hygiene = kitchen?['hygiene_note']?.toString().trim() ?? '';
+        _photos = kitchenPhotosFrom(kitchen?['kitchen_photos']);
+        _liveUrl = isKitchenLivePhotoFresh(liveAt) ? liveUrl : '';
+        _liveLabel = kitchenLivePhotoLabel(liveAt);
+        _isStreaming = isKitchenLiveStreaming(kitchen);
+        _cookedLabel = cookedMealsLabel(cooked);
         _rating = rating;
         _recentReviews = reviewRows
             .whereType<Map>()
@@ -307,10 +406,18 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
                   _name.isEmpty ? widget.chefName : _name,
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: ink),
                 ),
-                Text('Home kitchen', style: TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600)),
+                Text(
+                  _isStreaming ? 'Live from the kitchen' : 'Home kitchen',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: _isStreaming ? Colors.red.shade700 : muted,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ],
             ),
           ),
+          if (_isStreaming) const KitchenLiveBadge(compact: false),
         ],
       ),
       content: SizedBox(
@@ -324,6 +431,13 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
               'Verified Home Chef Partner',
               style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13),
             ),
+            if (_isStreaming) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: KitchenWatchLiveButton(onPressed: _openKitchenLive),
+              ),
+            ],
             const SizedBox(height: 14),
             if (_loading)
               const Padding(
@@ -356,8 +470,71 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
                   child: Text('Be the first to rate this kitchen after an order.', style: TextStyle(fontSize: 12, color: muted)),
                 ),
             ],
+            if (_liveUrl.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: Stack(
+                  children: [
+                    CachedNetworkImage(
+                      imageUrl: _liveUrl,
+                      width: double.infinity,
+                      height: 160,
+                      fit: BoxFit.cover,
+                      errorWidget: (_, _, _) => const SizedBox(height: 80, child: Center(child: Icon(Icons.kitchen))),
+                    ),
+                    Positioned(
+                      left: 8,
+                      top: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.55),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          _liveLabel.isEmpty ? 'Live from the kitchen' : _liveLabel,
+                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            if (_photos.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 72,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _photos.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) => ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: CachedNetworkImage(
+                      imageUrl: _photos[index],
+                      width: 72,
+                      height: 72,
+                      fit: BoxFit.cover,
+                      errorWidget: (_, _, _) => const SizedBox(width: 72, height: 72, child: Icon(Icons.image)),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+            if (_story.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(_story, style: TextStyle(fontSize: 13, height: 1.4, color: ink)),
+            ],
             const SizedBox(height: 12),
             _infoRow(Icons.verified, 'FSSAI: ${_fssai.isNotEmpty ? _fssai : 'Licence not listed'}', muted),
+            const SizedBox(height: 8),
+            _infoRow(Icons.soup_kitchen_outlined, _cookedLabel, muted),
+            if (_hygiene.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _infoRow(Icons.clean_hands_outlined, _hygiene, muted),
+            ],
             if (_city.isNotEmpty) ...[
               const SizedBox(height: 8),
               _infoRow(Icons.place_outlined, _city, muted),
@@ -405,6 +582,11 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
         ),
       ),
       actions: [
+        if (_isStreaming)
+          TextButton(
+            onPressed: _openKitchenLive,
+            child: const Text('Watch live · 2 min', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          ),
         KitchenFollowButton(chefId: widget.chefId, chefName: _name.isEmpty ? widget.chefName : _name),
         TextButton(
           onPressed: () => Navigator.pop(context),
@@ -412,6 +594,13 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
         ),
       ],
     );
+  }
+
+  void _openKitchenLive() {
+    final router = GoRouter.of(context);
+    final path = kitchenLivePath(widget.chefId, chefName: _name.isEmpty ? widget.chefName : _name);
+    Navigator.pop(context);
+    router.push(path);
   }
 
   Widget _infoRow(IconData icon, String text, Color muted) {
@@ -601,7 +790,27 @@ class MealDetailsBody extends StatefulWidget {
 
 class _MealDetailsBodyState extends State<MealDetailsBody> {
   int _quantity = 1;
+  bool _chefIsLive = false;
   final Set<String> _selectedAddOnIds = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadChefLive();
+  }
+
+  Future<void> _loadChefLive() async {
+    final chefId = widget.meal['chef_id']?.toString() ?? '';
+    if (chefId.isEmpty) return;
+    try {
+      final row = await Supabase.instance.client
+          .from('chef_profiles')
+          .select('is_live')
+          .eq('user_id', chefId)
+          .maybeSingle();
+      if (mounted) setState(() => _chefIsLive = isKitchenLiveStreaming(row));
+    } catch (_) {}
+  }
 
   List<CartItemAddOn> get _availableAddOns => ReorderService.parseMealAddOns(
         widget.meal['add_ons'] ?? widget.meal['addons'] ?? widget.meal['selectedAddOns'],
@@ -793,6 +1002,17 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                           ),
                         ),
                       ),
+                      if (_chefIsLive) ...[
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          width: double.infinity,
+                          child: KitchenWatchLiveButton(
+                            onPressed: () => context.push(
+                              kitchenLivePath(chefId, chefName: chefName),
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 24),
                       _mealInfoChip(
                         icon: Icons.delivery_dining,

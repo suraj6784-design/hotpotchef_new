@@ -90,6 +90,10 @@
 			<string>UIInterfaceOrientationLandscapeLeft</string>
 			<string>UIInterfaceOrientationLandscapeRight</string>
 		</array>
+		<key>NSCameraUsageDescription</key>
+		<string>HotPotChef uses the camera so a chef can live-stream their kitchen.</string>
+		<key>NSMicrophoneUsageDescription</key>
+		<string>HotPotChef uses the microphone so diners can hear the kitchen while it is live.</string>
 		<key>UIStatusBarHidden</key>
 		<true/>
 		<key>UIViewControllerBasedStatusBarAppearance</key>

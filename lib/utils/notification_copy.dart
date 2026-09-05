@@ -104,8 +104,8 @@ OrderAlertCopy? orderAlertCopy({
   }
   if (current.contains('ready')) {
     return OrderAlertCopy(
-      title: 'Order ready',
-      body: '$mealTitle is ready for pickup.',
+      title: 'Your box is packed',
+      body: '$mealTitle is packed. Open the order to see the kitchen photo.',
       notifyChef: false,
       notifyCustomer: true,
       notifyDriver: true,
