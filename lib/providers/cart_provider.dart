@@ -133,7 +133,8 @@ class CartNotifier extends Notifier<CartState> {
   Future<void> attachSharedRoom(String roomCode) async {
     final code = roomCode.trim().toUpperCase();
     if (code.isEmpty) return;
-    state = state.copyWith(sharedRoomCode: code);
+    final hostId = await _sharedCartService.sharedCartHostId(code);
+    state = state.copyWith(sharedRoomCode: code, sharedHostId: hostId);
     _sharedCartSub?.cancel();
     _sharedCartSub = _sharedCartService.streamSharedCart(code).listen((items) {
       if (_applyingSharedCart) return;

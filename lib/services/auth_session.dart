@@ -52,6 +52,13 @@ class AuthSession {
     context.go(resolved.hubPath);
   }
 
+  /// Bounce a signed-in user off a hub that does not match `users.role`.
+  static Future<void> ensureHubRole(BuildContext context, AppRole expected) async {
+    final resolved = await resolveRole();
+    if (!context.mounted || resolved == expected) return;
+    context.go(resolved.hubPath);
+  }
+
   /// FCM token clear + Supabase signOut + return to the public guest feed
   /// (`/customer-hub`) so users can keep browsing meals after logging out.
   static Future<void> logout(

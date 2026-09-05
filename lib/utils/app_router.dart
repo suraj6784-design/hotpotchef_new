@@ -59,18 +59,17 @@ class AppRouter {
       final path = state.uri.path;
       final role = AppRole.parse(session?.user.userMetadata?['role']?.toString());
 
-      // 1. Protect Chef and Driver routes against unauthenticated access
-      const protectedChefDriverRoutes = [
-        '/chef-hub',
-        '/driver-hub',
-        '/chef-analytics',
-        '/chef-profile',
-        '/driver-profile',
-        '/driver-id-card',
-        '/chef-publish-meal',
+      const signedInOnlyRoutes = {
+        ...kChefOnlyRoutes,
+        ...kDriverOnlyRoutes,
+        '/customer-profile',
+        '/referral',
+        '/order-history',
+        '/bulk-request',
         '/chats',
-      ];
-      if (!isAuthenticated && (protectedChefDriverRoutes.contains(path) || path.startsWith('/chat/'))) {
+      };
+      if (!isAuthenticated &&
+          (signedInOnlyRoutes.contains(path) || path.startsWith('/chat/'))) {
         return '/auth';
       }
 
@@ -79,14 +78,11 @@ class AppRouter {
         return path == '/reset-callback' ? '/reset-password' : null;
       }
 
-      // 2. Enforce correct role-based landing on app startup or auth navigation
       if (isAuthenticated) {
         if (path == '/auth') {
           return role.hubPath;
         }
-
-        // Chefs and drivers should not land on the guest customer feed
-        if (path == '/customer-hub' && role != AppRole.customer) {
+        if (!roleCanOpenAuthenticatedPath(role, path)) {
           return role.hubPath;
         }
       }

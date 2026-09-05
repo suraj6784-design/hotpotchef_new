@@ -36,22 +36,36 @@ class _AiRecommendationsSectionState extends ConsumerState<AiRecommendationsSect
         return;
       }
 
-      final email = user.email ?? '';
       final pastOrders = await _supabase
-          .from('meals')
-          .select('category, title')
-          .eq('customer_name', email);
+          .from('orders')
+          .select('items')
+          .eq('customer_id', user.id)
+          .limit(30);
 
       if (!mounted) return;
 
-      Map<String, int> categoryCounts = {};
-      for (var order in pastOrders) {
-        String cat = order['category']?.toString() ?? 'Maharashtrian';
-        categoryCounts[cat] = (categoryCounts[cat] ?? 0) + 1;
+      final pastItems = <Map<String, dynamic>>[];
+      final mealIds = <String>{};
+      for (final order in pastOrders) {
+        for (final item in parseOrderItemsList(order['items'])) {
+          pastItems.add(item);
+          final mealId = mealIdFromOrderItem(item);
+          if (mealId != null) mealIds.add(mealId);
+        }
       }
 
-      if (categoryCounts.isNotEmpty) {
-        _favoriteCategory = categoryCounts.entries.reduce((a, b) => a.value > b.value ? a : b).key;
+      var favorite = favoriteCategoryFromPastItems(pastItems);
+      if ((favorite == null || favorite.isEmpty) && mealIds.isNotEmpty) {
+        final pastMeals = await _supabase
+            .from('meals')
+            .select('category')
+            .inFilter('id', mealIds.toList());
+        favorite = favoriteCategoryFromPastItems(
+          List<Map<String, dynamic>>.from(pastMeals),
+        );
+      }
+      if (favorite != null && favorite.isNotEmpty) {
+        _favoriteCategory = favorite;
       }
 
       final mealsResponse = await _supabase

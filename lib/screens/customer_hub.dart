@@ -1,10 +1,13 @@
 // lib/screens/customer_hub.dart
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../models/app_role.dart';
 import '../providers/cart_provider.dart';
 import '../providers/favorites_provider.dart';
 import '../services/auth_session.dart';
@@ -36,6 +39,9 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
     if (CustomerHubScreen.returnToCartAfterLogin && Supabase.instance.client.auth.currentUser != null) {
       _selectedIndex = 1;
       CustomerHubScreen.returnToCartAfterLogin = false;
+    }
+    if (Supabase.instance.client.auth.currentUser != null) {
+      unawaited(AuthSession.ensureHubRole(context, AppRole.customer));
     }
   }
 

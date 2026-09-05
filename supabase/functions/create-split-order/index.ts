@@ -8,6 +8,13 @@ function asNumber(value: unknown, fallback = 0) {
   return Number.isFinite(n) ? n : fallback
 }
 
+function packagingFeeForLoyaltyTier(tier: unknown) {
+  const name = String(tier ?? '').toLowerCase()
+  if (name.includes('gold')) return 0
+  if (name.includes('silver')) return 10
+  return 20
+}
+
 function normalizeCartItems(raw: unknown) {
   if (!Array.isArray(raw) || raw.length === 0) {
     throw new Error('Cart is empty')
@@ -57,14 +64,42 @@ serve(async (req) => {
     const user = userData.user
 
     const admin = createClient(supabaseUrl, serviceKey)
-    let packagingAlreadyIncluded = 20
+
+    const chefIds = [...new Set(
+      cartItems
+        .map((row) => String(row.chef_id ?? row.chefId ?? '').trim())
+        .filter(Boolean),
+    )]
+    if (chefIds.length > 0) {
+      const { data: kitchens } = await admin
+        .from('chef_profiles')
+        .select('user_id, is_open')
+        .in('user_id', chefIds)
+      if ((kitchens ?? []).some((row) => row.is_open === false)) {
+        return jsonResponse({
+          success: false,
+          code: 'kitchen_closed',
+          error: 'This kitchen is closed right now',
+        }, 400)
+      }
+    }
+
+    const { data: gam } = await admin
+      .from('user_gamification')
+      .select('loyalty_tier')
+      .eq('user_id', user.id)
+      .maybeSingle()
+    let packagingAlreadyIncluded = packagingFeeForLoyaltyTier(gam?.loyalty_tier)
     try {
       const { data: pricing } = await admin.rpc('calculate_cart_total', {
         p_items: cartItems,
+        p_user_id: user.id,
       })
-      packagingAlreadyIncluded = asNumber(pricing?.packaging_fee, 20)
+      if (pricing?.packaging_fee != null) {
+        packagingAlreadyIncluded = asNumber(pricing.packaging_fee, packagingAlreadyIncluded)
+      }
     } catch {
-      packagingAlreadyIncluded = 20
+      // Keep the loyalty lookup. Service-role RPC has no auth.uid().
     }
 
     const foodOnly = cartItems.reduce((sum, row) => {

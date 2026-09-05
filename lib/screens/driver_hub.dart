@@ -15,6 +15,7 @@ import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/app_status_badge.dart';
 import '../providers/driver_dashboard_provider.dart';
+import '../models/app_role.dart';
 import '../models/driver_delivery_model.dart';
 import '../services/auth_session.dart';
 import '../services/delivery_estimator_service.dart';
@@ -35,6 +36,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
   @override
   void initState() {
     super.initState();
+    unawaited(AuthSession.ensureHubRole(context, AppRole.driver));
     _loadAvailability();
   }
 

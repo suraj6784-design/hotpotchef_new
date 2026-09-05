@@ -22,6 +22,8 @@ class CheckoutScreen extends StatefulWidget {
   final Object? preferredAddressId;
   final Map<String, dynamic>? preferredAddress;
   final String? sourceRequestId;
+  final String? sharedRoomCode;
+  final String? sharedHostId;
 
   const CheckoutScreen({
     super.key,
@@ -30,6 +32,8 @@ class CheckoutScreen extends StatefulWidget {
     this.preferredAddressId,
     this.preferredAddress,
     this.sourceRequestId,
+    this.sharedRoomCode,
+    this.sharedHostId,
   });
 
   @override
@@ -134,7 +138,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     try {
       pricingRes = await _supabase
-          .rpc('calculate_cart_total', params: {'p_items': widget.cartItems})
+          .rpc('calculate_cart_total', params: {
+            'p_items': widget.cartItems,
+            'p_user_id': user.id,
+          })
           .withTimeout(NetworkTimeouts.standard) as Map<String, dynamic>?;
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to calculate cart total');
@@ -315,7 +322,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   bool get _coinsAccepted => cartAcceptsHotpotCoins(widget.cartItems);
 
-  double get _packagingFee => _loyaltyPackaging;
+  double get _packagingFee {
+    if (_serverPricing != null && _serverPricing!.containsKey('packaging_fee')) {
+      return parseMoney(_serverPricing!['packaging_fee'], _loyaltyPackaging);
+    }
+    return _loyaltyPackaging;
+  }
 
   double get _subTotalBeforeCoins =>
       _foodTotal + _packagingFee + _deliveryFee + _selectedTip;
@@ -345,6 +357,33 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final user = _supabase.auth.currentUser;
       if (user == null) throw Exception('Authentication session expired');
       if (widget.cartItems.isEmpty) throw Exception('Your cart is empty');
+      if (!canPaySharedCart(
+        roomCode: widget.sharedRoomCode,
+        hostId: widget.sharedHostId,
+        userId: user.id,
+      )) {
+        throw Exception('Only the group host can pay for this cart.');
+      }
+
+      final chefIds = widget.cartItems
+          .map((item) => item['chef_id']?.toString() ?? item['chefId']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList();
+      if (chefIds.isNotEmpty) {
+        try {
+          final kitchens = await _supabase
+              .from('chef_profiles')
+              .select('user_id, is_open')
+              .inFilter('user_id', chefIds)
+              .withTimeout(NetworkTimeouts.short);
+          if (kitchens.any((row) => !isChefKitchenOpen(Map<String, dynamic>.from(row)))) {
+            throw Exception(kitchenClosedCheckoutMessage(charged: false));
+          }
+        } catch (e) {
+          if (isKitchenClosedCheckoutError(e)) rethrow;
+        }
+      }
 
       if (_applyCoins && _coinsAccepted && _grandTotal < 1) {
         await _placeCoinsOnlyOrder();
@@ -377,6 +416,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (data['success'] != true) {
         if (isSoldOutCheckoutError(data['error'], data)) {
           throw Exception(soldOutCheckoutMessage(charged: false));
+        }
+        if (isKitchenClosedCheckoutError(data['error'], data)) {
+          throw Exception(kitchenClosedCheckoutMessage(charged: false));
         }
         throw Exception(data['error'] ?? 'Could not initialize secure payment order');
       }
@@ -412,12 +454,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Payment initialization failed');
       _releaseInventoryHold();
       setState(() => _isCheckingOut = false);
-      _showSnackBar(
-        isSoldOutCheckoutError(e)
-            ? soldOutCheckoutMessage(charged: false)
-            : 'Initialization Failed: ${networkErrorMessage(e)}',
-        isError: true,
-      );
+      _showSnackBar(checkoutInitErrorMessage(e), isError: true);
     }
   }
 
@@ -553,6 +590,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         signature: null,
       );
       if (placed == null || placed['success'] != true) {
+        if (isKitchenClosedCheckoutError(placed?['error'], placed)) {
+          throw Exception(kitchenClosedCheckoutMessage(charged: false));
+        }
         throw Exception(placed?['error'] ?? 'Could not record the coin-paid order.');
       }
       _orderRecorded = true;
@@ -560,6 +600,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (orderId != null && orderId.isNotEmpty) {
         AlertService.notifyOrder(orderId: orderId, type: 'INSERT');
       }
+      await _persistOrderDropoff(orderId);
       await _markSourceRequestOrdered(orderId);
       if (mounted) {
         widget.onOrderPlacedSuccess();
@@ -569,6 +610,30 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     } finally {
       _placingOrder = false;
       if (mounted) setState(() => _isCheckingOut = false);
+    }
+  }
+
+  Future<void> _persistOrderDropoff(String? orderId) async {
+    if (orderId == null || orderId.isEmpty || !_hasDelivery) return;
+    final lat = addressCoordinate(_selectedAddressData, latitude: true);
+    final lng = addressCoordinate(_selectedAddressData, latitude: false);
+    if (lat == null || lng == null) return;
+    try {
+      await _supabase.rpc('set_order_dropoff', params: {
+        'p_order_id': orderId,
+        'p_lat': lat,
+        'p_lng': lng,
+      }).withTimeout(NetworkTimeouts.short);
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to persist order dropoff via RPC');
+      try {
+        await _supabase.from('orders').update({
+          'delivery_lat': lat,
+          'delivery_lng': lng,
+        }).eq('id', orderId);
+      } catch (retry, retryStack) {
+        FirebaseCrashlytics.instance.recordError(retry, retryStack, reason: 'Failed to persist order dropoff');
+      }
     }
   }
 
@@ -608,8 +673,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           return Map<String, dynamic>.from(rpcResponse);
         }
         lastError = rpcResponse is Map ? rpcResponse['error'] : rpcResponse;
-        if (rpcResponse is Map && isSoldOutCheckoutError(rpcResponse['error'], Map<String, dynamic>.from(rpcResponse))) {
-          return Map<String, dynamic>.from(rpcResponse);
+        if (rpcResponse is Map) {
+          final data = Map<String, dynamic>.from(rpcResponse);
+          if (isSoldOutCheckoutError(data['error'], data) ||
+              isKitchenClosedCheckoutError(data['error'], data)) {
+            return data;
+          }
         }
       } catch (e) {
         lastError = e;
@@ -726,6 +795,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (orderId != null && orderId.isNotEmpty) {
         AlertService.notifyOrder(orderId: orderId, type: 'INSERT');
       }
+      await _persistOrderDropoff(orderId);
       await _markSourceRequestOrdered(orderId);
 
       if (mounted) {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../utils/app_theme.dart';
+import '../utils/helpers.dart';
 
 /// Theme-following meal review sheet. Returns `true` when a review is submitted.
 class MealReviewDialog extends StatefulWidget {
@@ -111,6 +112,79 @@ class _MealReviewDialogState extends State<MealReviewDialog> {
               : const Text('Submit'),
         ),
       ],
+    );
+  }
+}
+
+class OrderItemReviewButtons extends StatelessWidget {
+  const OrderItemReviewButtons({
+    super.key,
+    required this.items,
+    required this.onRate,
+  });
+
+  final List<Map<String, dynamic>> items;
+  final void Function(Map<String, dynamic> item) onRate;
+
+  @override
+  Widget build(BuildContext context) {
+    final meals = uniqueReviewableOrderItems(items);
+    final ids = meals
+        .map(mealIdFromOrderItem)
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toList();
+    final uid = Supabase.instance.client.auth.currentUser?.id ?? '';
+
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: ids.isEmpty || uid.isEmpty
+          ? Future.value(const [])
+          : Supabase.instance.client
+              .from('reviews')
+              .select('meal_id, rating')
+              .eq('customer_id', uid)
+              .inFilter('meal_id', ids)
+              .then((rows) => List<Map<String, dynamic>>.from(rows as List)),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const SizedBox();
+        }
+        final rated = <String, Map<String, dynamic>>{
+          for (final row in snap.data ?? const <Map<String, dynamic>>[])
+            if ((row['meal_id']?.toString() ?? '').isNotEmpty) row['meal_id'].toString(): row,
+        };
+        return Column(
+          children: [
+            for (final item in meals)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _button(context, item, rated[mealIdFromOrderItem(item) ?? '']),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _button(
+    BuildContext context,
+    Map<String, dynamic> item,
+    Map<String, dynamic>? existing,
+  ) {
+    final title = item['title']?.toString() ?? item['name']?.toString() ?? 'this meal';
+    if (existing != null) {
+      return OutlinedButton.icon(
+        icon: const Icon(Icons.star, size: 18),
+        label: Text('Rated ${existing['rating']}/5 · $title'),
+        onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('You have already rated $title.')),
+        ),
+      );
+    }
+    return OutlinedButton.icon(
+      icon: const Icon(Icons.star_border, size: 18),
+      label: Text('Rate $title'),
+      onPressed: () => onRate(item),
     );
   }
 }

@@ -6,6 +6,7 @@ type OrderAlert = {
   body: string
   notifyChef: boolean
   notifyCustomer: boolean
+  notifyDriver: boolean
 }
 
 function mealTitleFromItems(items: unknown): string {
@@ -42,6 +43,7 @@ export function orderAlertCopy(opts: {
       body: `You have a new order for ${mealTitle}.`,
       notifyChef: true,
       notifyCustomer: false,
+      notifyDriver: false,
     }
   }
   if (current.includes('cancel')) {
@@ -50,6 +52,7 @@ export function orderAlertCopy(opts: {
       body: `The order for ${mealTitle} was cancelled. A refund is issued if you paid online.`,
       notifyChef: true,
       notifyCustomer: true,
+      notifyDriver: false,
     }
   }
   if (current.includes('deliver') || current.includes('complet')) {
@@ -58,6 +61,7 @@ export function orderAlertCopy(opts: {
       body: 'Your order has arrived. Rate the kitchen when you can.',
       notifyChef: false,
       notifyCustomer: true,
+      notifyDriver: false,
     }
   }
   if (current.includes('out for delivery') || current.includes('out_for_delivery')) {
@@ -66,6 +70,7 @@ export function orderAlertCopy(opts: {
       body: `${mealTitle} is out for delivery. Track it from Orders.`,
       notifyChef: false,
       notifyCustomer: true,
+      notifyDriver: false,
     }
   }
   if (current.includes('assign')) {
@@ -74,6 +79,7 @@ export function orderAlertCopy(opts: {
       body: 'A delivery partner is on the way to the kitchen.',
       notifyChef: false,
       notifyCustomer: true,
+      notifyDriver: true,
     }
   }
   if (current.includes('ready')) {
@@ -82,6 +88,7 @@ export function orderAlertCopy(opts: {
       body: `${mealTitle} is ready for pickup.`,
       notifyChef: false,
       notifyCustomer: true,
+      notifyDriver: true,
     }
   }
   if (current.includes('prepar') || current.includes('confirm')) {
@@ -90,6 +97,7 @@ export function orderAlertCopy(opts: {
       body: `Your order for ${mealTitle} is being prepared.`,
       notifyChef: false,
       notifyCustomer: true,
+      notifyDriver: false,
     }
   }
   return null
@@ -172,7 +180,7 @@ export async function dispatchOrderAlert(
 ) {
   const { data: order } = await admin
     .from('orders')
-    .select('id, status, items, chef_id, customer_id')
+    .select('id, status, items, chef_id, customer_id, driver_id, delivery_partner_id')
     .eq('id', orderId)
     .maybeSingle()
   if (!order) return { sent: 0 }
@@ -189,6 +197,21 @@ export async function dispatchOrderAlert(
   const targets: string[] = []
   if (copy.notifyChef && order.chef_id) targets.push(String(order.chef_id))
   if (copy.notifyCustomer && order.customer_id) targets.push(String(order.customer_id))
+  if (copy.notifyDriver) {
+    const assigned = order.driver_id ?? order.delivery_partner_id
+    if (assigned) {
+      targets.push(String(assigned))
+    } else {
+      const { data: drivers } = await admin
+        .from('driver_profiles')
+        .select('user_id')
+        .eq('is_available', true)
+        .limit(40)
+      for (const driver of drivers ?? []) {
+        if (driver.user_id) targets.push(String(driver.user_id))
+      }
+    }
+  }
 
   for (const userId of [...new Set(targets)]) {
     await notifyUser(admin, userId, copy.title, copy.body, data)

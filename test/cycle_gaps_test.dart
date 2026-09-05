@@ -35,6 +35,36 @@ void main() {
     });
   });
 
+  group('kitchen closed checkout', () {
+    test('reads the kitchen_closed code and copy', () {
+      expect(isKitchenClosedCheckoutError(null, {'code': 'kitchen_closed'}), isTrue);
+      expect(isKitchenClosedCheckoutError('This kitchen is closed right now'), isTrue);
+      expect(isKitchenClosedCheckoutError('sold out'), isFalse);
+      expect(kitchenClosedCheckoutMessage(charged: false), contains('Nothing was charged'));
+    });
+  });
+
+  group('chefPayoutStatusLabel', () {
+    test('labels settlement states chefs can act on', () {
+      expect(chefPayoutStatusLabel('released'), 'Payout released');
+      expect(chefPayoutStatusLabel('awaiting_account'), contains('bank account'));
+      expect(chefPayoutStatusLabel('failed'), contains('retry'));
+      expect(chefPayoutStatusLabel(null), 'Payout pending');
+    });
+  });
+
+  group('uniqueReviewableOrderItems', () {
+    test('keeps one row per meal so every dish can be rated', () {
+      final unique = uniqueReviewableOrderItems([
+        {'source_meal_id': 'dal', 'title': 'Dal'},
+        {'source_meal_id': 'dal', 'title': 'Dal'},
+        {'source_meal_id': 'rice', 'title': 'Rice'},
+      ]);
+      expect(unique, hasLength(2));
+      expect(unique.map((item) => item['title']), ['Dal', 'Rice']);
+    });
+  });
+
   group('dietSkipReason', () {
     test('blocks an allergen listed on the customer profile', () {
       expect(

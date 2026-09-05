@@ -428,5 +428,6 @@ void main() {
     );
     expect(customerHubTabIndex('orders'), 2);
     expect(chefHubTabIndex('leads'), 4);
+    expect(chefHubTabIndex('supplies'), 5);
   });
 }

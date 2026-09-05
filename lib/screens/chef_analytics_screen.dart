@@ -7,7 +7,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
-import '../utils/app_theme.dart';
+import '../utils/helpers.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
 
@@ -115,11 +115,7 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
             final title = item['title']?.toString() ?? item['name']?.toString() ?? 'Dish';
             final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
             
-            // Safely parse pricing, falling back across known variations
-            final priceStr = item['discountedPrice']?.toString() ?? 
-                             item['basePrice']?.toString() ?? 
-                             item['price']?.toString() ?? '0';
-            final price = double.tryParse(priceStr) ?? 0.0;
+            final price = lineItemUnitPrice(Map<String, dynamic>.from(item));
             
             final itemTotal = price * qty;
             orderRev += itemTotal;

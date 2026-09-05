@@ -1,5 +1,6 @@
 // lib/screens/chef_hub.dart
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -17,6 +18,7 @@ import '../models/cart_enums.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/app_status_badge.dart';
+import '../models/app_role.dart';
 import '../services/order_lifecycle.dart';
 import '../services/auth_session.dart';
 import '../services/invoice_pdf_service.dart';
@@ -51,6 +53,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
 
   String get _currentUserId => _supabase.auth.currentUser?.id ?? '';
   String get _currentUserEmail => _supabase.auth.currentUser?.email ?? 'Chef';
+  Map<String, dynamic>? _chefPin;
 
   // Resolved customer_id -> display name cache (orders only store customer_id).
   final Map<String, String> _customerNameCache = {};
@@ -59,7 +62,9 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   @override
   void initState() {
     super.initState();
+    unawaited(AuthSession.ensureHubRole(context, AppRole.chef));
     _loadKitchenStatus();
+    _loadChefPin();
   }
 
   // --- Order data helpers (orders use the legacy schema: `items` JSON text,
@@ -235,6 +240,20 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       // Leave uncached so it can be retried on the next rebuild.
     } finally {
       _customerNameLoading.remove(customerId);
+    }
+  }
+
+  Future<void> _loadChefPin() async {
+    if (_currentUserId.isEmpty) return;
+    try {
+      final row = await _supabase
+          .from('users')
+          .select('lat, lng, latitude, longitude')
+          .eq('id', _currentUserId)
+          .maybeSingle();
+      if (row != null && mounted) setState(() => _chefPin = row);
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to load chef kitchen pin');
     }
   }
 
@@ -481,8 +500,16 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 .from('customer_requests')
                 .stream(primaryKey: ['id']),
             builder: (context, reqSnapshot) {
-              final visibleLeads = (reqSnapshot.data ?? []).where(_isVisibleLead).toList()
-                ..sort((a, b) => (b['created_at'] ?? '').toString().compareTo((a['created_at'] ?? '').toString()));
+              final visibleLeads = (reqSnapshot.data ?? []).where((req) {
+                if (!_isVisibleLead(req)) return false;
+                if (_leadStatus(req) != 'open') return true;
+                return isCateringLeadInRange(req, _chefPin);
+              }).toList()
+                ..sort((a, b) {
+                  final da = cateringLeadDistanceKm(a, _chefPin) ?? 9999;
+                  final db = cateringLeadDistanceKm(b, _chefPin) ?? 9999;
+                  return da.compareTo(db);
+                });
               final openLeadsCount = visibleLeads.where((req) => _leadStatus(req) == 'open').length;
 
               final List<Widget> tabs = [
@@ -1192,6 +1219,12 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               Text('${delivered.length} completed • Chef share ~₹${chefShare.toStringAsFixed(0)} after 15% platform fee',
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+              const SizedBox(height: 4),
+              Text(
+                '${delivered.where((o) => (o['payout_status']?.toString().toLowerCase() ?? '') == 'released').length} payouts released',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+              ),
             ],
           ),
         ).popIn(),
@@ -1222,6 +1255,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
           ...history.asMap().entries.map((entry) {
             final h = entry.value;
             final isCancelled = _historyFilter == 'Cancelled';
+            final settled = parseMoney(h['chef_payout']);
             return AppCard(
               margin: const EdgeInsets.only(bottom: 10),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1235,9 +1269,18 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                           color: isCancelled ? AppTheme.error : AppTheme.success),
                     ),
                     title: Text(_orderTitle(h), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                    subtitle: Text(formatOrderDate(h['created_at']?.toString() ?? '')),
-                    trailing: Text('₹${_orderTotal(h).toStringAsFixed(2)}',
-                        style: const TextStyle(fontWeight: FontWeight.w800)),
+                    subtitle: Text(
+                      isCancelled
+                          ? formatOrderDate(h['created_at']?.toString() ?? '')
+                          : '${formatOrderDate(h['created_at']?.toString() ?? '')}\n${chefPayoutStatusLabel(h['payout_status']?.toString())}',
+                    ),
+                    isThreeLine: !isCancelled,
+                    trailing: Text(
+                      !isCancelled && settled > 0
+                          ? '₹${settled.toStringAsFixed(0)}'
+                          : '₹${_orderTotal(h).toStringAsFixed(2)}',
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
                   ),
                   if (!isCancelled)
                     Align(
@@ -1260,6 +1303,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       request['status']?.toString().toLowerCase().trim() ?? '';
 
   bool _isVisibleLead(Map<String, dynamic> request) {
+    if (isPackagingSupplyRequest(request)) return false;
     final status = _leadStatus(request);
     if (status == 'open') return true;
     final mine = request['accepted_chef_id']?.toString() == _currentUserId;
@@ -1337,6 +1381,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             'status': 'Accepted',
             'accepted_chef_id': _currentUserId,
             'accepted_chef_name': _chefDisplayName,
+            'remaining_quantity': 0,
           })
           .eq('id', request['id'])
           .eq('status', 'Open')
@@ -1374,6 +1419,9 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         final isOpen = status == 'open';
         final awaitingPay = status == 'accepted';
         final paid = status == 'ordered' || status == 'paid';
+        final remaining = req['remaining_quantity'] ?? req['quantity'];
+        final km = cateringLeadDistanceKm(req, _chefPin);
+        final distance = km == null ? 'Distance unknown' : '${km.toStringAsFixed(1)} km away';
         return AppCard(
           margin: const EdgeInsets.only(bottom: 12),
           child: Column(
@@ -1405,8 +1453,10 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              Text('Quantity: ${req['quantity']} • Needed by: ${req['target_date_time'] ?? 'ASAP'}',
-                  style: const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+              Text(
+                'Quantity: ${req['quantity']} • Left: $remaining • $distance • Needed by: ${req['target_date_time'] ?? 'ASAP'}',
+                style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+              ),
               const SizedBox(height: 14),
               if (isOpen)
                 GradientButton(

@@ -258,7 +258,6 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
         'driving_license_no': dlNumber,
         'insurance_policy_no': insurance,
         if (isFullAadhaar(aadhaarInput)) 'aadhaar_masked': maskAadhaar(aadhaarInput),
-        'role': 'Driver',
         if (_avatarUrl != null) 'avatar_url': _avatarUrl,
         'updated_at': DateTime.now().toIso8601String(),
       };

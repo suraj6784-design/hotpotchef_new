@@ -68,6 +68,7 @@ class ReorderService {
     final skipped = <String>[];
     final seenMealIds = <String>{};
     final chefIds = <String>{};
+    final kitchenOpen = <String, bool>{};
     String? dietPref;
     String? allergies;
     try {
@@ -80,6 +81,23 @@ class ReorderService {
             .maybeSingle();
         dietPref = prefs?['dietary_preference']?.toString();
         allergies = prefs?['allergies']?.toString();
+      }
+    } catch (_) {}
+
+    try {
+      final ids = items
+          .map((item) => item['chef_id']?.toString() ?? item['chefId']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList();
+      if (ids.isNotEmpty) {
+        final rows = await Supabase.instance.client
+            .from('chef_profiles')
+            .select('user_id, is_open')
+            .inFilter('user_id', ids);
+        for (final row in rows) {
+          kitchenOpen[row['user_id'].toString()] = isChefKitchenOpen(Map<String, dynamic>.from(row));
+        }
       }
     } catch (_) {}
 
@@ -120,6 +138,11 @@ class ReorderService {
 
       final chefId = meal['chef_id']?.toString() ?? item['chef_id']?.toString() ?? '';
       if (chefId.isNotEmpty) chefIds.add(chefId);
+
+      if (chefId.isNotEmpty && kitchenOpen[chefId] == false) {
+        skipped.add('$title (kitchen closed)');
+        continue;
+      }
 
       if (!isMealReorderable(meal)) {
         skipped.add(title);

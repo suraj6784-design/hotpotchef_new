@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/helpers.dart';
+import '../widgets/app_widgets.dart';
 import 'map_picker_screen.dart';
 
 class CustomerBulkRequestScreen extends StatefulWidget {
@@ -104,19 +105,21 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
         'title': _titleController.text.trim(),
         'description': _descController.text.trim(),
         'quantity': quantity,
-        'remaining_quantity': quantity,
         'target_date_time': targetDateTime.toUtc().toIso8601String(),
         'budget': budget,
         'service_type': _selectedServiceType,
         'delivery_address': _addressController.text.trim(),
-        'latitude': _latitude,
-        'longitude': _longitude,
         'status': 'Open',
         'accepted_chefs': [],
         'created_at': DateTime.now().toIso8601String(),
       };
+      final extras = <String, dynamic>{
+        'remaining_quantity': quantity,
+        'latitude': _latitude,
+        'longitude': _longitude,
+      };
 
-      await _insertCustomerRequest(payload);
+      await _insertCustomerRequest(payload, extras);
 
       if (mounted) {
         _showSnackBar('Bulk request broadcasted successfully! Local chefs have been notified. 🎉');
@@ -130,23 +133,62 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
     }
   }
 
-  Future<void> _insertCustomerRequest(Map<String, dynamic> payload) async {
-    final body = Map<String, dynamic>.from(payload);
-    for (var attempt = 0; attempt < 8; attempt++) {
+  Future<void> _insertCustomerRequest(
+    Map<String, dynamic> payload,
+    Map<String, dynamic> extras,
+  ) async {
+    final inserted = await _insertKnownColumns(payload);
+    if (extras.isEmpty) return;
+
+    final requestId = inserted?['id']?.toString();
+    var body = Map<String, dynamic>.from(extras);
+    for (var attempt = 0; attempt < 6; attempt++) {
       try {
-        await _supabase.from('customer_requests').insert(body);
+        final query = _supabase.from('customer_requests').update(body);
+        if (requestId != null && requestId.isNotEmpty) {
+          await query.eq('id', requestId);
+        } else {
+          await query
+              .eq('customer_id', payload['customer_id'])
+              .eq('title', payload['title'])
+              .eq('created_at', payload['created_at']);
+        }
         return;
       } on PostgrestException catch (e) {
+        if (e.code != 'PGRST204') return;
+        final missing = _missingSchemaColumn(e.message);
+        if (missing == null || !body.containsKey(missing)) return;
+        body.remove(missing);
+        if (body.isEmpty) return;
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>?> _insertKnownColumns(Map<String, dynamic> payload) async {
+    final body = Map<String, dynamic>.from(payload);
+    Object? lastError;
+    for (var attempt = 0; attempt < 8; attempt++) {
+      try {
+        try {
+          return await _supabase.from('customer_requests').insert(body).select('id').maybeSingle();
+        } on PostgrestException catch (e) {
+          if (e.code == 'PGRST204') rethrow;
+          await _supabase.from('customer_requests').insert(body);
+          return null;
+        }
+      } on PostgrestException catch (e) {
+        lastError = e;
         if (e.code != 'PGRST204') rethrow;
         final missing = _missingSchemaColumn(e.message);
         if (missing == null || !body.containsKey(missing)) rethrow;
         body.remove(missing);
       }
     }
-    throw const PostgrestException(
-      message: 'Could not find a matching customer_requests schema',
-      code: 'PGRST204',
-    );
+    throw lastError ??
+        const PostgrestException(
+          message: 'Could not save this request',
+          code: 'PGRST204',
+        );
   }
 
   String? _missingSchemaColumn(String? message) {
@@ -182,7 +224,7 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
       appBar: AppBar(
         title: Row(
           children: [
-            ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.asset('assets/app_icon.png', height: 24, width: 24)),
+            const AppLogo(size: 24),
             const SizedBox(width: 8),
             Text('Broadcast Bulk Pre-Order', style: TextStyle(color: AppTheme.onSurfaceOf(context), fontWeight: FontWeight.bold)),
           ],

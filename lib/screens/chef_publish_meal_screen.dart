@@ -9,8 +9,11 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/network.dart';
 import '../utils/helpers.dart';
+import '../utils/pricing_calculator.dart';
 import '../models/cart_enums.dart';
 import '../models/pricing_models.dart';
+import '../models/app_role.dart';
+import '../services/auth_session.dart';
 import '../services/reorder_service.dart';
 
 class _AddOnDraft {
@@ -119,10 +122,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
 
     // Offer fields
     final offerStr = meal['offer_type']?.toString() ?? 'none';
-    _selectedOfferType = OfferType.values.firstWhere(
-      (e) => e.name.toLowerCase() == offerStr.toLowerCase(),
-      orElse: () => OfferType.none,
-    );
+    _selectedOfferType = OfferType.fromString(offerStr);
     _discountController.text = meal['discount_value']?.toString() ?? '';
     _maxDiscountCapController.text = meal['max_discount_cap']?.toString() ?? '';
     _promoController.text = meal['promo_code']?.toString() ?? '';
@@ -261,6 +261,10 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     try {
       final user = _supabase.auth.currentUser;
       if (user == null) throw Exception('Authentication session expired');
+      final role = await AuthSession.resolveRole();
+      if (role != AppRole.chef) {
+        throw Exception('Only chef accounts can publish meals.');
+      }
 
       var chefName = chefDisplayName({
         'name': user.userMetadata?['name'],
@@ -329,9 +333,19 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
         offerExpiryIso = localExpiry.toUtc().toIso8601String();
       }
 
-      final discountVal = double.tryParse(_discountController.text.trim()) ?? 0.0;
-      final maxCapVal = double.tryParse(_maxDiscountCapController.text.trim()) ?? 0.0;
       final promoCode = _promoController.text.trim().toUpperCase();
+      var discountVal = double.tryParse(_discountController.text.trim()) ?? 0.0;
+      if (discountVal <= 0 &&
+          (_selectedOfferType == OfferType.percentage ||
+              _selectedOfferType == OfferType.flashSale ||
+              _selectedOfferType == OfferType.flat)) {
+        final hinted = PricingCalculator.numericSuffixFromPromoCode(promoCode);
+        if (hinted != null &&
+            (_selectedOfferType == OfferType.flat || hinted <= 90)) {
+          discountVal = hinted;
+        }
+      }
+      final maxCapVal = double.tryParse(_maxDiscountCapController.text.trim()) ?? 0.0;
       final promoExtraVal = double.tryParse(_promoDiscountController.text.trim()) ?? 0.0;
       final hasPromoExtra = _promoExtraType != OfferType.none && promoExtraVal > 0;
 

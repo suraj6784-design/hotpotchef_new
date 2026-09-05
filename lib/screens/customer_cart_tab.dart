@@ -655,6 +655,18 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
       return;
     }
 
+    if (!canPaySharedCart(
+      roomCode: cartState.sharedRoomCode,
+      hostId: cartState.sharedHostId,
+      userId: Supabase.instance.client.auth.currentUser?.id,
+    )) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Only the group host can pay for this cart.')),
+      );
+      return;
+    }
+
     // Validate single-vendor requirement
     final canProceed = await _verifySingleVendorOrPrompt(cartState);
     if (!canProceed || !mounted) return;
@@ -668,6 +680,8 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
           cartItems: checkoutItems,
           preferredAddressId: ref.read(selectedDeliveryAddressProvider)?['id'],
           preferredAddress: ref.read(selectedDeliveryAddressProvider),
+          sharedRoomCode: cartState.sharedRoomCode,
+          sharedHostId: cartState.sharedHostId,
           onOrderPlacedSuccess: () {
             ref.read(cartProvider.notifier).clearCart();
             widget.onOrderPlacedSuccess();

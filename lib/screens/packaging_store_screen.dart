@@ -1,9 +1,13 @@
 // lib/screens/packaging_store_screen.dart
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
+import '../models/app_role.dart';
+import '../services/auth_session.dart';
 import '../utils/helpers.dart';
 import '../utils/support.dart';
 import '../widgets/app_widgets.dart';
@@ -17,8 +21,25 @@ class PackagingStoreScreen extends StatefulWidget {
 
 class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
   final _supabase = Supabase.instance.client;
+  bool _checkingAccess = true;
+  bool _isChef = false;
   bool _isLoadingChef = false;
   String? _busyItemKey;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_verifyChefAccess());
+  }
+
+  Future<void> _verifyChefAccess() async {
+    final role = await AuthSession.resolveRole();
+    if (!mounted) return;
+    setState(() {
+      _isChef = role.canUsePackagingStore;
+      _checkingAccess = false;
+    });
+  }
 
   final List<Map<String, dynamic>> _catalog = const [
     {
@@ -52,7 +73,7 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
   ];
 
   Future<void> _requestSupply(Map<String, dynamic> item) async {
-    if (_isLoadingChef) return;
+    if (_isLoadingChef || !_isChef) return;
     final itemKey = item['id']?.toString() ?? item['title']?.toString() ?? '';
     setState(() {
       _isLoadingChef = true;
@@ -62,6 +83,20 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
     try {
       final user = _supabase.auth.currentUser;
       if (user == null) throw Exception('Session expired. Please sign in again.');
+
+      final role = await AuthSession.resolveRole();
+      if (!role.canUsePackagingStore) {
+        throw Exception('Packaging supplies are for chefs only.');
+      }
+
+      final kitchenProfile = await _supabase
+          .from('chef_profiles')
+          .select('user_id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+      if (kitchenProfile == null) {
+        throw Exception('Finish your kitchen profile before requesting packaging.');
+      }
 
       final userData = await _supabase
           .from('users')
@@ -95,7 +130,10 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Packaging supply request failed');
       final text = e.toString().replaceFirst('Exception: ', '');
       _showSnackBar(
-        text.contains('kitchen') || text.contains('sign in') || text.contains('Session')
+        text.contains('kitchen') ||
+            text.contains('sign in') ||
+            text.contains('Session') ||
+            text.contains('chefs only')
             ? text
             : 'Could not start this supply request. Please try again.',
         isError: true,
@@ -128,6 +166,21 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_checkingAccess) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (!_isChef) {
+      return Scaffold(
+        backgroundColor: AppTheme.canvasOf(context),
+        body: EmptyState(
+          icon: Icons.lock_outline_rounded,
+          title: 'Chefs only',
+          message: 'The packaging store is for kitchen accounts. Sign in as a chef to request supplies.',
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: AppTheme.canvasOf(context),
       appBar: AppBar(
@@ -143,14 +196,25 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
         iconTheme: IconThemeData(color: AppTheme.onSurfaceOf(context)),
       ),
       body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: _supabase
+            .from('customer_requests')
+            .stream(primaryKey: ['id'])
+            .eq('customer_id', _supabase.auth.currentUser?.id ?? ''),
+        builder: (context, orderSnap) {
+          final myOrders = (orderSnap.hasError ? const <Map<String, dynamic>>[] : (orderSnap.data ?? []))
+              .where(isPackagingSupplyRequest)
+              .toList()
+            ..sort((a, b) => (b['created_at'] ?? '').toString().compareTo((a['created_at'] ?? '').toString()));
+          return StreamBuilder<List<Map<String, dynamic>>>(
         stream: _supabase.from('packaging_inventory').stream(primaryKey: ['id']),
         builder: (context, snapshot) {
           final remoteItems = snapshot.hasError ? const <Map<String, dynamic>>[] : (snapshot.data ?? []);
           final items = remoteItems.isNotEmpty ? remoteItems : _catalog;
+          final extra = myOrders.isEmpty ? 0 : myOrders.length + 1;
 
           return ListView.builder(
             padding: const EdgeInsets.all(16),
-            itemCount: items.length + 1,
+            itemCount: items.length + 1 + extra,
             itemBuilder: (context, index) {
               if (index == 0) {
                 return Container(
@@ -169,7 +233,7 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
                           style: TextStyle(color: AppTheme.primary, fontSize: 18, fontWeight: FontWeight.bold)),
                       SizedBox(height: 4),
                       Text(
-                        'Request branded packaging for your kitchen. We confirm price and delivery on email or WhatsApp.',
+                        'Request branded packaging for your kitchen. It is saved as a HotPotChef request on your account. Email or WhatsApp is optional after that.',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
                       ),
@@ -178,6 +242,16 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
                 );
               }
 
+              if (index == items.length + 1) {
+                return const Padding(
+                  padding: EdgeInsets.fromLTRB(4, 12, 4, 10),
+                  child: Text('Your packaging requests', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                );
+              }
+              if (index > items.length + 1) {
+                final order = myOrders[index - items.length - 2];
+                return _PackagingOrderTile(order: order);
+              }
               final item = items[index - 1];
               final title = item['title']?.toString() ?? 'Packaging Supply';
               final desc = item['description']?.toString() ?? 'Standard branded packaging supplies for home kitchens.';
@@ -261,6 +335,34 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
             },
           );
         },
+      );
+        },
+      ),
+    );
+  }
+}
+
+class _PackagingOrderTile extends StatelessWidget {
+  const _PackagingOrderTile({required this.order});
+
+  final Map<String, dynamic> order;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = order['status']?.toString() ?? 'Pending';
+    final qty = order['quantity'] ?? 1;
+    final total = parseMoney(order['quoted_total'] ?? order['budget'] ?? order['total_price']);
+    final requestId = packagingRequestDisplayId(order);
+    return AppCard(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        title: Text(order['title']?.toString() ?? 'Packaging', style: const TextStyle(fontWeight: FontWeight.w800)),
+        subtitle: Text(
+          '${requestId.isEmpty ? 'Packaging request' : requestId} • Qty $qty • $status',
+          style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+        ),
+        trailing: Text('₹${total.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w900)),
       ),
     );
   }
@@ -291,11 +393,121 @@ class SupplyRequestSheet extends StatefulWidget {
 class _SupplyRequestSheetState extends State<SupplyRequestSheet> {
   late final String _requestId = newSupplyRequestId();
   int _quantity = 1;
+  bool _placing = false;
+  bool _placed = false;
 
   String get _itemTitle => widget.item['title']?.toString() ?? 'Packaging supply';
   String get _itemSku => widget.item['sku']?.toString() ?? widget.item['id']?.toString() ?? '';
   String get _itemDescription => widget.item['description']?.toString() ?? '';
   double? get _unitPrice => (widget.item['price'] as num?)?.toDouble();
+
+  double get _total => packagingOrderTotal(_unitPrice ?? 0, _quantity);
+
+  Future<void> _placeOrder() async {
+    if (_placing || _placed) return;
+    setState(() => _placing = true);
+    try {
+      final payload = packagingSupplyRequestPayload(
+        chefId: widget.chefUserId,
+        chefName: widget.chefName,
+        chefEmail: widget.chefEmail,
+        chefPhone: widget.chefPhone,
+        kitchenAddress: widget.kitchenAddress,
+        title: _itemTitle,
+        requestId: _requestId,
+        sku: _itemSku,
+        description: _itemDescription,
+        quantity: _quantity,
+        unitPrice: _unitPrice ?? 0,
+      );
+      final extras = <String, dynamic>{};
+      for (final key in const ['remaining_quantity', 'quoted_total', 'request_type']) {
+        if (payload.containsKey(key)) extras[key] = payload.remove(key);
+      }
+      await _insertCustomerRequest(payload, extras);
+      if (!mounted) return;
+      setState(() {
+        _placed = true;
+        _placing = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Request $_requestId is saved. We will confirm stock and delivery shortly.')),
+      );
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to save packaging request');
+      if (!mounted) return;
+      setState(() => _placing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not save this packaging request. Try again.')),
+      );
+    }
+  }
+
+  Future<void> _insertCustomerRequest(
+    Map<String, dynamic> payload,
+    Map<String, dynamic> extras,
+  ) async {
+    final client = Supabase.instance.client;
+    final inserted = await _insertKnownColumns(client, payload);
+    if (extras.isEmpty) return;
+
+    final requestId = inserted?['id']?.toString();
+    var body = Map<String, dynamic>.from(extras);
+    for (var attempt = 0; attempt < 6; attempt++) {
+      try {
+        final query = client.from('customer_requests').update(body);
+        if (requestId != null && requestId.isNotEmpty) {
+          await query.eq('id', requestId);
+        } else {
+          await query
+              .eq('customer_id', payload['customer_id'])
+              .eq('title', payload['title'])
+              .eq('created_at', payload['created_at']);
+        }
+        return;
+      } on PostgrestException catch (e) {
+        if (e.code != 'PGRST204') return;
+        final missing = _missingSchemaColumn(e.message);
+        if (missing == null || !body.containsKey(missing)) return;
+        body.remove(missing);
+        if (body.isEmpty) return;
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>?> _insertKnownColumns(
+    SupabaseClient client,
+    Map<String, dynamic> payload,
+  ) async {
+    final body = Map<String, dynamic>.from(payload);
+    Object? lastError;
+    for (var attempt = 0; attempt < 8; attempt++) {
+      try {
+        try {
+          return await client.from('customer_requests').insert(body).select('id').maybeSingle();
+        } on PostgrestException catch (e) {
+          if (e.code == 'PGRST204') rethrow;
+          await client.from('customer_requests').insert(body);
+          return null;
+        }
+      } on PostgrestException catch (e) {
+        lastError = e;
+        if (e.code != 'PGRST204') rethrow;
+        final missing = _missingSchemaColumn(e.message);
+        if (missing == null || !body.containsKey(missing)) rethrow;
+        body.remove(missing);
+      }
+    }
+    throw lastError ??
+        const PostgrestException(
+          message: 'Could not save this request',
+          code: 'PGRST204',
+        );
+  }
+
+  String? _missingSchemaColumn(String? message) {
+    return RegExp(r"Could not find the '([^']+)' column").firstMatch(message ?? '')?.group(1);
+  }
 
   String get _message => supportSupplyRequestMessage(
         requestId: _requestId,
@@ -334,7 +546,9 @@ class _SupplyRequestSheetState extends State<SupplyRequestSheet> {
             const Text('Request supplies', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
             const SizedBox(height: 6),
             Text(
-              'Send request $_requestId to HotPotChef support. Include quantity, then email or WhatsApp.',
+              _placed
+                  ? 'Request $_requestId is saved. Email or WhatsApp support if you want a faster confirmation.'
+                  : 'Save request $_requestId as a Packaging request on your kitchen account. Email or WhatsApp is optional after that.',
               style: const TextStyle(color: AppTheme.textMuted, fontSize: 13, height: 1.4),
             ),
             const SizedBox(height: 16),
@@ -354,6 +568,19 @@ class _SupplyRequestSheetState extends State<SupplyRequestSheet> {
                   icon: const Icon(Icons.add_circle_outline),
                 ),
               ],
+            ),
+            Text('Total ₹${_total.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: _placing || _placed ? null : _placeOrder,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(48),
+              ),
+              child: _placing
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : Text(_placed ? 'Request saved' : 'Save request', style: const TextStyle(fontWeight: FontWeight.w800)),
             ),
             const SizedBox(height: 8),
             ListTile(

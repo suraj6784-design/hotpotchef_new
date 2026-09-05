@@ -49,6 +49,15 @@ void main() {
     expect(cancelled!.notifyChef, isTrue);
     expect(cancelled.notifyCustomer, isTrue);
     expect(cancelled.title, 'Order cancelled');
+
+    final ready = orderAlertCopy(
+      status: 'Ready for Pickup',
+      isInsert: false,
+      previousStatus: 'Preparing',
+      mealTitle: 'Rice',
+    );
+    expect(ready!.notifyDriver, isTrue);
+    expect(ready.notifyCustomer, isTrue);
   });
 
   test('unchanged status is silent', () {
@@ -105,7 +114,7 @@ void main() {
     expect(cancelled.notifyCustomer, isFalse);
   });
 
-  test('inbox lists Order# groups and uses the latest preview', () {
+  test('inbox lists only Order# groups that already have a message', () {
     final rooms = mergeChatInboxRooms(
       myId: 'cust',
       orders: [
@@ -115,6 +124,13 @@ void main() {
           'customer_id': 'cust',
           'chef_id': 'chef',
           'created_at': '2026-01-01T00:00:00Z',
+        },
+        {
+          'id': 'silent-order',
+          'order_id': 'SILENT01-xyz',
+          'customer_id': 'cust',
+          'chef_id': 'chef',
+          'created_at': '2026-01-01T01:00:00Z',
         },
       ],
       requests: [
@@ -131,13 +147,42 @@ void main() {
           'meal_id': 'ABC12345-xyz',
           'content': 'On the way',
           'created_at': '2026-01-03T10:00:00Z',
+          'sender_id': 'chef',
         },
       ],
     );
 
+    expect(rooms, hasLength(1));
     expect(rooms.first.title, 'Order ABC12345');
     expect(rooms.first.preview, 'On the way');
-    expect(rooms.any((room) => room.title == 'Office lunch'), isTrue);
+    expect(rooms.any((room) => room.title == 'Office lunch'), isFalse);
+  });
+
+  test('inbox lists a catering chat after the first message', () {
+    final rooms = mergeChatInboxRooms(
+      myId: 'cust',
+      orders: const [],
+      requests: [
+        {
+          'id': 'req-1',
+          'title': 'Office lunch',
+          'customer_id': 'cust',
+          'accepted_chef_id': 'chef',
+          'created_at': '2026-01-02T00:00:00Z',
+        },
+      ],
+      messages: [
+        {
+          'meal_id': 'req-1',
+          'content': 'We can do 40 plates',
+          'created_at': '2026-01-03T10:00:00Z',
+          'sender_id': 'chef',
+        },
+      ],
+    );
+    expect(rooms, hasLength(1));
+    expect(rooms.first.title, 'Office lunch');
+    expect(rooms.first.preview, 'We can do 40 plates');
   });
 
   test('inbox keeps a sent message that has no matching order', () {

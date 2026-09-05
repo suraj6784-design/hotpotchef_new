@@ -21,6 +21,7 @@ import '../providers/delivery_preference.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/daily_streak_banner.dart';
+import '../widgets/live_offers_flash_banner.dart';
 import '../widgets/ai_recommendations_section.dart';
 import '../services/delivery_estimator_service.dart';
 import 'address_form_screen.dart';
@@ -697,6 +698,11 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             ],
           ),
           const SizedBox(height: 48),
+
+          LiveOffersFlashBanner(
+            excludedChefIds: _closedChefIds,
+            onOfferTap: (meal) => showMealDetailsDialog(context, meal, ref),
+          ),
 
           if (_hasDeliveryPin)
             Padding(

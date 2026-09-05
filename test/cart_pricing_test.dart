@@ -158,6 +158,43 @@ void main() {
     expect(lines.single['offer_type'], 'percentage');
   });
 
+  test('FESTIVE50 with a blank flash-sale percent is 50% off, not the 20% default', () {
+    final item = _buildItem(
+      quantity: 1,
+      mealDetails: {
+        'price': 100,
+        'offer_type': 'Flash Sale',
+        'discount_value': 0,
+        'promo_code': 'FESTIVE50',
+      },
+    );
+    expect(CartState(items: [item]).getEffectiveItemTotal(item), 100.0);
+
+    final unlocked = checkoutCartPayload(
+      [item.toCheckoutPayload()],
+      appliedPromoCode: 'FESTIVE50',
+    );
+    expect(unlocked.single['line_net'], 50.0);
+    expect(unlocked.single['price'], 50.0);
+  });
+
+  test('an explicit flash-sale percent is not overwritten by the code digits', () {
+    final item = _buildItem(
+      quantity: 1,
+      mealDetails: {
+        'price': 100,
+        'offer_type': 'flashSale',
+        'discount_value': 15,
+        'promo_code': 'FESTIVE50',
+      },
+    );
+    final unlocked = checkoutCartPayload(
+      [item.toCheckoutPayload()],
+      appliedPromoCode: 'FESTIVE50',
+    );
+    expect(unlocked.single['line_net'], 85.0);
+  });
+
   test('a promo code unlocks a gated meal offer at checkout', () {
     final item = _buildItem(
       quantity: 2,

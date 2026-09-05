@@ -18,6 +18,9 @@ enum AppRole {
   /// Only diners invite friends and earn on a first customer order.
   bool get usesReferral => this == AppRole.customer;
 
+  /// Kitchen supply requests are chef-only. Diners and drivers never use this store.
+  bool get canUsePackagingStore => this == AppRole.chef;
+
   String get hubPath {
     switch (this) {
       case AppRole.customer:
@@ -42,4 +45,33 @@ enum AppRole {
         return AppRole.customer;
     }
   }
+}
+
+const kChefOnlyRoutes = {
+  '/chef-hub',
+  '/chef-analytics',
+  '/chef-profile',
+  '/chef-publish-meal',
+};
+
+const kDriverOnlyRoutes = {
+  '/driver-hub',
+  '/driver-profile',
+  '/driver-id-card',
+};
+
+const kCustomerAccountRoutes = {
+  '/customer-hub',
+  '/customer-profile',
+  '/referral',
+  '/order-history',
+  '/bulk-request',
+};
+
+/// Signed-in users may only open the hub and account screens for their role.
+bool roleCanOpenAuthenticatedPath(AppRole role, String path) {
+  if (kChefOnlyRoutes.contains(path)) return role == AppRole.chef;
+  if (kDriverOnlyRoutes.contains(path)) return role == AppRole.driver;
+  if (kCustomerAccountRoutes.contains(path)) return role == AppRole.customer;
+  return true;
 }

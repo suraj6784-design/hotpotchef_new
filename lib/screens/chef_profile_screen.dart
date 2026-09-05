@@ -9,7 +9,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'map_picker_screen.dart';
 import '../utils/app_page.dart';
-import '../models/app_role.dart';
 import '../utils/helpers.dart';
 import '../utils/pinned_address.dart';
 import '../utils/gst_invoice.dart';
@@ -365,7 +364,6 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
         'name': name,
         'full_name': name,
         'phone': phone,
-        'role': AppRole.chef.storageValue,
         'fssai_number': fssai,
         'gstin': _gstinController.text.trim().toUpperCase(),
         'address': formattedAddress,
@@ -387,7 +385,11 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
       try {
         await _supabase
             .from('meals')
-            .update(kitchenPinMealFields(_latitude!, _longitude!))
+            .update({
+              ...kitchenPinMealFields(_latitude!, _longitude!),
+              'fssai_number': fssai,
+              'hosting_address': formattedAddress,
+            })
             .eq('chef_id', user.id);
       } catch (e, stack) {
         FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chef kitchen pin meal sync failed');

@@ -152,6 +152,8 @@ class AlertService {
 
     final isChef = row['chef_id']?.toString() == uid;
     final isCustomer = row['customer_id']?.toString() == uid;
+    final isDriver = row['driver_id']?.toString() == uid ||
+        row['delivery_partner_id']?.toString() == uid;
     if (copy.notifyChef && isChef) {
       _show(
         '${row['id']}-${row['status']}',
@@ -172,6 +174,16 @@ class AlertService {
           role: 'customer',
         ),
       );
+    } else if (copy.notifyDriver && isDriver) {
+      _show(
+        '${row['id']}-${row['status']}',
+        copy.title,
+        copy.body,
+        path: alertOpenPath(
+          {'order_id': row['id']?.toString(), 'status': row['status']?.toString()},
+          role: 'driver',
+        ),
+      );
     }
   }
 
@@ -180,6 +192,7 @@ class AlertService {
     Map<String, dynamic>? previous,
     required bool isInsert,
   }) {
+    if (isPackagingSupplyRequest(row)) return;
     final uid = _supabase.auth.currentUser?.id;
     if (uid == null) return;
 

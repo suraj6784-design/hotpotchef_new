@@ -6,12 +6,14 @@ class OrderAlertCopy {
     required this.body,
     required this.notifyChef,
     required this.notifyCustomer,
+    this.notifyDriver = false,
   });
 
   final String title;
   final String body;
   final bool notifyChef;
   final bool notifyCustomer;
+  final bool notifyDriver;
 }
 
 String mealTitleFromItems(dynamic items) {
@@ -97,6 +99,7 @@ OrderAlertCopy? orderAlertCopy({
       body: 'A delivery partner is on the way to the kitchen.',
       notifyChef: false,
       notifyCustomer: true,
+      notifyDriver: true,
     );
   }
   if (current.contains('ready')) {
@@ -105,6 +108,7 @@ OrderAlertCopy? orderAlertCopy({
       body: '$mealTitle is ready for pickup.',
       notifyChef: false,
       notifyCustomer: true,
+      notifyDriver: true,
     );
   }
   if (current.contains('prepar') || current.contains('confirm')) {

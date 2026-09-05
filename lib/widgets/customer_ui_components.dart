@@ -294,6 +294,28 @@ Future<bool> addMealToCartWithConflict({
     }
   } catch (_) {}
 
+  try {
+    final chefId = meal['chef_id']?.toString() ?? meal['chefId']?.toString() ?? '';
+    if (chefId.isNotEmpty) {
+      final kitchen = await Supabase.instance.client
+          .from('chef_profiles')
+          .select('is_open')
+          .eq('user_id', chefId)
+          .maybeSingle();
+      if (!isChefKitchenOpen(kitchen)) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('This kitchen is closed right now.'),
+              backgroundColor: Colors.orangeAccent,
+            ),
+          );
+        }
+        return false;
+      }
+    }
+  } catch (_) {}
+
   final cart = ref.read(cartProvider.notifier);
   final existingChef = ref.read(cartProvider).primaryChefId;
   final chefId = meal['chef_id']?.toString() ?? '';

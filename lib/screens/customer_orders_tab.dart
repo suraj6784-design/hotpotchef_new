@@ -89,6 +89,10 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
     }).toList();
   }
 
+  List<Map<String, dynamic>> _cateringRows(Iterable<dynamic> rows) {
+    return _activeRows(rows).where((row) => !isPackagingSupplyRequest(row)).toList();
+  }
+
   Future<void> _fetchActiveOrders({bool showSpinner = true}) async {
     final supabase = Supabase.instance.client;
     final user = supabase.auth.currentUser;
@@ -135,7 +139,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
       if (!mounted) return;
       setState(() {
         _activeOrders = _activeRows(orderRows);
-        _activeRequests = _activeRows(requestRows);
+        _activeRequests = _cateringRows(requestRows);
         _isLoading = false;
       });
     } catch (e, stack) {
@@ -189,7 +193,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
       (data) {
         if (!mounted) return;
         setState(() {
-          _activeRequests = _activeRows(data);
+          _activeRequests = _cateringRows(data);
           _isLoading = false;
         });
       },
@@ -743,34 +747,12 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                     if (isDelivered)
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        child: FutureBuilder<Map<String, dynamic>?>(
-                          future: Supabase.instance.client
-                              .from('reviews')
-                              .select()
-                              .eq('meal_id', mealIdFromOrderItem(items.first) ?? items.first['id'])
-                              .eq('customer_id', Supabase.instance.client.auth.currentUser?.id ?? '')
-                              .maybeSingle(),
-                          builder: (context, reviewSnap) {
-                            if (reviewSnap.connectionState == ConnectionState.waiting) return const SizedBox();
-                            final existingReview = reviewSnap.data;
-                            if (existingReview != null) {
-                              return OutlinedButton.icon(
-                                icon: const Icon(Icons.star, size: 18),
-                                label: Text('Rated ${existingReview['rating']}/5 Stars'),
-                                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('You have already rated this meal!')),
-                                ),
-                              );
-                            }
-                            return OutlinedButton.icon(
-                              icon: const Icon(Icons.star_border, size: 18),
-                              label: const Text('Rate this meal'),
-                              onPressed: () {
-                                Navigator.pop(ctx);
-                                if (!mounted) return;
-                                _showReviewDialog(items.first);
-                              },
-                            );
+                        child: OrderItemReviewButtons(
+                          items: items,
+                          onRate: (item) {
+                            Navigator.pop(ctx);
+                            if (!mounted) return;
+                            _showReviewDialog(item);
                           },
                         ),
                       ),

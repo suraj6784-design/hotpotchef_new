@@ -52,7 +52,7 @@ class SharedCartService {
       try {
         response = await _supabase
             .from('shared_carts')
-            .select('items, status')
+            .select('items, status, host_id')
             .eq('room_code', roomCode.toUpperCase().trim())
             .maybeSingle();
       } on PostgrestException catch (e) {
@@ -80,6 +80,19 @@ class SharedCartService {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to fetch shared cart');
       if (kDebugMode) debugPrint('Fetch shared cart error: $e');
       rethrow;
+    }
+  }
+
+  Future<String?> sharedCartHostId(String roomCode) async {
+    try {
+      final row = await _supabase
+          .from('shared_carts')
+          .select('host_id')
+          .eq('room_code', roomCode.toUpperCase().trim())
+          .maybeSingle();
+      return row?['host_id']?.toString();
+    } catch (_) {
+      return null;
     }
   }
 

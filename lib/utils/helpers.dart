@@ -1,5 +1,6 @@
 // lib/utils/helpers.dart
 
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:intl/intl.dart';
@@ -846,6 +847,53 @@ bool isMealAvailableForCart(Map<String, dynamic> meal) {
   return !isMealExpired(meal['time_slot']?.toString());
 }
 
+bool isCatalogMeal(Map<String, dynamic> meal) {
+  final owner = meal['customer_name']?.toString().trim() ?? '';
+  return owner.isEmpty;
+}
+
+bool mealHasFlashableOffer(Map<String, dynamic> meal, {DateTime? now}) {
+  if (!isCatalogMeal(meal) || !isMealAvailableForCart(meal)) return false;
+  if (PricingCalculator.mealPromoCode(meal) != null) return true;
+  return PricingCalculator.isOfferActive(meal, referenceTime: now);
+}
+
+List<Map<String, dynamic>> flashableOfferMeals(
+  Iterable<Map<String, dynamic>> meals, {
+  Set<String> excludedChefIds = const {},
+  DateTime? now,
+  int limit = 8,
+}) {
+  final unique = <String>{};
+  final offers = <Map<String, dynamic>>[];
+  for (final meal in meals) {
+    final chefId = meal['chef_id']?.toString() ?? '';
+    if (chefId.isNotEmpty && excludedChefIds.contains(chefId)) continue;
+    if (!mealHasFlashableOffer(meal, now: now)) continue;
+    final id = meal['id']?.toString() ?? meal['title']?.toString() ?? '';
+    if (id.isNotEmpty && !unique.add(id)) continue;
+    offers.add(meal);
+    if (offers.length >= limit) break;
+  }
+  return offers;
+}
+
+String offerFlashHeadline(Map<String, dynamic> meal) {
+  final code = PricingCalculator.mealPromoCode(meal);
+  if (code != null && PricingCalculator.isOfferGated(meal)) {
+    return 'Use $code';
+  }
+  final badge = PricingCalculator.offerBadgeLabel(meal).trim();
+  if (code != null && badge.isNotEmpty) return '$badge · $code';
+  if (code != null) return code;
+  return badge.isEmpty ? "Today's offer" : badge;
+}
+
+String offerFlashSubhead(Map<String, dynamic> meal) {
+  final title = meal['title']?.toString().trim() ?? meal['name']?.toString().trim() ?? '';
+  return title.isEmpty ? 'Tap to see this kitchen special' : title;
+}
+
 bool isMealExpired(String? timeSlot, {DateTime? orderDate}) {
   if (timeSlot == null || timeSlot.isEmpty) return false;
   final startTime = parseSlotStartTime(timeSlot, baseDate: orderDate);
@@ -907,6 +955,66 @@ bool isSoldOutCheckoutError(Object? error, [Map<String, dynamic>? data]) {
   if (data?['code']?.toString() == 'sold_out') return true;
   final text = '${data?['error'] ?? error}'.toLowerCase();
   return text.contains('sold out') || text.contains('no longer available');
+}
+
+bool isKitchenClosedCheckoutError(Object? error, [Map<String, dynamic>? data]) {
+  if (data?['code']?.toString() == 'kitchen_closed') return true;
+  final text = '${data?['error'] ?? error}'.toLowerCase();
+  return text.contains('kitchen_closed') ||
+      text.contains('kitchen is closed') ||
+      text.contains('kitchen just went offline');
+}
+
+String kitchenClosedCheckoutMessage({required bool charged, bool refunded = false}) {
+  if (charged && refunded) {
+    return 'This kitchen just went offline. Your payment was refunded and should return in 5–7 business days.';
+  }
+  if (charged) {
+    return 'This kitchen just went offline after payment. We are issuing a refund.';
+  }
+  return 'This kitchen just went offline. Nothing was charged — try another chef or come back later.';
+}
+
+String checkoutInitErrorMessage(Object? error, [Map<String, dynamic>? data]) {
+  if (isSoldOutCheckoutError(error, data)) return soldOutCheckoutMessage(charged: false);
+  if (isKitchenClosedCheckoutError(error, data)) {
+    return kitchenClosedCheckoutMessage(charged: false);
+  }
+  return 'Initialization Failed: ${networkErrorMessage(error)}';
+}
+
+String chefPayoutStatusLabel(String? status) {
+  switch ((status ?? '').toLowerCase().trim()) {
+    case 'released':
+      return 'Payout released';
+    case 'awaiting_account':
+      return 'Waiting for your bank account';
+    case 'failed':
+      return 'Payout failed — we will retry';
+    case 'recorded':
+      return 'Payout recorded';
+    case 'processing':
+      return 'Payout processing';
+    case 'not_applicable':
+      return 'No payout on this order';
+    case 'pending':
+    case '':
+      return 'Payout pending';
+    default:
+      return 'Payout: $status';
+  }
+}
+
+List<Map<String, dynamic>> uniqueReviewableOrderItems(List<Map<String, dynamic>> items) {
+  final seen = <String>{};
+  final unique = <Map<String, dynamic>>[];
+  for (final item in items) {
+    final id = mealIdFromOrderItem(item) ?? item['title']?.toString() ?? '';
+    final key = id.isEmpty ? 'line-${unique.length}' : id;
+    if (!seen.add(key)) continue;
+    unique.add(item);
+  }
+  return unique;
 }
 
 String soldOutCheckoutMessage({required bool charged, bool refunded = false}) {
@@ -1007,6 +1115,66 @@ List<Map<String, dynamic>> checkoutCartPayload(
 
 double parseMoney(dynamic value, [double fallback = 0]) {
   return double.tryParse(value?.toString() ?? '') ?? fallback;
+}
+
+double packagingOrderTotal(double unitPrice, int quantity) {
+  final qty = quantity < 1 ? 1 : quantity;
+  final unit = unitPrice < 0 ? 0.0 : unitPrice;
+  return PricingCalculator.roundCurrency(unit * qty);
+}
+
+final _supplyRequestIdPattern = RegExp(r'\bSUP-[A-Z0-9]+\b', caseSensitive: false);
+
+bool isPackagingSupplyRequest(Map<String, dynamic>? request) {
+  if (request == null) return false;
+  final type = '${request['request_type'] ?? ''} ${request['service_type'] ?? ''}'.toLowerCase();
+  if (type.contains('packaging') || type.contains('supply')) return true;
+  return _supplyRequestIdPattern.hasMatch('${request['description'] ?? ''} ${request['title'] ?? ''}');
+}
+
+String packagingRequestDisplayId(Map<String, dynamic> request) {
+  final explicit = request['request_id']?.toString().trim() ?? '';
+  if (explicit.isNotEmpty) return explicit;
+  return _supplyRequestIdPattern.firstMatch('${request['description'] ?? ''}')?.group(0) ?? '';
+}
+
+Map<String, dynamic> packagingSupplyRequestPayload({
+  required String chefId,
+  required String chefName,
+  required String chefEmail,
+  required String chefPhone,
+  required String kitchenAddress,
+  required String title,
+  required String requestId,
+  required String sku,
+  required String description,
+  required int quantity,
+  required double unitPrice,
+}) {
+  final qty = quantity < 1 ? 1 : quantity;
+  final total = packagingOrderTotal(unitPrice, qty);
+  return {
+    'customer_id': chefId,
+    'customer_name': chefName,
+    'customer_email': chefEmail,
+    'customer_phone': chefPhone,
+    'title': title,
+    'description': [
+      if (requestId.trim().isNotEmpty) 'Request $requestId',
+      if (sku.trim().isNotEmpty) 'SKU $sku',
+      if (description.trim().isNotEmpty) description.trim(),
+    ].join('\n'),
+    'quantity': qty,
+    'remaining_quantity': qty,
+    'budget': total,
+    'quoted_total': total,
+    'service_type': 'Packaging',
+    'request_type': 'packaging',
+    'delivery_address': kitchenAddress,
+    'status': 'Pending',
+    'accepted_chefs': const [],
+    'created_at': DateTime.now().toIso8601String(),
+  };
 }
 
 const double kDefaultPackagingFee = 20;
@@ -1620,6 +1788,76 @@ double? kitchenCoordinate(Map<String, dynamic>? data, {required bool latitude}) 
 bool hasKitchenPin(Map<String, dynamic>? data) {
   return kitchenCoordinate(data, latitude: true) != null &&
       kitchenCoordinate(data, latitude: false) != null;
+}
+
+const double kCateringLeadRadiusKm = 25;
+
+double haversineKm(double lat1, double lng1, double lat2, double lng2) {
+  const earthKm = 6371.0;
+  final dLat = (lat2 - lat1) * pi / 180;
+  final dLng = (lng2 - lng1) * pi / 180;
+  final a = sin(dLat / 2) * sin(dLat / 2) +
+      cos(lat1 * pi / 180) * cos(lat2 * pi / 180) * sin(dLng / 2) * sin(dLng / 2);
+  return earthKm * 2 * atan2(sqrt(a), sqrt(1 - a));
+}
+
+double? cateringLeadDistanceKm(
+  Map<String, dynamic> request, [
+  Map<String, dynamic>? chefPin,
+]) {
+  final lat = addressCoordinate(request, latitude: true);
+  final lng = addressCoordinate(request, latitude: false);
+  final chefLat = kitchenCoordinate(chefPin, latitude: true) ??
+      addressCoordinate(chefPin, latitude: true);
+  final chefLng = kitchenCoordinate(chefPin, latitude: false) ??
+      addressCoordinate(chefPin, latitude: false);
+  if (lat == null || lng == null || chefLat == null || chefLng == null) return null;
+  return haversineKm(chefLat, chefLng, lat, lng);
+}
+
+bool isCateringLeadInRange(
+  Map<String, dynamic> request, [
+  Map<String, dynamic>? chefPin,
+  double radiusKm = kCateringLeadRadiusKm,
+]) {
+  final distance = cateringLeadDistanceKm(request, chefPin);
+  if (distance == null) return true;
+  return distance <= radiusKm;
+}
+
+bool canPaySharedCart({
+  String? roomCode,
+  String? hostId,
+  String? userId,
+}) {
+  if (roomCode == null || roomCode.trim().isEmpty) return true;
+  if (userId == null || userId.isEmpty) return false;
+  if (hostId == null || hostId.isEmpty) return true;
+  return hostId == userId;
+}
+
+String? favoriteCategoryFromPastItems(Iterable<Map<String, dynamic>> items) {
+  final counts = <String, int>{};
+  for (final item in items) {
+    final category = item['category']?.toString().trim() ?? '';
+    if (category.isEmpty) continue;
+    counts[category] = (counts[category] ?? 0) + 1;
+  }
+  if (counts.isEmpty) return null;
+  return counts.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
+}
+
+List<Map<String, dynamic>> parseOrderItemsList(dynamic raw) {
+  dynamic parsed = raw;
+  if (raw is String && raw.trim().isNotEmpty) {
+    try {
+      parsed = jsonDecode(raw);
+    } catch (_) {
+      return const [];
+    }
+  }
+  if (parsed is! List) return const [];
+  return parsed.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
 }
 
 bool isChefKitchenOpen(Map<String, dynamic>? profile) {

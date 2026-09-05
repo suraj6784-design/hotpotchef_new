@@ -44,6 +44,34 @@ class PricingCalculator {
     return _parseCurrency(mealDetails['promo_discount_value']) > 0;
   }
 
+  /// `FESTIVE50` / `HOME20` → 50 / 20 when the chef left discount_value blank.
+  static double? numericSuffixFromPromoCode(String? code) {
+    final normalized = normalizedPromoCode(code);
+    if (normalized == null) return null;
+    final match = RegExp(r'(\d{1,3})$').firstMatch(normalized);
+    if (match == null) return null;
+    final value = double.tryParse(match.group(1)!);
+    if (value == null || value <= 0) return null;
+    return value;
+  }
+
+  static double resolvedOfferDiscount(
+    Map<String, dynamic> mealDetails, {
+    required OfferType offerType,
+  }) {
+    final explicit = _parseCurrency(mealDetails['discount_value']);
+    if (explicit > 0) return explicit;
+
+    final hinted = numericSuffixFromPromoCode(mealPromoCode(mealDetails));
+    if (hinted != null) {
+      if (offerType == OfferType.flat) return hinted;
+      if (hinted <= 90) return hinted;
+    }
+
+    if (offerType == OfferType.flashSale) return defaultFlashSaleDiscountPercent;
+    return 0;
+  }
+
   /// Code-only meals keep the automatic offer locked until checkout.
   static bool isOfferGated(Map<String, dynamic> mealDetails) {
     return mealPromoCode(mealDetails) != null && !hasPromoExtra(mealDetails);
@@ -132,7 +160,7 @@ class PricingCalculator {
     }
 
     final offerType = OfferType.fromString(mealDetails['offer_type']?.toString());
-    final discountVal = _parseCurrency(mealDetails['discount_value']);
+    final discountVal = resolvedOfferDiscount(mealDetails, offerType: offerType);
     final maxDiscountCap = _parseCurrency(mealDetails['max_discount_cap']);
     final hasCap = maxDiscountCap > 0.0;
 
@@ -172,8 +200,7 @@ class PricingCalculator {
           break;
 
         case OfferType.flashSale:
-          final effectiveDiscount = discountVal > 0 ? discountVal : defaultFlashSaleDiscountPercent;
-          final sanitizedPercent = effectiveDiscount.clamp(0.0, 100.0);
+          final sanitizedPercent = discountVal.clamp(0.0, 100.0);
           double totalDiscount = roundCurrency((unitPrice * (sanitizedPercent / 100.0)) * quantity);
           if (hasCap) {
             totalDiscount = math.min(totalDiscount, maxDiscountCap);
@@ -361,7 +388,10 @@ class PricingCalculator {
       'price': paidUnit,
       'discounted_price': (summary.isOfferApplied || extras > 0) ? paidUnit : null,
       'offer_type': mealDetails['offer_type'],
-      'discount_value': mealDetails['discount_value'],
+      'discount_value': resolvedOfferDiscount(
+        mealDetails,
+        offerType: OfferType.fromString(mealDetails['offer_type']?.toString()),
+      ),
       'max_discount_cap': mealDetails['max_discount_cap'],
       'offer_valid_until': mealDetails['offer_valid_until'],
       'offer_valid_from': mealDetails['offer_valid_from'],
@@ -380,7 +410,7 @@ class PricingCalculator {
   static String offerBadgeLabel(Map<String, dynamic> mealDetails, {int quantity = 1}) {
     if (isOfferGated(mealDetails)) return 'PROMO';
     final offerType = OfferType.fromString(mealDetails['offer_type']?.toString());
-    final discountVal = _parseCurrency(mealDetails['discount_value']);
+    final discountVal = resolvedOfferDiscount(mealDetails, offerType: offerType);
     switch (offerType) {
       case OfferType.bogo:
         return 'BOGO';
@@ -390,7 +420,8 @@ class PricingCalculator {
       case OfferType.flat:
         return discountVal > 0 ? 'FLAT ₹${discountVal.toStringAsFixed(0)}' : 'FLAT OFF';
       case OfferType.flashSale:
-        final pct = (discountVal > 0 ? discountVal : defaultFlashSaleDiscountPercent).clamp(0.0, 100.0);
+        final pct = resolvedOfferDiscount(mealDetails, offerType: OfferType.flashSale)
+            .clamp(0.0, 100.0);
         return 'FLASH ${pct.toStringAsFixed(0)}%';
       case OfferType.none:
         return calculateItemSummary(mealDetails, quantity).offerDescription ?? '';

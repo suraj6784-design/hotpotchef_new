@@ -404,35 +404,11 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                     if (isDelivered && items.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        child: FutureBuilder<Map<String, dynamic>?>(
-                          future: Supabase.instance.client
-                              .from('reviews')
-                              .select()
-                              .eq('meal_id', mealIdFromOrderItem(items.first) ?? items.first['id'])
-                              .eq('customer_id', Supabase.instance.client.auth.currentUser?.id ?? '')
-                              .maybeSingle(),
-                          builder: (reviewContext, reviewSnap) {
-                            if (reviewSnap.connectionState == ConnectionState.waiting) {
-                              return const SizedBox();
-                            }
-                            final existingReview = reviewSnap.data;
-                            if (existingReview != null) {
-                              return OutlinedButton.icon(
-                                icon: const Icon(Icons.star, size: 18),
-                                label: Text('Rated ${existingReview['rating']}/5 Stars'),
-                                onPressed: () => ScaffoldMessenger.of(reviewContext).showSnackBar(
-                                  const SnackBar(content: Text('You have already rated this meal!')),
-                                ),
-                              );
-                            }
-                            return OutlinedButton.icon(
-                              icon: const Icon(Icons.star_border, size: 18),
-                              label: const Text('Rate this meal'),
-                              onPressed: () {
-                                Navigator.pop(ctx);
-                                _showReviewDialog(context, items.first);
-                              },
-                            );
+                        child: OrderItemReviewButtons(
+                          items: items,
+                          onRate: (item) {
+                            Navigator.pop(ctx);
+                            _showReviewDialog(context, item);
                           },
                         ),
                       ),
@@ -689,9 +665,12 @@ class _HistoryOrdersListState extends ConsumerState<_HistoryOrdersList> {
                             IconButton(
                               tooltip: 'Rate this meal',
                               visualDensity: VisualDensity.compact,
-                              onPressed: items.isEmpty
+                              onPressed: uniqueReviewableOrderItems(items).isEmpty
                                   ? null
-                                  : () => widget.host._showReviewDialog(context, items.first),
+                                  : () => widget.host._showReviewDialog(
+                                        context,
+                                        uniqueReviewableOrderItems(items).first,
+                                      ),
                               icon: const Icon(Icons.star_border, size: 18),
                             ),
                           TextButton.icon(
