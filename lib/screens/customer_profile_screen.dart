@@ -426,114 +426,169 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
     );
   }
 
-  void _showWalletDialog() {
-  final isDark = Theme.of(context).brightness == Brightness.dark;
-  final user = _supabase.auth.currentUser;
+  Future<Map<String, dynamic>> _loadWalletLedger() async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) {
+      return {'coins': _hotpotCoins, 'entries': const <CoinLedgerEntry>[]};
+    }
 
-  showDialog(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      backgroundColor: isDark ? AppTheme.surfaceDark : Colors.white,
-      title: Row(
-        children: [
-          const Icon(Icons.account_balance_wallet, color: AppTheme.primary),
-          const SizedBox(width: 8),
-          Text('HotPot Wallet', style: TextStyle(color: isDark ? Colors.white : AppTheme.textMain)),
-        ],
-      ),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  gradient: AppTheme.primaryGradient,
-                  borderRadius: AppTheme.radiusLg,
-                  boxShadow: AppTheme.brandGlow(opacity: 0.28),
-                ),
+    List<Map<String, dynamic>> transactions = const [];
+    List<Map<String, dynamic>> orders = const [];
+    var coins = _hotpotCoins;
+
+    try {
+      final profile = await _supabase.from('users').select('hotpot_coins').eq('id', user.id).maybeSingle();
+      coins = double.tryParse(profile?['hotpot_coins']?.toString() ?? '') ?? coins;
+    } catch (_) {}
+
+    try {
+      transactions = List<Map<String, dynamic>>.from(
+        await _supabase
+            .from('transactions')
+            .select()
+            .eq('user_id', user.id)
+            .order('created_at', ascending: false)
+            .limit(40) as List,
+      );
+    } catch (_) {}
+
+    try {
+      orders = List<Map<String, dynamic>>.from(
+        await _supabase
+            .from('orders')
+            .select('id, coins_applied, created_at')
+            .eq('customer_id', user.id)
+            .order('created_at', ascending: false)
+            .limit(40) as List,
+      );
+    } catch (_) {}
+
+    if (mounted && coins != _hotpotCoins) {
+      setState(() => _hotpotCoins = coins);
+    }
+
+    return {
+      'coins': coins,
+      'entries': mergeCoinLedger(transactions: transactions, orders: orders),
+    };
+  }
+
+  void _showWalletDialog() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? AppTheme.surfaceDark : Colors.white,
+        title: Row(
+          children: [
+            const Icon(Icons.account_balance_wallet, color: AppTheme.primary),
+            const SizedBox(width: 8),
+            Text('HotPot Wallet', style: TextStyle(color: isDark ? Colors.white : AppTheme.textMain)),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: FutureBuilder<Map<String, dynamic>>(
+            future: _loadWalletLedger(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const SizedBox(
+                  height: 140,
+                  child: Center(child: CircularProgressIndicator(color: AppTheme.primary, strokeWidth: 2)),
+                );
+              }
+
+              final coins = (snapshot.data?['coins'] as num?)?.toDouble() ?? _hotpotCoins;
+              final entries = (snapshot.data?['entries'] as List<CoinLedgerEntry>?) ?? const <CoinLedgerEntry>[];
+
+              return SingleChildScrollView(
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Available Balance', style: TextStyle(color: Colors.white70, fontSize: 13)),
-                    const SizedBox(height: 4),
-                    Text('₹${_hotpotCoins.toInt()} Value (${_hotpotCoins.toInt()} Coins)',
-                        style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        gradient: AppTheme.primaryGradient,
+                        borderRadius: AppTheme.radiusLg,
+                        boxShadow: AppTheme.brandGlow(opacity: 0.28),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Available Balance', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                          const SizedBox(height: 4),
+                          Text(
+                            '₹${coins.toInt()} Value (${coins.toInt()} Coins)',
+                            style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      'Transaction & Order History',
+                      style: TextStyle(color: isDark ? Colors.white : AppTheme.textMain, fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    const SizedBox(height: 10),
+                    if (entries.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Text(
+                          'No coin activity yet.',
+                          style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey, fontSize: 13),
+                        ),
+                      )
+                    else
+                      ...entries.map((entry) {
+                        final color = entry.isDebit ? Colors.redAccent : Colors.green;
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      entry.title,
+                                      style: TextStyle(
+                                        color: isDark ? Colors.white70 : Colors.black87,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    Text(
+                                      formatOrderDate(entry.at?.toIso8601String()),
+                                      style: TextStyle(color: isDark ? Colors.grey.shade500 : Colors.grey, fontSize: 11),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Text(
+                                '${entry.isDebit ? '-' : '+'}${entry.amount.toInt()} 🪙',
+                                style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
                   ],
                 ),
-              ),
-              const SizedBox(height: 20),
-              Text('Transaction & Order History', style: TextStyle(color: isDark ? Colors.white : AppTheme.textMain, fontWeight: FontWeight.bold, fontSize: 14)),
-              const SizedBox(height: 10),
-              
-              // HotPot Coins ledger: credits (earned) and debits (redeemed).
-              FutureBuilder<List<Map<String, dynamic>>>(
-                future: user != null
-                    ? _supabase.from('transactions').select().eq('user_id', user.id).order('created_at', ascending: false).limit(20)
-                    : Future.value([]),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator(color: AppTheme.primary, strokeWidth: 2)));
-                  }
-
-                  final transactions = snapshot.data ?? [];
-                  if (transactions.isEmpty) {
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: Text('No coin activity yet.', style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey, fontSize: 13)),
-                    );
-                  }
-
-                  return Column(
-                    children: transactions.map((txn) {
-                      final type = txn['transaction_type']?.toString() ?? '';
-                      final rawAmount = (txn['amount'] as num?)?.toDouble() ?? 0.0;
-                      // Treat known debit types (or an explicit negative amount) as spent.
-                      final isDebit = rawAmount < 0 ||
-                          RegExp('debit|spent|redeem|used|deduct', caseSensitive: false).hasMatch(type);
-                      final coins = rawAmount.abs();
-                      final title = (txn['description']?.toString().trim().isNotEmpty ?? false)
-                          ? txn['description'].toString()
-                          : (type.isNotEmpty ? type : 'Coin Transaction');
-                      final date = formatOrderDate(txn['created_at']?.toString());
-                      final color = isDebit ? Colors.redAccent : Colors.green;
-
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(title, style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 13, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                  Text(date, style: TextStyle(color: isDark ? Colors.grey.shade500 : Colors.grey, fontSize: 11)),
-                                ],
-                              ),
-                            ),
-                            Text('${isDebit ? '-' : '+'}${coins.toInt()} 🪙',
-                                style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13)),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                  );
-                },
-              ),
-            ],
+              );
+            },
           ),
         ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+        ],
       ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
-      ],
-    ),
-  );
-}
+    );
+  }
 
   Widget _buildTxItem(String title, String amount, Color color, bool isDark) {
     return Padding(

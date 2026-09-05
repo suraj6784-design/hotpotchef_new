@@ -55,6 +55,8 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
   final _discountController = TextEditingController();
   final _maxDiscountCapController = TextEditingController();
   final _promoController = TextEditingController();
+  final _promoDiscountController = TextEditingController();
+  OfferType _promoExtraType = OfferType.none;
   bool _acceptsHotpotCoins = true;
 
   DateTime? _offerEndDate;
@@ -124,6 +126,11 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     _discountController.text = meal['discount_value']?.toString() ?? '';
     _maxDiscountCapController.text = meal['max_discount_cap']?.toString() ?? '';
     _promoController.text = meal['promo_code']?.toString() ?? '';
+    _promoDiscountController.text = meal['promo_discount_value']?.toString() ?? '';
+    final extraType = OfferType.fromString(meal['promo_discount_type']?.toString());
+    _promoExtraType = extraType == OfferType.flat ? OfferType.flat : extraType == OfferType.percentage
+        ? OfferType.percentage
+        : OfferType.none;
 
     // Offer validity timestamp
     final validUntilStr = meal['offer_valid_until']?.toString();
@@ -167,6 +174,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     _discountController.dispose();
     _maxDiscountCapController.dispose();
     _promoController.dispose();
+    _promoDiscountController.dispose();
     for (final addon in _addOns) {
       addon.dispose();
     }
@@ -323,6 +331,9 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
 
       final discountVal = double.tryParse(_discountController.text.trim()) ?? 0.0;
       final maxCapVal = double.tryParse(_maxDiscountCapController.text.trim()) ?? 0.0;
+      final promoCode = _promoController.text.trim().toUpperCase();
+      final promoExtraVal = double.tryParse(_promoDiscountController.text.trim()) ?? 0.0;
+      final hasPromoExtra = _promoExtraType != OfferType.none && promoExtraVal > 0;
 
       final mealPayload = {
         'chef_id': user.id,
@@ -345,7 +356,9 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
         'offer_type': _selectedOfferType.name,
         'discount_value': discountVal,
         'max_discount_cap': maxCapVal > 0 ? maxCapVal : null,
-        'promo_code': _promoController.text.trim().toUpperCase(),
+        'promo_code': promoCode,
+        'promo_discount_type': hasPromoExtra ? _promoExtraType.name : null,
+        'promo_discount_value': hasPromoExtra ? promoExtraVal : null,
         'accepts_hotpot_coins': _acceptsHotpotCoins,
         'offer_valid_until': offerExpiryIso,
         'add_ons': _addOns
@@ -358,14 +371,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
             .toList(),
       };
 
-      if (widget.existingMeal != null && widget.existingMeal!['id'] != null) {
-        await _supabase
-            .from('meals')
-            .update(mealPayload)
-            .eq('id', widget.existingMeal!['id']);
-      } else {
-        await _supabase.from('meals').insert(mealPayload);
-      }
+      await _saveMealPayload(mealPayload);
 
       if (mounted) {
         _showSnackBar(
@@ -382,6 +388,30 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _saveMealPayload(Map<String, dynamic> payload) async {
+    final body = Map<String, dynamic>.from(payload);
+    Object? lastError;
+    for (var attempt = 0; attempt < 6; attempt++) {
+      try {
+        final id = widget.existingMeal?['id'];
+        if (id != null) {
+          await _supabase.from('meals').update(body).eq('id', id);
+        } else {
+          await _supabase.from('meals').insert(body);
+        }
+        return;
+      } on PostgrestException catch (e) {
+        lastError = e;
+        if (e.code != 'PGRST204') rethrow;
+        final match = RegExp(r"Could not find the '([^']+)' column").firstMatch(e.message);
+        final missing = match?.group(1);
+        if (missing == null || !body.containsKey(missing)) rethrow;
+        body.remove(missing);
+      }
+    }
+    throw lastError ?? Exception('Could not save this meal');
   }
 
   void _showSnackBar(String text, {bool isError = false}) {
@@ -838,6 +868,59 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                           ),
                         ),
                       ],
+                    ),
+                  ],
+
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _promoController,
+                    textCapitalization: TextCapitalization.characters,
+                    decoration: _inputStyle('Promo code (optional, e.g. HOME20)'),
+                    validator: (v) {
+                      if (_promoExtraType == OfferType.none) return null;
+                      if ((v ?? '').trim().isEmpty) return 'Add a code for the extra stacked discount';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'If you add a code with no extra discount, customers must enter it at checkout to unlock the offer above. Add an extra % or ₹ to stack it on top of the automatic offer.',
+                    style: TextStyle(fontSize: 11, color: AppTheme.textMuted, height: 1.35),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<OfferType>(
+                    value: _promoExtraType == OfferType.flat ? OfferType.flat : _promoExtraType == OfferType.percentage
+                        ? OfferType.percentage
+                        : OfferType.none,
+                    dropdownColor: surface,
+                    style: TextStyle(color: titleColor, fontSize: 14),
+                    decoration: _inputStyle('Extra promo discount (stacks)'),
+                    items: const [
+                      DropdownMenuItem(value: OfferType.none, child: Text('No extra — code unlocks the offer')),
+                      DropdownMenuItem(value: OfferType.percentage, child: Text('Extra percentage off (stacks)')),
+                      DropdownMenuItem(value: OfferType.flat, child: Text('Extra flat ₹ off this dish (stacks)')),
+                    ],
+                    onChanged: (val) => setState(() => _promoExtraType = val ?? OfferType.none),
+                  ),
+                  if (_promoExtraType == OfferType.percentage || _promoExtraType == OfferType.flat) ...[
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _promoDiscountController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: _inputStyle(
+                        _promoExtraType == OfferType.percentage
+                            ? 'Extra percent (e.g. 10)'
+                            : 'Extra ₹ off this dish (e.g. 50)',
+                      ),
+                      validator: (v) {
+                        if (_promoExtraType == OfferType.none) return null;
+                        final parsed = double.tryParse(v ?? '');
+                        if (parsed == null || parsed <= 0) return 'Enter the extra promo discount';
+                        if (_promoExtraType == OfferType.percentage && parsed > 90) {
+                          return 'Extra percent cannot exceed 90';
+                        }
+                        return null;
+                      },
                     ),
                   ],
 

@@ -68,6 +68,20 @@ class ReorderService {
     final skipped = <String>[];
     final seenMealIds = <String>{};
     final chefIds = <String>{};
+    String? dietPref;
+    String? allergies;
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user != null) {
+        final prefs = await Supabase.instance.client
+            .from('users')
+            .select('dietary_preference, allergies')
+            .eq('id', user.id)
+            .maybeSingle();
+        dietPref = prefs?['dietary_preference']?.toString();
+        allergies = prefs?['allergies']?.toString();
+      }
+    } catch (_) {}
 
     for (final item in items) {
       final title = item['title']?.toString() ?? item['name']?.toString() ?? 'Meal';
@@ -109,6 +123,17 @@ class ReorderService {
 
       if (!isMealReorderable(meal)) {
         skipped.add(title);
+        continue;
+      }
+
+      final dietReason = dietSkipReason(
+        meal,
+        preference: dietPref,
+        allergies: allergies,
+        title: title,
+      );
+      if (dietReason != null) {
+        skipped.add(dietReason);
         continue;
       }
 

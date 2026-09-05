@@ -1,5 +1,7 @@
 // lib/utils/helpers.dart
 
+import 'dart:math';
+
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'app_theme.dart';
 import 'network.dart';
 import 'notification_copy.dart';
+import 'pricing_calculator.dart';
 
 // Export the theme so all screens automatically inherit it
 export 'app_theme.dart'; 
@@ -94,6 +97,8 @@ String? resetPasswordValidationError({
   return null;
 }
 
+const double kReferralBonusCoins = 50;
+
 String? normalizeReferralCode(String? raw) {
   final code = (raw ?? '').trim().toUpperCase().replaceAll(RegExp(r'\s+'), '');
   return code.isEmpty ? null : code;
@@ -103,8 +108,32 @@ bool isPlausibleReferralCode(String code) {
   return RegExp(r'^[A-Z0-9]{6,16}$').hasMatch(code);
 }
 
+String generateReferralCode([Random? random]) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  final rnd = random ?? Random();
+  return 'CHEF${List.generate(6, (_) => chars[rnd.nextInt(chars.length)]).join()}';
+}
+
+String? sanitizeReferredBy({String? referredBy, String? ownCode}) {
+  final code = normalizeReferralCode(referredBy);
+  final own = normalizeReferralCode(ownCode);
+  if (code == null) return null;
+  if (own != null && code == own) return null;
+  return code;
+}
+
+String referralInviteUri(String code) {
+  final normalized = normalizeReferralCode(code) ?? code;
+  return 'hotpotchef://app/auth?ref=$normalized';
+}
+
 String referralInviteText(String code) {
-  return "Craving authentic home-cooked food? Join HotPotChef and enter my code $code when you sign up to get 50 HotPot Coins on your first order.";
+  return 'Craving authentic home-cooked food? Join HotPotChef with my code $code. We both get 50 HotPot Coins when you place your first order.\n${referralInviteUri(code)}';
+}
+
+double referralCoinsFromRewardedFriends(int rewardedFriends, [double bonus = kReferralBonusCoins]) {
+  if (rewardedFriends <= 0) return 0;
+  return rewardedFriends * bonus;
 }
 
 Map<String, dynamic> signupUserPayload({
@@ -114,6 +143,7 @@ Map<String, dynamic> signupUserPayload({
   required String phone,
   required String role,
   String? referredBy,
+  String? referralCode,
   String? createdAt,
 }) {
   return {
@@ -125,13 +155,14 @@ Map<String, dynamic> signupUserPayload({
     'role': role,
     if (createdAt != null) 'created_at': createdAt,
     if (referredBy != null) 'referred_by': referredBy,
+    if (referralCode != null) 'referral_code': referralCode,
   };
 }
 
 String mealShareText(Map<String, dynamic> meal) {
   final title = mealDisplayTitle(meal);
   final chef = chefDisplayName(meal);
-  final price = parseMoney(meal['discounted_price'] ?? meal['price']);
+  final price = PricingCalculator.effectiveUnitPrice(meal, 1);
   final priceBit = price > 0 ? ' — ₹${price.toStringAsFixed(0)}' : '';
   final link = mealShareUri(meal['id']?.toString() ?? mealIdFromOrderItem(meal));
   return link.isEmpty
@@ -500,7 +531,7 @@ List<ChatInboxItem> mergeChatInboxRooms({
   required List<Map<String, dynamic>> requests,
   required List<Map<String, dynamic>> messages,
 }) {
-  final rooms = <String, ChatInboxItem>{};
+  final catalog = <String, ChatInboxItem>{};
 
   for (final order in orders) {
     final roomId = orderChatRoomId(order);
@@ -508,7 +539,7 @@ List<ChatInboxItem> mergeChatInboxRooms({
     final label = formatOrderId(order['order_id']?.toString() ?? order['id']?.toString(), roomId);
     final members = orderChatMemberIds(order).toList();
     final other = members.firstWhere((id) => id != myId, orElse: () => '');
-    rooms[roomId] = ChatInboxItem(
+    catalog[roomId] = ChatInboxItem(
       roomId: roomId,
       title: 'Order $label',
       preview: 'No messages yet. Open the Order# group.',
@@ -528,7 +559,7 @@ List<ChatInboxItem> mergeChatInboxRooms({
     }.toList();
     final other = members.firstWhere((id) => id != myId, orElse: () => '');
     final title = request['title']?.toString().trim();
-    rooms[roomId] = ChatInboxItem(
+    catalog[roomId] = ChatInboxItem(
       roomId: roomId,
       title: (title == null || title.isEmpty) ? 'Catering lead' : title,
       preview: 'Catering chat. Message the other person here.',
@@ -551,9 +582,10 @@ List<ChatInboxItem> mergeChatInboxRooms({
     }
   }
 
+  final rooms = <String, ChatInboxItem>{};
   for (final entry in latest.entries) {
     final message = entry.value;
-    final existing = rooms[entry.key];
+    final existing = catalog[entry.key];
     final preview = chatPreview(message['content']?.toString());
     if (existing != null) {
       rooms[entry.key] = ChatInboxItem(
@@ -893,7 +925,10 @@ dynamic _jsonSafeValue(dynamic value) {
 }
 
 /// Keeps only JSON-safe checkout fields so paid-order recording cannot fail on meal blobs.
-List<Map<String, dynamic>> checkoutCartPayload(List<Map<String, dynamic>> items) {
+List<Map<String, dynamic>> checkoutCartPayload(
+  List<Map<String, dynamic>> items, {
+  String? appliedPromoCode,
+}) {
   return items.map((item) {
     final nested = item['rawMealDetails'] ??
         item['mealDetails'] ??
@@ -906,6 +941,17 @@ List<Map<String, dynamic>> checkoutCartPayload(List<Map<String, dynamic>> items)
         item['mealId'] ??
         nestedMap['id'] ??
         nestedMap['meal_id'];
+    final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+    final addOns = item['selectedAddOns'] ?? item['selected_add_ons'] ?? const [];
+    final snapshot = PricingCalculator.snapshotCheckoutPrices(
+      PricingCalculator.pricingSourceFromLine({
+        ...item,
+        'rawMealDetails': nestedMap,
+      }),
+      qty,
+      appliedPromoCode: appliedPromoCode,
+      addOnsUnit: PricingCalculator.addOnsTotal(addOns),
+    );
     return {
       'chef_id': chefId,
       'chefId': chefId,
@@ -913,15 +959,34 @@ List<Map<String, dynamic>> checkoutCartPayload(List<Map<String, dynamic>> items)
       'meal_id': mealId,
       'source_meal_id': mealId,
       'title': item['title'] ?? item['name'] ?? nestedMap['title'],
-      'quantity': item['quantity'] ?? 1,
-      'price': item['price'] ?? item['base_price'] ?? item['basePrice'] ?? nestedMap['price'],
-      'base_price': item['base_price'] ?? item['basePrice'] ?? item['price'] ?? nestedMap['price'],
-      'discounted_price': item['discounted_price'] ?? item['discountedPrice'] ?? nestedMap['discounted_price'],
+      'quantity': qty,
+      'price': snapshot['price'],
+      'base_price': snapshot['base_price'],
+      'discounted_price': snapshot['discounted_price'],
+      'offer_type': snapshot['offer_type'],
+      'discount_value': snapshot['discount_value'],
+      'max_discount_cap': snapshot['max_discount_cap'],
+      'offer_valid_until': snapshot['offer_valid_until'],
+      'offer_valid_from': snapshot['offer_valid_from'],
+      'line_gross': snapshot['line_gross'],
+      'line_net': snapshot['line_net'],
+      'offer_applied': snapshot['offer_applied'],
+      'offer_description': snapshot['offer_description'],
+      'promo_code': snapshot['promo_code'],
+      'promo_discount_type': snapshot['promo_discount_type'],
+      'promo_discount_value': snapshot['promo_discount_value'],
+      'applied_promo_code': snapshot['applied_promo_code'],
+      'promo_applied': snapshot['promo_applied'],
+      'meal_unit': snapshot['meal_unit'],
+      'addons_unit': snapshot['addons_unit'],
       'selected_service_type': item['selected_service_type'] ?? item['service_type'] ?? item['serviceType'],
       'service_type': item['service_type'] ?? item['selected_service_type'] ?? item['serviceType'],
       'time_slot': item['time_slot'] ?? item['timeSlot'] ?? nestedMap['exact_time'] ?? nestedMap['time_slot'],
       'selected_date': item['selected_date'] ?? item['selectedDate'] ?? item['scheduled_date'],
       'selectedAddOns': _jsonSafeValue(item['selectedAddOns'] ?? item['selected_add_ons'] ?? const []),
+      'accepts_hotpot_coins': item['accepts_hotpot_coins'] ?? nestedMap['accepts_hotpot_coins'],
+      'specialInstructions': item['specialInstructions'] ?? item['special_instructions'],
+      'special_instructions': item['specialInstructions'] ?? item['special_instructions'],
     };
   }).toList();
 }
@@ -930,15 +995,91 @@ double parseMoney(dynamic value, [double fallback = 0]) {
   return double.tryParse(value?.toString() ?? '') ?? fallback;
 }
 
+const double kDefaultPackagingFee = 20;
+const double kDefaultDeliveryEstimate = 30;
 const double kDefaultDriverPayout = 40;
+
+double packagingFeeForLoyaltyTier(String? tier) {
+  final name = (tier ?? '').toLowerCase();
+  if (name.contains('gold')) return 0;
+  if (name.contains('silver')) return 10;
+  return kDefaultPackagingFee;
+}
+
+DateTime istCalendarDate([DateTime? now]) {
+  final utc = (now ?? DateTime.now()).toUtc();
+  final ist = utc.add(const Duration(hours: 5, minutes: 30));
+  return DateTime(ist.year, ist.month, ist.day);
+}
+
+bool claimedStreakOnIstDate(String? lastCheckInDate, {DateTime? now}) {
+  if (lastCheckInDate == null || lastCheckInDate.trim().isEmpty) return false;
+  final parsed = DateTime.tryParse(lastCheckInDate.trim());
+  if (parsed == null) return false;
+  final last = DateTime(parsed.year, parsed.month, parsed.day);
+  return last == istCalendarDate(now);
+}
+
+String mergedOrderInstructions(List<Map<String, dynamic>> items, [String? checkoutNote]) {
+  final notes = <String>[];
+  for (final item in items) {
+    final note = (item['specialInstructions'] ?? item['special_instructions'] ?? '').toString().trim();
+    if (note.isEmpty) continue;
+    final title = (item['title'] ?? item['name'] ?? 'Item').toString().trim();
+    notes.add(title.isEmpty ? note : '$title: $note');
+  }
+  final extra = checkoutNote?.trim() ?? '';
+  if (extra.isNotEmpty) notes.add(extra);
+  return notes.join('\n');
+}
+
+double cateringPayableTotal(Map<String, dynamic> request) {
+  final quoted = parseMoney(request['quoted_total'] ?? request['quoted_price']);
+  if (quoted > 0) return quoted;
+  return parseMoney(request['budget']);
+}
+
+bool mealAcceptsHotpotCoins(Map<String, dynamic> meal) {
+  final flag = meal['accepts_hotpot_coins'] ??
+      (meal['rawMealDetails'] is Map ? meal['rawMealDetails']['accepts_hotpot_coins'] : null) ??
+      (meal['meal_details'] is Map ? meal['meal_details']['accepts_hotpot_coins'] : null);
+  if (flag == false || flag?.toString() == 'false') return false;
+  return true;
+}
+
+bool cartAcceptsHotpotCoins(Iterable<Map<String, dynamic>> items) =>
+    items.every(mealAcceptsHotpotCoins);
+
+String? dietSkipReason(
+  Map<String, dynamic> meal, {
+  String? preference,
+  String? allergies,
+  String? title,
+}) {
+  if (mealMatchesCustomerDiet(meal, preference: preference, allergies: allergies)) {
+    return null;
+  }
+  final name = (title ?? meal['title'] ?? meal['name'] ?? 'This dish').toString();
+  if (!mealAvoidsAllergies(meal, allergies)) {
+    return '$name may contain an allergen you listed';
+  }
+  return '$name does not match your dietary preference';
+}
 
 /// Partner payout for a run. A stored 0 is treated as missing, not as "earned nothing".
 double driverPayoutFromOrder(Map<String, dynamic> order) {
-  final explicit = parseMoney(order['driver_payout'] ?? order['payout']);
-  if (explicit > 0) return explicit;
+  final tip = parseMoney(order['tip_amount'] ?? order['tip']);
   final fee = parseMoney(order['delivery_fee']);
-  if (fee > 0) return fee;
-  return kDefaultDriverPayout;
+  final explicit = parseMoney(order['driver_payout'] ?? order['payout']);
+  if (explicit > 0) {
+    // Fee-only stored payouts still need the customer tip added.
+    if (tip > 0 && fee > 0 && (explicit - fee).abs() < 0.01) {
+      return explicit + tip;
+    }
+    return explicit;
+  }
+  if (fee > 0) return fee + tip;
+  return kDefaultDriverPayout + tip;
 }
 
 double fleetEarningsFrom({
@@ -995,12 +1136,31 @@ String chefDisplayName(Map<String, dynamic>? data, {String fallback = 'Home Kitc
 
 /// Unit price for a cart/order line. Ignores a "discount" that is higher than the listed price.
 double lineItemUnitPrice(Map<String, dynamic> item) {
-  final unit = parseMoney(item['price'] ?? item['unit_price'] ?? item['base_price'] ?? item['basePrice']);
+  final meal = PricingCalculator.pricingSourceFromLine(item);
+  final addonsUnit = parseMoney(item['addons_unit']);
+  final legacyAddons = addonsUnit > 0
+      ? 0.0
+      : PricingCalculator.addOnsTotal(item['selectedAddOns'] ?? item['selected_add_ons']);
+  final unit = parseMoney(
+    item['base_price'] ?? item['basePrice'] ?? item['price'] ?? item['unit_price'] ?? meal['price'],
+  );
+  final ceiling = unit + (addonsUnit > 0 ? addonsUnit : 0);
   final discounted = parseMoney(item['discounted_price'] ?? item['discountedPrice']);
-  if (discounted > 0 && (unit <= 0 || discounted <= unit + 0.001)) {
+  if (discounted > 0 && (ceiling <= 0 || discounted <= ceiling + 0.001)) {
     return discounted;
   }
-  return unit;
+  final storedNet = parseMoney(item['line_net']);
+  final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+  if (storedNet > 0 && qty > 0) {
+    return PricingCalculator.roundCurrency(storedNet / qty);
+  }
+  final appliedPromo = item['applied_promo_code']?.toString();
+  if (PricingCalculator.isOfferActive(meal, appliedPromoCode: appliedPromo) ||
+      PricingCalculator.promoCodeMatches(meal, appliedPromo)) {
+    return PricingCalculator.effectiveUnitPrice(meal, qty, appliedPromoCode: appliedPromo) +
+        (addonsUnit > 0 ? addonsUnit : legacyAddons);
+  }
+  return unit + (addonsUnit > 0 ? addonsUnit : legacyAddons);
 }
 
 class ChefPayoutBreakdown {
@@ -1543,7 +1703,7 @@ Map<String, dynamic>? checkoutAddressFromUserProfile(Map<String, dynamic>? user)
 /// Builds a checkout payload from a claimed catering / bulk request.
 List<Map<String, dynamic>> checkoutItemsFromCateringRequest(Map<String, dynamic> request) {
   final quantity = int.tryParse(request['quantity']?.toString() ?? '1') ?? 1;
-  final budget = parseMoney(request['budget']);
+  final budget = cateringPayableTotal(request);
   final unitPrice = quantity > 0 ? roundMoney(budget / quantity) : budget;
   final chefId = request['accepted_chef_id']?.toString() ?? '';
   final title = request['title']?.toString() ?? 'Catering order';
@@ -1575,4 +1735,72 @@ List<Map<String, dynamic>> checkoutItemsFromCateringRequest(Map<String, dynamic>
       'specialInstructions': request['description'],
     },
   ];
+}
+
+class CoinLedgerEntry {
+  const CoinLedgerEntry({
+    required this.title,
+    required this.amount,
+    this.at,
+    required this.isDebit,
+  });
+
+  final String title;
+  final double amount;
+  final DateTime? at;
+  final bool isDebit;
+}
+
+bool isCoinLedgerDebit(String? type, double amount) {
+  if (amount < 0) return true;
+  return RegExp('debit|spent|redeem|used|deduct|payment|payout', caseSensitive: false)
+      .hasMatch(type ?? '');
+}
+
+List<CoinLedgerEntry> mergeCoinLedger({
+  required List<Map<String, dynamic>> transactions,
+  required List<Map<String, dynamic>> orders,
+}) {
+  final entries = <CoinLedgerEntry>[];
+  for (final txn in transactions) {
+    final rawAmount = (txn['amount'] as num?)?.toDouble() ??
+        double.tryParse(txn['amount']?.toString() ?? '') ??
+        0.0;
+    if (rawAmount == 0) continue;
+    final type = txn['transaction_type']?.toString() ?? '';
+    final debit = isCoinLedgerDebit(type, rawAmount);
+    final title = (txn['description']?.toString().trim().isNotEmpty ?? false)
+        ? txn['description'].toString()
+        : (type.isNotEmpty ? type : 'Coin transaction');
+    entries.add(CoinLedgerEntry(
+      title: title,
+      amount: rawAmount.abs(),
+      at: DateTime.tryParse(txn['created_at']?.toString() ?? ''),
+      isDebit: debit,
+    ));
+  }
+
+  if (entries.isNotEmpty) {
+    entries.sort((a, b) => (b.at ?? DateTime.fromMillisecondsSinceEpoch(0))
+        .compareTo(a.at ?? DateTime.fromMillisecondsSinceEpoch(0)));
+    return entries;
+  }
+
+  for (final order in orders) {
+    final coins = (order['coins_applied'] as num?)?.toDouble() ??
+        double.tryParse(order['coins_applied']?.toString() ?? '') ??
+        0.0;
+    if (coins <= 0) continue;
+    final label = formatOrderId(order['order_id']?.toString(), order['id']?.toString() ?? '');
+    entries.add(CoinLedgerEntry(
+      title: 'Coins applied on order $label',
+      amount: coins,
+      at: DateTime.tryParse(order['created_at']?.toString() ?? ''),
+      isDebit: true,
+    ));
+  }
+
+  entries.sort((a, b) => (b.at ?? DateTime.fromMillisecondsSinceEpoch(0))
+      .compareTo(a.at ?? DateTime.fromMillisecondsSinceEpoch(0)));
+  return entries;
 }

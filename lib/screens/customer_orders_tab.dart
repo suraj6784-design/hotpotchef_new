@@ -932,7 +932,13 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
           const SizedBox(height: 12),
           Text('${req['quantity']}x ${req['title']}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
           const SizedBox(height: 4),
-          Text('Budget: ₹${req['budget']}', style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 14)),
+          Text(
+            cateringPayableTotal(req) > 0 &&
+                    cateringPayableTotal(req) != parseMoney(req['budget'])
+                ? 'Chef quote: ₹${cateringPayableTotal(req).toStringAsFixed(0)}  (budget ₹${req['budget']})'
+                : 'Budget: ₹${req['budget']}',
+            style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 14),
+          ),
           const SizedBox(height: 8),
           Row(children: [const Icon(Icons.calendar_today, size: 14, color: AppTheme.textMuted), const SizedBox(width: 6), Text('Needed By: ${req['target_date_time']}', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12))]),
           if (isAccepted || isOrdered) ...[

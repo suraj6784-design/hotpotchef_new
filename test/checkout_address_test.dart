@@ -310,6 +310,19 @@ void main() {
       expect(items.single['price'], 500);
       expect(items.single['source_request_id'], 'req-1');
     });
+
+    test('uses the chef quoted total when one is present', () {
+      final items = checkoutItemsFromCateringRequest({
+        'id': 'req-2',
+        'title': 'Office lunch',
+        'quantity': 10,
+        'budget': 5000,
+        'quoted_total': 6200,
+        'accepted_chef_id': 'chef-9',
+      });
+      expect(items.single['price'], 620);
+      expect(cateringPayableTotal({'budget': 5000, 'quoted_total': 6200}), 6200);
+    });
   });
 
   group('preferredCheckoutAddress', () {

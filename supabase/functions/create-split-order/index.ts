@@ -57,21 +57,28 @@ serve(async (req) => {
     const user = userData.user
 
     const admin = createClient(supabaseUrl, serviceKey)
-    const { data: pricing, error: pricingError } = await admin.rpc('calculate_cart_total', {
-      p_items: cartItems,
-    })
-    if (pricingError) throw new Error(pricingError.message)
+    let packagingAlreadyIncluded = 20
+    try {
+      const { data: pricing } = await admin.rpc('calculate_cart_total', {
+        p_items: cartItems,
+      })
+      packagingAlreadyIncluded = asNumber(pricing?.packaging_fee, 20)
+    } catch {
+      packagingAlreadyIncluded = 20
+    }
 
-    const foodAfterDiscount = asNumber(
-      pricing?.grand_total,
-      asNumber(pricing?.subtotal, 0) - asNumber(pricing?.discount, 0) + asNumber(pricing?.packaging_fee, 20),
-    )
-    const packagingAlreadyIncluded = asNumber(pricing?.packaging_fee, 20)
-    const foodOnly = Math.max(0, foodAfterDiscount - packagingAlreadyIncluded)
+    const foodOnly = cartItems.reduce((sum, row) => {
+      return sum + Math.max(0, asNumber(row.price, 0)) * Math.max(1, asNumber(row.quantity, 1))
+    }, 0)
     const billBeforeCoins = foodOnly + packagingAlreadyIncluded + deliveryFee + tipAmount
 
+    const coinsAllowed = cartItems.every((row) => {
+      const flag = row.accepts_hotpot_coins
+      return !(flag === false || flag === 'false')
+    })
+
     let coins = 0
-    if (applyCoins) {
+    if (applyCoins && coinsAllowed) {
       const { data: profile } = await admin.from('users').select('hotpot_coins').eq('id', user.id).maybeSingle()
       coins = Math.min(asNumber(profile?.hotpot_coins, 0), billBeforeCoins)
     }

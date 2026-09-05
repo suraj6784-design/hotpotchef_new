@@ -9,6 +9,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../utils/helpers.dart';
 import '../utils/app_page.dart';
 import '../utils/app_theme.dart';
+import '../utils/pricing_calculator.dart';
 import '../models/cart_enums.dart';
 import '../providers/cart_provider.dart';
 import '../services/reorder_service.dart';
@@ -268,6 +269,30 @@ Future<bool> addMealToCartWithConflict({
     return false;
   }
 
+  try {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user != null) {
+      final prefs = await Supabase.instance.client
+          .from('users')
+          .select('dietary_preference, allergies')
+          .eq('id', user.id)
+          .maybeSingle();
+      final reason = dietSkipReason(
+        meal,
+        preference: prefs?['dietary_preference']?.toString(),
+        allergies: prefs?['allergies']?.toString(),
+      );
+      if (reason != null) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(reason), backgroundColor: Colors.orangeAccent),
+          );
+        }
+        return false;
+      }
+    }
+  } catch (_) {}
+
   final cart = ref.read(cartProvider.notifier);
   final existingChef = ref.read(cartProvider).primaryChefId;
   final chefId = meal['chef_id']?.toString() ?? '';
@@ -315,17 +340,20 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
   List<CartItemAddOn> get _chosenAddOns =>
       _availableAddOns.where((addon) => _selectedAddOnIds.contains(addon.id)).toList();
 
-  double get _unitTotal {
-    final price = double.tryParse(widget.meal['price']?.toString() ?? '0') ?? 0.0;
-    return price + _chosenAddOns.fold<double>(0, (sum, addon) => sum + addon.price);
-  }
+  double get _addOnsUnitTotal =>
+      _chosenAddOns.fold<double>(0, (sum, addon) => sum + addon.price);
+
+  double get _lineFoodTotal =>
+      PricingCalculator.effectiveItemTotal(widget.meal, _quantity) +
+      (_addOnsUnitTotal * _quantity);
 
   @override
   Widget build(BuildContext context) {
     final meal = widget.meal;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final maxStock = int.tryParse(meal['quantity']?.toString() ?? '10') ?? 10;
-    final price = double.tryParse(meal['price']?.toString() ?? '0') ?? 0.0;
+    final offerSummary = PricingCalculator.calculateItemSummary(meal, _quantity);
+    final price = offerSummary.effectiveUnitPrice;
     final chefName = chefDisplayName(meal);
     final chefId = meal['chef_id']?.toString() ?? '';
     final fssai = meal['fssai_number']?.toString() ?? '';
@@ -396,8 +424,49 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('₹${price.toInt()}',
-                              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: AppTheme.primary)),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (offerSummary.isOfferApplied) ...[
+                                Text(
+                                  '₹${offerSummary.baseUnitPrice.toInt()}',
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: AppTheme.textMuted,
+                                    decoration: TextDecoration.lineThrough,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                              ],
+                              Text('₹${price.toInt()}',
+                                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: AppTheme.primary)),
+                              if (offerSummary.isOfferApplied &&
+                                  (offerSummary.offerDescription ?? '').isNotEmpty)
+                                Text(
+                                  offerSummary.offerDescription!,
+                                  style: TextStyle(
+                                    color: Colors.red.shade700,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              if (PricingCalculator.mealPromoCode(meal) != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    PricingCalculator.hasPromoExtra(meal)
+                                        ? 'Promo ${PricingCalculator.mealPromoCode(meal)} stacks extra off at checkout'
+                                        : 'Enter promo ${PricingCalculator.mealPromoCode(meal)} at checkout to unlock this offer',
+                                    style: const TextStyle(
+                                      color: AppTheme.textMuted,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
                           MealRatingBadge(meal: meal),
                         ],
                       ),
@@ -662,7 +731,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                         },
                   child: Text(
                     isMealAvailableForCart(meal)
-                        ? 'Add to Cart • ₹${(_unitTotal * _quantity).toInt()}'
+                        ? 'Add to Cart • ₹${_lineFoodTotal.toInt()}'
                         : 'Sold out',
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                   ),

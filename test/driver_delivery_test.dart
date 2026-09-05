@@ -48,6 +48,11 @@ void main() {
     expect(driverPayoutFromOrder({'delivery_fee': 0, 'driver_payout': 0}), 40);
     expect(driverPayoutFromOrder({'delivery_fee': 35}), 35);
     expect(driverPayoutFromOrder({'driver_payout': 55, 'delivery_fee': 35}), 55);
+    expect(
+      driverPayoutFromOrder({'driver_payout': 35, 'delivery_fee': 35, 'tip_amount': 20}),
+      55,
+    );
+    expect(driverPayoutFromOrder({'delivery_fee': 30, 'tip_amount': 15}), 45);
   });
 
   test('fleet earnings prefer a real wallet and otherwise sum run payouts', () {

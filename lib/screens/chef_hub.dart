@@ -1254,6 +1254,96 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     return mine && (status == 'accepted' || status == 'ordered' || status == 'paid');
   }
 
+  Future<double?> _askCateringQuote(Map<String, dynamic> request) async {
+    final budget = parseMoney(request['budget']);
+    final controller = TextEditingController(
+      text: budget > 0 ? budget.toStringAsFixed(0) : '',
+    );
+    final quote = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Your quote'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(
+            prefixText: '₹ ',
+            labelText: 'Quoted total',
+            helperText: budget > 0 ? 'Customer budget ₹${budget.toStringAsFixed(0)}' : null,
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              final value = parseMoney(controller.text, budget);
+              Navigator.pop(ctx, value > 0 ? value : budget);
+            },
+            child: const Text('Claim'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return quote;
+  }
+
+  Future<void> _saveCateringQuote(Object requestId, double quote) async {
+    if (quote <= 0) return;
+    try {
+      await _supabase.from('customer_requests').update({
+        'quoted_total': quote,
+      }).eq('id', requestId);
+    } on PostgrestException catch (e) {
+      if (e.code != 'PGRST204') {
+        FirebaseCrashlytics.instance.recordError(e, StackTrace.current, reason: 'Failed to save catering quote');
+      }
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to save catering quote');
+    }
+  }
+
+  Future<void> _claimCateringLead(Map<String, dynamic> request) async {
+    final quote = await _askCateringQuote(request);
+    if (quote == null || !mounted) return;
+
+    var claimed = false;
+    try {
+      claimed = await _supabase.rpc(
+            'claim_customer_request',
+            params: {
+              'p_request_id': request['id'],
+              'p_chef_name': _chefDisplayName,
+            },
+          ) ==
+          true;
+    } catch (_) {
+      final res = await _supabase
+          .from('customer_requests')
+          .update({
+            'status': 'Accepted',
+            'accepted_chef_id': _currentUserId,
+            'accepted_chef_name': _chefDisplayName,
+          })
+          .eq('id', request['id'])
+          .eq('status', 'Open')
+          .select();
+      claimed = res.isNotEmpty;
+    }
+
+    if (claimed) {
+      await _saveCateringQuote(request['id'], quote);
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(claimed
+          ? 'Lead claimed. The customer can now pay your quote from My Orders.'
+          : 'Lead was already claimed.'),
+    ));
+  }
+
   Widget _buildCustomerLeadsTab(List<Map<String, dynamic>> requests) {
     if (requests.isEmpty) {
       return const EmptyState(
@@ -1283,8 +1373,12 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                     child: Text(req['title'] ?? 'Bulk Catering Lead',
                         style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                   ),
-                  Text('₹${req['budget'] ?? '0'}',
-                      style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w800)),
+                  Text(
+                    cateringPayableTotal(req) > 0
+                        ? '₹${cateringPayableTotal(req).toStringAsFixed(0)}'
+                        : '₹${req['budget'] ?? '0'}',
+                    style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w800),
+                  ),
                 ],
               ),
               const SizedBox(height: 6),
@@ -1307,39 +1401,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   label: 'Claim Lead',
                   icon: Icons.handshake_rounded,
                   gradient: const LinearGradient(colors: [AppTheme.success, Color(0xFF43C478)]),
-                  onPressed: () async {
-                    var claimed = false;
-                    try {
-                      claimed = await _supabase.rpc(
-                            'claim_customer_request',
-                            params: {
-                              'p_request_id': req['id'],
-                              'p_chef_name': _chefDisplayName,
-                            },
-                          ) ==
-                          true;
-                    } catch (_) {
-                      final res = await _supabase
-                          .from('customer_requests')
-                          .update({
-                            'status': 'Accepted',
-                            'accepted_chef_id': _currentUserId,
-                            'accepted_chef_name': _chefDisplayName,
-                          })
-                          .eq('id', req['id'])
-                          .eq('status', 'Open')
-                          .select();
-                      claimed = res.isNotEmpty;
-                    }
-
-                    if (context.mounted) {
-                      if (!claimed) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lead was already claimed.')));
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lead claimed. The customer can now pay from My Orders.')));
-                      }
-                    }
-                  },
+                  onPressed: () => _claimCateringLead(req),
                 )
               else if (awaitingPay)
                 const Text('Stay ready. The customer pays from My Orders, then this becomes a kitchen order.',

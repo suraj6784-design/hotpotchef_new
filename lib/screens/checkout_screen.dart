@@ -10,6 +10,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/helpers.dart';
 import '../utils/network.dart';
+import '../utils/pricing_calculator.dart';
 import '../models/cart_enums.dart';
 import '../services/alert_service.dart';
 import '../widgets/app_widgets.dart';
@@ -47,6 +48,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   double _deliveryFee = 0.0;
   double _userCoinBalance = 0.0;
   bool _applyCoins = false;
+  double _loyaltyPackaging = kDefaultPackagingFee;
   int _selectedTip = 0;
 
   Map<String, dynamic>? _serverPricing;
@@ -56,6 +58,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _instructionsController = TextEditingController();
+  final TextEditingController _promoController = TextEditingController();
+  String? _appliedPromoCode;
+  String? _promoFeedback;
+  bool _promoIsError = false;
   late final Razorpay _razorpay;
 
   @override
@@ -78,6 +84,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _razorpay.clear();
     _phoneController.dispose();
     _instructionsController.dispose();
+    _promoController.dispose();
     super.dispose();
   }
 
@@ -154,17 +161,34 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           '';
       _userCoinBalance =
           double.tryParse(userData?['hotpot_coins']?.toString() ?? '0') ?? 0.0;
+      if (!_coinsAccepted && _applyCoins) _applyCoins = false;
       if (_instructionsController.text.trim().isEmpty) {
-        final note = widget.cartItems
-            .map((item) => item['specialInstructions']?.toString() ?? '')
-            .firstWhere((text) => text.trim().isNotEmpty, orElse: () => '');
+        final note = mergedOrderInstructions(widget.cartItems);
         if (note.isNotEmpty) _instructionsController.text = note;
       }
       if (pricingRes != null) _serverPricing = pricingRes;
       _isLoading = false;
     });
 
+    await _loadLoyaltyPackaging(user.id);
     await _calculateDeliveryFee();
+  }
+
+  Future<void> _loadLoyaltyPackaging(String userId) async {
+    try {
+      final gam = await _supabase
+          .from('user_gamification')
+          .select('loyalty_tier')
+          .eq('user_id', userId)
+          .maybeSingle()
+          .withTimeout(NetworkTimeouts.short);
+      if (!mounted) return;
+      setState(() {
+        _loyaltyPackaging = packagingFeeForLoyaltyTier(gam?['loyalty_tier']?.toString());
+      });
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to load loyalty packaging');
+    }
   }
 
   bool get _hasDelivery => widget.cartItems.any((item) {
@@ -248,37 +272,56 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   // --- Price Computations ---
 
   double get _foodTotal {
-    final serverVal = double.tryParse(_serverPricing?['subtotal']?.toString() ?? 
-                                     _serverPricing?['item_total']?.toString() ?? '');
+    double sum = 0.0;
+    for (final item in widget.cartItems) {
+      sum += PricingCalculator.lineFoodTotal(item, appliedPromoCode: _appliedPromoCode);
+    }
+    if (sum > 0) return sum;
+
+    final serverVal = double.tryParse(_serverPricing?['subtotal']?.toString() ??
+        _serverPricing?['item_total']?.toString() ??
+        '');
     if (serverVal != null && serverVal > 0) {
       return serverVal;
     }
 
-    // Robust client-side fallback calculation from cart items to prevent ₹0.00 bug
-    double sum = 0.0;
+    // Last-resort fallback so a missing price never collapses the bill to ₹0.
     for (final item in widget.cartItems) {
       final price = double.tryParse(
             item['discounted_price']?.toString() ??
-            item['discountedPrice']?.toString() ??
-            item['price']?.toString() ??
-            item['base_price']?.toString() ??
-            item['basePrice']?.toString() ??
-            '0',
-          ) ?? 0.0;
+                item['discountedPrice']?.toString() ??
+                item['price']?.toString() ??
+                item['base_price']?.toString() ??
+                item['basePrice']?.toString() ??
+                '0',
+          ) ??
+          0.0;
       final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
       sum += price * qty;
     }
     return sum;
   }
 
-  double get _packagingFee =>
-      double.tryParse(_serverPricing?['packaging_fee']?.toString() ?? '20.0') ?? 20.0;
+  double get _foodTotalBeforePromo {
+    double sum = 0.0;
+    for (final item in widget.cartItems) {
+      sum += PricingCalculator.lineFoodTotal(item);
+    }
+    return sum;
+  }
+
+  double get _promoSavings =>
+      PricingCalculator.roundCurrency(max(0.0, _foodTotalBeforePromo - _foodTotal));
+
+  bool get _coinsAccepted => cartAcceptsHotpotCoins(widget.cartItems);
+
+  double get _packagingFee => _loyaltyPackaging;
 
   double get _subTotalBeforeCoins =>
       _foodTotal + _packagingFee + _deliveryFee + _selectedTip;
 
   double get _coinDeduction =>
-      _applyCoins ? min(_userCoinBalance, _subTotalBeforeCoins) : 0.0;
+      (_applyCoins && _coinsAccepted) ? min(_userCoinBalance, _subTotalBeforeCoins) : 0.0;
 
   double get _grandTotal => max(0.0, _subTotalBeforeCoins - _coinDeduction);
 
@@ -303,7 +346,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (user == null) throw Exception('Authentication session expired');
       if (widget.cartItems.isEmpty) throw Exception('Your cart is empty');
 
-      if (_applyCoins && _grandTotal < 1) {
+      if (_applyCoins && _coinsAccepted && _grandTotal < 1) {
         await _placeCoinsOnlyOrder();
         return;
       }
@@ -316,10 +359,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           'customer_email': user.email,
           'customer_phone': phone,
           'delivery_address': _formattedDeliveryAddress(),
-          'instructions': _instructionsController.text.trim(),
+          'instructions': mergedOrderInstructions(
+            _checkoutCartItems(),
+            _instructionsController.text,
+          ),
           'delivery_fee': _deliveryFee,
           'tip_amount': _selectedTip,
-          'apply_coins': _applyCoins,
+          'apply_coins': _applyCoins && _coinsAccepted,
         },
       ).withTimeout(NetworkTimeouts.payment);
 
@@ -430,7 +476,43 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         'time_slot': finalTimeSlot,
       };
     }).toList();
-    return checkoutCartPayload(dated);
+    return checkoutCartPayload(dated, appliedPromoCode: _appliedPromoCode);
+  }
+
+  void _applyPromoCode() {
+    final code = PricingCalculator.normalizedPromoCode(_promoController.text);
+    if (code == null) {
+      setState(() {
+        _appliedPromoCode = null;
+        _promoIsError = true;
+        _promoFeedback = 'Enter a promo code';
+      });
+      return;
+    }
+    if (!PricingCalculator.cartMatchesPromoCode(widget.cartItems, code)) {
+      setState(() {
+        _appliedPromoCode = null;
+        _promoIsError = true;
+        _promoFeedback = 'This code does not apply to the meals in this cart';
+      });
+      return;
+    }
+    setState(() {
+      _appliedPromoCode = code;
+      _promoIsError = false;
+      _promoFeedback = _promoSavings > 0
+          ? 'Code $code applied — you save ₹${_promoSavings.toStringAsFixed(0)}'
+          : 'Code $code applied';
+    });
+  }
+
+  void _clearPromoCode() {
+    setState(() {
+      _appliedPromoCode = null;
+      _promoFeedback = null;
+      _promoIsError = false;
+      _promoController.clear();
+    });
   }
 
   Map<String, dynamic> _placeOrderParams({
@@ -443,9 +525,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       'p_customer_email': user.email!,
       'p_customer_phone': _phoneController.text.trim(),
       'p_delivery_address': _formattedDeliveryAddress(),
-      'p_instructions': _instructionsController.text.trim(),
+      'p_instructions': mergedOrderInstructions(
+        _checkoutCartItems(),
+        _instructionsController.text,
+      ),
       'p_cart_items': _checkoutCartItems(),
-      'p_apply_coins': _applyCoins,
+      'p_apply_coins': _applyCoins && _coinsAccepted,
       'p_tip_amount': _selectedTip,
       'p_delivery_fee': _deliveryFee,
       'p_payment_id': paymentId,
@@ -550,9 +635,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           'razorpay_signature': signature,
           'customer_phone': _phoneController.text.trim(),
           'delivery_address': _formattedDeliveryAddress(),
-          'instructions': _instructionsController.text.trim(),
+          'instructions': mergedOrderInstructions(
+            _checkoutCartItems(),
+            _instructionsController.text,
+          ),
           'cart_items': _checkoutCartItems(),
-          'apply_coins': _applyCoins,
+          'apply_coins': _applyCoins && _coinsAccepted,
           'tip_amount': _selectedTip,
           'delivery_fee': _deliveryFee,
         },
@@ -797,6 +885,65 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
+  Widget _buildPromoCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceOf(context),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.hairlineOf(context)),
+        boxShadow: AppTheme.softShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Promo code',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.onSurfaceOf(context))),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _promoController,
+                  textCapitalization: TextCapitalization.characters,
+                  enabled: _appliedPromoCode == null,
+                  decoration: InputDecoration(
+                    hintText: 'Enter chef promo code',
+                    isDense: true,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onSubmitted: (_) => _applyPromoCode(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (_appliedPromoCode == null)
+                TextButton(
+                  onPressed: _applyPromoCode,
+                  child: const Text('Apply', style: TextStyle(fontWeight: FontWeight.bold)),
+                )
+              else
+                TextButton(
+                  onPressed: _clearPromoCode,
+                  child: const Text('Remove'),
+                ),
+            ],
+          ),
+          if (_promoFeedback != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _promoFeedback!,
+              style: TextStyle(
+                color: _promoIsError ? Colors.red : Colors.green.shade700,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -999,6 +1146,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ),
           if (_hasDelivery) const SizedBox(height: 16),
 
+          _buildPromoCard(),
+          const SizedBox(height: 16),
+
           // Bill Summary
           Container(
             padding: const EdgeInsets.all(16),
@@ -1017,9 +1167,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text('Items Total'),
-                    Text('₹${_foodTotal.toStringAsFixed(2)}'),
+                    Text('₹${_foodTotalBeforePromo.toStringAsFixed(2)}'),
                   ],
                 ),
+                if (_appliedPromoCode != null && _promoSavings > 0) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Promo ($_appliedPromoCode)',
+                          style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600)),
+                      Text('-₹${_promoSavings.toStringAsFixed(2)}',
+                          style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 6),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1057,13 +1219,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     contentPadding: EdgeInsets.zero,
                     activeThumbColor: AppTheme.primary,
                     title: Text(
-                      'Use HotPot Coins (Balance: ₹${_userCoinBalance.toStringAsFixed(2)})',
+                      _coinsAccepted
+                          ? 'Use HotPot Coins (Balance: ₹${_userCoinBalance.toStringAsFixed(2)})'
+                          : 'HotPot Coins are not accepted on a dish in this cart',
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                     ),
-                    value: _applyCoins,
-                    onChanged: (val) => setState(() => _applyCoins = val),
+                    value: _applyCoins && _coinsAccepted,
+                    onChanged: _coinsAccepted
+                        ? (val) => setState(() => _applyCoins = val)
+                        : null,
                   ),
-                  if (_applyCoins && _coinDeduction > 0)
+                  if (_applyCoins && _coinsAccepted && _coinDeduction > 0)
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [

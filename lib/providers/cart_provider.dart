@@ -12,6 +12,7 @@ import '../models/cart_state.dart';
 import '../models/cart_enums.dart';
 import '../services/cart_service.dart';
 import '../services/shared_cart_service.dart';
+import '../utils/helpers.dart';
 
 void _logCartError(dynamic error, StackTrace stackTrace, String reason) {
   if (kDebugMode) {
@@ -137,6 +138,12 @@ class CartNotifier extends Notifier<CartState> {
     _sharedCartSub = _sharedCartService.streamSharedCart(code).listen((items) {
       if (_applyingSharedCart) return;
       _applyingSharedCart = true;
+      final roomClosed = items.isEmpty && state.isNotEmpty && state.sharedRoomCode == code;
+      if (roomClosed) {
+        detachSharedRoom();
+        _applyingSharedCart = false;
+        return;
+      }
       state = state.copyWith(items: items, sharedRoomCode: code);
       _persistLocal();
       _applyingSharedCart = false;
@@ -301,7 +308,16 @@ class CartNotifier extends Notifier<CartState> {
   }
 
   Future<void> clearCart() async {
+    final room = state.sharedRoomCode;
     _stockChannel?.unsubscribe();
+    if (room != null && room.isNotEmpty) {
+      try {
+        await _sharedCartService.markSharedCartOrdered(room);
+      } catch (e, st) {
+        _logCartError(e, st, 'Failed closing shared cart room');
+      }
+    }
+    detachSharedRoom();
     state = state.copyWith(items: [], applyCoins: false);
 
     try {
@@ -317,7 +333,8 @@ class CartNotifier extends Notifier<CartState> {
   }
 
   void setDeliveryFee(double fee) => state = state.copyWith(dynamicDeliveryFee: fee);
-  void toggleCoins(bool apply) => state = state.copyWith(applyCoins: apply);
+  void toggleCoins(bool apply) =>
+      state = state.copyWith(applyCoins: apply && state.coinsAcceptedByVendors);
 
   Future<void> fetchUserCoins() async {
     final user = _supabase.auth.currentUser;
@@ -330,7 +347,20 @@ class CartNotifier extends Notifier<CartState> {
           .eq('id', user.id)
           .maybeSingle();
       final coins = double.tryParse(data?['hotpot_coins']?.toString() ?? '0') ?? 0.0;
-      state = state.copyWith(userCoinBalance: coins);
+      var packaging = state.packagingFee;
+      try {
+        final gam = await _supabase
+            .from('user_gamification')
+            .select('loyalty_tier')
+            .eq('user_id', user.id)
+            .maybeSingle();
+        packaging = packagingFeeForLoyaltyTier(gam?['loyalty_tier']?.toString());
+      } catch (_) {}
+      state = state.copyWith(
+        userCoinBalance: coins,
+        packagingFee: packaging,
+        applyCoins: state.applyCoins && state.coinsAcceptedByVendors,
+      );
     } catch (e, st) {
       _logCartError(e, st, 'Failed fetching coin balance');
     }

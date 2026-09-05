@@ -15,6 +15,7 @@ import '../utils/helpers.dart';
 import '../utils/customer_constants.dart';
 import '../utils/dynamic_ui_engine.dart';
 import '../utils/network.dart';
+import '../utils/pricing_calculator.dart';
 import '../providers/cart_provider.dart';
 import '../providers/delivery_preference.dart';
 import '../widgets/customer_ui_components.dart';
@@ -967,7 +968,9 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             String overlayText = isSoldOut ? 'SOLD OUT' : (isExpired ? 'TIME PASSED' : '');
 
             final cartState = ref.watch(cartProvider);
-            final hasOffer = cartState.isOfferActive(meal);
+            final offerSummary = PricingCalculator.calculateItemSummary(meal, 1);
+            final hasOffer = cartState.isOfferActive(meal) || PricingCalculator.isOfferGated(meal);
+            final showOfferPrice = offerSummary.isOfferApplied;
             final etaLabel = _etaLabelForMeal(meal);
 
             return GestureDetector(
@@ -1064,7 +1067,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                     decoration: BoxDecoration(
                                         color: Colors.red.shade600, borderRadius: BorderRadius.circular(6)),
                                     child: Text(
-                                      meal['offer_type'].toString().toUpperCase(),
+                                      PricingCalculator.offerBadgeLabel(meal),
                                       style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
                                     ),
                                   ),
@@ -1195,10 +1198,22 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
+                                          if (showOfferPrice)
+                                            Text(
+                                              '₹${offerSummary.baseUnitPrice.toInt()}',
+                                              style: const TextStyle(
+                                                color: AppTheme.textMuted,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                                decoration: TextDecoration.lineThrough,
+                                              ),
+                                            ),
                                           Text(
-                                            '₹${(double.tryParse(meal['price']?.toString() ?? '0') ?? 0).toInt()}',
+                                            '₹${offerSummary.effectiveUnitPrice.toInt()}',
                                             style: TextStyle(
-                                                fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.onSurfaceOf(context)),
+                                                fontWeight: FontWeight.w900,
+                                                fontSize: 16,
+                                                color: showOfferPrice ? Colors.green.shade700 : AppTheme.onSurfaceOf(context)),
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                           ),

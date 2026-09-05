@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'dart:math';
 
 import '../utils/helpers.dart';
 
@@ -46,13 +45,10 @@ class _ReferralScreenState extends State<ReferralScreen> {
       if (!mounted) return;
 
       if (userData != null) {
-        String code = userData['referral_code']?.toString() ?? '';
+        String code = normalizeReferralCode(userData['referral_code']?.toString()) ?? '';
 
         if (code.isEmpty) {
-          const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-          final rnd = Random();
-          code = 'CHEF${List.generate(6, (index) => chars[rnd.nextInt(chars.length)]).join()}';
-
+          code = generateReferralCode();
           await _supabase.from('users').update({'referral_code': code}).eq('id', user.id);
           if (!mounted) return;
         }
@@ -62,11 +58,22 @@ class _ReferralScreenState extends State<ReferralScreen> {
             .count(CountOption.exact)
             .eq('referred_by', code);
 
+        var rewardedFriends = 0;
+        try {
+          rewardedFriends = await _supabase
+              .from('users')
+              .count(CountOption.exact)
+              .eq('referred_by', code)
+              .not('referral_rewarded_at', 'is', null);
+        } catch (_) {
+          rewardedFriends = 0;
+        }
+
         if (!mounted) return;
 
         setState(() {
           _referralCode = code;
-          _earnedCoins = (userData['hotpot_coins'] as num?)?.toDouble() ?? 0.0;
+          _earnedCoins = referralCoinsFromRewardedFriends(rewardedFriends);
           _friendsReferred = countResponse;
           _isLoading = false;
         });

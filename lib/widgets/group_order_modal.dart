@@ -206,7 +206,7 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Order together with colleagues or family in real-time.',
+            'Add dishes together in real time. One person pays for the whole group at checkout.',
             style: TextStyle(
               fontSize: 13,
               color: isDark ? Colors.grey.shade400 : AppTheme.textMuted,

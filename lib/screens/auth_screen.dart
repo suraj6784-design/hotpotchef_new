@@ -24,12 +24,14 @@ class AuthScreen extends StatefulWidget {
     this.asSheet = false,
     this.sheetTitle,
     this.sheetSubtitle,
+    this.initialReferralCode,
   });
 
   /// Guest checkout/order uses a modal sheet so the cart stays visible behind.
   final bool asSheet;
   final String? sheetTitle;
   final String? sheetSubtitle;
+  final String? initialReferralCode;
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
@@ -52,6 +54,16 @@ class _AuthScreenState extends State<AuthScreen> {
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _referralController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    final seeded = normalizeReferralCode(widget.initialReferralCode);
+    if (seeded != null) {
+      _referralController.text = seeded;
+      _isLogin = false;
+    }
+  }
 
   @override
   void dispose() {
@@ -129,6 +141,7 @@ class _AuthScreenState extends State<AuthScreen> {
         TextInput.finishAutofillContext();
 
         if (response.user != null) {
+          unawaited(_ensurePublicUserProfile());
           unawaited(PushNotificationService.syncTokenForCurrentUser());
           _leaveAuthAfterSuccess();
         } else {
@@ -156,6 +169,7 @@ class _AuthScreenState extends State<AuthScreen> {
             'name': name,
             'phone': phone,
             'role': _selectedRole.storageValue,
+            if (referredBy != null) 'referred_by': referredBy,
           },
         ).withTimeout(NetworkTimeouts.standard);
 
@@ -178,7 +192,7 @@ class _AuthScreenState extends State<AuthScreen> {
           }
 
           // Initialize user record in public.users table with selected role
-          await _supabase.from('users').upsert(
+          await _upsertPublicUserRow(
             signupUserPayload(
               id: response.user!.id,
               email: email,
@@ -186,9 +200,10 @@ class _AuthScreenState extends State<AuthScreen> {
               phone: phone,
               role: _selectedRole.storageValue,
               referredBy: referredBy,
+              referralCode: generateReferralCode(),
               createdAt: DateTime.now().toIso8601String(),
             ),
-          ).withTimeout(NetworkTimeouts.standard);
+          );
 
           unawaited(PushNotificationService.syncTokenForCurrentUser());
           _leaveAuthAfterSuccess();
@@ -200,6 +215,59 @@ class _AuthScreenState extends State<AuthScreen> {
       _showAuthError(_friendlyAuthError(e));
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _upsertPublicUserRow(Map<String, dynamic> payload) async {
+    final body = Map<String, dynamic>.from(payload);
+    for (var attempt = 0; attempt < 6; attempt++) {
+      try {
+        await _supabase.from('users').upsert(body).withTimeout(NetworkTimeouts.standard);
+        return;
+      } on PostgrestException catch (e) {
+        if (e.code == '23505' && body.containsKey('referral_code')) {
+          body['referral_code'] = generateReferralCode();
+          continue;
+        }
+        if (e.code != 'PGRST204') rethrow;
+        final match = RegExp(r"Could not find the '([^']+)' column").firstMatch(e.message);
+        final missing = match?.group(1);
+        if (missing == null || !body.containsKey(missing)) rethrow;
+        body.remove(missing);
+      }
+    }
+  }
+
+  Future<void> _ensurePublicUserProfile() async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) return;
+    try {
+      final existing = await _supabase
+          .from('users')
+          .select('id, referred_by, referral_code, name, phone, role, email')
+          .eq('id', user.id)
+          .maybeSingle()
+          .withTimeout(NetworkTimeouts.standard);
+      final meta = user.userMetadata ?? {};
+      final ownCode = normalizeReferralCode(existing?['referral_code']?.toString()) ??
+          generateReferralCode();
+      final referredBy = sanitizeReferredBy(
+        referredBy: existing?['referred_by']?.toString() ?? meta['referred_by']?.toString(),
+        ownCode: ownCode,
+      );
+      await _upsertPublicUserRow(
+        signupUserPayload(
+          id: user.id,
+          email: user.email ?? existing?['email']?.toString() ?? '',
+          name: existing?['name']?.toString() ?? meta['name']?.toString() ?? '',
+          phone: existing?['phone']?.toString() ?? meta['phone']?.toString() ?? '',
+          role: existing?['role']?.toString() ?? meta['role']?.toString() ?? 'Customer',
+          referredBy: referredBy,
+          referralCode: ownCode,
+        ),
+      );
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed ensuring referral profile');
     }
   }
 

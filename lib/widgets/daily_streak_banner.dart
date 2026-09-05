@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/app_theme.dart';
+import '../utils/helpers.dart';
 
 class DailyStreakBanner extends StatefulWidget {
   const DailyStreakBanner({super.key});
@@ -43,15 +44,7 @@ class _DailyStreakBannerState extends State<DailyStreakBanner> {
 
       if (res != null) {
         final lastDateStr = res['last_check_in_date']?.toString();
-        final lastDate = lastDateStr != null ? DateTime.tryParse(lastDateStr) : null;
-        final today = DateTime.now();
-
-        bool alreadyClaimed = false;
-        if (lastDate != null) {
-          alreadyClaimed = lastDate.year == today.year &&
-              lastDate.month == today.month &&
-              lastDate.day == today.day;
-        }
+        final alreadyClaimed = claimedStreakOnIstDate(lastDateStr);
 
         setState(() {
           _currentStreak = (res['current_streak'] as num?)?.toInt() ?? 0;

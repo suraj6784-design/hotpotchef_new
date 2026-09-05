@@ -22,12 +22,20 @@ class SharedCartService {
 
       final jsonList = initialItems.map((i) => i.toJson()).toList();
 
-      await _supabase.from('shared_carts').insert({
+      final payload = {
         'room_code': roomCode,
         'host_id': user.id,
         'items': jsonList,
+        'status': 'open',
         'updated_at': DateTime.now().toUtc().toIso8601String(),
-      });
+      };
+      try {
+        await _supabase.from('shared_carts').insert(payload);
+      } on PostgrestException catch (e) {
+        if (e.code != 'PGRST204') rethrow;
+        payload.remove('status');
+        await _supabase.from('shared_carts').insert(payload);
+      }
 
       return roomCode;
     } catch (e, stack) {
@@ -40,11 +48,26 @@ class SharedCartService {
   /// Fetches items for an existing group session once
   Future<List<CartItemModel>> fetchSharedCart(String roomCode) async {
     try {
-      final response = await _supabase
-          .from('shared_carts')
-          .select('items')
-          .eq('room_code', roomCode.toUpperCase().trim())
-          .maybeSingle();
+      Map<String, dynamic>? response;
+      try {
+        response = await _supabase
+            .from('shared_carts')
+            .select('items, status')
+            .eq('room_code', roomCode.toUpperCase().trim())
+            .maybeSingle();
+      } on PostgrestException catch (e) {
+        if (e.code != 'PGRST204') rethrow;
+        response = await _supabase
+            .from('shared_carts')
+            .select('items')
+            .eq('room_code', roomCode.toUpperCase().trim())
+            .maybeSingle();
+      }
+
+      final status = response?['status']?.toString().toLowerCase().trim();
+      if (status == 'ordered' || status == 'closed') {
+        throw Exception('This group cart already checked out.');
+      }
 
       if (response != null && response['items'] is List) {
         final rawList = response['items'] as List;
@@ -67,7 +90,10 @@ class SharedCartService {
         .stream(primaryKey: ['id'])
         .eq('room_code', roomCode.toUpperCase().trim())
         .map((data) {
-          if (data.isNotEmpty && data.first['items'] is List) {
+          if (data.isEmpty) return <CartItemModel>[];
+          final status = data.first['status']?.toString().toLowerCase().trim();
+          if (status == 'ordered' || status == 'closed') return <CartItemModel>[];
+          if (data.first['items'] is List) {
             final rawList = data.first['items'] as List;
             return rawList
                 .map((e) => CartItemModel.fromJson(Map<String, dynamic>.from(e)))
@@ -90,6 +116,24 @@ class SharedCartService {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to update shared cart');
       if (kDebugMode) debugPrint('Update shared cart error: $e');
       rethrow;
+    }
+  }
+
+  /// Closes a room after the paying member checks out so others cannot keep adding.
+  Future<void> markSharedCartOrdered(String roomCode) async {
+    final code = roomCode.toUpperCase().trim();
+    if (code.isEmpty) return;
+    try {
+      await _supabase.from('shared_carts').update({
+        'status': 'ordered',
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('room_code', code);
+    } on PostgrestException catch (e) {
+      if (e.code != 'PGRST204') {
+        FirebaseCrashlytics.instance.recordError(e, StackTrace.current, reason: 'Failed to close shared cart');
+      }
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to close shared cart');
     }
   }
 }

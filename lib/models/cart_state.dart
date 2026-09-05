@@ -124,17 +124,22 @@ class CartItemModel {
     // (e.g. the meal price arrived as a String), fall back to the price
     // carried in the meal details so downstream pricing never collapses to 0.
     final double resolvedBase = basePrice > 0 ? basePrice : PricingCalculator.basePrice(meal);
-    final double resolvedPrice =
-        (discountedPrice != null && discountedPrice! > 0) ? discountedPrice! : resolvedBase;
+    final pricedMeal = {
+      ...meal,
+      'price': meal['price'] ?? resolvedBase,
+    };
+    final snapshot = PricingCalculator.snapshotCheckoutPrices(
+      pricedMeal,
+      quantity,
+      addOnsUnit: unitAddOnsTotal,
+    );
     return {
       ...toJson(),
+      ...snapshot,
       'chef_id': chefId,
       'meal_id': mealId,
       'source_meal_id': mealId,
       'name': title,
-      'price': resolvedPrice,
-      'base_price': resolvedBase,
-      'discounted_price': discountedPrice,
       'selected_service_type': serviceType.toDisplayString(),
       'service_type': serviceType.toDisplayString(),
       'serviceType': serviceType.toDisplayString(),
@@ -144,6 +149,9 @@ class CartItemModel {
       'time_slot': timeSlot,
       'rawMealDetails': meal,
       'meal_details': meal,
+      'accepts_hotpot_coins': meal['accepts_hotpot_coins'],
+      'specialInstructions': specialInstructions,
+      'special_instructions': specialInstructions,
     };
   }
 
@@ -227,7 +235,7 @@ class CartState {
   const CartState({
     this.items = const [],
     this.dynamicDeliveryFee = 0.0,
-    this.packagingFee = 0.0,
+    this.packagingFee = 20.0,
     this.tipAmount = 0.0,
     this.userCoinBalance = 0.0,
     this.applyCoins = false,
@@ -287,19 +295,33 @@ class CartState {
     return item.effectiveUnitPrice * item.quantity;
   }
 
-  /// Evaluates reward coin deduction dynamically against order subtotal
-  double get coinsDiscountAmount {
-    if (!applyCoins || userCoinBalance <= 0) return 0.0;
-    // Business rule guardrail: Coins cannot discount more than the food total
-    return userCoinBalance > foodTotal ? foodTotal : userCoinBalance;
+  bool get coinsAcceptedByVendors => items.every((item) {
+        final flag = item.rawMealDetails['accepts_hotpot_coins'];
+        if (flag == false || flag?.toString() == 'false') return false;
+        return true;
+      });
+
+  double get estimatedDeliveryFee {
+    if (!hasDelivery) return 0.0;
+    return dynamicDeliveryFee > 0 ? dynamicDeliveryFee : 30.0;
   }
 
-  /// Final payable amount including items, fees, driver tips, and coin deductions
+  double get billBeforeCoins =>
+      foodTotal + packagingFee + estimatedDeliveryFee + tipAmount;
+
+  /// Coins can cover food, packaging, delivery, and tip — same cap as checkout.
+  double get coinsDiscountAmount {
+    if (!applyCoins || !coinsAcceptedByVendors || userCoinBalance <= 0) return 0.0;
+    return userCoinBalance > billBeforeCoins ? billBeforeCoins : userCoinBalance;
+  }
+
+  /// Estimated payable including packaging and a delivery estimate when the fee is unknown.
   double get grandTotal {
-    final subtotal = (foodTotal + (hasDelivery ? dynamicDeliveryFee : 0.0) + packagingFee + tipAmount) -
-        coinsDiscountAmount;
+    final subtotal = billBeforeCoins - coinsDiscountAmount;
     return subtotal < 0.0 ? 0.0 : subtotal;
   }
+
+  bool get deliveryFeeIsEstimate => hasDelivery && dynamicDeliveryFee <= 0;
 
   // --- Status & Query Flags ---
 

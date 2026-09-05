@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hotpotchef_new/utils/helpers.dart';
 
@@ -56,8 +58,43 @@ void main() {
     );
   });
 
-  test('share copy tells friends to enter the code at signup', () {
+  test('share copy tells friends both sides earn on the first order', () {
     expect(referralInviteText('CHEFAB12'), contains('CHEFAB12'));
-    expect(referralInviteText('CHEFAB12'), contains('when you sign up'));
+    expect(referralInviteText('CHEFAB12'), contains('50 HotPot Coins'));
+    expect(referralInviteText('CHEFAB12'), contains('auth?ref=CHEFAB12'));
+  });
+
+  test('generated referral codes match the signup field', () {
+    final code = generateReferralCode(Random(1));
+    expect(isPlausibleReferralCode(code), isTrue);
+    expect(code.startsWith('CHEF'), isTrue);
+  });
+
+  test('a person cannot refer themselves', () {
+    expect(sanitizeReferredBy(referredBy: 'CHEFAB12', ownCode: 'chefab12'), isNull);
+    expect(sanitizeReferredBy(referredBy: 'CHEFAB12', ownCode: 'CHEFZZ99'), 'CHEFAB12');
+  });
+
+  test('referral coins come from rewarded friends, not the whole wallet', () {
+    expect(referralCoinsFromRewardedFriends(0), 0);
+    expect(referralCoinsFromRewardedFriends(2), 100);
+  });
+
+  test('signup payload also stores the new user referral code', () {
+    expect(
+      signupUserPayload(
+        id: 'u1',
+        email: 'a@b.com',
+        name: 'Ann',
+        phone: '9876543210',
+        role: 'Customer',
+        referredBy: 'CHEFAB12',
+        referralCode: 'CHEFNEW12',
+      ),
+      allOf(
+        containsPair('referred_by', 'CHEFAB12'),
+        containsPair('referral_code', 'CHEFNEW12'),
+      ),
+    );
   });
 }

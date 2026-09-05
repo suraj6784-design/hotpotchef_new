@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../utils/app_page.dart';
 import '../utils/helpers.dart';
+import '../utils/pricing_calculator.dart';
 import '../models/cart_state.dart';
 import '../models/cart_enums.dart';
 import '../providers/cart_provider.dart';
@@ -299,9 +300,11 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                                   borderRadius: BorderRadius.circular(4),
                                   border: Border.all(color: Colors.red.shade200),
                                 ),
-                                child: const Text(
-                                  '🔥 Special Offer Applied',
-                                  style: TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold),
+                                child: Text(
+                                  PricingCalculator.calculateItemSummary(item.rawMealDetails, qty)
+                                          .offerDescription ??
+                                      'Special Offer Applied',
+                                  style: const TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold),
                                 ),
                               ),
                           ],
@@ -583,6 +586,14 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
             ],
           ),
           const SizedBox(height: 20),
+          if (cartState.items.any((item) => PricingCalculator.mealPromoCode(item.rawMealDetails) != null))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                'Have a chef promo code? Apply it at checkout — it can unlock a gated offer or stack on top of the dish deal.',
+                style: TextStyle(color: AppTheme.textMuted, fontSize: 12, height: 1.35),
+              ),
+            ),
 
           // Premium checkout bar (inline so it clears the hub's floating dock)
           Container(
@@ -601,7 +612,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('Total payable',
+                    Text(cartState.deliveryFeeIsEstimate ? 'Est. total' : 'Total payable',
                         style: TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w500)),
                     const SizedBox(height: 2),
                     Text('₹${cartState.grandTotal.toStringAsFixed(0)}',

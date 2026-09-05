@@ -62,7 +62,7 @@ BEGIN
 
   BEGIN
     INSERT INTO public.transactions (user_id, amount, transaction_type, description)
-    VALUES (v_user_id, v_reward, 'credit', 'Daily streak bonus');
+    VALUES (v_user_id, v_reward, 'earning', 'Daily streak bonus');
   EXCEPTION
     WHEN undefined_table THEN NULL;
     WHEN OTHERS THEN NULL;

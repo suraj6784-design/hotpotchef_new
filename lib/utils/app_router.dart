@@ -94,7 +94,12 @@ class AppRouter {
       return null;
     },
     routes: [
-      _fadeRoute('/auth', (context, state) => const AuthScreen()),
+      _fadeRoute(
+        '/auth',
+        (context, state) => AuthScreen(
+          initialReferralCode: state.uri.queryParameters['ref'],
+        ),
+      ),
       _fadeRoute('/reset-password', (context, state) => const ResetPasswordScreen()),
       _fadeRoute('/reset-callback', (context, state) => const ResetPasswordScreen()),
       _fadeRoute(
