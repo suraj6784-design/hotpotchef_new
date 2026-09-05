@@ -232,6 +232,10 @@ class CartState {
   final bool applyCoins;
   final String? sharedRoomCode;
   final String? sharedHostId;
+  final String? sharedPlaceKind;
+  final String? sharedPlaceLabel;
+  final String? sharedDropoffNote;
+  final String? sharedTimeSlot;
 
   const CartState({
     this.items = const [],
@@ -242,6 +246,10 @@ class CartState {
     this.applyCoins = false,
     this.sharedRoomCode,
     this.sharedHostId,
+    this.sharedPlaceKind,
+    this.sharedPlaceLabel,
+    this.sharedDropoffNote,
+    this.sharedTimeSlot,
   });
 
   CartState copyWith({
@@ -253,6 +261,10 @@ class CartState {
     bool? applyCoins,
     String? sharedRoomCode,
     String? sharedHostId,
+    String? sharedPlaceKind,
+    String? sharedPlaceLabel,
+    String? sharedDropoffNote,
+    String? sharedTimeSlot,
     bool clearSharedRoom = false,
   }) {
     return CartState(
@@ -264,6 +276,10 @@ class CartState {
       applyCoins: applyCoins ?? this.applyCoins,
       sharedRoomCode: clearSharedRoom ? null : (sharedRoomCode ?? this.sharedRoomCode),
       sharedHostId: clearSharedRoom ? null : (sharedHostId ?? this.sharedHostId),
+      sharedPlaceKind: clearSharedRoom ? null : (sharedPlaceKind ?? this.sharedPlaceKind),
+      sharedPlaceLabel: clearSharedRoom ? null : (sharedPlaceLabel ?? this.sharedPlaceLabel),
+      sharedDropoffNote: clearSharedRoom ? null : (sharedDropoffNote ?? this.sharedDropoffNote),
+      sharedTimeSlot: clearSharedRoom ? null : (sharedTimeSlot ?? this.sharedTimeSlot),
     );
   }
 
@@ -347,6 +363,12 @@ class CartState {
           tipAmount == other.tipAmount &&
           userCoinBalance == other.userCoinBalance &&
           applyCoins == other.applyCoins &&
+          sharedRoomCode == other.sharedRoomCode &&
+          sharedHostId == other.sharedHostId &&
+          sharedPlaceKind == other.sharedPlaceKind &&
+          sharedPlaceLabel == other.sharedPlaceLabel &&
+          sharedDropoffNote == other.sharedDropoffNote &&
+          sharedTimeSlot == other.sharedTimeSlot &&
           listEquals(items, other.items);
 
   @override
@@ -356,5 +378,11 @@ class CartState {
       tipAmount.hashCode ^
       userCoinBalance.hashCode ^
       applyCoins.hashCode ^
+      sharedRoomCode.hashCode ^
+      sharedHostId.hashCode ^
+      sharedPlaceKind.hashCode ^
+      sharedPlaceLabel.hashCode ^
+      sharedDropoffNote.hashCode ^
+      sharedTimeSlot.hashCode ^
       Object.hashAll(items);
 }

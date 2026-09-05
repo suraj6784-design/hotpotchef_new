@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../utils/app_theme.dart';
+import '../utils/helpers.dart';
 import '../providers/cart_provider.dart';
 import '../services/shared_cart_service.dart';
 
@@ -19,11 +21,18 @@ class GroupOrderModal extends ConsumerStatefulWidget {
 class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
   final _sharedCartService = SharedCartService();
   final _roomCodeController = TextEditingController();
+  final _placeLabelController = TextEditingController();
+  final _dropoffController = TextEditingController();
+  final _slotController = TextEditingController();
+  String _placeKind = 'society';
   bool _isLoading = false;
 
   @override
   void dispose() {
     _roomCodeController.dispose();
+    _placeLabelController.dispose();
+    _dropoffController.dispose();
+    _slotController.dispose();
     super.dispose();
   }
 
@@ -31,8 +40,23 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
     setState(() => _isLoading = true);
     try {
       final cartState = ref.read(cartProvider);
-      final roomCode = await _sharedCartService.createSharedCart(cartState.items);
-      await ref.read(cartProvider.notifier).attachSharedRoom(roomCode);
+      final placeLabel = _placeLabelController.text.trim();
+      final dropoff = _dropoffController.text.trim();
+      final slot = _slotController.text.trim();
+      final roomCode = await _sharedCartService.createSharedCart(
+        cartState.items,
+        placeKind: _placeKind,
+        placeLabel: placeLabel,
+        dropoffNote: dropoff,
+        timeSlot: slot,
+      );
+      await ref.read(cartProvider.notifier).attachSharedRoom(
+            roomCode,
+            placeKind: _placeKind,
+            placeLabel: placeLabel,
+            dropoffNote: dropoff,
+            timeSlot: slot,
+          );
 
       if (!mounted) return;
       Navigator.pop(context);
@@ -52,7 +76,8 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
 
     setState(() => _isLoading = true);
     try {
-      final items = await _sharedCartService.fetchSharedCart(code);
+      final room = await _sharedCartService.fetchSharedCartRoom(code);
+      final items = room.items;
 
       if (!mounted) return;
 
@@ -77,14 +102,22 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
 
       if (!mounted) return;
       Navigator.pop(context);
-      if (added <= 0) {
+      if (added <= 0 && items.isNotEmpty) {
         final names = skipped.isEmpty ? 'those meals' : skipped.join(', ');
         _showSnackBar('$names could not be added to your cart.', isError: true);
         return;
       }
-      await ref.read(cartProvider.notifier).attachSharedRoom(code);
+      await ref.read(cartProvider.notifier).attachSharedRoom(
+            code,
+            placeKind: room.placeKind,
+            placeLabel: room.placeLabel,
+            dropoffNote: room.dropoffNote,
+            timeSlot: room.timeSlot,
+            hostId: room.hostId,
+          );
+      final kind = groupPlaceKindLabel(room.placeKind);
       final extra = skipped.isEmpty ? '' : ' Skipped: ${skipped.join(', ')}.';
-      _showSnackBar('Joined $code. Later adds stay in sync.$extra', isError: false);
+      _showSnackBar('Joined $kind · $code. Later adds stay in sync.$extra', isError: false);
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to join group order');
       if (!mounted) return;
@@ -105,8 +138,38 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
     );
   }
 
+  String get _invitePreview => societyGroupInviteText(
+        roomCode: 'GRP-XXXXXX',
+        placeKind: _placeKind,
+        placeLabel: _placeLabelController.text,
+        dropoffNote: _dropoffController.text,
+        timeSlot: _slotController.text,
+      );
+
+  Future<void> _shareInvite(String roomCode) async {
+    final text = societyGroupInviteText(
+      roomCode: roomCode,
+      placeKind: _placeKind,
+      placeLabel: _placeLabelController.text,
+      dropoffNote: _dropoffController.text,
+      timeSlot: _slotController.text,
+    );
+    final opened = await launchUrl(mealWhatsAppShareUri(text), mode: LaunchMode.externalApplication);
+    if (!opened) {
+      await Clipboard.setData(ClipboardData(text: text));
+      _showSnackBar('Invite copied — WhatsApp could not open.', isError: false);
+    }
+  }
+
   void _showRoomCodeDialog(String roomCode) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final invite = societyGroupInviteText(
+      roomCode: roomCode,
+      placeKind: _placeKind,
+      placeLabel: _placeLabelController.text,
+      dropoffNote: _dropoffController.text,
+      timeSlot: _slotController.text,
+    );
 
     showDialog(
       context: context,
@@ -114,7 +177,7 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         backgroundColor: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
         title: Text(
-          'Group Order Created! 🍕',
+          '${groupPlaceKindLabel(_placeKind)} ready',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             color: isDark ? AppTheme.textMainDark : AppTheme.textMain,
@@ -122,9 +185,10 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'Share this room code with your family or colleagues so they can add items to your cart:',
+              'Share with your building or desk — neighbours add plates, you pay once.',
               style: TextStyle(
                 color: isDark ? Colors.grey.shade300 : AppTheme.textMuted,
                 fontSize: 13,
@@ -157,27 +221,53 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
                     tooltip: 'Copy Room Code',
                     onPressed: () {
                       Clipboard.setData(ClipboardData(text: roomCode));
-                      _showSnackBar('Room code copied to clipboard!', isError: false);
+                      _showSnackBar('Room code copied', isError: false);
                     },
                   ),
                 ],
               ),
             ),
+            const SizedBox(height: 12),
+            Text(invite, style: TextStyle(fontSize: 12, height: 1.35, color: isDark ? Colors.grey.shade400 : AppTheme.textMuted)),
           ],
         ),
         actions: [
-          ElevatedButton(
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Done'),
+          ),
+          ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primary,
+              backgroundColor: const Color(0xFF25D366),
               foregroundColor: Colors.white,
               elevation: 0,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Done', style: TextStyle(fontWeight: FontWeight.bold)),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _shareInvite(roomCode);
+            },
+            icon: const Icon(Icons.chat, size: 18),
+            label: const Text('WhatsApp', style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _kindChip(String kind) {
+    final selected = _placeKind == kind;
+    return ChoiceChip(
+      label: Text(groupPlaceKindLabel(kind)),
+      selected: selected,
+      onSelected: (_) => setState(() => _placeKind = kind),
+      selectedColor: AppTheme.primary.withValues(alpha: 0.18),
+      labelStyle: TextStyle(
+        fontWeight: FontWeight.w700,
+        fontSize: 12,
+        color: selected ? AppTheme.primary : AppTheme.textMuted,
+      ),
+      side: BorderSide(color: selected ? AppTheme.primary : AppTheme.hairlineOf(context)),
     );
   }
 
@@ -192,82 +282,126 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
         right: 24,
         top: 24,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'Group Ordering (Shared Cart)',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: isDark ? AppTheme.textMainDark : AppTheme.textMain,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Add dishes together in real time. One person pays for the whole group at checkout.',
-            style: TextStyle(
-              fontSize: 13,
-              color: isDark ? Colors.grey.shade400 : AppTheme.textMuted,
-            ),
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primary,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              elevation: 0,
-            ),
-            icon: _isLoading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                  )
-                : const Icon(Icons.group_add),
-            label: Text(
-              _isLoading ? 'Processing...' : 'Start New Group Cart',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            onPressed: _isLoading ? null : _startGroupOrder,
-          ),
-          Divider(height: 32, color: isDark ? Colors.white12 : Colors.grey.shade300),
-          TextField(
-            controller: _roomCodeController,
-            style: TextStyle(color: isDark ? AppTheme.textMainDark : AppTheme.textMain),
-            decoration: InputDecoration(
-              labelText: 'Enter Room Code (e.g. GRP-XYZ)',
-              filled: true,
-              fillColor: isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade100,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: isDark ? Colors.white12 : Colors.grey.shade300),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Society / office lunch',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: isDark ? AppTheme.textMainDark : AppTheme.textMain,
               ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: AppTheme.primary, width: 1.5),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'One host, many plates. Neighbours add dishes to your cart — you pay once.',
+              style: TextStyle(
+                fontSize: 13,
+                color: isDark ? Colors.grey.shade400 : AppTheme.textMuted,
               ),
-              labelStyle: TextStyle(color: isDark ? Colors.grey.shade400 : AppTheme.textMuted, fontSize: 13),
             ),
-          ),
-          const SizedBox(height: 12),
-          OutlinedButton(
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              side: const BorderSide(color: AppTheme.primary, width: 1.5),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _kindChip('society'),
+                _kindChip('office'),
+                _kindChip('friends'),
+              ],
             ),
-            onPressed: _isLoading ? null : _joinGroupOrder,
-            child: const Text(
-              'Join Group Cart',
-              style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _placeLabelController,
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                labelText: groupPlaceKindHint(_placeKind),
+                hintText: _placeKind == 'office' ? 'e.g. WeWork 4th floor' : 'e.g. Sunshine Towers B-1202',
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 10),
+            TextField(
+              controller: _slotController,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                labelText: 'Shared slot (optional)',
+                hintText: 'e.g. Tomorrow 1:00 PM',
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _dropoffController,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                labelText: 'Drop note (optional)',
+                hintText: 'Gate 2 / lobby / desk bay',
+              ),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 0,
+              ),
+              icon: _isLoading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.apartment_outlined),
+              label: Text(
+                _isLoading ? 'Creating…' : 'Start ${groupPlaceKindLabel(_placeKind).toLowerCase()}',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              onPressed: _isLoading ? null : _startGroupOrder,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _invitePreview.replaceFirst('GRP-XXXXXX', 'your code'),
+              style: TextStyle(fontSize: 11, height: 1.35, color: isDark ? Colors.grey.shade500 : AppTheme.textMuted),
+            ),
+            Divider(height: 32, color: isDark ? Colors.white12 : Colors.grey.shade300),
+            TextField(
+              controller: _roomCodeController,
+              style: TextStyle(color: isDark ? AppTheme.textMainDark : AppTheme.textMain),
+              decoration: InputDecoration(
+                labelText: 'Enter room code (e.g. GRP-XYZ)',
+                filled: true,
+                fillColor: isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade100,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: isDark ? Colors.white12 : Colors.grey.shade300),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppTheme.primary, width: 1.5),
+                ),
+                labelStyle: TextStyle(color: isDark ? Colors.grey.shade400 : AppTheme.textMuted, fontSize: 13),
+              ),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                side: const BorderSide(color: AppTheme.primary, width: 1.5),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: _isLoading ? null : _joinGroupOrder,
+              child: const Text(
+                'Join with code',
+                style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

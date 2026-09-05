@@ -236,10 +236,10 @@ String mealShareText(Map<String, dynamic> meal) {
   final link = mealShareUri(meal['id']?.toString() ?? mealIdFromOrderItem(meal));
   final priceSlot = price > 0 ? '₹${price.toStringAsFixed(0)} · $slot' : slot;
   final lines = <String>[
-    '$title from $chef',
+    isFestivalHamper(meal) ? 'Festival hamper: $title from $chef' : '$title from $chef',
     priceSlot,
     if (code != null) 'Use code $code at checkout',
-    'Order in 2 taps on HotPotChef',
+    isFestivalHamper(meal) ? 'Gift a home kitchen box — order in 2 taps on HotPotChef' : 'Order in 2 taps on HotPotChef',
     if (link.isNotEmpty) link,
   ];
   return lines.join('\n');
@@ -315,6 +315,61 @@ String plateShareText({
     if (link.isNotEmpty) link,
   ];
   return lines.join('\n');
+}
+
+/// Society / office / friends group-cart place kinds.
+const kGroupPlaceKinds = ['society', 'office', 'friends'];
+
+String normalizeGroupPlaceKind(String? raw) {
+  final value = (raw ?? '').trim().toLowerCase();
+  if (kGroupPlaceKinds.contains(value)) return value;
+  return 'friends';
+}
+
+String groupPlaceKindLabel(String? kind) {
+  switch (normalizeGroupPlaceKind(kind)) {
+    case 'society':
+      return 'Society lunch';
+    case 'office':
+      return 'Office lunch';
+    default:
+      return 'Group order';
+  }
+}
+
+String groupPlaceKindHint(String? kind) {
+  switch (normalizeGroupPlaceKind(kind)) {
+    case 'society':
+      return 'Building / wing / flat';
+    case 'office':
+      return 'Floor / desk bay / meeting room';
+    default:
+      return 'Where should we drop?';
+  }
+}
+
+/// WhatsApp invite for one-host society/office carts.
+String societyGroupInviteText({
+  required String roomCode,
+  String? placeKind,
+  String? placeLabel,
+  String? dropoffNote,
+  String? timeSlot,
+}) {
+  final code = roomCode.trim().toUpperCase();
+  final kind = normalizeGroupPlaceKind(placeKind);
+  final title = groupPlaceKindLabel(kind);
+  final place = (placeLabel ?? '').trim();
+  final drop = (dropoffNote ?? '').trim();
+  final slot = (timeSlot ?? '').trim();
+  final headline = place.isEmpty ? title : '$title at $place';
+  return [
+    headline,
+    'Join my HotPotChef group cart: $code',
+    if (slot.isNotEmpty) 'Slot: $slot',
+    if (drop.isNotEmpty) 'Drop: $drop',
+    'Add your plates — I pay once at checkout.',
+  ].join('\n');
 }
 
 String formatOrderId(String? rawOrderId, String fallbackId) {
@@ -669,6 +724,9 @@ List<String> cuisineAliases(String cuisine) {
 bool mealMatchesCuisine(Map<String, dynamic> meal, String? cuisine) {
   final selected = (cuisine ?? '').trim();
   if (selected.isEmpty || selected == 'All') return true;
+  if (selected.toLowerCase() == 'festival hamper') {
+    return isFestivalHamper(meal);
+  }
   final category = meal['category']?.toString().trim().toLowerCase() ?? '';
   final haystack = mealDietHaystack(meal);
   for (final alias in cuisineAliases(selected)) {
@@ -1162,6 +1220,72 @@ String formatFriendlyDate(DateTime date) {
   return formatAppDate(date);
 }
 
+DateTime calendarDay(DateTime date) {
+  final local = date.toLocal();
+  return DateTime(local.year, local.month, local.day);
+}
+
+DateTime tomorrowCalendarDay({DateTime? now}) {
+  return calendarDay(now ?? DateTime.now()).add(const Duration(days: 1));
+}
+
+/// First clock from a chef schedule / meal slot string (e.g. "7:30 PM to 8:30 PM").
+String? preferredChefSlotClock(String? schedule) {
+  final text = (schedule ?? '').trim();
+  if (text.isEmpty) return null;
+  final match = RegExp(r'(\d{1,2}:\d{2}\s*(?:AM|PM))', caseSensitive: false).firstMatch(text);
+  if (match != null) {
+    return match.group(1)!.toUpperCase().replaceAll(RegExp(r'\s+'), ' ');
+  }
+  if (!isImmediateDeliverySlot(text)) return text;
+  return null;
+}
+
+/// Default cart day/time must stay inside the chef's published slot — never invent ASAP/+40m.
+Map<String, String> chefSlotDefaultSchedule(String chefScheduleStr, {DateTime? now}) {
+  final current = (now ?? DateTime.now()).toLocal();
+  final nowMins = current.hour * 60 + current.minute;
+  final text = chefScheduleStr.trim();
+  final clocks = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)', caseSensitive: false).allMatches(text).toList();
+
+  int parseMins(RegExpMatch m) {
+    var h = int.parse(m.group(1)!);
+    final ampm = m.group(3)!.toUpperCase();
+    if (ampm == 'PM' && h != 12) h += 12;
+    if (ampm == 'AM' && h == 12) h = 0;
+    return h * 60 + int.parse(m.group(2)!);
+  }
+
+  String formatMatch(RegExpMatch m) => m.group(0)!.toUpperCase().replaceAll(RegExp(r'\s+'), ' ');
+
+  if (clocks.isEmpty) {
+    final clock = preferredChefSlotClock(text);
+    if (clock == null || clock.isEmpty) {
+      return {'date': 'Today', 'time': text.isEmpty ? '' : text};
+    }
+    return {'date': 'Today', 'time': clock};
+  }
+
+  final start = formatMatch(clocks.first);
+  final startMins = parseMins(clocks.first);
+  if (clocks.length >= 2) {
+    final endMins = parseMins(clocks[1]);
+    if (nowMins < startMins) {
+      return {'date': 'Today', 'time': start};
+    }
+    if (nowMins <= endMins) {
+      // Still inside the chef window — keep the published start clock.
+      return {'date': 'Today', 'time': start};
+    }
+    return {'date': 'Tomorrow', 'time': start};
+  }
+
+  if (nowMins <= startMins) {
+    return {'date': 'Today', 'time': start};
+  }
+  return {'date': 'Tomorrow', 'time': start};
+}
+
 DateTime? parseClockOnDate(String timeText, DateTime date) {
   final match = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)', caseSensitive: false).firstMatch(timeText);
   if (match == null) return null;
@@ -1263,6 +1387,57 @@ String offerFlashHeadline(Map<String, dynamic> meal, {DateTime? now}) {
 String offerFlashSubhead(Map<String, dynamic> meal) {
   final title = meal['title']?.toString().trim() ?? meal['name']?.toString().trim() ?? '';
   return title.isEmpty ? 'Tap to see this kitchen special' : title;
+}
+
+bool isFestivalHamper(Map<String, dynamic>? meal) {
+  if (meal == null) return false;
+  final flag = meal['is_hamper'] ?? meal['isHamper'];
+  if (flag == true) return true;
+  if (flag == false || flag == null) {
+    final category = meal['category']?.toString().trim().toLowerCase() ?? '';
+    final title = meal['title']?.toString().trim().toLowerCase() ?? '';
+    final tags = '${meal['health_tags'] ?? meal['tags'] ?? ''}'.toLowerCase();
+    return category.contains('hamper') ||
+        category.contains('festival') ||
+        title.contains('hamper') ||
+        tags.contains('hamper');
+  }
+  final text = flag.toString().toLowerCase().trim();
+  return text == 'true' || text == '1' || text == 'yes';
+}
+
+List<Map<String, dynamic>> festivalHamperMeals(
+  Iterable<Map<String, dynamic>> meals, {
+  Set<String> excludedChefIds = const {},
+  int limit = 8,
+}) {
+  final unique = <String>{};
+  final hampers = <Map<String, dynamic>>[];
+  for (final meal in meals) {
+    if (!isFestivalHamper(meal)) continue;
+    if (!isCatalogMeal(meal) || !isMealAvailableForCart(meal)) continue;
+    final chefId = meal['chef_id']?.toString() ?? '';
+    if (chefId.isNotEmpty && excludedChefIds.contains(chefId)) continue;
+    final id = meal['id']?.toString() ?? meal['title']?.toString() ?? '';
+    if (id.isNotEmpty && !unique.add(id)) continue;
+    hampers.add(meal);
+    if (hampers.length >= limit) break;
+  }
+  return hampers;
+}
+
+String festivalHamperHeadline(Map<String, dynamic> meal) {
+  final code = PricingCalculator.mealPromoCode(meal);
+  if (code != null) return 'Hamper · $code';
+  return 'Festival hamper';
+}
+
+String festivalHamperSubhead(Map<String, dynamic> meal) {
+  final title = mealDisplayTitle(meal, fallback: '');
+  final chef = chefDisplayName(meal, fallback: '');
+  if (title.isNotEmpty && chef.isNotEmpty) return '$title · $chef';
+  if (title.isNotEmpty) return title;
+  return 'Gift a home kitchen box';
 }
 
 bool orderLineIsRescuePlate(Map<String, dynamic> item) {
@@ -1775,6 +1950,112 @@ String chefDisplayName(Map<String, dynamic>? data, {String fallback = 'Home Kitc
     if (local.isNotEmpty) return local;
   }
   return fallback;
+}
+
+const kChefCardLocales = ['en', 'hi', 'mr'];
+
+String normalizeChefCardLocale(String? raw) {
+  final value = (raw ?? '').trim().toLowerCase();
+  if (kChefCardLocales.contains(value)) return value;
+  return 'en';
+}
+
+String chefCardLocaleLabel(String? locale) {
+  switch (normalizeChefCardLocale(locale)) {
+    case 'hi':
+      return 'हिन्दी';
+    case 'mr':
+      return 'मराठी';
+    default:
+      return 'English';
+  }
+}
+
+/// Prefers a local-script kitchen name when the chef set one for their card.
+String chefCardDisplayName(
+  Map<String, dynamic>? data, {
+  String? locale,
+  String fallback = 'Home Kitchen',
+}) {
+  final localName = data?['local_kitchen_name']?.toString().trim() ?? '';
+  final cardLocale = normalizeChefCardLocale(locale ?? data?['card_locale']?.toString());
+  if (localName.isNotEmpty && cardLocale != 'en') return localName;
+  return chefDisplayName(data, fallback: fallback);
+}
+
+class ChefCardCopy {
+  const ChefCardCopy({
+    required this.homeKitchen,
+    required this.preparedBy,
+    required this.fssaiListed,
+    required this.fssaiMissing,
+    required this.tapForInfo,
+    required this.partnerSince,
+    required this.recentReviews,
+    required this.newKitchen,
+    required this.cookedMeals,
+    required this.followKitchen,
+    required this.following,
+  });
+
+  final String homeKitchen;
+  final String preparedBy;
+  final String fssaiListed;
+  final String fssaiMissing;
+  final String tapForInfo;
+  final String partnerSince;
+  final String recentReviews;
+  final String newKitchen;
+  final String Function(int count) cookedMeals;
+  final String followKitchen;
+  final String following;
+}
+
+ChefCardCopy chefCardCopy(String? locale) {
+  switch (normalizeChefCardLocale(locale)) {
+    case 'hi':
+      return ChefCardCopy(
+        homeKitchen: 'घर का किचन',
+        preparedBy: 'तैयार किया',
+        fssaiListed: 'FSSAI',
+        fssaiMissing: 'FSSAI सूची में नहीं',
+        tapForInfo: 'जानकारी के लिए टैप करें',
+        partnerSince: 'पार्टनर से',
+        recentReviews: 'हाल की समीक्षाएँ',
+        newKitchen: 'नया किचन',
+        cookedMeals: (count) => count <= 0 ? 'नया किचन' : '$count प्लेटें पकाईं',
+        followKitchen: 'किचन फॉलो करें',
+        following: 'फॉलो कर रहे हैं',
+      );
+    case 'mr':
+      return ChefCardCopy(
+        homeKitchen: 'घरची स्वयंपाकघर',
+        preparedBy: 'तयार केले',
+        fssaiListed: 'FSSAI',
+        fssaiMissing: 'FSSAI नोंद नाही',
+        tapForInfo: 'माहितीसाठी टॅप करा',
+        partnerSince: 'पार्टनर पासून',
+        recentReviews: 'अलीकडील रिव्ह्यू',
+        newKitchen: 'नवी स्वयंपाकघर',
+        cookedMeals: (count) => count <= 0 ? 'नवी स्वयंपाकघर' : '$count ताट शिजवली',
+        followKitchen: 'स्वयंपाकघर फॉलो करा',
+        following: 'फॉलो करत आहात',
+      );
+    default:
+      return ChefCardCopy(
+        homeKitchen: 'Home kitchen',
+        preparedBy: 'Prepared by',
+        fssaiListed: 'FSSAI',
+        fssaiMissing: 'FSSAI not listed',
+        tapForInfo: 'Tap for info',
+        partnerSince: 'Partner since',
+        recentReviews: 'Recent reviews',
+        newKitchen: 'New kitchen',
+        cookedMeals: (count) => count <= 0 ? 'New kitchen' : 'Cooked $count meals',
+        followKitchen: 'Follow kitchen',
+        following: 'Following',
+      );
+  }
 }
 
 class ChefRatingSummary {

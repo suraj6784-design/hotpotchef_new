@@ -130,11 +130,25 @@ class CartNotifier extends Notifier<CartState> {
     });
   }
 
-  Future<void> attachSharedRoom(String roomCode) async {
+  Future<void> attachSharedRoom(
+    String roomCode, {
+    String? placeKind,
+    String? placeLabel,
+    String? dropoffNote,
+    String? timeSlot,
+    String? hostId,
+  }) async {
     final code = roomCode.trim().toUpperCase();
     if (code.isEmpty) return;
-    final hostId = await _sharedCartService.sharedCartHostId(code);
-    state = state.copyWith(sharedRoomCode: code, sharedHostId: hostId);
+    final resolvedHost = hostId ?? await _sharedCartService.sharedCartHostId(code);
+    state = state.copyWith(
+      sharedRoomCode: code,
+      sharedHostId: resolvedHost,
+      sharedPlaceKind: placeKind,
+      sharedPlaceLabel: placeLabel,
+      sharedDropoffNote: dropoffNote,
+      sharedTimeSlot: timeSlot,
+    );
     _sharedCartSub?.cancel();
     _sharedCartSub = _sharedCartService.streamSharedCart(code).listen((items) {
       if (_applyingSharedCart) return;
@@ -222,18 +236,23 @@ class CartNotifier extends Notifier<CartState> {
     }
 
     final rawSlot = meal['time_slot']?.toString() ?? '';
-    final smartSchedule = _calculateSmartDefaultSchedule(rawSlot);
-    final rawServices = meal['service_type']?.toString() ?? 'Delivery Partner';
-    final serviceType = ServiceType.fromString(rawServices.split(',').first.trim());
+    final smartSchedule = chefSlotDefaultSchedule(rawSlot);
+    final serviceType = ServiceType.fromString(
+      (meal['service_type']?.toString() ?? 'Delivery Partner').split(',').first.trim(),
+    );
     final int availableStock = int.tryParse(meal['quantity']?.toString() ?? '99') ?? 99;
 
-    // Parse robustly: meal prices can arrive as num OR String, and a strict
-    // `as num?` cast silently yields 0 — the root of the ₹0.00 checkout bug.
     final double basePriceVal = double.tryParse(meal['price']?.toString() ?? '') ?? 0.0;
     final double? rawDiscount = double.tryParse(meal['discounted_price']?.toString() ?? '');
     final double? validDiscount = (rawDiscount != null && rawDiscount > 0) ? rawDiscount : null;
 
-    // Deterministic item matching (considers add-on selection)
+    final resolvedSlot = (smartSchedule['time'] ?? '').trim().isNotEmpty
+        ? smartSchedule['time']!.trim()
+        : (preferredChefSlotClock(rawSlot) ?? rawSlot);
+    final resolvedDate = smartSchedule['date'] == 'Tomorrow'
+        ? tomorrowCalendarDay()
+        : calendarDay(DateTime.now());
+
     final existingIndex = state.items.indexWhere(
       (i) => i.mealId == mealId && listEquals(i.selectedAddOns, addOns),
     );
@@ -245,25 +264,21 @@ class CartNotifier extends Notifier<CartState> {
       final targetQty = (existing.quantity + quantity).clamp(1, availableStock);
       updatedItems[existingIndex] = existing.copyWith(quantity: targetQty);
     } else {
-      final scheduledDate = smartSchedule['date'] == 'Tomorrow'
-          ? DateTime.now().add(const Duration(days: 1))
-          : DateTime.now();
-
       final newItem = CartItemModel(
         id: '${mealId}_${DateTime.now().microsecondsSinceEpoch}',
         mealId: mealId,
         chefId: chefId,
         title: meal['title']?.toString() ?? meal['name']?.toString() ?? 'Meal Item',
-        basePrice: basePriceVal, // Safely assigned
-        discountedPrice: validDiscount, // Safely assigned
+        basePrice: basePriceVal,
+        discountedPrice: validDiscount,
         quantity: quantity.clamp(1, availableStock),
-        scheduledDate: scheduledDate,
-        timeSlot: smartSchedule['time'], // Initial time sync
+        scheduledDate: resolvedDate,
+        timeSlot: resolvedSlot,
         serviceType: serviceType,
         selectedAddOns: addOns,
         rawMealDetails: {
           ...meal,
-          'exact_time': smartSchedule['time'],
+          'exact_time': resolvedSlot,
           'max_quantity': availableStock,
         },
       );
@@ -420,40 +435,5 @@ class CartNotifier extends Notifier<CartState> {
 
     state = state.copyWith(items: updated);
     _scheduleRemoteSync();
-  }
-
-  Map<String, String> _calculateSmartDefaultSchedule(String chefScheduleStr) {
-    final now = DateTime.now();
-    final timeRegex = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)', caseSensitive: false);
-    final matches = timeRegex.allMatches(chefScheduleStr).toList();
-
-    if (matches.length >= 2) {
-      int parseMins(RegExpMatch m) {
-        int h = int.parse(m.group(1)!);
-        if (m.group(3)!.toUpperCase() == 'PM' && h != 12) h += 12;
-        if (m.group(3)!.toUpperCase() == 'AM' && h == 12) h = 0;
-        return h * 60 + int.parse(m.group(2)!);
-      }
-
-      final startMins = parseMins(matches[0]);
-      final endMins = parseMins(matches[1]);
-      final nowMins = now.hour * 60 + now.minute;
-
-      if (nowMins < startMins) {
-        return {'date': 'Today', 'time': matches[0].group(0)!.toUpperCase()};
-      } else if (nowMins >= startMins && nowMins <= (endMins - 40)) {
-        final target = now.add(const Duration(minutes: 40));
-        final h12 = target.hour == 0 ? 12 : (target.hour > 12 ? target.hour - 12 : target.hour);
-        final ampm = target.hour >= 12 ? 'PM' : 'AM';
-        return {'date': 'Today', 'time': '$h12:${target.minute.toString().padLeft(2, '0')} $ampm'};
-      } else {
-        return {'date': 'Tomorrow', 'time': matches[0].group(0)!.toUpperCase()};
-      }
-    }
-
-    final fallback = now.add(const Duration(minutes: 40));
-    final fh12 = fallback.hour == 0 ? 12 : (fallback.hour > 12 ? fallback.hour - 12 : fallback.hour);
-    final fampm = fallback.hour >= 12 ? 'PM' : 'AM';
-    return {'date': 'Today', 'time': '$fh12:${fallback.minute.toString().padLeft(2, '0')} $fampm'};
   }
 }

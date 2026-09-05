@@ -72,6 +72,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
   // Meal Specifications
   bool _isLoading = false;
   bool _isVeg = true;
+  bool _isHamper = false;
   final Set<String> _dietTags = {};
   String _selectedCategory = 'Maharashtrian';
   String _activeTimeSlot = '';
@@ -84,6 +85,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     'Punjabi',
     'South Indian',
     'North Indian',
+    'Festival Hamper',
     'Snacks',
     'Desserts',
     'Healthy & Salads'
@@ -111,10 +113,14 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     _hostingAddressController.text = meal['hosting_address']?.toString() ?? '';
 
     _isVeg = meal['is_veg'] ?? true;
+    _isHamper = isFestivalHamper(meal);
     _dietTags
       ..clear()
       ..addAll(_dietTagsFromMeal(meal));
     _selectedCategory = meal['category']?.toString() ?? 'Maharashtrian';
+    if (_isHamper && !_categories.contains(_selectedCategory)) {
+      _selectedCategory = 'Festival Hamper';
+    }
     if (!_categories.contains(_selectedCategory)) {
       _selectedCategory = _categories.first;
     }
@@ -381,6 +387,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
         'quantity': quantity,
         'category': _selectedCategory,
         'is_veg': _isVeg,
+        'is_hamper': _isHamper || _selectedCategory == 'Festival Hamper',
         'time_slot': _activeTimeSlot,
         'service_type': _selectedServices.map((s) => s.toDisplayString()).join(', '),
         'fssai_number': _fssaiController.text.trim(),
@@ -673,7 +680,10 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                         items: _categories
                             .map((c) => DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontSize: 14))))
                             .toList(),
-                        onChanged: (v) => setState(() => _selectedCategory = v!),
+                        onChanged: (v) => setState(() {
+                          _selectedCategory = v!;
+                          if (v == 'Festival Hamper') _isHamper = true;
+                        }),
                       ),
                     ),
                   ),
@@ -705,6 +715,23 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 8),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _isHamper,
+              activeThumbColor: AppTheme.primary,
+              title: Text('Festival hamper', style: TextStyle(fontWeight: FontWeight.w800, color: titleColor, fontSize: 14)),
+              subtitle: const Text(
+                'Gift box for Diwali / festivals — shows on diner Home under Festival Hampers.',
+                style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+              ),
+              onChanged: (v) => setState(() {
+                _isHamper = v;
+                if (v && _selectedCategory != 'Festival Hamper') {
+                  // Keep cuisine category if already set; flag still marks the hamper strip.
+                }
+              }),
             ),
             const SizedBox(height: 16),
             Text('Diet tags', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor)),

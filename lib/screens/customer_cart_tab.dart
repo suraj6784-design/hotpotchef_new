@@ -1,8 +1,10 @@
 // lib/screens/customer_cart_tab.dart
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../utils/app_page.dart';
 import '../utils/helpers.dart';
@@ -211,6 +213,76 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
             ],
           ),
           const SizedBox(height: 12),
+
+          if ((cartState.sharedRoomCode ?? '').isNotEmpty)
+            Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppTheme.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppTheme.primary.withValues(alpha: 0.28)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${groupPlaceKindLabel(cartState.sharedPlaceKind)} · ${cartState.sharedRoomCode}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
+                      color: AppTheme.onSurfaceOf(context),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    [
+                      if ((cartState.sharedPlaceLabel ?? '').trim().isNotEmpty) cartState.sharedPlaceLabel!.trim(),
+                      if ((cartState.sharedTimeSlot ?? '').trim().isNotEmpty) 'Slot ${cartState.sharedTimeSlot!.trim()}',
+                      if ((cartState.sharedDropoffNote ?? '').trim().isNotEmpty) 'Drop ${cartState.sharedDropoffNote!.trim()}',
+                      'Neighbours add plates — host pays once.',
+                    ].join(' · '),
+                    style: const TextStyle(fontSize: 12, color: AppTheme.textMuted, height: 1.35),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final text = societyGroupInviteText(
+                              roomCode: cartState.sharedRoomCode!,
+                              placeKind: cartState.sharedPlaceKind,
+                              placeLabel: cartState.sharedPlaceLabel,
+                              dropoffNote: cartState.sharedDropoffNote,
+                              timeSlot: cartState.sharedTimeSlot,
+                            );
+                            final opened = await launchUrl(
+                              mealWhatsAppShareUri(text),
+                              mode: LaunchMode.externalApplication,
+                            );
+                            if (!opened) {
+                              await Clipboard.setData(ClipboardData(text: text));
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Invite copied')),
+                              );
+                            }
+                          },
+                          icon: const Icon(Icons.chat, size: 16),
+                          label: const Text('Invite WhatsApp'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      TextButton(
+                        onPressed: () => ref.read(cartProvider.notifier).detachSharedRoom(),
+                        child: const Text('Leave'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
 
           // Multi-vendor Warning Banner if applicable
           if (cartState.hasVendorConflict)
@@ -565,8 +637,8 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                 const SizedBox(width: 10),
                 Expanded(
                   child: OutlinedButton.icon(
-                    icon: const Icon(Icons.groups_outlined),
-                    label: const Text('Group order'),
+                    icon: const Icon(Icons.apartment_outlined),
+                    label: const Text('Society / office'),
                     onPressed: () {
                       showModalBottomSheet(
                         context: context,

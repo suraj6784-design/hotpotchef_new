@@ -5,35 +5,77 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../models/cart_state.dart';
+import '../utils/helpers.dart';
+
+class SharedCartRoom {
+  const SharedCartRoom({
+    required this.roomCode,
+    required this.items,
+    this.hostId,
+    this.status,
+    this.placeKind = 'friends',
+    this.placeLabel,
+    this.dropoffNote,
+    this.timeSlot,
+  });
+
+  final String roomCode;
+  final List<CartItemModel> items;
+  final String? hostId;
+  final String? status;
+  final String placeKind;
+  final String? placeLabel;
+  final String? dropoffNote;
+  final String? timeSlot;
+}
 
 class SharedCartService {
   final _supabase = Supabase.instance.client;
 
   /// Creates a new group ordering room with a secure random 6-character code
-  Future<String> createSharedCart(List<CartItemModel> initialItems) async {
+  Future<String> createSharedCart(
+    List<CartItemModel> initialItems, {
+    String placeKind = 'friends',
+    String? placeLabel,
+    String? dropoffNote,
+    String? timeSlot,
+    String? selectedDate,
+  }) async {
     try {
       final user = _supabase.auth.currentUser;
       if (user == null) throw Exception('User not authenticated');
 
-      // Generate a collision-resistant 6-character uppercase room code
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
       final rnd = Random();
       final roomCode = 'GRP-${List.generate(6, (index) => chars[rnd.nextInt(chars.length)]).join()}';
 
       final jsonList = initialItems.map((i) => i.toJson()).toList();
+      final kind = normalizeGroupPlaceKind(placeKind);
 
-      final payload = {
+      final payload = <String, dynamic>{
         'room_code': roomCode,
         'host_id': user.id,
         'items': jsonList,
         'status': 'open',
+        'place_kind': kind,
+        'place_label': placeLabel?.trim().isEmpty == true ? null : placeLabel?.trim(),
+        'dropoff_note': dropoffNote?.trim().isEmpty == true ? null : dropoffNote?.trim(),
+        'time_slot': timeSlot?.trim().isEmpty == true ? null : timeSlot?.trim(),
+        'selected_date': selectedDate?.trim().isEmpty == true ? null : selectedDate?.trim(),
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       };
+
       try {
         await _supabase.from('shared_carts').insert(payload);
       } on PostgrestException catch (e) {
+        // Older schemas may miss society columns or status.
         if (e.code != 'PGRST204') rethrow;
         payload.remove('status');
+        payload.remove('place_kind');
+        payload.remove('place_label');
+        payload.remove('dropoff_note');
+        payload.remove('time_slot');
+        payload.remove('selected_date');
         await _supabase.from('shared_carts').insert(payload);
       }
 
@@ -45,22 +87,22 @@ class SharedCartService {
     }
   }
 
-  /// Fetches items for an existing group session once
-  Future<List<CartItemModel>> fetchSharedCart(String roomCode) async {
+  Future<SharedCartRoom> fetchSharedCartRoom(String roomCode) async {
+    final code = roomCode.toUpperCase().trim();
     try {
       Map<String, dynamic>? response;
       try {
         response = await _supabase
             .from('shared_carts')
-            .select('items, status, host_id')
-            .eq('room_code', roomCode.toUpperCase().trim())
+            .select('items, status, host_id, place_kind, place_label, dropoff_note, time_slot')
+            .eq('room_code', code)
             .maybeSingle();
       } on PostgrestException catch (e) {
         if (e.code != 'PGRST204') rethrow;
         response = await _supabase
             .from('shared_carts')
-            .select('items')
-            .eq('room_code', roomCode.toUpperCase().trim())
+            .select('items, status, host_id')
+            .eq('room_code', code)
             .maybeSingle();
       }
 
@@ -69,18 +111,38 @@ class SharedCartService {
         throw Exception('This group cart already checked out.');
       }
 
-      if (response != null && response['items'] is List) {
-        final rawList = response['items'] as List;
-        return rawList
-            .map((e) => CartItemModel.fromJson(Map<String, dynamic>.from(e)))
-            .toList();
+      if (response == null) {
+        throw Exception('Group ordering room not found.');
       }
-      throw Exception('Group ordering room not found.');
+
+      final items = <CartItemModel>[];
+      if (response['items'] is List) {
+        for (final e in response['items'] as List) {
+          items.add(CartItemModel.fromJson(Map<String, dynamic>.from(e as Map)));
+        }
+      }
+
+      return SharedCartRoom(
+        roomCode: code,
+        items: items,
+        hostId: response['host_id']?.toString(),
+        status: status,
+        placeKind: normalizeGroupPlaceKind(response['place_kind']?.toString()),
+        placeLabel: response['place_label']?.toString(),
+        dropoffNote: response['dropoff_note']?.toString(),
+        timeSlot: response['time_slot']?.toString(),
+      );
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to fetch shared cart');
       if (kDebugMode) debugPrint('Fetch shared cart error: $e');
       rethrow;
     }
+  }
+
+  /// Fetches items for an existing group session once
+  Future<List<CartItemModel>> fetchSharedCart(String roomCode) async {
+    final room = await fetchSharedCartRoom(roomCode);
+    return room.items;
   }
 
   Future<String?> sharedCartHostId(String roomCode) async {

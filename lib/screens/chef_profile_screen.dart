@@ -84,6 +84,8 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
   final _pincodeController = TextEditingController();
   final _storyController = TextEditingController();
   final _hygieneController = TextEditingController();
+  final _localNameController = TextEditingController();
+  String _cardLocale = 'en';
 
   String? _avatarUrl;
   List<String> _kitchenPhotos = [];
@@ -118,6 +120,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     _pincodeController.dispose();
     _storyController.dispose();
     _hygieneController.dispose();
+    _localNameController.dispose();
     super.dispose();
   }
 
@@ -185,13 +188,15 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     try {
       final kitchen = await _supabase
           .from('chef_profiles')
-          .select('kitchen_story, hygiene_note, kitchen_photos')
+          .select('kitchen_story, hygiene_note, kitchen_photos, card_locale, local_kitchen_name')
           .eq('user_id', user.id)
           .maybeSingle()
           .withTimeout(NetworkTimeouts.standard);
       if (mounted && kitchen != null) {
         _storyController.text = kitchen['kitchen_story']?.toString() ?? '';
         _hygieneController.text = kitchen['hygiene_note']?.toString() ?? '';
+        _localNameController.text = kitchen['local_kitchen_name']?.toString() ?? '';
+        _cardLocale = normalizeChefCardLocale(kitchen['card_locale']?.toString());
         _kitchenPhotos = kitchenPhotosFrom(kitchen['kitchen_photos']);
       }
     } catch (e, stack) {
@@ -410,6 +415,8 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
           'kitchen_story': _storyController.text.trim(),
           'hygiene_note': _hygieneController.text.trim(),
           'kitchen_photos': _kitchenPhotos,
+          'card_locale': normalizeChefCardLocale(_cardLocale),
+          'local_kitchen_name': _localNameController.text.trim(),
           'updated_at': DateTime.now().toUtc().toIso8601String(),
         });
       } catch (e, stack) {
@@ -628,6 +635,33 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                   Text(
                     'Diners see this on your kitchen card. Keep it short and true.',
                     style: TextStyle(color: muted, fontSize: 12),
+                  ),
+                  const SizedBox(height: 12),
+                  Text('Card language (Pune-first)', style: TextStyle(color: muted, fontSize: 12, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      for (final locale in kChefCardLocales)
+                        ChoiceChip(
+                          label: Text(chefCardLocaleLabel(locale)),
+                          selected: _cardLocale == locale,
+                          onSelected: _isEditing ? (_) => setState(() => _cardLocale = locale) : null,
+                          selectedColor: AppTheme.primary.withValues(alpha: 0.18),
+                          labelStyle: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: _cardLocale == locale ? AppTheme.primary : AppTheme.textMuted,
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _buildValidatedTextField(
+                    controller: _localNameController,
+                    label: _cardLocale == 'mr'
+                        ? 'Local kitchen name (मराठी)'
+                        : (_cardLocale == 'hi' ? 'Local kitchen name (हिन्दी)' : 'Local kitchen name (optional)'),
+                    prefixIcon: Icons.translate_outlined,
                   ),
                   const SizedBox(height: 12),
                   _buildValidatedTextField(

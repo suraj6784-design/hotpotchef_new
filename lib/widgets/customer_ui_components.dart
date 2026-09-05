@@ -441,12 +441,14 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
   String _story = '';
   String _hygiene = '';
   String _cookedLabel = 'New kitchen';
+  String _cardLocale = 'en';
   String _liveUrl = '';
   String _liveLabel = '';
   bool _isStreaming = false;
   List<String> _photos = const [];
   ChefRatingSummary _rating = const ChefRatingSummary();
   List<Map<String, dynamic>> _recentReviews = const [];
+  ChefCardCopy get _copy => chefCardCopy(_cardLocale);
 
   @override
   void initState() {
@@ -504,7 +506,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
       try {
         final row = await client
             .from('chef_profiles')
-            .select('kitchen_story, hygiene_note, kitchen_photos, live_photo_url, live_photo_at, is_live')
+            .select('kitchen_story, hygiene_note, kitchen_photos, live_photo_url, live_photo_at, is_live, card_locale, local_kitchen_name')
             .eq('user_id', chefId)
             .maybeSingle();
         if (row != null) kitchen = Map<String, dynamic>.from(row);
@@ -513,7 +515,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
         try {
           final row = await client
               .from('chef_profiles')
-              .select('kitchen_story, hygiene_note, kitchen_photos, live_photo_url, live_photo_at')
+              .select('kitchen_story, hygiene_note, kitchen_photos, live_photo_url, live_photo_at, card_locale, local_kitchen_name')
               .eq('user_id', chefId)
               .maybeSingle();
           if (row != null) kitchen = Map<String, dynamic>.from(row);
@@ -532,10 +534,14 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
       final rating = chefRatingSummaryFromRows(reviewRows);
       _chefRatingCache[chefId] = rating;
 
-      final resolvedName = chefDisplayName({
+      final cardLocale = normalizeChefCardLocale(kitchen?['card_locale']?.toString());
+      final copy = chefCardCopy(cardLocale);
+      final resolvedName = chefCardDisplayName({
         if (profile != null) ...profile,
         'name': widget.chefName,
-      });
+        'local_kitchen_name': kitchen?['local_kitchen_name'],
+        'card_locale': cardLocale,
+      }, locale: cardLocale);
       final listedFssai = profile?['fssai_number']?.toString().trim() ?? '';
       final city = kitchenStoryArea(
         city: profile?['city']?.toString(),
@@ -547,6 +553,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
 
       setState(() {
         _name = resolvedName;
+        _cardLocale = cardLocale;
         if (listedFssai.isNotEmpty) _fssai = listedFssai;
         _city = city;
         _memberSince = joined == null ? '' : formatAppDate(joined);
@@ -556,7 +563,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
         _liveUrl = isKitchenLivePhotoFresh(liveAt) ? liveUrl : '';
         _liveLabel = kitchenLivePhotoLabel(liveAt);
         _isStreaming = isKitchenLiveStreaming(kitchen);
-        _cookedLabel = cookedMealsLabel(cooked);
+        _cookedLabel = copy.cookedMeals(cooked);
         _rating = rating;
         _recentReviews = reviewRows
             .whereType<Map>()
@@ -593,13 +600,33 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
                   _name.isEmpty ? widget.chefName : _name,
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: ink),
                 ),
-                Text(
-                  _isStreaming ? 'Live from the kitchen' : 'Home kitchen',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: _isStreaming ? Colors.red.shade700 : muted,
-                    fontWeight: FontWeight.w600,
-                  ),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        _isStreaming ? 'Live from the kitchen' : _copy.homeKitchen,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _isStreaming ? Colors.red.shade700 : muted,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    if (_cardLocale != 'en') ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primary.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          chefCardLocaleLabel(_cardLocale),
+                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.primary),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ),
@@ -715,7 +742,11 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
               Text(_story, style: TextStyle(fontSize: 13, height: 1.4, color: ink)),
             ],
             const SizedBox(height: 12),
-            _infoRow(Icons.verified, 'FSSAI: ${_fssai.isNotEmpty ? _fssai : 'Licence not listed'}', muted),
+            _infoRow(
+              Icons.verified,
+              _fssai.isNotEmpty ? '${_copy.fssaiListed}: $_fssai' : _copy.fssaiMissing,
+              muted,
+            ),
             const SizedBox(height: 8),
             _infoRow(Icons.soup_kitchen_outlined, _cookedLabel, muted),
             if (_hygiene.isNotEmpty) ...[
@@ -728,11 +759,11 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
             ],
             if (_memberSince.isNotEmpty) ...[
               const SizedBox(height: 8),
-              _infoRow(Icons.calendar_month_outlined, 'Partner since $_memberSince', muted),
+              _infoRow(Icons.calendar_month_outlined, '${_copy.partnerSince} $_memberSince', muted),
             ],
             if (_recentReviews.isNotEmpty) ...[
               const SizedBox(height: 14),
-              Text('Recent reviews', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: ink)),
+              Text(_copy.recentReviews, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: ink)),
               const SizedBox(height: 8),
               ..._recentReviews.map((review) {
                 final stars = int.tryParse(review['rating']?.toString() ?? '') ?? 0;
@@ -774,7 +805,11 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
             onPressed: _openKitchenLive,
             child: const Text('Watch live · 2 min', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
           ),
-        KitchenFollowButton(chefId: widget.chefId, chefName: _name.isEmpty ? widget.chefName : _name),
+        KitchenFollowButton(
+          chefId: widget.chefId,
+          chefName: _name.isEmpty ? widget.chefName : _name,
+          locale: _cardLocale,
+        ),
         TextButton(
           onPressed: () => Navigator.pop(context),
           child: const Text('Close', style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold)),
@@ -1086,6 +1121,28 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                           ),
                         ],
                       ),
+                      if (isFestivalHamper(meal)) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: AppTheme.accent.withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: AppTheme.accent.withValues(alpha: 0.45)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.card_giftcard_outlined, size: 14, color: AppTheme.primary),
+                              SizedBox(width: 6),
+                              Text(
+                                'Festival hamper',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppTheme.primary),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 8),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1156,27 +1213,62 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                                   child: Icon(Icons.storefront, color: Colors.white, size: 22)),
                               const SizedBox(width: 16),
                               Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text('Prepared by $chefName',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                          color: isDark ? AppTheme.textMainDark : AppTheme.textMain,
-                                        )),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      fssai.isNotEmpty
-                                          ? 'FSSAI $fssai • Tap for info'
-                                          : 'FSSAI not listed • Tap for chef details',
-                                      style: TextStyle(
-                                        color: fssai.isNotEmpty ? Colors.green : AppTheme.textMuted,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
+                                child: FutureBuilder<Map<String, dynamic>?>(
+                                  future: chefId.isEmpty
+                                      ? Future.value(null)
+                                      : Supabase.instance.client
+                                          .from('chef_profiles')
+                                          .select('card_locale, local_kitchen_name')
+                                          .eq('user_id', chefId)
+                                          .maybeSingle(),
+                                  builder: (context, snap) {
+                                    final locale = normalizeChefCardLocale(snap.data?['card_locale']?.toString());
+                                    final copy = chefCardCopy(locale);
+                                    final shownName = chefCardDisplayName({
+                                      'chef_name': chefName,
+                                      'local_kitchen_name': snap.data?['local_kitchen_name'],
+                                      'card_locale': locale,
+                                    }, locale: locale);
+                                    return Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                '${copy.preparedBy} $shownName',
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 16,
+                                                  color: isDark ? AppTheme.textMainDark : AppTheme.textMain,
+                                                ),
+                                              ),
+                                            ),
+                                            if (locale != 'en')
+                                              Text(
+                                                chefCardLocaleLabel(locale),
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w800,
+                                                  color: AppTheme.primary,
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          fssai.isNotEmpty
+                                              ? '${copy.fssaiListed} $fssai • ${copy.tapForInfo}'
+                                              : '${copy.fssaiMissing} • ${copy.tapForInfo}',
+                                          style: TextStyle(
+                                            color: fssai.isNotEmpty ? Colors.green : AppTheme.textMuted,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  },
                                 ),
                               ),
                               KitchenFollowButton(
@@ -1435,11 +1527,13 @@ class KitchenFollowButton extends ConsumerWidget {
     required this.chefId,
     required this.chefName,
     this.compact = false,
+    this.locale,
   });
 
   final String chefId;
   final String chefName;
   final bool compact;
+  final String? locale;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1449,6 +1543,7 @@ class KitchenFollowButton extends ConsumerWidget {
     }
 
     final following = ref.watch(kitchenFollowsProvider).contains(chefId);
+    final copy = chefCardCopy(locale);
 
     Future<void> toggle() async {
       if (userId == null) {
@@ -1488,7 +1583,7 @@ class KitchenFollowButton extends ConsumerWidget {
     return TextButton.icon(
       onPressed: toggle,
       icon: Icon(following ? Icons.notifications_active : Icons.notifications_outlined, size: 18),
-      label: Text(following ? 'Following' : 'Follow kitchen'),
+      label: Text(following ? copy.following : copy.followKitchen),
       style: TextButton.styleFrom(
         foregroundColor: AppTheme.primary,
         textStyle: const TextStyle(fontWeight: FontWeight.w800),
