@@ -122,11 +122,7 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
                     children: [
                       Row(
                         children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: const BoxDecoration(color: Colors.white24, shape: BoxShape.circle),
-                            child: const Icon(Icons.shopping_bag_outlined, color: Colors.white, size: 20),
-                          ),
+                          const AppLogo(size: 28, onDark: true),
                           const SizedBox(width: 12),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,

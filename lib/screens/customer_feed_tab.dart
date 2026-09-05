@@ -554,9 +554,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                             children: [
                               Row(
                                 children: [
-                                  ClipRRect(
-                                      borderRadius: BorderRadius.circular(6),
-                                      child: Image.asset('assets/app_icon.png', height: 20, width: 20)),
+                                  const AppLogo(size: 22, onDark: true),
                                   const SizedBox(width: 8),
                                   const Text('Delivering to',
                                       style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500)),
@@ -989,7 +987,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                       right: -20,
                       child: Opacity(
                         opacity: 0.08,
-                        child: Image.asset('assets/app_icon.png', width: 140, height: 140, fit: BoxFit.contain),
+                        child: const AppLogo(size: 96, elevated: true),
                       ),
                     ),
                     Opacity(

@@ -6,6 +6,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
+import 'app_widgets.dart';
 
 class DailyStreakBanner extends StatefulWidget {
   const DailyStreakBanner({super.key});
@@ -125,7 +126,7 @@ class _DailyStreakBannerState extends State<DailyStreakBanner> {
             children: [
               Row(
                 children: const [
-                  Icon(Icons.local_fire_department, color: Colors.white, size: 24),
+                  AppLogo(size: 26, onDark: true),
                   SizedBox(width: 8),
                   Text('Daily Streak Rewards',
                       style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),

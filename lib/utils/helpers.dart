@@ -136,6 +136,19 @@ double referralCoinsFromRewardedFriends(int rewardedFriends, [double bonus = kRe
   return rewardedFriends * bonus;
 }
 
+bool roleUsesReferral(String? role) {
+  switch (role?.trim().toLowerCase()) {
+    case 'chef':
+    case 'cook':
+    case 'driver':
+    case 'delivery partner':
+    case 'delivery_partner':
+      return false;
+    default:
+      return true;
+  }
+}
+
 Map<String, dynamic> signupUserPayload({
   required String id,
   required String email,
@@ -146,6 +159,7 @@ Map<String, dynamic> signupUserPayload({
   String? referralCode,
   String? createdAt,
 }) {
+  final customer = roleUsesReferral(role);
   return {
     'id': id,
     'email': email,
@@ -154,8 +168,8 @@ Map<String, dynamic> signupUserPayload({
     'phone': phone,
     'role': role,
     if (createdAt != null) 'created_at': createdAt,
-    if (referredBy != null) 'referred_by': referredBy,
-    if (referralCode != null) 'referral_code': referralCode,
+    if (customer && referredBy != null) 'referred_by': referredBy,
+    if (customer && referralCode != null) 'referral_code': referralCode,
   };
 }
 

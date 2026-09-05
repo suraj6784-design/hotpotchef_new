@@ -14,6 +14,7 @@ import '../models/cart_enums.dart';
 import '../providers/cart_provider.dart';
 import '../services/reorder_service.dart';
 import '../screens/auth_screen.dart';
+import 'app_widgets.dart';
 
 // 1. High-Performance Watermarked Image Widget
 class WatermarkedMealImage extends StatelessWidget {
@@ -62,12 +63,12 @@ class WatermarkedMealImage extends StatelessWidget {
                     errorWidget: (_, _, _) => const Icon(Icons.restaurant, color: Colors.grey),
                   )
                 : const Icon(Icons.restaurant, color: Colors.grey),
-            Positioned(
+            const Positioned(
               bottom: 6,
               right: 6,
               child: Opacity(
-                opacity: 0.6,
-                child: Image.asset('assets/app_icon.png', width: 20, height: 20),
+                opacity: 0.7,
+                child: AppLogo(size: 22),
               ),
             ),
           ],

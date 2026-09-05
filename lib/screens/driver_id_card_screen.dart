@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/app_theme.dart';
+import '../widgets/app_widgets.dart';
 
 class DriverIdCardScreen extends StatefulWidget {
   final String driverName;
@@ -128,12 +129,7 @@ class _DriverIdCardScreenState extends State<DriverIdCardScreen> {
                         ),
                         child: Column(
                           children: [
-                            Image.asset(
-                              'assets/app_icon.png',
-                              height: 40,
-                              width: 40,
-                              errorBuilder: (c, e, s) => const Icon(Icons.delivery_dining, color: Colors.white, size: 40),
-                            ),
+                            const AppLogo(size: 40, onDark: true),
                             const SizedBox(height: 8),
                             const Text(
                               'HOTPOTCHEF',

@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/helpers.dart';
+import '../widgets/app_widgets.dart';
 
 class ReferralScreen extends StatefulWidget {
   const ReferralScreen({super.key});
@@ -38,9 +39,14 @@ class _ReferralScreenState extends State<ReferralScreen> {
 
       final userData = await _supabase
           .from('users')
-          .select('referral_code, hotpot_coins')
+          .select('referral_code, hotpot_coins, role')
           .eq('id', user.id)
           .maybeSingle();
+
+      if (userData != null && !roleUsesReferral(userData['role']?.toString())) {
+        if (mounted) Navigator.pop(context);
+        return;
+      }
 
       if (!mounted) return;
 
@@ -100,13 +106,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: Text(
-          'Refer & Earn',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: isDark ? AppTheme.textMainDark : AppTheme.textMain,
-          ),
-        ),
+        title: const BrandMark(title: 'Refer & Earn'),
         backgroundColor: isDark ? AppTheme.surfaceDark : Colors.white,
         elevation: 0,
         iconTheme: IconThemeData(color: isDark ? AppTheme.textMainDark : AppTheme.textMain),
@@ -129,7 +129,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                   ),
                   child: Column(
                     children: const [
-                      Icon(Icons.card_giftcard, size: 56, color: Colors.white),
+                      AppLogo(size: 56, onDark: true),
                       SizedBox(height: 16),
                       Text(
                         'Give ₹50, Get ₹50!',

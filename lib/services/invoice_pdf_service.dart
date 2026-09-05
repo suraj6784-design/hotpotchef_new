@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -12,6 +13,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/gst_invoice.dart';
 import '../utils/helpers.dart';
+import '../widgets/app_widgets.dart';
 
 class InvoicePdfService {
   static List<Map<String, dynamic>> _itemsFrom(Map<String, dynamic> order) {
@@ -100,6 +102,7 @@ class InvoicePdfService {
         date: date,
         items: items,
         bill: bill,
+        logo: await _logoImage(),
       );
       final dir = await getTemporaryDirectory();
       final filePath = '${dir.path}/HotPotChef_Invoice_$orderId.pdf';
@@ -155,11 +158,21 @@ class InvoicePdfService {
     }
   }
 
+  static Future<pw.MemoryImage?> _logoImage() async {
+    try {
+      final data = await rootBundle.load(AppLogo.assetPath);
+      return pw.MemoryImage(data.buffer.asUint8List());
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<List<int>> _buildPdf({
     required String orderId,
     required String date,
     required List<Map<String, dynamic>> items,
     required GstInvoiceBreakdown bill,
+    pw.MemoryImage? logo,
   }) async {
     final pdf = pw.Document();
     pdf.addPage(
@@ -171,9 +184,33 @@ class InvoicePdfService {
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Text('HOTPOTCHEF ${bill.documentTitle}', style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
+                pw.Row(
+                  crossAxisAlignment: pw.CrossAxisAlignment.center,
+                  children: [
+                    if (logo != null) ...[
+                      pw.ClipRRect(
+                        horizontalRadius: 8,
+                        verticalRadius: 8,
+                        child: pw.Image(logo, width: 40, height: 40),
+                      ),
+                      pw.SizedBox(width: 12),
+                    ],
+                    pw.Expanded(
+                      child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text(
+                            'HOTPOTCHEF ${bill.documentTitle}',
+                            style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
+                          ),
+                          pw.SizedBox(height: 4),
+                          pw.Text('Marketplace: HotPotChef  |  Place of supply: India'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
                 pw.SizedBox(height: 8),
-                pw.Text('Marketplace: HotPotChef  |  Place of supply: India'),
                 pw.Text('Kitchen: ${bill.chefName}'),
                 if (bill.chefGstin != null) pw.Text('Kitchen GSTIN: ${bill.chefGstin}'),
                 if (bill.fssaiNumber.isNotEmpty) pw.Text('FSSAI: ${bill.fssaiNumber}'),

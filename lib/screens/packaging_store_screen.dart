@@ -6,6 +6,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/helpers.dart';
 import '../utils/support.dart';
+import '../widgets/app_widgets.dart';
 
 class PackagingStoreScreen extends StatefulWidget {
   const PackagingStoreScreen({super.key});
@@ -132,10 +133,7 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
       appBar: AppBar(
         title: Row(
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: Image.asset('assets/app_icon.png', height: 24, width: 24),
-            ),
+            const AppLogo(size: 24),
             const SizedBox(width: 8),
             Text('Packaging Store', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
           ],

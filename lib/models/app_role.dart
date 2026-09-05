@@ -15,6 +15,9 @@ enum AppRole {
     }
   }
 
+  /// Only diners invite friends and earn on a first customer order.
+  bool get usesReferral => this == AppRole.customer;
+
   String get hubPath {
     switch (this) {
       case AppRole.customer:

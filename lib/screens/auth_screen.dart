@@ -156,7 +156,7 @@ class _AuthScreenState extends State<AuthScreen> {
         final phone = _phoneController.text.trim();
         final String? referredBy;
         try {
-          referredBy = await _resolveSignupReferralCode();
+          referredBy = _selectedRole.usesReferral ? await _resolveSignupReferralCode() : null;
         } on FormatException catch (e) {
           _showAuthError(e.message);
           return;
@@ -200,7 +200,7 @@ class _AuthScreenState extends State<AuthScreen> {
               phone: phone,
               role: _selectedRole.storageValue,
               referredBy: referredBy,
-              referralCode: generateReferralCode(),
+              referralCode: _selectedRole.usesReferral ? generateReferralCode() : null,
               createdAt: DateTime.now().toIso8601String(),
             ),
           );
@@ -249,19 +249,24 @@ class _AuthScreenState extends State<AuthScreen> {
           .maybeSingle()
           .withTimeout(NetworkTimeouts.standard);
       final meta = user.userMetadata ?? {};
-      final ownCode = normalizeReferralCode(existing?['referral_code']?.toString()) ??
-          generateReferralCode();
-      final referredBy = sanitizeReferredBy(
-        referredBy: existing?['referred_by']?.toString() ?? meta['referred_by']?.toString(),
-        ownCode: ownCode,
-      );
+      final role = existing?['role']?.toString() ?? meta['role']?.toString() ?? 'Customer';
+      final existingCode = normalizeReferralCode(existing?['referral_code']?.toString());
+      final ownCode = roleUsesReferral(role)
+          ? (existingCode ?? generateReferralCode())
+          : existingCode;
+      final referredBy = roleUsesReferral(role)
+          ? sanitizeReferredBy(
+              referredBy: existing?['referred_by']?.toString() ?? meta['referred_by']?.toString(),
+              ownCode: ownCode,
+            )
+          : null;
       await _upsertPublicUserRow(
         signupUserPayload(
           id: user.id,
           email: user.email ?? existing?['email']?.toString() ?? '',
           name: existing?['name']?.toString() ?? meta['name']?.toString() ?? '',
           phone: existing?['phone']?.toString() ?? meta['phone']?.toString() ?? '',
-          role: existing?['role']?.toString() ?? meta['role']?.toString() ?? 'Customer',
+          role: role,
           referredBy: referredBy,
           referralCode: ownCode,
         ),
@@ -443,20 +448,7 @@ class _AuthScreenState extends State<AuthScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         const SizedBox(height: 12),
-                        Center(
-                          child: Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: AppTheme.radiusLg,
-                              boxShadow: AppTheme.softShadow,
-                            ),
-                            child: ClipRRect(
-                              borderRadius: AppTheme.radiusMd,
-                              child: Image.asset('assets/app_icon.png', height: 64, width: 64),
-                            ),
-                          ),
-                        ).popIn(),
+                        const Center(child: AppLogo(size: 72, elevated: true)).popIn(),
                         const SizedBox(height: 16),
                         AnimatedSwitcher(
                           duration: const Duration(milliseconds: 250),
@@ -534,6 +526,8 @@ class _AuthScreenState extends State<AuthScreen> {
                         ),
                       ),
                     ),
+                    const SizedBox(height: 14),
+                    const Center(child: AppLogo(size: 48, elevated: true)),
                     const SizedBox(height: 14),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -668,7 +662,7 @@ class _AuthScreenState extends State<AuthScreen> {
               return null;
             },
           ),
-          if (!_isLogin) ...[
+          if (!_isLogin && _selectedRole.usesReferral) ...[
             const SizedBox(height: 14),
             TextFormField(
               controller: _referralController,

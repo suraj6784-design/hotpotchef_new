@@ -186,11 +186,21 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Column(
+                  Expanded(
+                    child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Delivery Partner',
-                          style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                      const Row(
+                        children: [
+                          AppLogo(size: 32, onDark: true),
+                          SizedBox(width: 10),
+                          Flexible(
+                            child: Text('Delivery Partner',
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 12),
                       GestureDetector(
                         onTap: _toggleOnline,
@@ -219,6 +229,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                         ),
                       ),
                     ],
+                  ),
                   ),
                   Row(
                     children: [

@@ -766,7 +766,7 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
           title: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.asset('assets/app_icon.png', height: 24, width: 24)),
+              const AppLogo(size: 24),
               const SizedBox(width: 8),
               const Text('Account'),
             ],
@@ -798,7 +798,7 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
           title: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.asset('assets/app_icon.png', height: 24, width: 24)),
+              const AppLogo(size: 24),
               const SizedBox(width: 8),
               const Text('Account'),
             ],

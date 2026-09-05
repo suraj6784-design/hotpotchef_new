@@ -80,6 +80,23 @@ void main() {
     expect(referralCoinsFromRewardedFriends(2), 100);
   });
 
+  test('chef and driver signups do not store referral fields', () {
+    expect(roleUsesReferral('Chef'), isFalse);
+    expect(roleUsesReferral('Driver'), isFalse);
+    expect(roleUsesReferral('Customer'), isTrue);
+    final chef = signupUserPayload(
+      id: 'u2',
+      email: 'chef@b.com',
+      name: 'Asha',
+      phone: '9876543210',
+      role: 'Chef',
+      referredBy: 'CHEFAB12',
+      referralCode: 'CHEFNEW12',
+    );
+    expect(chef.containsKey('referred_by'), isFalse);
+    expect(chef.containsKey('referral_code'), isFalse);
+  });
+
   test('signup payload also stores the new user referral code', () {
     expect(
       signupUserPayload(

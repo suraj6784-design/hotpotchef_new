@@ -574,10 +574,21 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Column(
+          Expanded(
+            child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Chef Dashboard', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+              const Row(
+                children: [
+                  AppLogo(size: 32, onDark: true),
+                  SizedBox(width: 10),
+                  Flexible(
+                    child: Text('Chef Dashboard',
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
               const SizedBox(height: 2),
               Text(_currentUserEmail, style: const TextStyle(color: Colors.white70, fontSize: 12)),
               const SizedBox(height: 10),
@@ -608,6 +619,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 ),
               ),
             ],
+          ),
           ),
           Row(
             children: [

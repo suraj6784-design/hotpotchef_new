@@ -223,21 +223,20 @@ class EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 96,
-              height: 96,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    AppTheme.primary.withValues(alpha: 0.16),
-                    AppTheme.accent.withValues(alpha: 0.16),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                shape: BoxShape.circle,
+            SizedBox(
+              width: 72,
+              height: 72,
+              child: Stack(
+                alignment: Alignment.bottomRight,
+                children: [
+                  const AppLogo(size: 56, elevated: true),
+                  Container(
+                    padding: const EdgeInsets.all(5),
+                    decoration: const BoxDecoration(color: AppTheme.primary, shape: BoxShape.circle),
+                    child: Icon(icon, size: 14, color: Colors.white),
+                  ),
+                ],
               ),
-              child: Icon(icon, size: 44, color: AppTheme.primary),
             ).popIn(),
             const SizedBox(height: 20),
             Text(
@@ -468,6 +467,46 @@ class PillTag extends StatelessWidget {
   }
 }
 
+class AppLogo extends StatelessWidget {
+  static const assetPath = 'assets/app_icon.png';
+
+  final double size;
+  final bool elevated;
+  final bool onDark;
+
+  const AppLogo({
+    super.key,
+    this.size = 28,
+    this.elevated = false,
+    this.onDark = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular((size * 0.28).clamp(6, 14));
+    final mark = ClipRRect(
+      borderRadius: radius,
+      child: Image.asset(
+        assetPath,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => Icon(Icons.local_dining_rounded, size: size * 0.72, color: AppTheme.primary),
+      ),
+    );
+    if (!elevated && !onDark) return mark;
+    return Container(
+      padding: EdgeInsets.all(size >= 48 ? 8 : 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular((size * 0.28).clamp(8, 18)),
+        boxShadow: elevated ? AppTheme.softShadow : null,
+      ),
+      child: mark,
+    );
+  }
+}
+
 class BrandMark extends StatelessWidget {
   final String title;
   final double iconSize;
@@ -478,10 +517,7 @@ class BrandMark extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Image.asset('assets/app_icon.png', height: iconSize, width: iconSize),
-        ),
+        AppLogo(size: iconSize),
         const SizedBox(width: 10),
         Flexible(
           child: Text(
