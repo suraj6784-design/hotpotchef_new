@@ -88,7 +88,8 @@ void main() {
       expect(payload['customer_id'], 'chef-1');
       expect(payload['service_type'], 'Packaging');
       expect(payload['request_type'], 'packaging');
-      expect(payload['status'], 'Pending');
+      expect(payload['status'], 'Open');
+      expect(payload['target_date_time'], isNotEmpty);
       expect(payload['budget'], 500);
       expect(payload['description'], contains('SUP-ABC123'));
       expect(packagingRequestDisplayId(payload), 'SUP-ABC123');

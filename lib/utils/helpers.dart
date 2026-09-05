@@ -1171,8 +1171,9 @@ Map<String, dynamic> packagingSupplyRequestPayload({
     'service_type': 'Packaging',
     'request_type': 'packaging',
     'delivery_address': kitchenAddress,
-    'status': 'Pending',
-    'accepted_chefs': const [],
+    'target_date_time': DateTime.now().toUtc().add(const Duration(days: 3)).toIso8601String(),
+    'status': 'Open',
+    'accepted_chefs': <dynamic>[],
     'created_at': DateTime.now().toIso8601String(),
   };
 }

@@ -9,6 +9,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../models/app_role.dart';
 import '../services/auth_session.dart';
 import '../utils/helpers.dart';
+import '../utils/network.dart';
 import '../utils/support.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/customer_ui_components.dart';
@@ -85,18 +86,12 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
       final user = _supabase.auth.currentUser;
       if (user == null) throw Exception('Session expired. Please sign in again.');
 
-      final role = await AuthSession.resolveRole();
+      var role = await AuthSession.resolveRole();
+      if (!role.canUsePackagingStore) {
+        role = AuthSession.roleFromSession();
+      }
       if (!role.canUsePackagingStore) {
         throw Exception('Packaging supplies are for chefs only.');
-      }
-
-      final kitchenProfile = await _supabase
-          .from('chef_profiles')
-          .select('user_id')
-          .eq('user_id', user.id)
-          .maybeSingle();
-      if (kitchenProfile == null) {
-        throw Exception('Finish your kitchen profile before requesting packaging.');
       }
 
       final userData = await _supabase
@@ -111,7 +106,7 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
       }
 
       if (!mounted) return;
-      await showModalBottomSheet<void>(
+      final saved = await showModalBottomSheet<bool>(
         context: context,
         isScrollControlled: true,
         backgroundColor: AppTheme.surfaceOf(context),
@@ -127,6 +122,9 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
           kitchenAddress: kitchen,
         ),
       );
+      if (saved == true && mounted) {
+        _showSnackBar('Packaging request saved. We will confirm stock and delivery shortly.');
+      }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Packaging supply request failed');
       final text = e.toString().replaceFirst('Exception: ', '');
@@ -396,6 +394,7 @@ class _SupplyRequestSheetState extends State<SupplyRequestSheet> {
   int _quantity = 1;
   bool _placing = false;
   bool _placed = false;
+  String? _saveError;
 
   String get _itemTitle => widget.item['title']?.toString() ?? 'Packaging supply';
   String get _itemSku => widget.item['sku']?.toString() ?? widget.item['id']?.toString() ?? '';
@@ -406,7 +405,10 @@ class _SupplyRequestSheetState extends State<SupplyRequestSheet> {
 
   Future<void> _placeOrder() async {
     if (_placing || _placed) return;
-    setState(() => _placing = true);
+    setState(() {
+      _placing = true;
+      _saveError = null;
+    });
     try {
       final payload = packagingSupplyRequestPayload(
         chefId: widget.chefUserId,
@@ -425,22 +427,22 @@ class _SupplyRequestSheetState extends State<SupplyRequestSheet> {
       for (final key in const ['remaining_quantity', 'quoted_total', 'request_type']) {
         if (payload.containsKey(key)) extras[key] = payload.remove(key);
       }
-      await _insertCustomerRequest(payload, extras);
+      await _insertCustomerRequest(payload, extras).withTimeout(NetworkTimeouts.standard);
       if (!mounted) return;
       setState(() {
         _placed = true;
         _placing = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Request $_requestId is saved. We will confirm stock and delivery shortly.')),
-      );
+      Navigator.pop(context, true);
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to save packaging request');
       if (!mounted) return;
-      setState(() => _placing = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not save this packaging request. Try again.')),
-      );
+      setState(() {
+        _placing = false;
+        _saveError = (e is NetworkException)
+            ? e.message
+            : 'Could not save this packaging request. Try again.';
+      });
     }
   }
 
@@ -488,15 +490,27 @@ class _SupplyRequestSheetState extends State<SupplyRequestSheet> {
           return await client.from('customer_requests').insert(body).select('id').maybeSingle();
         } on PostgrestException catch (e) {
           if (e.code == 'PGRST204') rethrow;
+          if (e.code == '23514' || e.code == '23502') rethrow;
           await client.from('customer_requests').insert(body);
           return null;
         }
       } on PostgrestException catch (e) {
         lastError = e;
-        if (e.code != 'PGRST204') rethrow;
-        final missing = _missingSchemaColumn(e.message);
-        if (missing == null || !body.containsKey(missing)) rethrow;
-        body.remove(missing);
+        if (e.code == 'PGRST204') {
+          final missing = _missingSchemaColumn(e.message);
+          if (missing == null || !body.containsKey(missing)) rethrow;
+          body.remove(missing);
+          continue;
+        }
+        if (e.code == '23514' && (body['status']?.toString().toLowerCase() ?? '') == 'pending') {
+          body['status'] = 'Open';
+          continue;
+        }
+        if (e.code == '23502' && !body.containsKey('target_date_time')) {
+          body['target_date_time'] = DateTime.now().toUtc().add(const Duration(days: 3)).toIso8601String();
+          continue;
+        }
+        rethrow;
       }
     }
     throw lastError ??
@@ -529,7 +543,8 @@ class _SupplyRequestSheetState extends State<SupplyRequestSheet> {
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.fromLTRB(24, 12, 24, 16 + MediaQuery.viewInsetsOf(context).bottom),
-        child: Column(
+        child: SingleChildScrollView(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -571,6 +586,10 @@ class _SupplyRequestSheetState extends State<SupplyRequestSheet> {
               ],
             ),
             Text('Total ₹${_total.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+            if (_saveError != null) ...[
+              const SizedBox(height: 10),
+              Text(_saveError!, style: const TextStyle(color: AppTheme.error, fontSize: 13, fontWeight: FontWeight.w600)),
+            ],
             const SizedBox(height: 12),
             ElevatedButton(
               onPressed: _placing || _placed ? null : _placeOrder,
@@ -611,6 +630,7 @@ class _SupplyRequestSheetState extends State<SupplyRequestSheet> {
                 onTap: () => launchSupportWhatsApp(message: _message),
               ),
           ],
+        ),
         ),
       ),
     );

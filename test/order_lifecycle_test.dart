@@ -114,6 +114,20 @@ void main() {
       );
     });
 
+    test('offline kitchens still owe accepted and dispatch orders', () {
+      expect(OrderLifecycle.isUnfulfilledKitchenWork('Confirmed'), isTrue);
+      expect(OrderLifecycle.isUnfulfilledKitchenWork('Preparing'), isTrue);
+      expect(OrderLifecycle.isUnfulfilledKitchenWork('Driver Assigned'), isTrue);
+      expect(OrderLifecycle.isUnfulfilledKitchenWork('Delivered'), isFalse);
+      expect(
+        OrderLifecycle.chefHasUnfulfilledOrders([
+          {'status': 'Confirmed'},
+          {'status': 'Delivered'},
+        ]),
+        isTrue,
+      );
+    });
+
     test('trackable after kitchen is ready or driver is assigned', () {
       expect(OrderLifecycle.isTrackable('Ready for Pickup'), isTrue);
       expect(OrderLifecycle.isTrackable('Driver Assigned'), isTrue);

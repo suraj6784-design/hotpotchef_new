@@ -276,32 +276,70 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
 
   Future<void> _toggleKitchenStatus() async {
     final nextState = !_isKitchenOpen;
+    if (!nextState) {
+      final proceed = await _confirmGoOffline();
+      if (proceed != true || !mounted) return;
+    }
+
     setState(() => _isKitchenOpen = nextState);
 
     try {
-      await _supabase
-          .from('chef_profiles')
-          .update({'is_open': nextState})
-          .eq('user_id', _currentUserId);
+      await _supabase.from('chef_profiles').upsert({
+        'user_id': _currentUserId,
+        'is_open': nextState,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(nextState
                 ? 'Kitchen is online. Customers can see your dishes again.'
-                : 'Kitchen is offline. Your dishes are hidden from customers.'),
-            duration: const Duration(seconds: 2),
+                : 'Kitchen is offline for new orders. Finish or cancel orders you already accepted.'),
+            duration: const Duration(seconds: 3),
           ),
         );
       }
-    } catch (e) {
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to update kitchen status');
       setState(() => _isKitchenOpen = !nextState);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update kitchen status: $e'), backgroundColor: Colors.red),
+          const SnackBar(
+            content: Text('Could not update kitchen availability. Try again.'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
+  }
+
+  Future<bool?> _confirmGoOffline() async {
+    var unfulfilled = 0;
+    try {
+      final rows = await _supabase
+          .from('orders')
+          .select('status')
+          .eq('chef_id', _currentUserId);
+      unfulfilled = rows.where((row) => OrderLifecycle.isUnfulfilledKitchenWork(row['status']?.toString())).length;
+    } catch (_) {}
+
+    if (!mounted) return false;
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Go offline?'),
+        content: Text(
+          unfulfilled > 0
+              ? 'You have $unfulfilled accepted order${unfulfilled == 1 ? '' : 's'} still in progress. New customers will not see your dishes, but you still need to finish or cancel those orders.'
+              : 'New customers will not see your dishes until you come back online. You can still finish any order you already accepted.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Stay online')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Go offline')),
+        ],
+      ),
+    );
   }
 
   bool _matchesFilter(Map<String, dynamic> order, String filter) {
@@ -1053,7 +1091,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   border: Border.all(color: AppTheme.warning.withValues(alpha: 0.4)),
                 ),
                 child: Text(
-                  'Kitchen is offline. Your dishes are hidden on Home until you go back online.',
+                  'Kitchen is offline for new orders. Dishes are hidden on Home. Finish or cancel orders you already accepted.',
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.onSurfaceOf(context)),
                 ),
               ),

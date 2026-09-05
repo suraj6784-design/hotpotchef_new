@@ -39,6 +39,17 @@ class OrderLifecycle {
     return s.contains('out') && !s.contains('timeout');
   }
 
+  /// Orders the kitchen already accepted and still owes the customer.
+  static bool isUnfulfilledKitchenWork(String? status) {
+    return isKitchenActive(status) || isDispatchQueue(status);
+  }
+
+  static bool chefHasUnfulfilledOrders(Iterable<dynamic> orders) {
+    return orders.whereType<Map>().any((order) {
+      return isUnfulfilledKitchenWork(order['status']?.toString());
+    });
+  }
+
   static bool isDispatchQueue(String? status) {
     final s = normalize(status);
     return s.contains('ready') ||
