@@ -26,12 +26,14 @@ class AppTheme {
   static const Color info = Color(0xFF2E7CF6);
 
   // Backgrounds
-  static const Color background = Color(0xFFFAF7F5); // warm off-white
-  static const Color backgroundLight = Color(0xFFF8F9FA);
+  /// CSS snow — a soft white used for every light canvas.
+  static const Color snow = Color(0xFFFFFAFA);
+  static const Color background = snow;
+  static const Color backgroundLight = snow;
   static const Color backgroundDark = Color(0xFF121212);
 
   // Surfaces (cards, sheets)
-  static const Color surfaceLight = Colors.white;
+  static const Color surfaceLight = snow;
   static const Color surfaceDark = Color(0xFF1E1E1E);
   static const Color surfaceMutedLight = Color(0xFFF3EEEA);
   static const Color surfaceMutedDark = Color(0xFF2A2A2A);
@@ -303,7 +305,7 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: isDark ? surfaceMutedDark : Colors.white,
+        fillColor: isDark ? surfaceMutedDark : snow,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
         border: OutlineInputBorder(borderRadius: radiusMd, borderSide: BorderSide.none),
         enabledBorder: OutlineInputBorder(
