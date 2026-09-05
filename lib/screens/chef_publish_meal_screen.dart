@@ -72,6 +72,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
   // Meal Specifications
   bool _isLoading = false;
   bool _isVeg = true;
+  final Set<String> _dietTags = {};
   String _selectedCategory = 'Maharashtrian';
   String _activeTimeSlot = '';
 
@@ -110,6 +111,9 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     _hostingAddressController.text = meal['hosting_address']?.toString() ?? '';
 
     _isVeg = meal['is_veg'] ?? true;
+    _dietTags
+      ..clear()
+      ..addAll(_dietTagsFromMeal(meal));
     _selectedCategory = meal['category']?.toString() ?? 'Maharashtrian';
     if (!_categories.contains(_selectedCategory)) {
       _selectedCategory = _categories.first;
@@ -205,6 +209,25 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     } catch (e, st) {
       FirebaseCrashlytics.instance.recordError(e, st, reason: 'Chef Autofill Error');
     }
+  }
+
+  Set<String> _dietTagsFromMeal(Map<String, dynamic> meal) {
+    final raw = meal['health_tags'] ?? meal['tags'];
+    final values = raw is Iterable ? raw : const [];
+    return {
+      for (final tag in values)
+        for (final known in kChefDietTags)
+          if (known.toLowerCase() == tag.toString().trim().toLowerCase()) known,
+    };
+  }
+
+  List<dynamic> _mergedHealthTags(List<dynamic> healthTags) {
+    final knownLower = {for (final tag in kChefDietTags) tag.toLowerCase()};
+    return [
+      for (final tag in healthTags)
+        if (!knownLower.contains(tag.toString().trim().toLowerCase())) tag,
+      ..._dietTags,
+    ];
   }
 
   // --- Optimized Image Picker ---
@@ -366,7 +389,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
         'pickup_lng': _pickupLng,
         'status': widget.existingMeal != null ? (widget.existingMeal!['status'] ?? 'Available') : 'Available',
         'image_url': imageUrl,
-        'health_tags': healthTags,
+        'health_tags': _mergedHealthTags(healthTags),
         'offer_type': _selectedOfferType.name,
         'discount_value': discountVal,
         'max_discount_cap': maxCapVal > 0 ? maxCapVal : null,
@@ -681,6 +704,36 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                     ),
                   ),
                 ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text('Diet tags', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor)),
+            const SizedBox(height: 4),
+            const Text(
+              'Diners can filter Home by these tags. Leave blank if they do not apply.',
+              style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final tag in kChefDietTags)
+                  FilterChip(
+                    label: Text(tag),
+                    selected: _dietTags.contains(tag),
+                    selectedColor: AppTheme.primary.withValues(alpha: 0.18),
+                    checkmarkColor: AppTheme.primary,
+                    onSelected: (selected) {
+                      setState(() {
+                        if (selected) {
+                          _dietTags.add(tag);
+                        } else {
+                          _dietTags.remove(tag);
+                        }
+                      });
+                    },
+                  ),
               ],
             ),
             const SizedBox(height: 24),

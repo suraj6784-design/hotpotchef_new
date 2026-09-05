@@ -18,6 +18,77 @@ class ReorderResult {
   });
 }
 
+const List<String> kWeekdayFull = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+];
+
+bool isSuccessfulPastOrder(Map<String, dynamic>? order) {
+  final status = order?['status']?.toString().toLowerCase() ?? '';
+  return status.contains('deliver') || status.contains('complet');
+}
+
+List<Map<String, dynamic>> orderItemsForReorder(Map<String, dynamic>? order) {
+  if (order == null) return const [];
+  return parseOrderItemsList(order['items'] ?? order['cart_items'] ?? order['order_items']);
+}
+
+Map<String, dynamic>? lastSuccessfulOrder(Iterable<dynamic> rows) {
+  for (final row in rows) {
+    if (row is! Map) continue;
+    final order = Map<String, dynamic>.from(row);
+    if (!isSuccessfulPastOrder(order)) continue;
+    if (orderItemsForReorder(order).isEmpty) continue;
+    return order;
+  }
+  return null;
+}
+
+String reorderMealSummary(List<Map<String, dynamic>> items) {
+  if (items.isEmpty) return 'Your last order';
+  final first = items.first['title']?.toString() ?? items.first['name']?.toString() ?? 'Meal';
+  if (items.length == 1) return first;
+  return '$first + ${items.length - 1} more';
+}
+
+String sameAsLastLabel(DateTime? placed, {DateTime? now}) {
+  if (placed == null) return 'Order again';
+  final current = (now ?? DateTime.now()).toLocal();
+  final local = placed.toLocal();
+  final days = DateTime(current.year, current.month, current.day)
+      .difference(DateTime(local.year, local.month, local.day))
+      .inDays;
+  if (days < 0) return 'Order again';
+  if (days == 0) return 'Same as earlier today';
+  if (days == 1) return 'Same as yesterday';
+  if (days < 7) {
+    final weekday = kWeekdayFull[(local.weekday - 1).clamp(0, 6)];
+    return 'Same as last $weekday';
+  }
+  return 'Order again';
+}
+
+String? catalogMealIdFromOrderItem(Map<String, dynamic>? item) {
+  if (item == null) return null;
+  for (final key in const ['source_meal_id', 'meal_id', 'mealId']) {
+    final value = item[key]?.toString().trim() ?? '';
+    if (value.isNotEmpty) return value;
+  }
+  return null;
+}
+
+bool orderItemsAlreadyInCart(List<Map<String, dynamic>> items, Iterable<String> cartMealIds) {
+  final ids = items.map(catalogMealIdFromOrderItem).whereType<String>().where((id) => id.isNotEmpty).toSet();
+  if (ids.isEmpty) return false;
+  final inCart = cartMealIds.toSet();
+  return ids.every(inCart.contains);
+}
+
 class ReorderService {
   ReorderService._();
 

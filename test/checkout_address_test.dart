@@ -426,6 +426,10 @@ void main() {
       alertOpenPath({'request_id': 'lead-1'}, role: 'chef'),
       '/chef-hub?tab=leads',
     );
+    expect(
+      alertOpenPath({'chef_id': 'chef-19'}, role: 'Customer'),
+      '/customer-hub',
+    );
     expect(customerHubTabIndex('orders'), 2);
     expect(chefHubTabIndex('leads'), 4);
     expect(chefHubTabIndex('supplies'), 5);

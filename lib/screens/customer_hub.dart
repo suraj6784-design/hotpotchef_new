@@ -10,6 +10,9 @@ import 'package:go_router/go_router.dart';
 import '../models/app_role.dart';
 import '../providers/cart_provider.dart';
 import '../providers/favorites_provider.dart';
+import '../providers/kitchen_follows_provider.dart';
+import '../providers/last_order_provider.dart';
+import '../providers/meal_plans_provider.dart';
 import '../services/auth_session.dart';
 import '../utils/app_haptics.dart';
 import '../utils/app_theme.dart';
@@ -49,6 +52,9 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
     await AuthSession.logout(context, beforeNavigate: () async {
       ref.read(cartProvider.notifier).clearCart();
       ref.invalidate(favoritesProvider);
+      ref.invalidate(kitchenFollowsProvider);
+      ref.invalidate(lastOrderProvider);
+      ref.invalidate(mealPlansProvider);
     });
     if (mounted) setState(() => _selectedIndex = 0);
   }
@@ -82,6 +88,7 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
         onToggleFavorite: (id) => ref.read(favoritesProvider.notifier).toggleFavorite(id),
         onProfileTap: _navigateToProfile,
         onLogout: _handleLogout,
+        onGoToCart: () => _onNavigationItemTapped(1),
       ),
       CustomerCartTab(
         onAddMoreMeals: () => _onNavigationItemTapped(0),

@@ -122,6 +122,24 @@ OrderAlertCopy? orderAlertCopy({
   return null;
 }
 
+class KitchenLiveAlertCopy {
+  const KitchenLiveAlertCopy({
+    required this.title,
+    required this.body,
+  });
+
+  final String title;
+  final String body;
+}
+
+KitchenLiveAlertCopy kitchenLiveAlertCopy({String chefName = 'A home kitchen'}) {
+  final name = chefName.trim().isEmpty ? 'A home kitchen' : chefName.trim();
+  return KitchenLiveAlertCopy(
+    title: '$name is live',
+    body: '$name just opened. Order leftovers and today\'s meals now.',
+  );
+}
+
 class LeadAlertCopy {
   const LeadAlertCopy({
     required this.title,

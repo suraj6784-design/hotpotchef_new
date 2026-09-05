@@ -657,10 +657,16 @@ class _HistoryOrdersListState extends ConsumerState<_HistoryOrdersList> {
                                       ),
                               icon: const Icon(Icons.star_border, size: 18),
                             ),
-                          TextButton.icon(
+                          ElevatedButton.icon(
                             onPressed: items.isEmpty ? null : () => _reorder(items),
                             icon: const Icon(Icons.replay, size: 16),
-                            label: const Text('Reorder'),
+                            label: const Text('Order again'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.primary,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              visualDensity: VisualDensity.compact,
+                            ),
                           ),
                         ],
                       ),

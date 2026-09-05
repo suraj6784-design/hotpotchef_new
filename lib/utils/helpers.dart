@@ -350,6 +350,11 @@ String? alertOpenPath(Map<String, String?> data, {String? role}) {
     return parsedRole == 'chef' ? '/chef-hub?tab=leads' : '/customer-hub?tab=orders';
   }
 
+  final kitchenId = (data['chef_id'] ?? data['kitchen_id'] ?? '').trim();
+  if (kitchenId.isNotEmpty && (data['order_id'] ?? '').trim().isEmpty) {
+    return '/customer-hub';
+  }
+
   final orderId = (data['order_id'] ?? '').trim();
   if (orderId.isEmpty) return null;
   final past = isPastOrderStatus(data['status']);
@@ -440,12 +445,144 @@ bool mealMatchesCustomerDiet(
   return mealMatchesDietaryPreference(meal, preference) && mealAvoidsAllergies(meal, allergies);
 }
 
+const List<String> kFeedDietFilters = [
+  'All',
+  'Veg',
+  'Vegan',
+  'Jain',
+  'High-protein',
+  'Millet',
+  'Diabetic',
+];
+
+const List<String> kChefDietTags = [
+  'Jain',
+  'High-protein',
+  'Millet',
+  'Diabetic',
+];
+
+String feedDietChipFromPreference(String? preference) {
+  switch ((preference ?? '').trim().toLowerCase()) {
+    case 'vegetarian':
+    case 'veg':
+      return 'Veg';
+    case 'vegan':
+      return 'Vegan';
+    case 'jain':
+      return 'Jain';
+    default:
+      return 'All';
+  }
+}
+
+bool mealMatchesFeedDiet(Map<String, dynamic> meal, String? diet) {
+  final selected = (diet ?? '').trim();
+  if (selected.isEmpty || selected == 'All') return true;
+  if (selected == 'Veg' || selected == 'Vegetarian') {
+    return mealMatchesDietaryPreference(meal, 'Vegetarian');
+  }
+  if (selected == 'Vegan') return mealMatchesDietaryPreference(meal, 'Vegan');
+  if (selected == 'Jain') return mealMatchesDietaryPreference(meal, 'Jain');
+
+  final haystack = mealDietHaystack(meal);
+  if (selected == 'High-protein') {
+    return _haystackHasAny(haystack, const [
+      'high-protein',
+      'high protein',
+      'protein-rich',
+      'protein rich',
+      'highprotein',
+      'sprout',
+      'soya',
+      'soy chunk',
+      'quinoa',
+    ]);
+  }
+  if (selected == 'Millet') {
+    return _haystackHasAny(haystack, const [
+      'millet',
+      'jowar',
+      'bajra',
+      'ragi',
+      'nachni',
+      'foxtail',
+      'barnyard',
+      'kodo',
+    ]);
+  }
+  if (selected == 'Diabetic') {
+    return _haystackHasAny(haystack, const [
+      'diabetic',
+      'diabetes',
+      'sugar-free',
+      'sugar free',
+      'low gi',
+      'low-gi',
+      'no sugar',
+      'unsweetened',
+    ]);
+  }
+  return true;
+}
+
+List<String> cuisineAliases(String cuisine) {
+  switch (cuisine.trim().toLowerCase()) {
+    case 'north indian':
+      return const ['north indian', 'north-indian', 'mughlai', 'tandoor'];
+    case 'punjabi':
+      return const ['punjabi', 'amritsari'];
+    case 'south indian':
+      return const ['south indian', 'south-indian', 'dosa', 'idli', 'sambar', 'uttapam', 'chettinad', 'andhra', 'kerala'];
+    case 'maharashtrian':
+      return const ['maharashtrian', 'maharashtra', 'malvani', 'kolhapuri', 'misal', 'thalipeeth', 'modak', 'sabudana'];
+    case 'snacks':
+      return const ['snack', 'snacks', 'chaat', 'pakora', 'samosa', 'farsan'];
+    case 'desserts':
+      return const ['dessert', 'desserts', 'sweet', 'mithai', 'halwa', 'kheer'];
+    case 'healthy':
+    case 'healthy & salads':
+      return const ['healthy', 'salad', 'salads', 'bowl'];
+    default:
+      final value = cuisine.trim().toLowerCase();
+      return value.isEmpty ? const [] : [value];
+  }
+}
+
+bool mealMatchesCuisine(Map<String, dynamic> meal, String? cuisine) {
+  final selected = (cuisine ?? '').trim();
+  if (selected.isEmpty || selected == 'All') return true;
+  final category = meal['category']?.toString().trim().toLowerCase() ?? '';
+  final haystack = mealDietHaystack(meal);
+  for (final alias in cuisineAliases(selected)) {
+    if (alias.isEmpty) continue;
+    if (category == alias || category.contains(alias) || haystack.contains(alias)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /// Favorites filter must turn off after logout — the Home tab stays alive.
 bool feedFavoritesFilterActive({
   required bool signedIn,
   required bool favoritesOnly,
 }) {
   return signedIn && favoritesOnly;
+}
+
+bool feedFollowingFilterActive({
+  required bool signedIn,
+  required bool followingOnly,
+}) {
+  return signedIn && followingOnly;
+}
+
+bool canFollowKitchen({String? viewerId, required String chefId}) {
+  final kitchen = chefId.trim();
+  if (kitchen.isEmpty) return false;
+  final viewer = viewerId?.trim() ?? '';
+  return viewer != kitchen;
 }
 
 class FeedEmptyCopy {
@@ -469,11 +606,41 @@ FeedEmptyCopy feedEmptyCopy({
   required bool hasSearch,
   String searchQuery = '',
   String category = 'All',
+  String diet = 'All',
   bool hasDeliveryPin = false,
+  bool followingOnly = false,
+  bool hasFollows = false,
 }) {
   final favorites = feedFavoritesFilterActive(signedIn: signedIn, favoritesOnly: favoritesOnly);
+  final following = feedFollowingFilterActive(signedIn: signedIn, followingOnly: followingOnly);
   final categoryFilter = category != 'All';
+  final dietFilter = diet != 'All';
+  final filterLabel = [
+    if (dietFilter) diet,
+    if (categoryFilter) category,
+  ].join(' ');
+  final hasChipFilter = categoryFilter || dietFilter;
 
+  if (!signedIn && followingOnly) {
+    return const FeedEmptyCopy(
+      title: 'Sign in to follow kitchens',
+      message: 'Follow a home chef and we will ping you when they go live.',
+      promptSignIn: true,
+    );
+  }
+  if (following && !hasFollows) {
+    return const FeedEmptyCopy(
+      title: 'No kitchens followed yet',
+      message: 'Tap a chef and follow the kitchen to get a ping when they open.',
+    );
+  }
+  if (following) {
+    return FeedEmptyCopy(
+      title: hasChipFilter ? 'No $filterLabel meals from kitchens you follow' : 'No meals from kitchens you follow',
+      message: 'Those kitchens are offline or sold out right now. We will ping you when they open.',
+      clearCategory: hasChipFilter,
+    );
+  }
   if (!signedIn && favoritesOnly) {
     return const FeedEmptyCopy(
       title: 'Sign in to see favorites',
@@ -489,11 +656,11 @@ FeedEmptyCopy feedEmptyCopy({
   }
   if (favorites) {
     return FeedEmptyCopy(
-      title: categoryFilter ? 'No $category favorites' : 'No favorites on the menu',
-      message: categoryFilter
-          ? 'None of your saved meals are in $category right now. Try All or another category.'
+      title: hasChipFilter ? 'No $filterLabel favorites' : 'No favorites on the menu',
+      message: hasChipFilter
+          ? 'None of your saved meals match $filterLabel right now. Try All or another chip.'
           : 'Your saved meals are not on the menu right now.',
-      clearCategory: categoryFilter,
+      clearCategory: hasChipFilter,
     );
   }
   if (hasSearch) {
@@ -503,12 +670,12 @@ FeedEmptyCopy feedEmptyCopy({
       message: q.isEmpty ? 'Try a different search.' : 'Nothing matched "$q". Try another dish or category.',
     );
   }
-  if (categoryFilter) {
+  if (hasChipFilter) {
     return FeedEmptyCopy(
-      title: 'No $category meals',
+      title: 'No $filterLabel meals',
       message: hasDeliveryPin
-          ? 'No $category kitchens are delivering to this pin right now. Try another category or address.'
-          : 'No $category dishes are on the menu right now. Try All or another category.',
+          ? 'No $filterLabel kitchens are delivering to this pin right now. Try another chip or address.'
+          : 'No $filterLabel dishes are on the menu right now. Try All or another chip.',
       clearCategory: true,
     );
   }

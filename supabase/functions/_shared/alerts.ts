@@ -287,3 +287,45 @@ export async function dispatchChatAlert(admin: SupabaseClient, messageId: string
   return { sent: recipients.size, title }
 }
 
+export function kitchenLiveAlertCopy(chefName?: string | null) {
+  const name = (chefName || '').trim() || 'A home kitchen'
+  return {
+    title: `${name} is live`,
+    body: `${name} just opened. Order leftovers and today's meals now.`,
+  }
+}
+
+export async function dispatchKitchenLiveAlert(admin: SupabaseClient, chefId: string) {
+  if (!chefId) return { sent: 0 }
+  const { data: chef } = await admin
+    .from('users')
+    .select('name, full_name')
+    .eq('id', chefId)
+    .maybeSingle()
+  const chefName = String(chef?.name || chef?.full_name || '').trim() || 'A home kitchen'
+  const copy = kitchenLiveAlertCopy(chefName)
+
+  const { data: follows } = await admin
+    .from('kitchen_follows')
+    .select('customer_id')
+    .eq('chef_id', chefId)
+    .limit(200)
+
+  const data = {
+    chef_id: chefId,
+    kitchen_id: chefId,
+    alert_id: `kitchen-live-${chefId}`,
+  }
+  const targets = [
+    ...new Set(
+      (follows ?? [])
+        .map((row) => String(row.customer_id ?? ''))
+        .filter((id) => id && id !== chefId),
+    ),
+  ]
+  for (const userId of targets) {
+    await notifyUser(admin, userId, copy.title, copy.body, data)
+  }
+  return { sent: targets.length, title: copy.title }
+}
+

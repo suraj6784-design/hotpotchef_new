@@ -18,9 +18,12 @@ import '../utils/network.dart';
 import '../utils/pricing_calculator.dart';
 import '../providers/cart_provider.dart';
 import '../providers/delivery_preference.dart';
+import '../providers/kitchen_follows_provider.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/daily_streak_banner.dart';
+import '../widgets/weekly_plan_banner.dart';
+import '../widgets/last_order_banner.dart';
 import '../widgets/live_offers_flash_banner.dart';
 import '../widgets/ai_recommendations_section.dart';
 import '../services/delivery_estimator_service.dart';
@@ -31,6 +34,7 @@ class CustomerFeedTab extends ConsumerStatefulWidget {
   final Function(String) onToggleFavorite;
   final VoidCallback onProfileTap;
   final VoidCallback onLogout;
+  final VoidCallback? onGoToCart;
 
   const CustomerFeedTab({
     super.key,
@@ -38,6 +42,7 @@ class CustomerFeedTab extends ConsumerStatefulWidget {
     required this.onToggleFavorite,
     required this.onProfileTap,
     required this.onLogout,
+    this.onGoToCart,
   });
 
   @override
@@ -48,11 +53,12 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     with AutomaticKeepAliveClientMixin {
   late final Stream<List<Map<String, dynamic>>> _mealsStream;
   String _selectedCategory = 'All';
+  String _selectedDiet = 'All';
   String _currentAddress = 'Select Delivery Address';
   List<Map<String, dynamic>> _savedAddresses = [];
-  String _dietaryPref = '';
   String _allergies = '';
   bool _showFavoritesOnly = false;
+  bool _showFollowingOnly = false;
 
   final TextEditingController _searchController = TextEditingController();
   bool _isAiSearching = false;
@@ -66,12 +72,23 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   bool _hydratingKitchenHours = false;
   StreamSubscription<AuthState>? _authSub;
 
+  final List<Map<String, dynamic>> _dietFilters = const [
+    {'name': 'All', 'icon': Icons.tune},
+    {'name': 'Veg', 'icon': Icons.eco_outlined},
+    {'name': 'Vegan', 'icon': Icons.spa_outlined},
+    {'name': 'Jain', 'icon': Icons.brightness_low_outlined},
+    {'name': 'High-protein', 'icon': Icons.fitness_center_outlined},
+    {'name': 'Millet', 'icon': Icons.grass_outlined},
+    {'name': 'Diabetic', 'icon': Icons.monitor_heart_outlined},
+  ];
+
   final List<Map<String, dynamic>> _categories = const [
     {'name': 'All', 'icon': Icons.set_meal_outlined},
     {'name': 'Maharashtrian', 'icon': Icons.kebab_dining_outlined},
     {'name': 'Punjabi', 'icon': Icons.ramen_dining_outlined},
     {'name': 'South Indian', 'icon': Icons.tapas_outlined},
     {'name': 'North Indian', 'icon': Icons.dinner_dining_outlined},
+    {'name': 'Healthy', 'icon': Icons.favorite_outline},
     {'name': 'Snacks', 'icon': Icons.fastfood_outlined},
     {'name': 'Desserts', 'icon': Icons.icecream_outlined},
   ];
@@ -101,8 +118,9 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
 
   void _resetGuestFeedState() {
     _showFavoritesOnly = false;
-    _dietaryPref = '';
+    _showFollowingOnly = false;
     _allergies = '';
+    _selectedDiet = 'All';
     _savedAddresses = [];
     _currentAddress = 'Select Delivery Address';
     ref.read(selectedDeliveryAddressProvider.notifier).setAddress(null);
@@ -258,8 +276,8 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           .maybeSingle();
       if (!mounted || row == null) return;
       setState(() {
-        _dietaryPref = row['dietary_preference']?.toString() ?? '';
         _allergies = row['allergies']?.toString() ?? '';
+        _selectedDiet = feedDietChipFromPreference(row['dietary_preference']?.toString());
       });
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to fetch dietary preferences');
@@ -361,7 +379,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       _hydrateKitchenHours(meals);
     });
     final pinned = _openKitchenMeals(
-      meals.where((meal) => mealMatchesCustomerDiet(meal, preference: _dietaryPref, allergies: _allergies)).map(_pinnedMeal).toList(),
+      meals.where((meal) => mealAvoidsAllergies(meal, _allergies)).map(_pinnedMeal).toList(),
     );
     if (!_hasDeliveryPin) return pinned;
     final dest = _selectedAddressMap;
@@ -425,9 +443,14 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   Widget build(BuildContext context) {
     super.build(context);
     final isLoggedIn = Supabase.instance.client.auth.currentUser != null;
+    final followedKitchens = ref.watch(kitchenFollowsProvider);
     final showFavorites = feedFavoritesFilterActive(
       signedIn: isLoggedIn,
       favoritesOnly: _showFavoritesOnly,
+    );
+    final showFollowing = feedFollowingFilterActive(
+      signedIn: isLoggedIn,
+      followingOnly: _showFollowingOnly,
     );
 
     return SingleChildScrollView(
@@ -600,6 +623,30 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                 decoration: BoxDecoration(
                                     color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle),
                                 child: IconButton(
+                                  tooltip: 'Kitchens you follow',
+                                  icon: Icon(
+                                    _showFollowingOnly ? Icons.storefront : Icons.storefront_outlined,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                  onPressed: () {
+                                    setState(() => _showFollowingOnly = !_showFollowingOnly);
+                                    if (_showFollowingOnly && followedKitchens.isEmpty) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Follow a kitchen from the chef card to see it here.'),
+                                          duration: Duration(seconds: 2),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle),
+                                child: IconButton(
                                   icon: Icon(_showFavoritesOnly ? Icons.favorite : Icons.favorite_border,
                                       color: Colors.white, size: 20),
                                   onPressed: () {
@@ -721,6 +768,9 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
               ),
             ),
 
+          if (isLoggedIn)
+            LastOrderReorderBanner(onAddedToCart: widget.onGoToCart),
+          if (isLoggedIn) const WeeklyPlanDueBanner(),
           if (isLoggedIn) const DailyStreakBanner(),
           if (isLoggedIn && !_hasActiveSearch) const AiRecommendationsSection(),
 
@@ -742,45 +792,16 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           const SizedBox(height: 12),
 
           if (!_hasActiveSearch) ...[
-            SizedBox(
-              height: 40,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                itemCount: _categories.length,
-                itemBuilder: (context, index) {
-                  final cat = _categories[index];
-                  final isSelected = _selectedCategory == cat['name'];
-                  return GestureDetector(
-                    onTap: () => setState(() => _selectedCategory = cat['name']),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      margin: const EdgeInsets.only(right: 12),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: isSelected ? AppTheme.primary : AppTheme.surfaceOf(context),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: isSelected ? AppTheme.primary : AppTheme.hairlineOf(context)),
-                        boxShadow: isSelected ? AppTheme.brandGlow(opacity: 0.28) : const [],
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(cat['icon'], color: isSelected ? Colors.white : AppTheme.textMuted, size: 16),
-                          const SizedBox(width: 6),
-                          Text(
-                            cat['name'],
-                            style: TextStyle(
-                              color: isSelected ? Colors.white : AppTheme.onSurfaceOf(context),
-                              fontSize: 13,
-                              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
+            _filterChipRow(
+              chips: _dietFilters,
+              selected: _selectedDiet,
+              onSelected: (name) => setState(() => _selectedDiet = name),
+            ),
+            const SizedBox(height: 8),
+            _filterChipRow(
+              chips: _categories,
+              selected: _selectedCategory,
+              onSelected: (name) => setState(() => _selectedCategory = name),
             ),
             const SizedBox(height: 12),
             const DynamicUIEngine(screenName: 'customer_feed'),
@@ -799,14 +820,18 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                     Text(
                       _hasActiveSearch
                           ? 'Search results'
-                          : (showFavorites ? 'Your favorites' : 'Fresh from the kitchen'),
+                          : (showFollowing
+                              ? 'Kitchens you follow'
+                              : (showFavorites ? 'Your favorites' : 'Fresh from the kitchen')),
                       style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppTheme.onSurfaceOf(context)),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       _hasActiveSearch
                           ? '"${_searchController.text}"'
-                          : (showFavorites ? 'Meals you loved' : 'Support your local home chefs'),
+                          : (showFollowing
+                              ? 'Live dishes from kitchens you follow'
+                              : (showFavorites ? 'Meals you loved' : 'Support your local home chefs')),
                       style: const TextStyle(fontSize: 13, color: AppTheme.textMuted),
                     ),
                   ],
@@ -843,11 +868,17 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             )
           else if (_hasActiveSearch)
             _buildMealGrid(
-              _mealsForSelectedAddress(showFavorites
-                  ? _aiSearchResults.where((m) => widget.favoriteMeals.contains(m['id'].toString())).toList()
-                  : _aiSearchResults),
+              _applyFeedChips(_mealsForSelectedAddress(_filterFollowedMeals(
+                showFavorites
+                    ? _aiSearchResults.where((m) => widget.favoriteMeals.contains(m['id'].toString())).toList()
+                    : _aiSearchResults,
+                followedKitchens,
+                showFollowing,
+              ))),
               isLoggedIn: isLoggedIn,
               showFavorites: showFavorites,
+              showFollowing: showFollowing,
+              hasFollows: followedKitchens.isNotEmpty,
             )
           else
             StreamBuilder<List<Map<String, dynamic>>>(
@@ -879,21 +910,18 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                   return isInventory && status != 'paused' && status != 'cancelled';
                 }).toList();
 
-                if (_selectedCategory != 'All') {
-                  meals = meals
-                      .where((m) => m['category']?.toString().toLowerCase() == _selectedCategory.toLowerCase())
-                      .toList();
-                }
-
                 if (showFavorites) {
                   meals = meals.where((m) => widget.favoriteMeals.contains(m['id'].toString())).toList();
                 }
+                meals = _filterFollowedMeals(meals, followedKitchens, showFollowing);
 
-                meals = _mealsForSelectedAddress(meals);
+                meals = _applyFeedChips(_mealsForSelectedAddress(meals));
                 return _buildMealGrid(
                   meals,
                   isLoggedIn: isLoggedIn,
                   showFavorites: showFavorites,
+                  showFollowing: showFollowing,
+                  hasFollows: followedKitchens.isNotEmpty,
                 );
               },
             )
@@ -902,10 +930,75 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     );
   }
 
+  List<Map<String, dynamic>> _filterFollowedMeals(
+    List<Map<String, dynamic>> meals,
+    Set<String> followedKitchens,
+    bool showFollowing,
+  ) {
+    if (!showFollowing) return meals;
+    return meals.where((m) => followedKitchens.contains(m['chef_id']?.toString())).toList();
+  }
+
+  List<Map<String, dynamic>> _applyFeedChips(List<Map<String, dynamic>> meals) {
+    return meals
+        .where((meal) => mealMatchesFeedDiet(meal, _selectedDiet) && mealMatchesCuisine(meal, _selectedCategory))
+        .toList();
+  }
+
+  Widget _filterChipRow({
+    required List<Map<String, dynamic>> chips,
+    required String selected,
+    required ValueChanged<String> onSelected,
+  }) {
+    return SizedBox(
+      height: 40,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        itemCount: chips.length,
+        itemBuilder: (context, index) {
+          final chip = chips[index];
+          final name = chip['name']?.toString() ?? '';
+          final isSelected = selected == name;
+          return GestureDetector(
+            onTap: () => onSelected(name),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              margin: const EdgeInsets.only(right: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: isSelected ? AppTheme.primary : AppTheme.surfaceOf(context),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: isSelected ? AppTheme.primary : AppTheme.hairlineOf(context)),
+                boxShadow: isSelected ? AppTheme.brandGlow(opacity: 0.28) : const [],
+              ),
+              child: Row(
+                children: [
+                  Icon(chip['icon'] as IconData, color: isSelected ? Colors.white : AppTheme.textMuted, size: 16),
+                  const SizedBox(width: 6),
+                  Text(
+                    name,
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : AppTheme.onSurfaceOf(context),
+                      fontSize: 13,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildMealGrid(
     List<Map<String, dynamic>> meals, {
     required bool isLoggedIn,
     required bool showFavorites,
+    bool showFollowing = false,
+    bool hasFollows = false,
   }) {
     if (meals.isEmpty) {
       final copy = feedEmptyCopy(
@@ -914,11 +1007,18 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         hasFavorites: widget.favoriteMeals.isNotEmpty,
         hasSearch: _hasActiveSearch,
         searchQuery: _searchController.text,
-        category: _hasActiveSearch ? 'All' : _selectedCategory,
+        category: _selectedCategory,
+        diet: _selectedDiet,
         hasDeliveryPin: _hasDeliveryPin,
+        followingOnly: showFollowing || _showFollowingOnly,
+        hasFollows: hasFollows,
       );
       return EmptyState(
-        icon: copy.promptSignIn || showFavorites ? Icons.favorite_border : Icons.search_off_rounded,
+        icon: copy.promptSignIn || showFollowing
+            ? Icons.storefront_outlined
+            : showFavorites
+                ? Icons.favorite_border
+                : Icons.search_off_rounded,
         title: copy.title,
         message: copy.message,
         actionLabel: copy.promptSignIn
@@ -929,7 +1029,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         onAction: copy.promptSignIn
             ? () => showAuthBottomSheet(context, () => setState(() {}))
             : copy.clearCategory
-                ? () => setState(() => _selectedCategory = 'All')
+                ? () => setState(() {
+                      _selectedCategory = 'All';
+                      _selectedDiet = 'All';
+                    })
                 : null,
       );
     }

@@ -15,6 +15,8 @@ void main() {
 
       expect(roleCanOpenAuthenticatedPath(AppRole.customer, '/customer-hub'), isTrue);
       expect(roleCanOpenAuthenticatedPath(AppRole.customer, '/bulk-request'), isTrue);
+      expect(roleCanOpenAuthenticatedPath(AppRole.customer, '/customer-plans'), isTrue);
+      expect(roleCanOpenAuthenticatedPath(AppRole.chef, '/customer-plans'), isFalse);
       expect(roleCanOpenAuthenticatedPath(AppRole.chef, '/customer-hub'), isFalse);
       expect(roleCanOpenAuthenticatedPath(AppRole.driver, '/referral'), isFalse);
     });

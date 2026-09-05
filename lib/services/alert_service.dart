@@ -124,6 +124,17 @@ class AlertService {
     }));
   }
 
+  static void notifyKitchenLive({required String chefId}) {
+    final id = chefId.trim();
+    if (id.isEmpty) return;
+    unawaited(_invoke({
+      'table': 'chef_profiles',
+      'type': 'UPDATE',
+      'event': 'kitchen_live',
+      'record': {'id': id, 'user_id': id, 'chef_id': id, 'is_open': true},
+    }));
+  }
+
   static Future<void> _invoke(Map<String, dynamic> body) async {
     try {
       await _supabase.functions

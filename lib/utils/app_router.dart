@@ -22,6 +22,7 @@ import '../screens/chef_publish_meal_screen.dart';
 import '../screens/referral_screen.dart';
 import '../screens/customer_order_history_screen.dart';
 import '../screens/customer_bulk_request_screen.dart';
+import '../screens/customer_meal_plans_screen.dart';
 import '../screens/driver_id_card_screen.dart';
 import '../services/auth_session.dart';
 import '../widgets/not_found_page.dart';
@@ -63,6 +64,7 @@ class AppRouter {
         ...kChefOnlyRoutes,
         ...kDriverOnlyRoutes,
         '/customer-profile',
+        '/customer-plans',
         '/referral',
         '/order-history',
         '/bulk-request',
@@ -162,6 +164,7 @@ class AppRouter {
         }
       }),
       _fadeRoute('/customer-profile', (context, state) => const CustomerProfileScreen()),
+      _fadeRoute('/customer-plans', (context, state) => const CustomerMealPlansScreen()),
       _fadeRoute('/chef-profile', (context, state) => const ChefProfileScreen()),
       _fadeRoute('/driver-profile', (context, state) => const DriverProfileScreen()),
       _fadeRoute('/driver-id-card', (context, state) {

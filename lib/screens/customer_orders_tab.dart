@@ -14,12 +14,14 @@ import '../utils/network.dart';
 import '../utils/support.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
+import '../widgets/last_order_banner.dart';
 import '../widgets/meal_review_dialog.dart';
 import '../services/chef_directory.dart';
 import '../services/order_lifecycle.dart';
 import '../services/reorder_service.dart';
 import '../services/invoice_pdf_service.dart';
 import '../providers/cart_provider.dart';
+import '../providers/last_order_provider.dart';
 import 'checkout_screen.dart';
 
 class CustomerOrdersTab extends ConsumerStatefulWidget {
@@ -142,6 +144,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
         _activeRequests = _cateringRows(requestRows);
         _isLoading = false;
       });
+      unawaited(ref.read(lastOrderProvider.notifier).fetchLastOrder());
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Customer orders refresh failed');
       if (mounted) setState(() => _isLoading = false);
@@ -1010,12 +1013,21 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
       return Scaffold(
         backgroundColor: AppTheme.canvasOf(context),
         appBar: HubAppBar(title: 'My Orders', onProfile: widget.onProfileTap, onLogout: widget.onLogout),
-        body: EmptyState(
-          icon: Icons.soup_kitchen_outlined,
-          title: 'No active orders',
-          message: 'Placed meals show up here with live kitchen and delivery status.',
-          actionLabel: 'Refresh Orders',
-          onAction: () => unawaited(_fetchActiveOrders()),
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
+          children: [
+            LastOrderReorderBanner(
+              compact: true,
+              onAddedToCart: widget.onReorderToCart,
+            ),
+            EmptyState(
+              icon: Icons.soup_kitchen_outlined,
+              title: 'No active orders',
+              message: 'Placed meals show up here with live kitchen and delivery status.',
+              actionLabel: 'Refresh Orders',
+              onAction: () => unawaited(_fetchActiveOrders()),
+            ),
+          ],
         ),
       );
     }
@@ -1098,6 +1110,10 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
         child: ListView(
           padding: const EdgeInsets.only(left: 20, right: 20, top: 20, bottom: 100),
           children: [
+            LastOrderReorderBanner(
+              compact: true,
+              onAddedToCart: widget.onReorderToCart,
+            ),
             if (_activeRequests.isNotEmpty) ...[
               Text('My broadcasts & catering', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppTheme.onSurfaceOf(context))),
               const SizedBox(height: 12),

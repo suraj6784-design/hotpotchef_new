@@ -63,6 +63,7 @@ const kDriverOnlyRoutes = {
 const kCustomerAccountRoutes = {
   '/customer-hub',
   '/customer-profile',
+  '/customer-plans',
   '/referral',
   '/order-history',
   '/bulk-request',

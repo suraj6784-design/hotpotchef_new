@@ -22,6 +22,7 @@ import '../widgets/order_slot_banner.dart';
 import '../models/app_role.dart';
 import '../services/order_lifecycle.dart';
 import '../services/auth_session.dart';
+import '../services/alert_service.dart';
 import '../services/invoice_pdf_service.dart';
 import 'packaging_store_screen.dart';
 import 'chef_publish_meal_screen.dart';
@@ -289,6 +290,9 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         'is_open': nextState,
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       });
+      if (nextState) {
+        AlertService.notifyKitchenLive(chefId: _currentUserId);
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

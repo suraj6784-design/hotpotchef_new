@@ -12,7 +12,9 @@ import '../utils/app_theme.dart';
 import '../utils/pricing_calculator.dart';
 import '../models/cart_enums.dart';
 import '../providers/cart_provider.dart';
+import '../providers/kitchen_follows_provider.dart';
 import '../services/reorder_service.dart';
+import 'weekly_plan_sheet.dart';
 import '../screens/auth_screen.dart';
 import 'app_widgets.dart';
 
@@ -172,7 +174,7 @@ void showChefProfileDialog(BuildContext context, String chefId, String chefName,
   );
 }
 
-class ChefProfilePeekDialog extends StatefulWidget {
+class ChefProfilePeekDialog extends ConsumerStatefulWidget {
   const ChefProfilePeekDialog({
     super.key,
     required this.chefId,
@@ -185,12 +187,12 @@ class ChefProfilePeekDialog extends StatefulWidget {
   final String fssai;
 
   @override
-  State<ChefProfilePeekDialog> createState() => _ChefProfilePeekDialogState();
+  ConsumerState<ChefProfilePeekDialog> createState() => _ChefProfilePeekDialogState();
 }
 
 final Map<String, ChefRatingSummary> _chefRatingCache = {};
 
-class _ChefProfilePeekDialogState extends State<ChefProfilePeekDialog> {
+class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
 
   bool _loading = true;
   String _name = '';
@@ -403,6 +405,7 @@ class _ChefProfilePeekDialogState extends State<ChefProfilePeekDialog> {
         ),
       ),
       actions: [
+        KitchenFollowButton(chefId: widget.chefId, chefName: _name.isEmpty ? widget.chefName : _name),
         TextButton(
           onPressed: () => Navigator.pop(context),
           child: const Text('Close', style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold)),
@@ -780,6 +783,11 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                                   ],
                                 ),
                               ),
+                              KitchenFollowButton(
+                                chefId: chefId,
+                                chefName: chefName,
+                                compact: true,
+                              ),
                               const Icon(Icons.chevron_right, color: Colors.grey),
                             ],
                           ),
@@ -892,77 +900,102 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
             color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
             boxShadow: AppTheme.heavyShadow,
           ),
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                decoration: BoxDecoration(
-                  border: Border.all(color: isDark ? Colors.white24 : Colors.grey.shade300),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.remove, size: 20, color: AppTheme.primary),
-                      onPressed: _quantity > 1 ? () => setState(() => _quantity--) : null,
+              Row(
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: isDark ? Colors.white24 : Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(16),
                     ),
-                    Text('$_quantity',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18,
-                            color: isDark ? AppTheme.textMainDark : AppTheme.textMain)),
-                    IconButton(
-                      icon: const Icon(Icons.add, size: 20, color: AppTheme.primary),
-                      onPressed: _quantity < maxStock
-                          ? () => setState(() => _quantity++)
-                          : () {
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.remove, size: 20, color: AppTheme.primary),
+                          onPressed: _quantity > 1 ? () => setState(() => _quantity--) : null,
+                        ),
+                        Text('$_quantity',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                                color: isDark ? AppTheme.textMainDark : AppTheme.textMain)),
+                        IconButton(
+                          icon: const Icon(Icons.add, size: 20, color: AppTheme.primary),
+                          onPressed: _quantity < maxStock
+                              ? () => setState(() => _quantity++)
+                              : () {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                        content: Text('Only $maxStock portions available.'),
+                                        backgroundColor: Colors.orangeAccent,
+                                        behavior: SnackBarBehavior.floating),
+                                  );
+                                },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primary,
+                        foregroundColor: Colors.white,
+                        disabledBackgroundColor: Colors.grey.shade400,
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        elevation: 0,
+                      ),
+                      onPressed: !isMealAvailableForCart(meal)
+                          ? null
+                          : () async {
+                              final added = await addMealToCartWithConflict(
+                                context: context,
+                                ref: widget.ref,
+                                meal: meal,
+                                quantity: _quantity,
+                                addOns: _chosenAddOns,
+                              );
+                              if (!added || !context.mounted) return;
+                              Navigator.pop(context);
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
-                                    content: Text('Only $maxStock portions available.'),
-                                    backgroundColor: Colors.orangeAccent,
-                                    behavior: SnackBarBehavior.floating),
+                                  content: Text('Added $_quantity portion(s) to cart!'),
+                                  backgroundColor: Colors.green,
+                                  behavior: SnackBarBehavior.floating,
+                                  duration: const Duration(seconds: 2),
+                                ),
                               );
                             },
+                      child: Text(
+                        isMealAvailableForCart(meal)
+                            ? 'Add to Cart • ₹${_lineFoodTotal.toInt()}'
+                            : 'Sold out',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
                     ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primary,
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: Colors.grey.shade400,
-                    padding: const EdgeInsets.symmetric(vertical: 18),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    elevation: 0,
                   ),
-                  onPressed: !isMealAvailableForCart(meal)
-                      ? null
-                      : () async {
-                          final added = await addMealToCartWithConflict(
-                            context: context,
-                            ref: widget.ref,
-                            meal: meal,
-                            quantity: _quantity,
-                            addOns: _chosenAddOns,
-                          );
-                          if (!added || !context.mounted) return;
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Added $_quantity portion(s) to cart!'),
-                              backgroundColor: Colors.green,
-                              behavior: SnackBarBehavior.floating,
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
-                        },
-                  child: Text(
-                    isMealAvailableForCart(meal)
-                        ? 'Add to Cart • ₹${_lineFoodTotal.toInt()}'
-                        : 'Sold out',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ],
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => showWeeklyPlanSheet(
+                    context: context,
+                    ref: widget.ref,
+                    meal: meal,
+                    quantity: _quantity,
+                  ),
+                  icon: const Icon(Icons.event_repeat, size: 18),
+                  label: const Text('Weekly plan', style: TextStyle(fontWeight: FontWeight.w800)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.primary,
+                    side: const BorderSide(color: AppTheme.primary),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
                 ),
               ),
@@ -970,6 +1003,74 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class KitchenFollowButton extends ConsumerWidget {
+  const KitchenFollowButton({
+    super.key,
+    required this.chefId,
+    required this.chefName,
+    this.compact = false,
+  });
+
+  final String chefId;
+  final String chefName;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (!canFollowKitchen(viewerId: userId, chefId: chefId) && userId != null) {
+      return const SizedBox.shrink();
+    }
+
+    final following = ref.watch(kitchenFollowsProvider).contains(chefId);
+
+    Future<void> toggle() async {
+      if (userId == null) {
+        showAuthBottomSheet(
+          context,
+          () => ref.read(kitchenFollowsProvider.notifier).fetchFollows(),
+          title: 'Sign in to follow kitchens',
+          subtitle: 'We will ping you when this chef goes live.',
+        );
+        return;
+      }
+      final ok = await ref.read(kitchenFollowsProvider.notifier).toggleFollow(chefId);
+      if (!context.mounted || !ok) return;
+      final nowFollowing = ref.read(kitchenFollowsProvider).contains(chefId);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            nowFollowing
+                ? 'Following $chefName. We will ping you when they go live.'
+                : 'Unfollowed $chefName.',
+          ),
+        ),
+      );
+    }
+
+    if (compact) {
+      return IconButton(
+        tooltip: following ? 'Following kitchen' : 'Follow kitchen',
+        onPressed: toggle,
+        icon: Icon(
+          following ? Icons.notifications_active : Icons.notifications_none,
+          color: following ? AppTheme.primary : Colors.grey,
+        ),
+      );
+    }
+
+    return TextButton.icon(
+      onPressed: toggle,
+      icon: Icon(following ? Icons.notifications_active : Icons.notifications_outlined, size: 18),
+      label: Text(following ? 'Following' : 'Follow kitchen'),
+      style: TextButton.styleFrom(
+        foregroundColor: AppTheme.primary,
+        textStyle: const TextStyle(fontWeight: FontWeight.w800),
+      ),
     );
   }
 }

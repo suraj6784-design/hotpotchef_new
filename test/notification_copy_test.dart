@@ -77,6 +77,13 @@ void main() {
     expect(chatPreview(''), contains('New message'));
   });
 
+  test('kitchen live copy names the chef and tells diners to order', () {
+    final copy = kitchenLiveAlertCopy(chefName: 'NewChef19');
+    expect(copy.title, 'NewChef19 is live');
+    expect(copy.body, contains('NewChef19 just opened'));
+    expect(kitchenLiveAlertCopy(chefName: '  ').title, 'A home kitchen is live');
+  });
+
   test('order group alert title uses the Order#', () {
     expect(orderGroupAlertTitle('aaaaaaaa-bbbb-cccc'), 'Order AAAAAAAA');
     expect(orderGroupAlertTitle(''), 'New message');
