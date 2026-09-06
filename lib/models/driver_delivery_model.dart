@@ -232,3 +232,44 @@ List<Map<String, dynamic>> _itemsFrom(dynamic raw) {
   } catch (_) {}
   return const [];
 }
+
+@immutable
+class DriverDashboardState {
+  final bool isLoading;
+  final double totalEarnings;
+  final int completedCount;
+  final List<DriverDeliveryModel> recentDeliveries;
+  final List<DriverDeliveryModel> availableDeliveries;
+  final List<DriverDeliveryModel> activeDeliveries;
+  final String? errorMessage;
+
+  const DriverDashboardState({
+    this.isLoading = true,
+    this.totalEarnings = 0.0,
+    this.completedCount = 0,
+    this.recentDeliveries = const [],
+    this.availableDeliveries = const [],
+    this.activeDeliveries = const [],
+    this.errorMessage,
+  });
+
+  DriverDashboardState copyWith({
+    bool? isLoading,
+    double? totalEarnings,
+    int? completedCount,
+    List<DriverDeliveryModel>? recentDeliveries,
+    List<DriverDeliveryModel>? availableDeliveries,
+    List<DriverDeliveryModel>? activeDeliveries,
+    String? errorMessage,
+  }) {
+    return DriverDashboardState(
+      isLoading: isLoading ?? this.isLoading,
+      totalEarnings: totalEarnings ?? this.totalEarnings,
+      completedCount: completedCount ?? this.completedCount,
+      recentDeliveries: recentDeliveries ?? this.recentDeliveries,
+      availableDeliveries: availableDeliveries ?? this.availableDeliveries,
+      activeDeliveries: activeDeliveries ?? this.activeDeliveries,
+      errorMessage: errorMessage,
+    );
+  }
+}
