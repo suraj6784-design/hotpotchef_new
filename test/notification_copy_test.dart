@@ -110,6 +110,7 @@ void main() {
       title: 'Office lunch',
     );
     expect(claimed!.notifyCustomer, isTrue);
+    expect(claimed.notifyClaimedChef, isTrue);
     expect(claimed.notifyAllChefs, isFalse);
 
     final cancelled = leadAlertCopy(

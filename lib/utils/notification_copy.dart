@@ -171,7 +171,7 @@ LeadAlertCopy? leadAlertCopy({
   if (isInsert && (current.isEmpty || current == 'open')) {
     return LeadAlertCopy(
       title: 'New catering lead',
-      body: '$label is open. Claim it from Leads.',
+      body: '$label is open. Submit a quote from Leads.',
       notifyAllChefs: true,
       notifyClaimedChef: false,
       notifyCustomer: false,
@@ -179,10 +179,10 @@ LeadAlertCopy? leadAlertCopy({
   }
   if (current == 'accepted') {
     return LeadAlertCopy(
-      title: 'Chef claimed your lead',
-      body: 'A kitchen accepted $label. Confirm and pay from My Orders.',
+      title: 'Kitchen selected',
+      body: 'A kitchen was chosen for $label. Confirm and pay from My Orders.',
       notifyAllChefs: false,
-      notifyClaimedChef: false,
+      notifyClaimedChef: true,
       notifyCustomer: true,
     );
   }

@@ -70,11 +70,41 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
             .eq('sender_id', myId)
             .order('created_at', ascending: false)
             .limit(120),
+        _supabase
+            .from('customer_request_quotes')
+            .select('request_id, chef_id, status')
+            .inFilter('status', ['open', 'selected'])
+            .limit(200),
       ]);
 
       final orders = _asMaps(results[0]);
-      final requests = _asMaps(results[1]);
+      var requests = _asMaps(results[1]);
       final sent = _asMaps(results[2]);
+      final quoteRows = _asMaps(results[3]);
+
+      final quoteChefIdsByRequest = <String, List<String>>{};
+      final quotedRequestIds = <String>{};
+      for (final row in quoteRows) {
+        final rid = row['request_id']?.toString() ?? '';
+        final chefId = row['chef_id']?.toString() ?? '';
+        if (rid.isEmpty || chefId.isEmpty) continue;
+        final list = quoteChefIdsByRequest.putIfAbsent(rid, () => <String>[]);
+        if (!list.contains(chefId)) list.add(chefId);
+        if (chefId == myId) quotedRequestIds.add(rid);
+      }
+
+      final missingQuotedIds = quotedRequestIds
+          .where((id) => !requests.any((r) => r['id']?.toString() == id))
+          .toList();
+      if (missingQuotedIds.isNotEmpty) {
+        try {
+          final extra = _asMaps(await _supabase
+              .from('customer_requests')
+              .select('id, title, customer_id, accepted_chef_id, created_at')
+              .inFilter('id', missingQuotedIds));
+          requests = [...requests, ...extra];
+        } catch (_) {}
+      }
 
       final roomIds = <String>{
         ...orders.map(orderChatRoomId).where((id) => id.isNotEmpty),
@@ -97,6 +127,7 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
         orders: orders,
         requests: requests,
         messages: messages,
+        quoteChefIdsByRequest: quoteChefIdsByRequest,
       );
 
       final lastRead = await ChatReadStore.lastReadByRoom(rooms.map((room) => room.roomId));

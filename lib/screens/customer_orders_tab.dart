@@ -48,10 +48,11 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
   List<Map<String, dynamic>> _activeRequests = [];
   Map<String, dynamic>? _savedDropoffAddress;
   bool _isLoading = true;
+  final Map<String, List<Map<String, dynamic>>> _quotesByRequest = {};
 
   StreamSubscription? _ordersSub;
   StreamSubscription? _reqsSub;
-  RealtimeChannel? _ordersChannel;
+  StreamSubscription? _quotesSub;
 
   PreferredSizeWidget _ordersAppBar() {
     return HubAppBar(
@@ -88,7 +89,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
   void dispose() {
     _ordersSub?.cancel();
     _reqsSub?.cancel();
-    _ordersChannel?.unsubscribe();
+    _quotesSub?.cancel();
     super.dispose();
   }
 
@@ -108,6 +109,47 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
 
   List<Map<String, dynamic>> _cateringRows(Iterable<dynamic> rows) {
     return _activeRows(rows).where((row) => !isPackagingSupplyRequest(row)).toList();
+  }
+
+  void _applyQuotes(Iterable<dynamic> rows, {bool replaceAll = true}) {
+    final next = <String, List<Map<String, dynamic>>>{};
+    for (final row in rows.whereType<Map>()) {
+      final map = Map<String, dynamic>.from(row);
+      final rid = map['request_id']?.toString() ?? '';
+      if (rid.isEmpty) continue;
+      next.putIfAbsent(rid, () => <Map<String, dynamic>>[]).add(map);
+    }
+    for (final entry in next.entries) {
+      next[entry.key] = cateringQuotesSorted(entry.value);
+    }
+    if (replaceAll) {
+      _quotesByRequest
+        ..clear()
+        ..addAll(next);
+    } else {
+      _quotesByRequest.addAll(next);
+    }
+  }
+
+  Future<void> _refreshQuotes({Iterable<String>? requestIds}) async {
+    final ids = (requestIds ?? _activeRequests.map((r) => r['id']?.toString() ?? ''))
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+    if (ids.isEmpty) {
+      if (mounted) setState(() => _quotesByRequest.clear());
+      return;
+    }
+    try {
+      final rows = await Supabase.instance.client
+          .from('customer_request_quotes')
+          .select()
+          .inFilter('request_id', ids);
+      if (!mounted) return;
+      setState(() => _applyQuotes(rows as List));
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Catering quotes refresh failed');
+    }
   }
 
   Future<void> _fetchActiveOrders({bool showSpinner = true}) async {
@@ -159,6 +201,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
         _activeRequests = _cateringRows(requestRows);
         _isLoading = false;
       });
+      unawaited(_refreshQuotes());
       unawaited(ref.read(lastOrderProvider.notifier).fetchLastOrder());
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Customer orders refresh failed');
@@ -178,7 +221,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
 
     _ordersSub?.cancel();
     _reqsSub?.cancel();
-    _ordersChannel?.unsubscribe();
+    _quotesSub?.cancel();
 
     _ordersSub = supabase
         .from('orders')
@@ -214,26 +257,34 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
           _activeRequests = _cateringRows(data);
           _isLoading = false;
         });
+        unawaited(_refreshQuotes());
       },
       onError: (e, stack) {
         FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Customer bulk requests stream error');
       },
     );
 
-    _ordersChannel = supabase
-        .channel('customer-orders-${user.id}')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'orders',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'customer_id',
-            value: user.id,
-          ),
-          callback: (_) => unawaited(_fetchActiveOrders(showSpinner: false)),
-        )
-        .subscribe();
+    _quotesSub = supabase
+        .from('customer_request_quotes')
+        .stream(primaryKey: ['id'])
+        .listen(
+      (data) {
+        if (!mounted) return;
+        final mineRequestIds = _activeRequests.map((r) => r['id']?.toString() ?? '').where((id) => id.isNotEmpty).toSet();
+        // Avoid wiping the quote map before requests have loaded.
+        if (mineRequestIds.isEmpty) return;
+        final relevant = data.where((row) {
+          final rid = row['request_id']?.toString() ?? '';
+          return mineRequestIds.contains(rid);
+        });
+        setState(() => _applyQuotes(relevant));
+      },
+      onError: (e, stack) {
+        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Customer catering quotes stream error');
+      },
+    );
+
+    // Orders stream already covers live updates; skip a second postgres channel.
   }
 
   Future<void> _loadSavedDropoffAddress(String userId) async {
@@ -847,11 +898,45 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
     );
   }
 
+  Future<void> _selectCateringQuote(Map<String, dynamic> request, Map<String, dynamic> quote) async {
+    final quoteId = quote['id']?.toString() ?? '';
+    if (quoteId.isEmpty) return;
+    try {
+      final ok = await Supabase.instance.client.rpc(
+            'select_customer_request_quote',
+            params: {'p_quote_id': quoteId},
+          ) ==
+          true;
+      if (!mounted) return;
+      if (!ok) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not select that kitchen. Try again.')),
+        );
+        return;
+      }
+      await _fetchActiveOrders(showSpinner: false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${cateringQuoteChefLabel(quote)} selected. Confirm & pay when ready.',
+          ),
+        ),
+      );
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Select catering quote failed');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not select kitchen: $e')),
+      );
+    }
+  }
+
   Future<void> _payCateringRequest(Map<String, dynamic> request) async {
     final chefId = request['accepted_chef_id']?.toString() ?? '';
     if (chefId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('This lead has no chef assigned yet.')),
+        const SnackBar(content: Text('Pick a kitchen quote first.')),
       );
       return;
     }
@@ -927,14 +1012,17 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
 
   Widget _buildBulkRequestCard(Map<String, dynamic> req) {
     final status = req['status']?.toString() ?? 'Open';
+    final isOpen = status.toLowerCase() == 'open';
     final isAccepted = status.toLowerCase() == 'accepted';
     final isOrdered = status.toLowerCase() == 'ordered' || status.toLowerCase() == 'paid';
     final isCancelled = status.toLowerCase() == 'cancelled';
     final chefName = req['accepted_chef_name'] ?? 'Pending Chef Acceptance';
     final chefId = req['accepted_chef_id'];
+    final requestId = req['id']?.toString() ?? '';
+    final quotes = _quotesByRequest[requestId] ?? const <Map<String, dynamic>>[];
 
-    final rawRequestId = req['id']?.toString() ?? '';
-    final displayRequestId = rawRequestId.length > 8 ? 'REQ-${rawRequestId.substring(0, 8).toUpperCase()}' : 'REQ-$rawRequestId';
+    final displayRequestId =
+        requestId.length > 8 ? 'REQ-${requestId.substring(0, 8).toUpperCase()}' : 'REQ-$requestId';
 
     return AppCard(
       margin: const EdgeInsets.only(bottom: 16),
@@ -968,18 +1056,80 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
           Text(
             cateringPayableTotal(req) > 0 &&
                     cateringPayableTotal(req) != parseMoney(req['budget'])
-                ? 'Chef quote: ₹${cateringPayableTotal(req).toStringAsFixed(0)}  (budget ₹${req['budget']})'
+                ? 'Selected quote: ₹${cateringPayableTotal(req).toStringAsFixed(0)}  (budget ₹${req['budget']})'
                 : 'Budget: ₹${req['budget']}',
             style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 14),
           ),
           const SizedBox(height: 8),
           Row(children: [const Icon(Icons.calendar_today, size: 14, color: AppTheme.textMuted), const SizedBox(width: 6), Text('Needed By: ${req['target_date_time']}', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12))]),
+          if ((isOpen || isAccepted) && !isCancelled) ...[
+            Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: AppTheme.hairlineOf(context))),
+            Text(
+              quotes.isEmpty
+                  ? 'Waiting for kitchen quotes…'
+                  : '${quotes.length} quote${quotes.length == 1 ? '' : 's'} — pick one',
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+            ),
+            if (quotes.isEmpty)
+              const Padding(
+                padding: EdgeInsets.only(top: 6),
+                child: Text(
+                  'Nearby chefs can bid. You choose who cooks, then pay.',
+                  style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                ),
+              )
+            else
+              ...quotes.map((quote) {
+                final amount = parseMoney(quote['quoted_total']);
+                final selected = quote['status']?.toString().toLowerCase() == 'selected' ||
+                    (isAccepted && quote['chef_id']?.toString() == chefId?.toString());
+                final label = cateringQuoteChefLabel(quote);
+                return Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: selected ? AppTheme.primary : AppTheme.hairlineOf(context),
+                        width: selected ? 1.5 : 1,
+                      ),
+                      color: selected ? AppTheme.primary.withValues(alpha: 0.06) : null,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                              const SizedBox(height: 2),
+                              Text(
+                                '₹${amount.toStringAsFixed(0)}',
+                                style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w800),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (selected)
+                          const Text('Selected', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12))
+                        else
+                          TextButton(
+                            onPressed: () => _selectCateringQuote(req, quote),
+                            child: const Text('Select'),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+          ],
           if (isAccepted || isOrdered) ...[
             Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: AppTheme.hairlineOf(context))),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(children: [const Icon(Icons.person, size: 16, color: Colors.green), const SizedBox(width: 6), Text('Accepted by: $chefName', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13))]),
+                Row(children: [const Icon(Icons.person, size: 16, color: Colors.green), const SizedBox(width: 6), Text('Kitchen: $chefName', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13))]),
                 Row(
                   children: [
                     GestureDetector(
@@ -1018,6 +1168,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                   await Supabase.instance.client.from('customer_requests').update({'status': 'Cancelled'}).eq('id', req['id']);
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Broadcast cancelled'), backgroundColor: Colors.orange));
+                    unawaited(_fetchActiveOrders(showSpinner: false));
                   }
                 },
                 child: const Text('Cancel Broadcast', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),

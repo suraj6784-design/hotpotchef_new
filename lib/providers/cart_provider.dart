@@ -118,15 +118,18 @@ class CartNotifier extends Notifier<CartState> {
     if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 800), () async {
       final user = _supabase.auth.currentUser;
-      if (user != null && _isInitialized) {
+      final room = state.sharedRoomCode;
+      final inSharedRoom = room != null && room.isNotEmpty;
+      // While in a group cart, only sync the shared room — avoid overwriting the
+      // host/guest personal remote cart with the group basket.
+      if (user != null && _isInitialized && !inSharedRoom) {
         try {
           await _cartService.saveCart(state.items);
         } catch (e, st) {
           _logCartError(e, st, 'Debounced remote cart sync failed');
         }
       }
-      final room = state.sharedRoomCode;
-      if (room != null && room.isNotEmpty && !_applyingSharedCart) {
+      if (inSharedRoom && !_applyingSharedCart) {
         try {
           await _sharedCartService.updateSharedCart(room, state.items);
         } catch (e, st) {

@@ -110,7 +110,6 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
         'service_type': _selectedServiceType,
         'delivery_address': _addressController.text.trim(),
         'status': 'Open',
-        'accepted_chefs': [],
         'created_at': DateTime.now().toIso8601String(),
       };
       final extras = <String, dynamic>{

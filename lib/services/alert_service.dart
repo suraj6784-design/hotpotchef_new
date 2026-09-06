@@ -95,6 +95,12 @@ class AlertService {
             previous: payload.oldRecord,
             isInsert: false,
           ),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'customer_request_quotes',
+          callback: (payload) => unawaited(_onQuoteRow(payload.newRecord)),
         );
 
     _channel!.subscribe();
@@ -233,6 +239,41 @@ class AlertService {
     );
   }
 
+  static Future<void> _onQuoteRow(Map<String, dynamic> row) async {
+    final uid = _supabase.auth.currentUser?.id;
+    if (uid == null || _role != AppRole.customer) return;
+    final requestId = row['request_id']?.toString() ?? '';
+    final chefId = row['chef_id']?.toString() ?? '';
+    if (requestId.isEmpty || chefId == uid) return;
+
+    try {
+      final request = await _supabase
+          .from('customer_requests')
+          .select('id, title, customer_id, status')
+          .eq('id', requestId)
+          .maybeSingle();
+      if (request == null) return;
+      if (request['customer_id']?.toString() != uid) return;
+      final status = request['status']?.toString().toLowerCase().trim() ?? '';
+      if (status != 'open' && status != 'accepted') return;
+
+      final title = request['title']?.toString().trim();
+      final label = (title == null || title.isEmpty) ? 'your catering request' : title;
+      final amount = parseMoney(row['quoted_total']);
+      final chefName = cateringQuoteChefLabel(row);
+      _show(
+        'quote-$requestId-$chefId-${row['id']}',
+        'New kitchen quote',
+        amount > 0
+            ? '$chefName quoted ₹${amount.toStringAsFixed(0)} on $label. Compare quotes in My Orders.'
+            : '$chefName sent a quote on $label. Compare quotes in My Orders.',
+        path: alertOpenPath({'request_id': requestId}, role: 'customer'),
+      );
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Catering quote alert failed');
+    }
+  }
+
   static void _onChatRow(Map<String, dynamic> row) {
     unawaited(_handleChatRow(row));
   }
@@ -252,10 +293,16 @@ class AlertService {
           .eq('id', roomId)
           .maybeSingle();
       if (request != null) {
-        return {
-          if ((request['customer_id']?.toString() ?? '').isNotEmpty) request['customer_id'].toString(),
-          if ((request['accepted_chef_id']?.toString() ?? '').isNotEmpty) request['accepted_chef_id'].toString(),
-        };
+        final quoteRows = await _supabase
+            .from('customer_request_quotes')
+            .select('chef_id')
+            .eq('request_id', roomId)
+            .inFilter('status', ['open', 'selected']);
+        final quoting = <String>[
+          for (final row in (quoteRows as List))
+            if ((row is Map) && (row['chef_id']?.toString() ?? '').isNotEmpty) row['chef_id'].toString(),
+        ];
+        return cateringRequestChatMemberIds(request, quotingChefIds: quoting).toSet();
       }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chat room member lookup failed');

@@ -926,11 +926,25 @@ class ChatInboxItem {
   final bool isGroup;
 }
 
+List<String> cateringRequestChatMemberIds(
+  Map<String, dynamic> request, {
+  Iterable<String> quotingChefIds = const [],
+}) {
+  final members = <String>{
+    if ((request['customer_id']?.toString() ?? '').isNotEmpty) request['customer_id'].toString(),
+    if ((request['accepted_chef_id']?.toString() ?? '').isNotEmpty) request['accepted_chef_id'].toString(),
+    for (final id in quotingChefIds)
+      if (id.trim().isNotEmpty) id.trim(),
+  };
+  return members.toList();
+}
+
 List<ChatInboxItem> mergeChatInboxRooms({
   required String myId,
   required List<Map<String, dynamic>> orders,
   required List<Map<String, dynamic>> requests,
   required List<Map<String, dynamic>> messages,
+  Map<String, List<String>> quoteChefIdsByRequest = const {},
 }) {
   final catalog = <String, ChatInboxItem>{};
 
@@ -954,10 +968,10 @@ List<ChatInboxItem> mergeChatInboxRooms({
   for (final request in requests) {
     final roomId = request['id']?.toString() ?? '';
     if (roomId.isEmpty) continue;
-    final members = <String>{
-      if ((request['customer_id']?.toString() ?? '').isNotEmpty) request['customer_id'].toString(),
-      if ((request['accepted_chef_id']?.toString() ?? '').isNotEmpty) request['accepted_chef_id'].toString(),
-    }.toList();
+    final members = cateringRequestChatMemberIds(
+      request,
+      quotingChefIds: quoteChefIdsByRequest[roomId] ?? const [],
+    );
     final other = members.firstWhere((id) => id != myId, orElse: () => '');
     final title = request['title']?.toString().trim();
     catalog[roomId] = ChatInboxItem(
@@ -2189,7 +2203,6 @@ Map<String, dynamic> packagingSupplyRequestPayload({
     'delivery_address': kitchenAddress,
     'target_date_time': DateTime.now().toUtc().add(const Duration(days: 3)).toIso8601String(),
     'status': 'Open',
-    'accepted_chefs': <dynamic>[],
     'created_at': DateTime.now().toIso8601String(),
   };
 }
@@ -2311,6 +2324,35 @@ double cateringPayableTotal(Map<String, dynamic> request) {
   final quoted = parseMoney(request['quoted_total'] ?? request['quoted_price']);
   if (quoted > 0) return quoted;
   return parseMoney(request['budget']);
+}
+
+/// Open + selected bids for a catering request, cheapest first.
+List<Map<String, dynamic>> cateringQuotesSorted(Iterable<dynamic> rows) {
+  final quotes = rows
+      .whereType<Map>()
+      .map((e) => Map<String, dynamic>.from(e))
+      .where((q) {
+        final status = q['status']?.toString().toLowerCase().trim() ?? 'open';
+        return status == 'open' || status == 'selected';
+      })
+      .toList();
+  quotes.sort((a, b) {
+    final selectedA = a['status']?.toString().toLowerCase() == 'selected' ? 0 : 1;
+    final selectedB = b['status']?.toString().toLowerCase() == 'selected' ? 0 : 1;
+    if (selectedA != selectedB) return selectedA.compareTo(selectedB);
+    final priceCmp = parseMoney(a['quoted_total']).compareTo(parseMoney(b['quoted_total']));
+    if (priceCmp != 0) return priceCmp;
+    return (a['created_at']?.toString() ?? '').compareTo(b['created_at']?.toString() ?? '');
+  });
+  return quotes;
+}
+
+String cateringQuoteChefLabel(Map<String, dynamic> quote) {
+  final name = quote['chef_name']?.toString().trim() ?? '';
+  if (name.isNotEmpty) return name;
+  final id = quote['chef_id']?.toString() ?? '';
+  if (id.length >= 8) return 'Kitchen ${id.substring(0, 8).toUpperCase()}';
+  return 'Kitchen';
 }
 
 bool mealAcceptsHotpotCoins(Map<String, dynamic> meal) {
@@ -3593,7 +3635,7 @@ Map<String, dynamic>? checkoutAddressFromUserProfile(Map<String, dynamic>? user)
   };
 }
 
-/// Builds a checkout payload from a claimed catering / bulk request.
+/// Builds a checkout payload from a selected catering / bulk request.
 List<Map<String, dynamic>> checkoutItemsFromCateringRequest(Map<String, dynamic> request) {
   final quantity = int.tryParse(request['quantity']?.toString() ?? '1') ?? 1;
   final budget = cateringPayableTotal(request);

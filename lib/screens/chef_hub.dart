@@ -60,6 +60,11 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   String get _currentUserEmail => _supabase.auth.currentUser?.email ?? 'Chef';
   Map<String, dynamic>? _chefPin;
 
+  /// Stable stream instances so rebuilds do not recreate realtime subscriptions.
+  Stream<List<Map<String, dynamic>>>? _ordersStream;
+  Stream<List<Map<String, dynamic>>>? _requestsStream;
+  Stream<List<Map<String, dynamic>>>? _myQuotesStream;
+
   // Resolved customer_id -> display name cache (orders only store customer_id).
   final Map<String, String> _customerNameCache = {};
   final Set<String> _customerNameLoading = {};
@@ -68,8 +73,18 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   void initState() {
     super.initState();
     unawaited(AuthSession.ensureHubRole(context, AppRole.chef));
+    _ensureHubStreams();
     _loadKitchenStatus();
     _loadChefPin();
+  }
+
+  void _ensureHubStreams() {
+    final uid = _currentUserId;
+    if (uid.isEmpty || _ordersStream != null) return;
+    _ordersStream = _supabase.from('orders').stream(primaryKey: ['id']).eq('chef_id', uid);
+    _requestsStream = _supabase.from('customer_requests').stream(primaryKey: ['id']);
+    _myQuotesStream =
+        _supabase.from('customer_request_quotes').stream(primaryKey: ['id']).eq('chef_id', uid);
   }
 
   // --- Order data helpers (orders use the legacy schema: `items` JSON text,
@@ -595,6 +610,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     if (_currentUserId.isEmpty) {
       return const Scaffold(body: Center(child: Text('Authentication required.')));
     }
+    _ensureHubStreams();
 
     return PopScope(
       canPop: false,
@@ -624,10 +640,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         }
       },
       child: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: _supabase
-            .from('orders')
-            .stream(primaryKey: ['id'])
-            .eq('chef_id', _currentUserId),
+        stream: _ordersStream,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null) {
             return Scaffold(
@@ -660,9 +673,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
           final dispatchCount = orders.where((o) => OrderLifecycle.isDispatchQueue(o['status']?.toString())).length;
 
           return StreamBuilder<List<Map<String, dynamic>>>(
-            stream: _supabase
-                .from('customer_requests')
-                .stream(primaryKey: ['id']),
+            stream: _requestsStream,
             builder: (context, reqSnapshot) {
               final visibleLeads = (reqSnapshot.data ?? []).where((req) {
                 if (!_isVisibleLead(req)) return false;
@@ -676,12 +687,24 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 });
               final openLeadsCount = visibleLeads.where((req) => _leadStatus(req) == 'open').length;
 
+              return StreamBuilder<List<Map<String, dynamic>>>(
+                stream: _myQuotesStream ?? Stream.value(const <Map<String, dynamic>>[]),
+                builder: (context, quoteSnapshot) {
+                  final myQuotes = <String, Map<String, dynamic>>{};
+                  if (!quoteSnapshot.hasError) {
+                    for (final row in quoteSnapshot.data ?? const <Map<String, dynamic>>[]) {
+                      final rid = row['request_id']?.toString() ?? '';
+                      if (rid.isEmpty) continue;
+                      myQuotes[rid] = row;
+                    }
+                  }
+
               final List<Widget> tabs = [
                 _buildOrdersTab(orders),
                 _buildDispatchTab(orders),
                 _buildMenuTab(),
                 _buildHistoryTab(orders),
-                _buildCustomerLeadsTab(visibleLeads),
+                _buildCustomerLeadsTab(visibleLeads, myQuotes: myQuotes),
                 const PackagingStoreScreen(),
               ];
 
@@ -728,6 +751,8 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                     const NavigationDestination(icon: Icon(Icons.inventory_2_outlined), selectedIcon: Icon(Icons.inventory_2, color: AppTheme.primary), label: 'Supplies'),
                   ],
                 ),
+              );
+                },
               );
             },
           );
@@ -1570,15 +1595,18 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     return mine && (status == 'accepted' || status == 'ordered' || status == 'paid');
   }
 
-  Future<double?> _askCateringQuote(Map<String, dynamic> request) async {
+  Future<double?> _askCateringQuote(Map<String, dynamic> request, {double? existingQuote}) async {
     final budget = parseMoney(request['budget']);
+    final seed = existingQuote != null && existingQuote > 0
+        ? existingQuote
+        : budget;
     final controller = TextEditingController(
-      text: budget > 0 ? budget.toStringAsFixed(0) : '',
+      text: seed > 0 ? seed.toStringAsFixed(0) : '',
     );
     final quote = await showDialog<double>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Your quote'),
+        title: Text(existingQuote != null && existingQuote > 0 ? 'Update quote' : 'Your quote'),
         content: TextField(
           controller: controller,
           autofocus: true,
@@ -1596,7 +1624,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               final value = parseMoney(controller.text, budget);
               Navigator.pop(ctx, value > 0 ? value : budget);
             },
-            child: const Text('Claim'),
+            child: Text(existingQuote != null && existingQuote > 0 ? 'Update' : 'Submit'),
           ),
         ],
       ),
@@ -1605,68 +1633,49 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     return quote;
   }
 
-  Future<void> _saveCateringQuote(Object requestId, double quote) async {
-    if (quote <= 0) return;
-    try {
-      await _supabase.from('customer_requests').update({
-        'quoted_total': quote,
-      }).eq('id', requestId);
-    } on PostgrestException catch (e) {
-      if (e.code != 'PGRST204') {
-        FirebaseCrashlytics.instance.recordError(e, StackTrace.current, reason: 'Failed to save catering quote');
-      }
-    } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to save catering quote');
-    }
-  }
-
-  Future<void> _claimCateringLead(Map<String, dynamic> request) async {
-    final quote = await _askCateringQuote(request);
+  Future<void> _submitCateringQuote(Map<String, dynamic> request, {double? existingQuote}) async {
+    final quote = await _askCateringQuote(request, existingQuote: existingQuote);
     if (quote == null || !mounted) return;
 
-    var claimed = false;
+    var ok = false;
+    String? errorText;
     try {
-      claimed = await _supabase.rpc(
-            'claim_customer_request',
-            params: {
-              'p_request_id': request['id'],
-              'p_chef_name': _chefDisplayName,
-            },
-          ) ==
-          true;
-    } catch (_) {
-      final res = await _supabase
-          .from('customer_requests')
-          .update({
-            'status': 'Accepted',
-            'accepted_chef_id': _currentUserId,
-            'accepted_chef_name': _chefDisplayName,
-            'remaining_quantity': 0,
-          })
-          .eq('id', request['id'])
-          .eq('status', 'Open')
-          .select();
-      claimed = res.isNotEmpty;
-    }
-
-    if (claimed) {
-      await _saveCateringQuote(request['id'], quote);
+      final id = await _supabase.rpc(
+        'submit_customer_request_quote',
+        params: {
+          'p_request_id': request['id'],
+          'p_quoted_total': quote,
+          'p_chef_name': _chefDisplayName,
+        },
+      );
+      ok = id != null;
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to submit catering quote');
+      errorText = e.toString();
     }
 
     if (!mounted) return;
+    final lower = (errorText ?? '').toLowerCase();
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(claimed
-          ? 'Lead claimed. The customer can now pay your quote from My Orders.'
-          : 'Lead was already claimed.'),
+      content: Text(ok
+          ? 'Quote sent. The customer can compare kitchens and pick yours from My Orders.'
+          : (lower.contains('request_not_open')
+              ? 'This lead is no longer open for quotes.'
+              : (lower.contains('not_authorized')
+                  ? 'Only verified kitchens can submit quotes.'
+                  : 'Could not submit quote. Try again.'))),
     ));
   }
 
-  Widget _buildCustomerLeadsTab(List<Map<String, dynamic>> requests) {
+  Widget _buildCustomerLeadsTab(
+    List<Map<String, dynamic>> requests, {
+    Map<String, Map<String, dynamic>> myQuotes = const {},
+  }) {
     if (requests.isEmpty) {
       return const EmptyState(
         icon: Icons.campaign_outlined,
         title: 'No catering leads',
-        message: 'Open broadcasts and jobs you have claimed will show up here.',
+        message: 'Open broadcasts and jobs you have quoted or won will show up here.',
       );
     }
 
@@ -1682,6 +1691,9 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         final remaining = req['remaining_quantity'] ?? req['quantity'];
         final km = cateringLeadDistanceKm(req, _chefPin);
         final distance = km == null ? 'Distance unknown' : '${km.toStringAsFixed(1)} km away';
+        final myQuote = myQuotes[req['id']?.toString() ?? ''];
+        final myQuoteTotal = parseMoney(myQuote?['quoted_total']);
+        final hasMyQuote = myQuoteTotal > 0;
         return AppCard(
           margin: const EdgeInsets.only(bottom: 12),
           child: Column(
@@ -1694,9 +1706,11 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                         style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                   ),
                   Text(
-                    cateringPayableTotal(req) > 0
-                        ? '₹${cateringPayableTotal(req).toStringAsFixed(0)}'
-                        : '₹${req['budget'] ?? '0'}',
+                    hasMyQuote && isOpen
+                        ? 'Your ₹${myQuoteTotal.toStringAsFixed(0)}'
+                        : (cateringPayableTotal(req) > 0
+                            ? '₹${cateringPayableTotal(req).toStringAsFixed(0)}'
+                            : '₹${req['budget'] ?? '0'}'),
                     style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w800),
                   ),
                 ],
@@ -1704,8 +1718,12 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               const SizedBox(height: 6),
               Text(
                 isOpen
-                    ? 'Open • first chef to claim gets it'
-                    : (awaitingPay ? 'Claimed • waiting for customer payment' : 'Paid • cook this from Orders'),
+                    ? (hasMyQuote
+                        ? 'Quote submitted • customer may pick any kitchen'
+                        : 'Open • submit a quote (customer picks)')
+                    : (awaitingPay
+                        ? 'Selected • waiting for customer payment'
+                        : 'Paid • cook this from Orders'),
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
@@ -1720,10 +1738,13 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               const SizedBox(height: 14),
               if (isOpen)
                 GradientButton(
-                  label: 'Claim Lead',
-                  icon: Icons.handshake_rounded,
+                  label: hasMyQuote ? 'Update quote' : 'Submit quote',
+                  icon: hasMyQuote ? Icons.edit_outlined : Icons.request_quote_outlined,
                   gradient: const LinearGradient(colors: [AppTheme.success, Color(0xFF43C478)]),
-                  onPressed: () => _claimCateringLead(req),
+                  onPressed: () => _submitCateringQuote(
+                    req,
+                    existingQuote: hasMyQuote ? myQuoteTotal : null,
+                  ),
                 )
               else if (awaitingPay)
                 const Text('Stay ready. The customer pays from My Orders, then this becomes a kitchen order.',
@@ -1732,29 +1753,33 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 const Text('Payment received. Confirm the new order on the Orders tab.',
                     style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
               const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.chat_bubble_outline, size: 18),
-                      label: const Text('Message'),
-                      onPressed: () => context.push(chatPath(
-                        req['id'].toString(),
-                        roomName: req['title']?.toString() ?? 'Catering lead',
-                        otherUserId: req['customer_id']?.toString(),
-                      )),
+              if (hasMyQuote || awaitingPay || paid)
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                        label: const Text('Message'),
+                        onPressed: () => context.push(chatPath(
+                          req['id'].toString(),
+                          roomName: req['title']?.toString() ?? 'Catering lead',
+                          otherUserId: req['customer_id']?.toString(),
+                        )),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.phone_outlined, size: 18),
-                      label: const Text('Call'),
-                      onPressed: () => _callCustomer(req['customer_id']?.toString() ?? ''),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.phone_outlined, size: 18),
+                        label: const Text('Call'),
+                        onPressed: () => _callCustomer(req['customer_id']?.toString() ?? ''),
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                )
+              else
+                const Text('Submit a quote to message the customer about this lead.',
+                    style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
             ],
           ),
         ).entrance(index: index);

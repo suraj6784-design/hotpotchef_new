@@ -735,6 +735,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         await _supabase.from('customer_requests').update({'status': 'Ordered'}).eq('id', requestId);
       } catch (_) {}
     }
+    try {
+      await _supabase.rpc(
+        'finalize_customer_request_quotes',
+        params: {'p_request_id': requestId},
+      );
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to finalize catering quotes');
+    }
   }
 
   Future<Map<String, dynamic>?> _placeOrderRpc({

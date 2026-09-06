@@ -323,6 +323,17 @@ void main() {
       expect(items.single['price'], 620);
       expect(cateringPayableTotal({'budget': 5000, 'quoted_total': 6200}), 6200);
     });
+
+    test('sorts catering quotes with selected first then cheapest', () {
+      final sorted = cateringQuotesSorted([
+        {'id': 'b', 'chef_name': 'B', 'quoted_total': 4000, 'status': 'open'},
+        {'id': 'a', 'chef_name': 'A', 'quoted_total': 3500, 'status': 'selected'},
+        {'id': 'c', 'chef_name': 'C', 'quoted_total': 3200, 'status': 'open'},
+        {'id': 'd', 'chef_name': 'D', 'quoted_total': 3000, 'status': 'rejected'},
+      ]);
+      expect(sorted.map((q) => q['id']), ['a', 'c', 'b']);
+      expect(cateringQuoteChefLabel({'chef_name': 'Asha'}), 'Asha');
+    });
   });
 
   group('preferredCheckoutAddress', () {
