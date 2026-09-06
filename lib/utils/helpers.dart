@@ -1258,6 +1258,179 @@ DateTime tomorrowCalendarDay({DateTime? now}) {
   return calendarDay(now ?? DateTime.now()).add(const Duration(days: 1));
 }
 
+/// Formats minutes-from-midnight as `h:mm AM/PM`.
+String formatMinutesAsClock(int totalMinutes) {
+  final mins = ((totalMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
+  var hour = mins ~/ 60;
+  final minute = mins % 60;
+  final ampm = hour >= 12 ? 'PM' : 'AM';
+  var hour12 = hour % 12;
+  if (hour12 == 0) hour12 = 12;
+  return '$hour12:${minute.toString().padLeft(2, '0')} $ampm';
+}
+
+int? clockTextToMinutes(String timeText) {
+  final match = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)', caseSensitive: false).firstMatch(timeText);
+  if (match == null) return null;
+  var hour = int.parse(match.group(1)!);
+  final minute = int.parse(match.group(2)!);
+  final ampm = match.group(3)!.toUpperCase();
+  if (ampm == 'PM' && hour != 12) hour += 12;
+  if (ampm == 'AM' && hour == 12) hour = 0;
+  return hour * 60 + minute;
+}
+
+String _chefScheduleTimeRange(String rawChefSlot) {
+  var timeRangeStr = rawChefSlot.trim();
+  if (timeRangeStr.contains('(') && timeRangeStr.contains(')')) {
+    final startIndex = timeRangeStr.indexOf('(');
+    final endIndex = timeRangeStr.lastIndexOf(')');
+    if (startIndex < endIndex) {
+      timeRangeStr = timeRangeStr.substring(startIndex + 1, endIndex).trim();
+    }
+  }
+  return timeRangeStr;
+}
+
+/// Hourly bookable windows inside a chef publish string, e.g. `9:00 AM to 5:00 PM`.
+List<String> chefHourlySubSlots(String rawChefSlot, {int intervalMinutes = 60}) {
+  final timeRangeStr = _chefScheduleTimeRange(rawChefSlot);
+  if (!timeRangeStr.toLowerCase().contains('to')) {
+    return timeRangeStr.isEmpty ? const [] : [timeRangeStr];
+  }
+
+  final parts = timeRangeStr.split(RegExp('to', caseSensitive: false));
+  if (parts.length < 2) return [timeRangeStr];
+
+  final startMins = clockTextToMinutes(parts[0].trim());
+  final endMinsRaw = clockTextToMinutes(parts[1].trim());
+  if (startMins == null || endMinsRaw == null) return [timeRangeStr];
+
+  var endMins = endMinsRaw;
+  if (endMins <= startMins) endMins += 24 * 60;
+
+  final generated = <String>[];
+  var current = startMins;
+  final step = intervalMinutes < 15 ? 15 : intervalMinutes;
+  while (current + step <= endMins) {
+    final next = current + step;
+    generated.add('${formatMinutesAsClock(current)} to ${formatMinutesAsClock(next)}');
+    current = next;
+  }
+  return generated.isNotEmpty ? generated : [timeRangeStr];
+}
+
+/// True when the selected slot's start is now or earlier on that calendar day.
+bool isCartSlotPassed(
+  String selectedSlot,
+  DateTime scheduledDate, {
+  DateTime? now,
+}) {
+  final n = (now ?? DateTime.now()).toLocal();
+  final day = calendarDay(scheduledDate);
+  final today = calendarDay(n);
+  if (day.isBefore(today)) return true;
+  if (day.isAfter(today)) return false;
+  final start = parseSlotStartTime(selectedSlot, baseDate: day);
+  if (start == null) return false;
+  return !start.isAfter(n);
+}
+
+List<String> futureChefSubSlots(
+  String rawChefSlot, {
+  required DateTime scheduledDate,
+  DateTime? now,
+  int intervalMinutes = 60,
+}) {
+  return chefHourlySubSlots(rawChefSlot, intervalMinutes: intervalMinutes)
+      .where((slot) => !isCartSlotPassed(slot, scheduledDate, now: now))
+      .toList();
+}
+
+/// Selected bookable window must sit inside the chef's published range.
+bool isCartSlotWithinChefWindow(String selectedSlot, String chefSchedule) {
+  final schedule = chefSchedule.trim();
+  if (schedule.isEmpty) return true;
+  final selectedStart = clockTextToMinutes(selectedSlot);
+  if (selectedStart == null) return isTimeWithinChefBounds(selectedSlot, schedule);
+
+  final range = _chefScheduleTimeRange(schedule);
+  final clocks = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)', caseSensitive: false).allMatches(range).toList();
+  if (clocks.isEmpty) return true;
+
+  int toMins(RegExpMatch m) {
+    var h = int.parse(m.group(1)!);
+    final ampm = m.group(3)!.toUpperCase();
+    if (ampm == 'PM' && h != 12) h += 12;
+    if (ampm == 'AM' && h == 12) h = 0;
+    return h * 60 + int.parse(m.group(2)!);
+  }
+
+  final start = toMins(clocks.first);
+  if (clocks.length == 1) return selectedStart >= start;
+  var end = toMins(clocks[1]);
+  if (end <= start) end += 24 * 60;
+  // Allow booking a slot that starts inside the window (end exclusive for next-day wrap).
+  return selectedStart >= start && selectedStart < end;
+}
+
+String? cartLineSlotValidationError({
+  required String? selectedSlot,
+  required DateTime scheduledDate,
+  required String? chefSchedule,
+  DateTime? now,
+}) {
+  final selected = (selectedSlot ?? '').trim();
+  final schedule = (chefSchedule ?? '').trim();
+  if (selected.isEmpty || selected.toLowerCase() == 'select slot') {
+    return 'Choose a delivery time slot before checkout.';
+  }
+  if (isImmediateDeliverySlot(selected)) {
+    return 'Choose a clock time inside the chef\'s serving window.';
+  }
+  if (isCartSlotPassed(selected, scheduledDate, now: now)) {
+    return 'That time slot has passed. Pick a later slot inside the chef\'s window.';
+  }
+  if (schedule.isNotEmpty && !isCartSlotWithinChefWindow(selected, schedule)) {
+    return 'Choose a time inside the chef\'s published serving window.';
+  }
+  return null;
+}
+
+String? cartItemsSlotValidationError(
+  Iterable<Map<String, dynamic>> items, {
+  DateTime? now,
+}) {
+  for (final item in items) {
+    final nested = item['rawMealDetails'] ?? item['mealDetails'] ?? item['meal_details'];
+    final nestedMap = nested is Map ? Map<String, dynamic>.from(nested) : const <String, dynamic>{};
+    final schedule = (nestedMap['time_slot'] ??
+            nestedMap['chef_schedule'] ??
+            item['chef_schedule'] ??
+            item['time_slot'] ??
+            '')
+        .toString();
+    final selected = (item['time_slot'] ??
+            item['timeSlot'] ??
+            nestedMap['exact_time'] ??
+            item['exact_time'] ??
+            '')
+        .toString();
+    final dateRaw = item['selected_date'] ?? item['selectedDate'] ?? item['scheduled_date'];
+    final scheduled = dateRaw is DateTime
+        ? dateRaw
+        : (DateTime.tryParse(dateRaw?.toString() ?? '') ?? (now ?? DateTime.now()));
+    final issue = cartLineSlotValidationError(
+      selectedSlot: selected,
+      scheduledDate: scheduled,
+      chefSchedule: schedule,
+      now: now,
+    );
+    if (issue != null) return issue;
+  }
+  return null;
+}
+
 /// First clock from a chef schedule / meal slot string (e.g. "7:30 PM to 8:30 PM").
 String? preferredChefSlotClock(String? schedule) {
   final text = (schedule ?? '').trim();
@@ -1270,49 +1443,33 @@ String? preferredChefSlotClock(String? schedule) {
   return null;
 }
 
-/// Default cart day/time must stay inside the chef's published slot — never invent ASAP/+40m.
+/// Default cart day/time: next future sub-slot inside the chef window (never a past clock).
 Map<String, String> chefSlotDefaultSchedule(String chefScheduleStr, {DateTime? now}) {
   final current = (now ?? DateTime.now()).toLocal();
-  final nowMins = current.hour * 60 + current.minute;
+  final today = calendarDay(current);
+  final tomorrow = tomorrowCalendarDay(now: current);
   final text = chefScheduleStr.trim();
-  final clocks = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)', caseSensitive: false).allMatches(text).toList();
 
-  int parseMins(RegExpMatch m) {
-    var h = int.parse(m.group(1)!);
-    final ampm = m.group(3)!.toUpperCase();
-    if (ampm == 'PM' && h != 12) h += 12;
-    if (ampm == 'AM' && h == 12) h = 0;
-    return h * 60 + int.parse(m.group(2)!);
+  final todayFuture = futureChefSubSlots(text, scheduledDate: today, now: current);
+  if (todayFuture.isNotEmpty) {
+    return {'date': 'Today', 'time': todayFuture.first};
   }
 
-  String formatMatch(RegExpMatch m) => m.group(0)!.toUpperCase().replaceAll(RegExp(r'\s+'), ' ');
-
-  if (clocks.isEmpty) {
-    final clock = preferredChefSlotClock(text);
-    if (clock == null || clock.isEmpty) {
-      return {'date': 'Today', 'time': text.isEmpty ? '' : text};
-    }
-    return {'date': 'Today', 'time': clock};
+  final tomorrowSlots = chefHourlySubSlots(text);
+  if (tomorrowSlots.isNotEmpty) {
+    return {'date': 'Tomorrow', 'time': tomorrowSlots.first};
   }
 
-  final start = formatMatch(clocks.first);
-  final startMins = parseMins(clocks.first);
-  if (clocks.length >= 2) {
-    final endMins = parseMins(clocks[1]);
-    if (nowMins < startMins) {
-      return {'date': 'Today', 'time': start};
-    }
-    if (nowMins <= endMins) {
-      // Still inside the chef window — keep the published start clock.
-      return {'date': 'Today', 'time': start};
-    }
-    return {'date': 'Tomorrow', 'time': start};
+  final clock = preferredChefSlotClock(text);
+  if (clock == null || clock.isEmpty) {
+    return {'date': 'Today', 'time': text.isEmpty ? '' : text};
   }
-
-  if (nowMins <= startMins) {
-    return {'date': 'Today', 'time': start};
+  final startMins = clockTextToMinutes(clock);
+  final nowMins = current.hour * 60 + current.minute;
+  if (startMins != null && nowMins >= startMins) {
+    return {'date': 'Tomorrow', 'time': clock};
   }
-  return {'date': 'Tomorrow', 'time': start};
+  return {'date': 'Today', 'time': clock};
 }
 
 DateTime? parseClockOnDate(String timeText, DateTime date) {
@@ -1724,14 +1881,22 @@ String rescuedMealsSubhead({required int rescuedPlates, required int onOfferPlat
   return 'HotPotChef is pre-order first — less waste than cooking on hope.';
 }
 
-bool isMealExpired(String? timeSlot, {DateTime? orderDate}) {
+bool isMealExpired(String? timeSlot, {DateTime? orderDate, DateTime? now}) {
   if (timeSlot == null || timeSlot.isEmpty) return false;
-  final startTime = parseSlotStartTime(timeSlot, baseDate: orderDate);
-  if (startTime != null) {
-    // Meal expires 3 hours after its scheduled start time
-    return DateTime.now().isAfter(startTime.add(const Duration(hours: 3)));
+  final n = (now ?? DateTime.now()).toLocal();
+  final day = calendarDay(orderDate ?? n);
+  final clocks = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)', caseSensitive: false).allMatches(timeSlot).toList();
+  if (clocks.isEmpty) return false;
+
+  DateTime? end;
+  if (clocks.length >= 2) {
+    end = parseClockOnDate(clocks[1].group(0)!, day);
+  } else {
+    end = parseClockOnDate(clocks.first.group(0)!, day);
   }
-  return false;
+  if (end == null) return false;
+  // Catalog stays bookable until the chef window ends — not hours after the start clock.
+  return !n.isBefore(end);
 }
 
 bool isTimeWithinChefBounds(String selectedTime, String chefScheduleStr) {

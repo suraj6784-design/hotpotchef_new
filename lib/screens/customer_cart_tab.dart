@@ -44,90 +44,10 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
 
   // --- Sub-Slot Generator ---
 
-  List<String> _generateSubSlots(String rawChefSlot) {
-    String timeRangeStr = rawChefSlot;
+  List<String> _generateSubSlots(String rawChefSlot) => chefHourlySubSlots(rawChefSlot);
 
-    if (rawChefSlot.contains('(') && rawChefSlot.contains(')')) {
-      final startIndex = rawChefSlot.indexOf('(');
-      final endIndex = rawChefSlot.lastIndexOf(')');
-      if (startIndex < endIndex) {
-        timeRangeStr = rawChefSlot.substring(startIndex + 1, endIndex).trim();
-      }
-    }
-
-    if (!timeRangeStr.toLowerCase().contains('to')) {
-      return [timeRangeStr];
-    }
-
-    try {
-      final parts = timeRangeStr.split(RegExp('to', caseSensitive: false));
-      if (parts.length < 2) return [timeRangeStr];
-
-      final startStr = parts[0].trim();
-      final endStr = parts[1].trim();
-
-      TimeOfDay startTime = _parseTimeOfDay(startStr);
-      TimeOfDay endTime = _parseTimeOfDay(endStr);
-
-      List<String> generatedSlots = [];
-      int currentMinutes = startTime.hour * 60 + startTime.minute;
-      int endMinutes = endTime.hour * 60 + endTime.minute;
-
-      if (endMinutes <= currentMinutes) {
-        endMinutes += 24 * 60;
-      }
-
-      const intervalMinutes = 60;
-      while (currentMinutes + intervalMinutes <= endMinutes) {
-        int slotStartHour = (currentMinutes ~/ 60) % 24;
-        int slotStartMin = currentMinutes % 60;
-
-        int nextMinutes = currentMinutes + intervalMinutes;
-        int slotEndHour = (nextMinutes ~/ 60) % 24;
-        int slotEndMin = nextMinutes % 60;
-
-        TimeOfDay t1 = TimeOfDay(hour: slotStartHour, minute: slotStartMin);
-        TimeOfDay t2 = TimeOfDay(hour: slotEndHour, minute: slotEndMin);
-
-        generatedSlots.add('${t1.format(context)} to ${t2.format(context)}');
-        currentMinutes = nextMinutes;
-      }
-
-      return generatedSlots.isNotEmpty ? generatedSlots : [timeRangeStr];
-    } catch (_) {
-      return [timeRangeStr];
-    }
-  }
-
-  /// Drops slots whose start time has already passed when the chosen day is
-  /// today, so customers can't schedule a delivery in the past.
   List<String> _futureSlotsForDate(List<String> slots, DateTime date) {
-    final now = DateTime.now();
-    final isToday = date.year == now.year && date.month == now.month && date.day == now.day;
-    if (!isToday) return slots;
-
-    final nowMinutes = now.hour * 60 + now.minute;
-    return slots.where((slot) {
-      final startStr = slot.split(RegExp('to', caseSensitive: false)).first.trim();
-      final start = _parseTimeOfDay(startStr);
-      return (start.hour * 60 + start.minute) > nowMinutes;
-    }).toList();
-  }
-
-  TimeOfDay _parseTimeOfDay(String timeStr) {
-    final cleaned = timeStr.toUpperCase().replaceAll(' ', '');
-    bool isPM = cleaned.contains('PM');
-    bool isAM = cleaned.contains('AM');
-
-    String rawTime = cleaned.replaceAll('AM', '').replaceAll('PM', '');
-    List<String> timeParts = rawTime.split(':');
-    int hour = int.tryParse(timeParts[0]) ?? 12;
-    int minute = timeParts.length > 1 ? (int.tryParse(timeParts[1]) ?? 0) : 0;
-
-    if (isPM && hour < 12) hour += 12;
-    if (isAM && hour == 12) hour = 0;
-
-    return TimeOfDay(hour: hour, minute: minute);
+    return slots.where((slot) => !isCartSlotPassed(slot, date)).toList();
   }
 
   // --- Multi-Vendor Conflict Modal ---
@@ -335,6 +255,11 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
             // Safely fetch the exact time updated from the provider
             final exactTime = item.rawMealDetails['exact_time']?.toString();
             final displayTimeSlot = (exactTime != null && exactTime.isNotEmpty) ? exactTime : rawSchedule;
+            final slotIssue = cartLineSlotValidationError(
+              selectedSlot: item.timeSlot ?? displayTimeSlot,
+              scheduledDate: item.scheduledDate,
+              chefSchedule: rawSchedule,
+            );
 
             return AppCard(
               margin: const EdgeInsets.only(bottom: 16),
@@ -485,6 +410,17 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                             );
                             if (picked != null) {
                               ref.read(cartProvider.notifier).updateItemDate(cartItemId, picked);
+                              final stillValid = !isCartSlotPassed(
+                                    item.timeSlot ?? displayTimeSlot,
+                                    picked,
+                                  ) &&
+                                  isCartSlotWithinChefWindow(displayTimeSlot, rawSchedule);
+                              if (!stillValid) {
+                                final next = futureChefSubSlots(rawSchedule, scheduledDate: picked);
+                                if (next.isNotEmpty) {
+                                  ref.read(cartProvider.notifier).updateItemTimeSlot(cartItemId, next.first);
+                                }
+                              }
                             }
                           },
                           child: Container(
@@ -565,7 +501,11 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                                 Expanded(
                                   child: Text(
                                     displayTimeSlot, // Reactive UI binding
-                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context)),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: slotIssue != null ? Colors.redAccent : AppTheme.onSurfaceOf(context),
+                                    ),
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
@@ -576,6 +516,13 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                       ),
                     ],
                   ),
+                  if (slotIssue != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      slotIssue,
+                      style: const TextStyle(fontSize: 12, color: Colors.redAccent, fontWeight: FontWeight.w600),
+                    ),
+                  ],
                   const SizedBox(height: 16),
 
                   // Subtotal and Quantity Stepper
@@ -899,6 +846,17 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
     // Validate single-vendor requirement
     final canProceed = await _verifySingleVendorOrPrompt(cartState);
     if (!canProceed || !mounted) return;
+
+    final slotIssue = cartItemsSlotValidationError([
+      for (final item in cartState.items) item.toCheckoutPayload(),
+    ]);
+    if (slotIssue != null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(slotIssue), backgroundColor: Colors.redAccent),
+      );
+      return;
+    }
 
     final checkoutItems = cartState.items.map((i) => i.toCheckoutPayload()).toList();
 

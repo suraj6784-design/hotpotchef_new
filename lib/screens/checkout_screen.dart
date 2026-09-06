@@ -402,6 +402,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final user = _supabase.auth.currentUser;
       if (user == null) throw Exception('Authentication session expired');
       if (widget.cartItems.isEmpty) throw Exception('Your cart is empty');
+      final slotIssue = cartItemsSlotValidationError(widget.cartItems);
+      if (slotIssue != null) throw Exception(slotIssue);
       if (!canPaySharedCart(
         roomCode: widget.sharedRoomCode,
         hostId: widget.sharedHostId,
