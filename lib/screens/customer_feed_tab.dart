@@ -29,6 +29,7 @@ import '../widgets/festival_hampers_banner.dart';
 import '../widgets/society_nights_banner.dart';
 import '../widgets/shelf_items_banner.dart';
 import '../widgets/rescue_waste_banner.dart';
+import '../widgets/sponsored_placement_banner.dart';
 import '../widgets/ai_recommendations_section.dart';
 import '../services/delivery_estimator_service.dart';
 import 'address_form_screen.dart';
@@ -953,6 +954,11 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
               destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
               chefKitchenPins: _chefKitchenPins,
               onOfferTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
+            ),
+            SponsoredPlacementBanner(
+              destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
+              destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
+              cityHint: _selectedAddressMap?['city']?.toString(),
             ),
             FestivalHampersBanner(
               excludedChefIds: _closedChefIds,

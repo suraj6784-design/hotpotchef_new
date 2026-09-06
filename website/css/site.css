@@ -1,0 +1,229 @@
+:root {
+  --ink: #241f1c;
+  --muted: #8c8279;
+  --canvas: #1a1410;
+  --canvas-2: #2a1f18;
+  --flame: #f4511e;
+  --flame-2: #ff7043;
+  --amber: #ffb300;
+  --snow: #fffaf7;
+  --card: rgba(255, 250, 247, 0.94);
+  --hairline: rgba(255, 250, 247, 0.14);
+  --font-display: "Fraunces", "Iowan Old Style", Georgia, serif;
+  --font-body: "Figtree", "Segoe UI", system-ui, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100%;
+  font-family: var(--font-body);
+  color: var(--snow);
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(244, 81, 30, 0.35), transparent 55%),
+    radial-gradient(900px 500px at 90% 0%, rgba(255, 179, 0, 0.18), transparent 50%),
+    linear-gradient(165deg, var(--canvas) 0%, var(--canvas-2) 45%, #120e0c 100%);
+  background-attachment: fixed;
+}
+
+a {
+  color: inherit;
+}
+
+.wrap {
+  width: min(720px, calc(100% - 2rem));
+  margin: 0 auto;
+}
+
+.brand {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(2.4rem, 8vw, 3.6rem);
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  margin: 0;
+}
+
+.brand span {
+  color: var(--flame-2);
+}
+
+.punchline {
+  margin: 0.85rem 0 0;
+  font-size: clamp(1.05rem, 3.2vw, 1.25rem);
+  color: rgba(255, 250, 247, 0.78);
+  max-width: 22ch;
+  line-height: 1.35;
+}
+
+.support {
+  margin: 0.75rem 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.45;
+  max-width: 36ch;
+}
+
+.cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.75rem;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 48px;
+  padding: 0.7rem 1.2rem;
+  border-radius: 999px;
+  border: none;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--flame), var(--flame-2));
+  color: #fff;
+  box-shadow: 0 10px 28px rgba(244, 81, 30, 0.35);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--snow);
+  border: 1px solid var(--hairline);
+}
+
+.home-hero {
+  min-height: 100vh;
+  display: grid;
+  align-content: end;
+  padding: 2rem 0 3.5rem;
+}
+
+.home-hero::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background:
+    linear-gradient(to top, rgba(18, 14, 12, 0.92) 12%, rgba(18, 14, 12, 0.35) 48%, transparent 70%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cg fill='none' stroke='%23fffaf7' stroke-opacity='0.04'%3E%3Ccircle cx='80' cy='80' r='48'/%3E%3Ccircle cx='80' cy='80' r='72'/%3E%3C/g%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: -1;
+}
+
+.meal-page {
+  padding: 1.25rem 0 3rem;
+}
+
+.meal-visual {
+  width: 100%;
+  aspect-ratio: 16 / 11;
+  object-fit: cover;
+  border-radius: 0 0 1.25rem 1.25rem;
+  display: block;
+  background: #2a211c;
+}
+
+.meal-visual.placeholder {
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  color: rgba(255, 250, 247, 0.45);
+}
+
+.meal-card {
+  margin-top: -2.5rem;
+  position: relative;
+  background: var(--card);
+  color: var(--ink);
+  border-radius: 1.25rem;
+  padding: 1.35rem 1.25rem 1.5rem;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+}
+
+.meal-kicker {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--flame);
+}
+
+.meal-title {
+  margin: 0.35rem 0 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.6rem, 5vw, 2.1rem);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.meal-meta {
+  margin: 0.65rem 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.meal-price {
+  margin: 0.85rem 0 0;
+  font-weight: 800;
+  font-size: 1.25rem;
+  color: var(--flame);
+}
+
+.meal-desc {
+  margin: 0.85rem 0 0;
+  color: #4a433d;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.status {
+  margin: 1rem 0 0;
+  padding: 0.85rem 1rem;
+  border-radius: 0.85rem;
+  background: rgba(244, 81, 30, 0.08);
+  color: #5c4034;
+  font-size: 0.9rem;
+}
+
+.footer-note {
+  margin: 1.5rem auto 0;
+  width: min(720px, calc(100% - 2rem));
+  color: rgba(255, 250, 247, 0.45);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.site-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 0 0.5rem;
+}
+
+.site-top a {
+  font-weight: 800;
+  text-decoration: none;
+  letter-spacing: -0.02em;
+}
+
+.site-top a strong {
+  color: var(--flame-2);
+}

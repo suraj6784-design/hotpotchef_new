@@ -35,7 +35,18 @@ class AcademyModule {
 
 const kChefAcademyTitle = 'Kitchen Academy';
 const kChefAcademyTagline =
-    'Hygiene, bulk cooking, timing, orders, packaging, and tools — built for home kitchens on HotPotChef.';
+    'Short, practical lessons for home kitchens — hygiene, timing, orders, packing, and tools.';
+
+/// Shown under the course list and on the certificate screen.
+const kChefAcademyLegalNote =
+    'Kitchen Academy helps you run a safer home kitchen on HotPotChef. '
+    'It is practice training only — not an FSSAI licence, not a government certificate, '
+    'and not a substitute for registration or food-safety rules that apply to you. '
+    'Progress syncs to your chef account when you are online.';
+
+const kChefAcademyCertificateNote =
+    'This is a HotPotChef practice certificate for completing Kitchen Academy. '
+    'It does not replace an FSSAI licence or any legal food-safety requirement.';
 
 const List<AcademyModule> kChefAcademyModules = [
   AcademyModule(
@@ -77,9 +88,11 @@ const List<AcademyModule> kChefAcademyModules = [
         title: 'FSSAI basics for home kitchens',
         minutes: 4,
         body:
-            'List your valid FSSAI licence on Chef Profile. Diners see it on kitchen story and share cards.\n\n'
-            'Keep licence copy, kitchen photos, and a short hygiene note updated. That builds trust faster than discounts.\n\n'
-            'Follow local FSSAI home-kitchen rules for your registration type. HotPotChef does not replace your legal duty as the food business operator.',
+            'Add your valid 14-digit FSSAI licence on Chef Profile. Diners see it on your kitchen card, story, and plate shares.\n\n'
+            'Keep a copy of the licence, clear kitchen photos, and honest meal descriptions. That builds trust faster than discounts.\n\n'
+            'Register and follow FSSAI rules for your kitchen type (including home kitchen / petty FBOs where they apply). '
+            'HotPotChef does not register you with FSSAI and does not replace your duty as the food business operator.\n\n'
+            'Apply or verify on FoSCoS (foscos.fssai.gov.in). Kitchen Academy lessons support good practice — they are not the licence itself.',
       ),
     ],
   ),

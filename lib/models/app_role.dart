@@ -53,6 +53,7 @@ const kChefOnlyRoutes = {
   '/chef-profile',
   '/chef-publish-meal',
   '/chef-academy',
+  '/chef-advertise',
 };
 
 const kDriverOnlyRoutes = {

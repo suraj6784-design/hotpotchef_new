@@ -165,7 +165,7 @@ Future<void> showPlateShareSheet(
             ),
             const SizedBox(height: 4),
             const Text(
-              'Tell neighbours who cooked it — with FSSAI when listed. The link opens this dish in HotPotChef.',
+              'Share who cooked it — and the FSSAI number when the kitchen has listed one. The link opens this dish in HotPotChef.',
               style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
             ),
             const SizedBox(height: 10),

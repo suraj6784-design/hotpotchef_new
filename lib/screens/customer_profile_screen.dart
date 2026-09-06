@@ -18,6 +18,7 @@ import '../providers/meal_plans_provider.dart';
 import '../services/auth_session.dart';
 import '../utils/helpers.dart';
 import '../utils/legal_content.dart';
+import '../utils/payment_preferences.dart';
 import '../utils/support.dart';
 import '../widgets/avatar_upload.dart';
 import '../widgets/loyalty_badge_card.dart';
@@ -49,6 +50,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
   List<Map<String, dynamic>> _addresses = [];
   int _orderCount = 0;
   String _email = '';
+  String _preferredPayMethod = 'upi';
 
   bool _isLoading = true;
   bool _isSaving = false;
@@ -132,10 +134,13 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                status.contains('rejected');
       }).length;
 
+      final preferredPay = await loadPreferredPaymentMethod();
+
       if (mounted) {
         setState(() {
           _addresses = uniqueSavedAddresses(List<Map<String, dynamic>>.from(addressResponse));
           _orderCount = pastOrdersCount;
+          _preferredPayMethod = preferredPay;
           _isLoading = false;
         });
       }
@@ -476,7 +481,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
       orders = List<Map<String, dynamic>>.from(
         await _supabase
             .from('orders')
-            .select('id, coins_applied, created_at')
+            .select('id, order_id, coins_applied, created_at')
             .eq('customer_id', user.id)
             .order('created_at', ascending: false)
             .limit(40) as List,
@@ -582,6 +587,15 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
+                                    if ((entry.orderRef ?? '').isNotEmpty)
+                                      Text(
+                                        'Order ${entry.orderRef}',
+                                        style: TextStyle(
+                                          color: isDark ? Colors.grey.shade400 : AppTheme.textMuted,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
                                     Text(
                                       formatOrderDate(entry.at?.toIso8601String()),
                                       style: TextStyle(color: isDark ? Colors.grey.shade500 : Colors.grey, fontSize: 11),
@@ -659,6 +673,103 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
         );
       }
     }
+  }
+
+  void _showPaymentOptionsSheet() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    var selected = _preferredPayMethod;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? AppTheme.surfaceDark : Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => Padding(
+          padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + MediaQuery.of(ctx).padding.bottom),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Payment options',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : AppTheme.textMain,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Choose how Razorpay opens at checkout. Card, UPI, and bank details stay in Razorpay — HotPotChef never stores them.',
+                style: TextStyle(
+                  fontSize: 12,
+                  height: 1.35,
+                  color: isDark ? Colors.grey.shade400 : AppTheme.textMuted,
+                ),
+              ),
+              const SizedBox(height: 12),
+              for (final method in kCustomerPayMethods)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    method == 'card'
+                        ? Icons.credit_card
+                        : method == 'netbanking'
+                            ? Icons.account_balance_outlined
+                            : Icons.qr_code_2_outlined,
+                    color: AppTheme.primary,
+                  ),
+                  title: Text(
+                    customerPayMethodLabel(method),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: isDark ? Colors.white : AppTheme.textMain,
+                    ),
+                  ),
+                  subtitle: Text(
+                    customerPayMethodSubtitle(method),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? Colors.grey.shade400 : AppTheme.textMuted,
+                    ),
+                  ),
+                  trailing: Icon(
+                    selected == method ? Icons.check_circle : Icons.circle_outlined,
+                    color: selected == method ? AppTheme.primary : AppTheme.textMuted,
+                  ),
+                  onTap: () => setSheetState(() => selected = method),
+                ),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: () async {
+                    await savePreferredPaymentMethod(selected);
+                    if (!ctx.mounted) return;
+                    Navigator.pop(ctx);
+                    if (!mounted) return;
+                    setState(() => _preferredPayMethod = selected);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Preferred payment: ${customerPayMethodLabel(selected)}',
+                        ),
+                      ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                  ),
+                  child: const Text('Save preference', style: TextStyle(fontWeight: FontWeight.w800)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _showAddressesSheet() {
@@ -951,6 +1062,16 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                       subtitle: 'HotPot Coins Available: ₹${_hotpotCoins.toInt()} (Tap for history)',
                       isDark: isDark,
                       onTap: _showWalletDialog,
+                    ),
+                    Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
+
+                    _buildListTile(
+                      icon: Icons.payments_outlined,
+                      title: 'Payment options',
+                      subtitle:
+                          '${customerPayMethodLabel(_preferredPayMethod)} · UPI, card & net banking via Razorpay',
+                      isDark: isDark,
+                      onTap: _showPaymentOptionsSheet,
                     ),
                     Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
 

@@ -10,6 +10,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/helpers.dart';
 import '../utils/network.dart';
+import '../utils/payment_preferences.dart';
 import '../utils/pricing_calculator.dart';
 import '../models/cart_enums.dart';
 import '../services/alert_service.dart';
@@ -478,6 +479,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         throw Exception('Payment gateway configuration missing.');
       }
 
+      final preferredMethod = await loadPreferredPaymentMethod();
+      final methodOpts = razorpayMethodOptions(preferredMethod);
+
       final options = {
         'key': razorpayKey,
         'amount': amountInPaise,
@@ -489,7 +493,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         'prefill': {
           'contact': phone,
           'email': user.email ?? '',
+          'method': methodOpts['prefillMethod'],
         },
+        'method': methodOpts['method'],
         'theme': {'color': '#F4511E'}
       };
 

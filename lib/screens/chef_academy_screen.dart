@@ -151,7 +151,7 @@ class _ChefAcademyScreenState extends State<ChefAcademyScreen> {
                       ] else if (_snap.canIssueCertificate) ...[
                         const SizedBox(height: 8),
                         const Text(
-                          'All lessons and quizzes done — certificate syncing…',
+                          'Course complete — preparing your practice certificate…',
                           style: TextStyle(fontSize: 12, color: AppTheme.primary, fontWeight: FontWeight.w600),
                         ),
                       ],
@@ -170,7 +170,7 @@ class _ChefAcademyScreenState extends State<ChefAcademyScreen> {
                 ],
                 const SizedBox(height: 8),
                 const Text(
-                  'This course supports home kitchens on HotPotChef. It does not replace FSSAI registration or formal food-safety training required by law. Progress syncs to your account when online.',
+                  kChefAcademyLegalNote,
                   style: TextStyle(fontSize: 11, color: AppTheme.textMuted, height: 1.35),
                 ),
               ],
@@ -827,7 +827,7 @@ class _AcademyCertificateScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Completed the curated home-chef course covering hygiene, bulk cooking, timing, orders, professional handling, packaging, and equipment.',
+                  'Completed Kitchen Academy: hygiene, bulk cooking, timing, orders, handling, packaging, and equipment for home kitchens.',
                   style: TextStyle(fontSize: 14, height: 1.45, color: onSurface.withValues(alpha: 0.85)),
                 ),
                 const SizedBox(height: 16),
@@ -844,7 +844,7 @@ class _AcademyCertificateScreen extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           const Text(
-            'Synced to your chef account. This is a HotPotChef practice certificate — not a government FSSAI licence.',
+            kChefAcademyCertificateNote,
             style: TextStyle(fontSize: 12, color: AppTheme.textMuted, height: 1.4),
           ),
           const SizedBox(height: 20),

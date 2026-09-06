@@ -297,7 +297,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     final kitchenAddress = _hostingAddressController.text.trim();
     if (fssai.isEmpty || kitchenAddress.isEmpty || _pickupLat == null || _pickupLng == null) {
       _showSnackBar(
-        'Save your FSSAI licence, kitchen address, and map pin in Chef Profile before publishing.',
+        'Add your FSSAI licence, kitchen address, and map pin in Chef Profile, then try publishing again.',
         isError: true,
       );
       return;

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dish · HotPotChef</title>
+    <meta name="description" content="A home-kitchen plate on HotPotChef. Open in the app to order on your slot." />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="HotPotChef" />
+    <meta property="og:title" content="HotPotChef dish" />
+    <meta property="og:description" content="Home kitchens. Near you. On your slot." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#1a1410" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Figtree:wght@500;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/css/site.css" />
+  </head>
+  <body>
+    <div class="wrap site-top">
+      <a href="/">HotPot<strong>Chef</strong></a>
+    </div>
+
+    <div id="visual" class="meal-visual placeholder" aria-hidden="true">HotPotChef</div>
+
+    <main class="meal-page">
+      <div class="wrap">
+        <article class="meal-card">
+          <p class="meal-kicker">Home kitchen plate</p>
+          <h1 class="meal-title" id="title">Loading dish…</h1>
+          <p class="meal-meta" id="meta"></p>
+          <p class="meal-price" id="price" hidden></p>
+          <p class="meal-desc" id="desc" hidden></p>
+          <p class="status" id="status" hidden></p>
+          <div class="cta-row">
+            <a class="btn btn-primary" id="open-app" href="#">Open in HotPotChef</a>
+            <a class="btn btn-ghost" id="play-cta" href="https://play.google.com/store/apps/details?id=com.hotpotchef.app"
+              >Get the app</a
+            >
+          </div>
+        </article>
+      </div>
+    </main>
+
+    <p class="footer-note">Home kitchens. Near you. On your slot.</p>
+
+    <script src="/js/config.js"></script>
+    <script src="/js/meal.js"></script>
+  </body>
+</html>

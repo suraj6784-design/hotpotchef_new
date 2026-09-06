@@ -19,22 +19,40 @@ void main() {
         },
       ],
       orders: [
-        {'id': 'ignored', 'coins_applied': 15, 'created_at': '2026-09-04T19:21:00Z'},
+        {
+          'id': 'abcdef12-3456-7890-abcd-ef1234567890',
+          'coins_applied': 15,
+          'created_at': '2026-09-05T01:00:30Z',
+        },
       ],
     );
     expect(fromLedger, hasLength(2));
     expect(fromLedger.first.isDebit, isTrue);
+    expect(fromLedger.first.orderRef, 'ABCDEF12');
     expect(fromLedger.last.isDebit, isFalse);
+    expect(fromLedger.last.orderRef, isNull);
 
     final fromOrders = mergeCoinLedger(
       transactions: const [],
       orders: [
-        {'id': 'ord-1', 'coins_applied': 15, 'created_at': '2026-09-04T19:21:00Z'},
+        {'id': 'ord-1abc', 'coins_applied': 15, 'created_at': '2026-09-04T19:21:00Z'},
         {'id': 'ord-2', 'coins_applied': 0, 'created_at': '2026-09-04T19:25:00Z'},
       ],
     );
     expect(fromOrders, hasLength(1));
     expect(fromOrders.first.isDebit, isTrue);
     expect(fromOrders.first.amount, 15);
+    expect(fromOrders.first.orderRef, 'ORD-1ABC');
+  });
+
+  test('coinCheckoutDebitTitle appends brief order ref once', () {
+    expect(
+      coinCheckoutDebitTitle(base: 'Coins applied at checkout', orderRef: 'ABC12345'),
+      'Coins applied at checkout · ABC12345',
+    );
+    expect(
+      coinCheckoutDebitTitle(base: 'Coins applied at checkout · ABC12345', orderRef: 'ABC12345'),
+      'Coins applied at checkout · ABC12345',
+    );
   });
 }

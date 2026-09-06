@@ -82,11 +82,11 @@ String academyCertificateShareText({
   final name = chefName.trim().isEmpty ? 'Home chef' : chefName.trim();
   return [
     'HotPotChef Kitchen Academy',
-    '$name completed the curated home-chef course.',
+    '$name completed Kitchen Academy — practical training for home kitchens.',
     'Certificate: $certificateCode',
     'Issued: $date',
-    'Modules: hygiene, bulk cooking, timing, orders, professional handling, packaging, equipment.',
-    'This supports kitchen practice on HotPotChef and does not replace FSSAI or legal food-safety certification.',
+    'Covered: hygiene, bulk cooking, timing, orders, handling, packaging, equipment.',
+    'Practice certificate only — not an FSSAI licence or government food-safety certification.',
   ].join('\n');
 }
 

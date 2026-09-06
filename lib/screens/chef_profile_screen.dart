@@ -556,8 +556,8 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                                   ),
                                   child: Text(
                                     _fssaiController.text.trim().isEmpty
-                                        ? 'FSSAI not on file'
-                                        : 'FSSAI listed',
+                                        ? 'Add FSSAI to build trust'
+                                        : 'FSSAI on file',
                                     style: TextStyle(color: verified, fontSize: 11, fontWeight: FontWeight.bold),
                                   ),
                                 ),
@@ -573,6 +573,11 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                   // Personal Information Section
                   const Text('Kitchen & Business Credentials',
                       style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 15)),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Diners see your FSSAI number on the kitchen card and plate shares. Keep it valid and matching FoSCoS.',
+                    style: TextStyle(color: muted, fontSize: 12, height: 1.35),
+                  ),
                   const SizedBox(height: 12),
                   _buildValidatedTextField(
                     controller: _nameController,
@@ -591,13 +596,17 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                   const SizedBox(height: 12),
                   _buildValidatedTextField(
                     controller: _fssaiController,
-                    label: '14-Digit FSSAI License Number *',
+                    label: '14-digit FSSAI licence number *',
                     prefixIcon: Icons.verified_user_outlined,
                     keyboardType: TextInputType.number,
                     maxLength: 14,
                     validator: (v) {
-                      if (v == null || v.isEmpty) return 'FSSAI License is legally mandatory';
-                      if (!_fssaiRegex.hasMatch(v)) return 'Invalid 14-digit FSSAI format (Starts with 1 or 2)';
+                      if (v == null || v.isEmpty) {
+                        return 'FSSAI licence is required before you publish meals';
+                      }
+                      if (!_fssaiRegex.hasMatch(v)) {
+                        return 'Enter a valid 14-digit FSSAI number (starts with 1 or 2)';
+                      }
                       return null;
                     },
                   ),
@@ -605,7 +614,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                     alignment: Alignment.centerRight,
                     child: TextButton(
                       onPressed: () => launchUrl(Uri.parse('https://foscos.fssai.gov.in/'), mode: LaunchMode.externalApplication),
-                      child: const Text('Apply or Verify FSSAI License ↗',
+                      child: const Text('Apply or verify on FoSCoS ↗',
                           style: TextStyle(color: Colors.blueAccent, fontSize: 12, decoration: TextDecoration.underline)),
                     ),
                   ),

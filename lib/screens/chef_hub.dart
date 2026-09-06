@@ -872,6 +872,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
           Row(
             children: [
               _headerIcon(Icons.forum_outlined, 'Order chats', () => context.push('/chats')),
+              _headerIcon(Icons.campaign_outlined, 'Brand ads', () => context.push('/chef-advertise')),
               _headerIcon(Icons.school_outlined, 'Academy', () => context.push('/chef-academy')),
               _headerIcon(Icons.insights, 'Analytics', () => context.push('/chef-analytics')),
               _headerIcon(Icons.person_outline, 'Profile', () => context.push('/chef-profile')),

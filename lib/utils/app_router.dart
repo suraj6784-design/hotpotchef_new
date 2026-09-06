@@ -19,6 +19,7 @@ import '../screens/driver_profile_screen.dart';
 import '../screens/customer_profile_screen.dart';
 import '../screens/chef_analytics_screen.dart';
 import '../screens/chef_academy_screen.dart';
+import '../screens/chef_advertise_screen.dart';
 import '../screens/chef_publish_meal_screen.dart';
 import '../screens/referral_screen.dart';
 import '../screens/customer_order_history_screen.dart';
@@ -179,6 +180,7 @@ class AppRouter {
       }),
       _fadeRoute('/chef-analytics', (context, state) => const ChefAnalyticsScreen()),
       _fadeRoute('/chef-academy', (context, state) => const ChefAcademyScreen()),
+      _fadeRoute('/chef-advertise', (context, state) => const ChefAdvertiseScreen()),
       _fadeRoute(
         '/kitchen-live/:chefId',
         (context, state) => KitchenLiveScreen(

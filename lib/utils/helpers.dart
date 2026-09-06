@@ -2544,8 +2544,8 @@ ChefCardCopy chefCardCopy(String? locale) {
         homeKitchen: 'Home kitchen',
         preparedBy: 'Prepared by',
         fssaiListed: 'FSSAI',
-        fssaiMissing: 'FSSAI not listed',
-        tapForInfo: 'Tap for info',
+        fssaiMissing: 'FSSAI not listed yet',
+        tapForInfo: 'Tap for kitchen info',
         partnerSince: 'Partner since',
         recentReviews: 'Recent reviews',
         newKitchen: 'New kitchen',
@@ -3678,12 +3678,15 @@ class CoinLedgerEntry {
     required this.amount,
     this.at,
     required this.isDebit,
+    this.orderRef,
   });
 
   final String title;
   final double amount;
   final DateTime? at;
   final bool isDebit;
+  /// Brief order id when this debit is tied to a kitchen order.
+  final String? orderRef;
 }
 
 bool isCoinLedgerDebit(String? type, double amount) {
@@ -3692,11 +3695,73 @@ bool isCoinLedgerDebit(String? type, double amount) {
       .hasMatch(type ?? '');
 }
 
+bool _looksLikeCheckoutCoinDebit(String title, String type) {
+  final hay = '$title $type'.toLowerCase();
+  return hay.contains('checkout') ||
+      hay.contains('coins applied') ||
+      hay.contains('redeem') ||
+      hay.contains('payment');
+}
+
+String? _briefOrderRef(Map<String, dynamic> order) {
+  final label = formatOrderId(order['order_id']?.toString(), order['id']?.toString() ?? '');
+  if (label.isEmpty) return null;
+  return label;
+}
+
+/// Matches a coin debit to an order by coins amount and nearby created_at.
+String? matchOrderRefForCoinDebit({
+  required double amount,
+  required DateTime? at,
+  required List<Map<String, dynamic>> orders,
+  Set<String>? usedOrderIds,
+}) {
+  if (amount <= 0 || orders.isEmpty) return null;
+  final used = usedOrderIds ?? <String>{};
+  Map<String, dynamic>? best;
+  var bestDelta = const Duration(days: 3650);
+
+  for (final order in orders) {
+    final id = order['id']?.toString() ?? '';
+    if (id.isNotEmpty && used.contains(id)) continue;
+    final coins = (order['coins_applied'] as num?)?.toDouble() ??
+        double.tryParse(order['coins_applied']?.toString() ?? '') ??
+        0.0;
+    if ((coins - amount).abs() > 0.01) continue;
+    final orderAt = DateTime.tryParse(order['created_at']?.toString() ?? '');
+    if (at == null || orderAt == null) {
+      best ??= order;
+      continue;
+    }
+    final delta = at.difference(orderAt).abs();
+    if (delta > const Duration(minutes: 15)) continue;
+    if (delta <= bestDelta) {
+      bestDelta = delta;
+      best = order;
+    }
+  }
+
+  if (best == null) return null;
+  final id = best['id']?.toString() ?? '';
+  if (id.isNotEmpty) used.add(id);
+  return _briefOrderRef(best);
+}
+
+String coinCheckoutDebitTitle({required String base, String? orderRef}) {
+  final cleaned = base.trim().isEmpty ? 'Coins applied at checkout' : base.trim();
+  final ref = (orderRef ?? '').trim();
+  if (ref.isEmpty) return cleaned;
+  if (cleaned.toUpperCase().contains(ref.toUpperCase())) return cleaned;
+  return '$cleaned · $ref';
+}
+
 List<CoinLedgerEntry> mergeCoinLedger({
   required List<Map<String, dynamic>> transactions,
   required List<Map<String, dynamic>> orders,
 }) {
   final entries = <CoinLedgerEntry>[];
+  final usedOrderIds = <String>{};
+
   for (final txn in transactions) {
     final rawAmount = (txn['amount'] as num?)?.toDouble() ??
         double.tryParse(txn['amount']?.toString() ?? '') ??
@@ -3704,14 +3769,27 @@ List<CoinLedgerEntry> mergeCoinLedger({
     if (rawAmount == 0) continue;
     final type = txn['transaction_type']?.toString() ?? '';
     final debit = isCoinLedgerDebit(type, rawAmount);
-    final title = (txn['description']?.toString().trim().isNotEmpty ?? false)
+    var title = (txn['description']?.toString().trim().isNotEmpty ?? false)
         ? txn['description'].toString()
         : (type.isNotEmpty ? type : 'Coin transaction');
+    String? orderRef = txn['order_id']?.toString().trim();
+    if (orderRef != null && orderRef.isEmpty) orderRef = null;
+    if (orderRef != null) {
+      orderRef = formatOrderId(orderRef, orderRef);
+    } else if (debit && _looksLikeCheckoutCoinDebit(title, type)) {
+      orderRef = matchOrderRefForCoinDebit(
+        amount: rawAmount.abs(),
+        at: DateTime.tryParse(txn['created_at']?.toString() ?? ''),
+        orders: orders,
+        usedOrderIds: usedOrderIds,
+      );
+    }
     entries.add(CoinLedgerEntry(
       title: title,
       amount: rawAmount.abs(),
       at: DateTime.tryParse(txn['created_at']?.toString() ?? ''),
       isDebit: debit,
+      orderRef: orderRef,
     ));
   }
 
@@ -3726,12 +3804,13 @@ List<CoinLedgerEntry> mergeCoinLedger({
         double.tryParse(order['coins_applied']?.toString() ?? '') ??
         0.0;
     if (coins <= 0) continue;
-    final label = formatOrderId(order['order_id']?.toString(), order['id']?.toString() ?? '');
+    final label = _briefOrderRef(order);
     entries.add(CoinLedgerEntry(
-      title: 'Coins applied on order $label',
+      title: 'Coins applied at checkout',
       amount: coins,
       at: DateTime.tryParse(order['created_at']?.toString() ?? ''),
       isDebit: true,
+      orderRef: label,
     ));
   }
 
