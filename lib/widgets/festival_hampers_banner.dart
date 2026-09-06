@@ -9,10 +9,16 @@ class FestivalHampersBanner extends StatefulWidget {
   const FestivalHampersBanner({
     super.key,
     this.excludedChefIds = const {},
+    this.destinationLat,
+    this.destinationLng,
+    this.chefKitchenPins = const {},
     required this.onHamperTap,
   });
 
   final Set<String> excludedChefIds;
+  final double? destinationLat;
+  final double? destinationLng;
+  final Map<String, Map<String, dynamic>> chefKitchenPins;
   final ValueChanged<Map<String, dynamic>> onHamperTap;
 
   @override
@@ -39,6 +45,9 @@ class _FestivalHampersBannerState extends State<FestivalHampersBanner> {
         final hampers = festivalHamperMeals(
           snapshot.data ?? const [],
           excludedChefIds: widget.excludedChefIds,
+          destinationLat: widget.destinationLat,
+          destinationLng: widget.destinationLng,
+          chefKitchenPins: widget.chefKitchenPins,
         );
         if (hampers.isEmpty) return const SizedBox.shrink();
 

@@ -459,6 +459,17 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
 
   Future<void> _saveMealPayload(Map<String, dynamic> payload) async {
     final body = Map<String, dynamic>.from(payload);
+    final requestedFeatureKeys = {
+      for (final key in const [
+        'is_hamper',
+        'is_society_night',
+        'society_label',
+        'is_shelf_item',
+        'shelf_kind',
+      ])
+        if (payload.containsKey(key)) key,
+    };
+    final stripped = <String>{};
     Object? lastError;
     for (var attempt = 0; attempt < 6; attempt++) {
       try {
@@ -468,6 +479,15 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
         } else {
           await _supabase.from('meals').insert(body);
         }
+        if (stripped.isNotEmpty && mounted) {
+          final lost = stripped.intersection(requestedFeatureKeys);
+          if (lost.isNotEmpty) {
+            _showSnackBar(
+              'Meal saved, but some specialty fields could not sync yet (${lost.join(', ')}). Pull to refresh schema or re-save after DB migrate.',
+              isError: true,
+            );
+          }
+        }
         return;
       } on PostgrestException catch (e) {
         lastError = e;
@@ -475,6 +495,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
         final match = RegExp(r"Could not find the '([^']+)' column").firstMatch(e.message);
         final missing = match?.group(1);
         if (missing == null || !body.containsKey(missing)) rethrow;
+        stripped.add(missing);
         body.remove(missing);
       }
     }

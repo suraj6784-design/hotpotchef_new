@@ -122,8 +122,13 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
         earningsFuture,
       ].cast<Future<dynamic>>());
 
-      final availableList = (results[0] as List)
-          .map((e) => Map<String, dynamic>.from(e))
+      final availableRaw = (results[0] as List).map((e) => Map<String, dynamic>.from(e)).toList();
+      final activeRaw = (results[1] as List).map((e) => Map<String, dynamic>.from(e)).toList();
+      final completedRaw = (results[2] as List).map((e) => Map<String, dynamic>.from(e)).toList();
+
+      await _attachChefKitchenPins([...availableRaw, ...activeRaw, ...completedRaw]);
+
+      final availableList = availableRaw
           .where((e) =>
               ServiceType.fromString(
                 e['order_type']?.toString() ?? e['service_type']?.toString(),
@@ -132,13 +137,9 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
           .map(DriverDeliveryModel.fromJson)
           .toList();
 
-      final activeList = (results[1] as List)
-          .map((e) => DriverDeliveryModel.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
+      final activeList = activeRaw.map(DriverDeliveryModel.fromJson).toList();
 
-      final completedList = (results[2] as List)
-          .map((e) => DriverDeliveryModel.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
+      final completedList = completedRaw.map(DriverDeliveryModel.fromJson).toList();
       final recentList = completedList.take(15).toList();
 
       final profileData = results[3] is Map
@@ -161,6 +162,60 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
     } catch (e, st) {
       _logDriverError(e, st, 'Failed loading driver dashboard metrics');
       state = state.copyWith(isLoading: false, errorMessage: 'Failed to synchronize orders.');
+    }
+  }
+
+  /// Attach chef kitchen address + pin so Active/Jobs cards can show pickup and navigate.
+  Future<void> _attachChefKitchenPins(List<Map<String, dynamic>> orders) async {
+    final missing = <String>{};
+    for (final order in orders) {
+      final chefId = order['chef_id']?.toString();
+      if (chefId == null || chefId.isEmpty) continue;
+      final items = order['items'];
+      final hasPickupText = orderPickupAddress(
+            order,
+            items: items is List
+                ? items.whereType<Map>().map((e) => Map<String, dynamic>.from(e))
+                : const [],
+          ).isNotEmpty;
+      final hasPin = hasKitchenPin(order);
+      if (hasPickupText && hasPin) continue;
+      missing.add(chefId);
+    }
+    if (missing.isEmpty) return;
+
+    try {
+      final rows = await _supabase
+          .from('users')
+          .select(
+            'id, name, full_name, address, house_no, street, landmark, city, state, postal_code, pincode, lat, lng, latitude, longitude',
+          )
+          .inFilter('id', missing.toList());
+      final byId = <String, Map<String, dynamic>>{
+        for (final row in rows)
+          if (row['id'] != null) row['id'].toString(): Map<String, dynamic>.from(row),
+      };
+      for (final order in orders) {
+        final chefId = order['chef_id']?.toString();
+        if (chefId == null) continue;
+        final pin = byId[chefId];
+        if (pin == null) continue;
+        order['_chef_pin'] = pin;
+        if (!hasKitchenPin(order) && hasKitchenPin(pin)) {
+          order['pickup_lat'] = kitchenCoordinate(pin, latitude: true);
+          order['pickup_lng'] = kitchenCoordinate(pin, latitude: false);
+        }
+        if ((order['pickup_address'] == null || order['pickup_address'].toString().trim().isEmpty)) {
+          final formatted = formatSavedAddress(pin);
+          if (formatted.isNotEmpty) order['pickup_address'] = formatted;
+        }
+        if ((order['chef_name'] == null || order['chef_name'].toString().trim().isEmpty)) {
+          final name = (pin['name'] ?? pin['full_name'])?.toString().trim();
+          if (name != null && name.isNotEmpty) order['chef_name'] = name;
+        }
+      }
+    } catch (e, st) {
+      _logDriverError(e, st, 'Failed attaching chef kitchen pins for driver runs');
     }
   }
 

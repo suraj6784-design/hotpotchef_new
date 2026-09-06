@@ -111,8 +111,11 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   String _orderTitle(Map<String, dynamic> order) {
     final items = _parseItems(order['items']);
     if (items.isEmpty) return order['title']?.toString() ?? 'Meal Order';
-    final first = items.first['title']?.toString() ?? 'Meal Order';
-    return items.length > 1 ? '$first +${items.length - 1} more' : first;
+    final first = items.first;
+    final base = first['title']?.toString() ?? 'Meal Order';
+    final tag = orderLineSpecialtyTag(first);
+    final titled = tag == null ? base : '$tag · $base';
+    return items.length > 1 ? '$titled +${items.length - 1} more' : titled;
   }
 
   int _orderQuantity(Map<String, dynamic> order) {

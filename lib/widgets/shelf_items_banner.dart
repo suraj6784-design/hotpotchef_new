@@ -9,10 +9,16 @@ class ShelfItemsBanner extends StatefulWidget {
   const ShelfItemsBanner({
     super.key,
     this.excludedChefIds = const {},
+    this.destinationLat,
+    this.destinationLng,
+    this.chefKitchenPins = const {},
     required this.onItemTap,
   });
 
   final Set<String> excludedChefIds;
+  final double? destinationLat;
+  final double? destinationLng;
+  final Map<String, Map<String, dynamic>> chefKitchenPins;
   final ValueChanged<Map<String, dynamic>> onItemTap;
 
   @override
@@ -39,6 +45,9 @@ class _ShelfItemsBannerState extends State<ShelfItemsBanner> {
         final items = shelfItems(
           snapshot.data ?? const [],
           excludedChefIds: widget.excludedChefIds,
+          destinationLat: widget.destinationLat,
+          destinationLng: widget.destinationLng,
+          chefKitchenPins: widget.chefKitchenPins,
         );
         if (items.isEmpty) return const SizedBox.shrink();
 

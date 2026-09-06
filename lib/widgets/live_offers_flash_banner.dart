@@ -11,10 +11,16 @@ class LiveOffersFlashBanner extends StatefulWidget {
   const LiveOffersFlashBanner({
     super.key,
     this.excludedChefIds = const {},
+    this.destinationLat,
+    this.destinationLng,
+    this.chefKitchenPins = const {},
     required this.onOfferTap,
   });
 
   final Set<String> excludedChefIds;
+  final double? destinationLat;
+  final double? destinationLng;
+  final Map<String, Map<String, dynamic>> chefKitchenPins;
   final ValueChanged<Map<String, dynamic>> onOfferTap;
 
   @override
@@ -84,6 +90,9 @@ class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
         final offers = flashableOfferMeals(
           snapshot.data ?? const [],
           excludedChefIds: widget.excludedChefIds,
+          destinationLat: widget.destinationLat,
+          destinationLng: widget.destinationLng,
+          chefKitchenPins: widget.chefKitchenPins,
         );
         if (offers.isEmpty) return const SizedBox.shrink();
         WidgetsBinding.instance.addPostFrameCallback((_) {

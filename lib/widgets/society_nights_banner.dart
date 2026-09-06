@@ -9,10 +9,16 @@ class SocietyNightsBanner extends StatefulWidget {
   const SocietyNightsBanner({
     super.key,
     this.excludedChefIds = const {},
+    this.destinationLat,
+    this.destinationLng,
+    this.chefKitchenPins = const {},
     required this.onNightTap,
   });
 
   final Set<String> excludedChefIds;
+  final double? destinationLat;
+  final double? destinationLng;
+  final Map<String, Map<String, dynamic>> chefKitchenPins;
   final ValueChanged<Map<String, dynamic>> onNightTap;
 
   @override
@@ -39,6 +45,9 @@ class _SocietyNightsBannerState extends State<SocietyNightsBanner> {
         final nights = societyNightMeals(
           snapshot.data ?? const [],
           excludedChefIds: widget.excludedChefIds,
+          destinationLat: widget.destinationLat,
+          destinationLng: widget.destinationLng,
+          chefKitchenPins: widget.chefKitchenPins,
         );
         if (nights.isEmpty) return const SizedBox.shrink();
 

@@ -462,8 +462,9 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   void _handleAddToCart(Map<String, dynamic> meal) async {
     final added = await addMealToCartWithConflict(context: context, ref: ref, meal: meal);
     if (!added || !mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Added to Cart!'), backgroundColor: Colors.green, duration: Duration(seconds: 1)),
+    showAddedToCartSnack(
+      context,
+      onViewCart: widget.onGoToCart,
     );
   }
 
@@ -637,78 +638,12 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                         Row(
                           children: [
                             if (isLoggedIn) ...[
-                              Container(
-                                decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle),
-                                child: IconButton(
-                                  tooltip: 'Order chats',
-                                  icon: const Icon(Icons.forum_outlined, color: Colors.white, size: 20),
-                                  onPressed: () => context.push('/chats'),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Container(
-                                decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle),
-                                child: IconButton(
-                                  tooltip: 'Kitchens you follow',
-                                  icon: Icon(
-                                    _showFollowingOnly ? Icons.storefront : Icons.storefront_outlined,
-                                    color: Colors.white,
-                                    size: 20,
-                                  ),
-                                  onPressed: () {
-                                    setState(() => _showFollowingOnly = !_showFollowingOnly);
-                                    if (_showFollowingOnly && followedKitchens.isEmpty) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(
-                                          content: Text('Follow a kitchen from the chef card to see it here.'),
-                                          duration: Duration(seconds: 2),
-                                        ),
-                                      );
-                                    }
-                                  },
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Container(
-                                decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle),
-                                child: IconButton(
-                                  icon: Icon(_showFavoritesOnly ? Icons.favorite : Icons.favorite_border,
-                                      color: Colors.white, size: 20),
-                                  onPressed: () {
-                                    setState(() => _showFavoritesOnly = !_showFavoritesOnly);
-                                    if (_showFavoritesOnly && widget.favoriteMeals.isEmpty) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(
-                                          content: Text('You have no favorite meals saved yet!'),
-                                          duration: Duration(seconds: 1),
-                                        ),
-                                      );
-                                    }
-                                  },
-                                ),
-                              ),
-                              const SizedBox(width: 12),
                               GestureDetector(
                                 onTap: widget.onProfileTap,
                                 child: const CircleAvatar(
-                                    backgroundColor: Colors.white,
-                                    radius: 18,
-                                    child: Icon(Icons.person, color: brandPrimary, size: 20)),
-                              ),
-                              const SizedBox(width: 8),
-                              GestureDetector(
-                                onTap: () {
-                                  setState(_resetGuestFeedState);
-                                  widget.onLogout();
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                      color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle),
-                                  child: const Icon(Icons.logout, color: Colors.white, size: 18),
+                                  backgroundColor: Colors.white,
+                                  radius: 18,
+                                  child: Icon(Icons.person, color: brandPrimary, size: 20),
                                 ),
                               ),
                             ] else ...[
@@ -774,24 +709,6 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           ),
           const SizedBox(height: 48),
 
-          LiveOffersFlashBanner(
-            excludedChefIds: _closedChefIds,
-            onOfferTap: (meal) => showMealDetailsDialog(context, meal, ref),
-          ),
-          FestivalHampersBanner(
-            excludedChefIds: _closedChefIds,
-            onHamperTap: (meal) => showMealDetailsDialog(context, meal, ref),
-          ),
-          SocietyNightsBanner(
-            excludedChefIds: _closedChefIds,
-            onNightTap: (meal) => showMealDetailsDialog(context, meal, ref),
-          ),
-          ShelfItemsBanner(
-            excludedChefIds: _closedChefIds,
-            onItemTap: (meal) => showMealDetailsDialog(context, meal, ref),
-          ),
-          const RescueWasteBanner(),
-
           if (_hasDeliveryPin)
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
@@ -811,28 +728,80 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
 
           if (isLoggedIn)
             LastOrderReorderBanner(onAddedToCart: widget.onGoToCart),
-          if (isLoggedIn) const WeeklyPlanDueBanner(),
-          if (isLoggedIn) const DailyStreakBanner(),
-          if (isLoggedIn && !_hasActiveSearch) const AiRecommendationsSection(),
-
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            child: GradientButton(
-              label: 'Broadcast bulk / catering request',
-              icon: Icons.campaign_outlined,
-              height: 50,
-              onPressed: () {
-                if (!isLoggedIn) {
-                  showAuthBottomSheet(context, () => setState(() {}));
-                  return;
-                }
-                context.push('/bulk-request');
-              },
-            ),
-          ),
-          const SizedBox(height: 12),
 
           if (!_hasActiveSearch) ...[
+            if (isLoggedIn) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FilterChip(
+                      label: const Text('Following'),
+                      selected: _showFollowingOnly,
+                      avatar: Icon(
+                        _showFollowingOnly ? Icons.storefront : Icons.storefront_outlined,
+                        size: 16,
+                        color: _showFollowingOnly ? Colors.white : AppTheme.primary,
+                      ),
+                      selectedColor: AppTheme.primary,
+                      checkmarkColor: Colors.white,
+                      labelStyle: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                        color: _showFollowingOnly ? Colors.white : AppTheme.onSurfaceOf(context),
+                      ),
+                      onSelected: (selected) {
+                        setState(() {
+                          _showFollowingOnly = selected;
+                          if (selected) _showFavoritesOnly = false;
+                        });
+                        if (selected && followedKitchens.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Follow a kitchen from the chef card to see it here.'),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                    FilterChip(
+                      label: const Text('Favorites'),
+                      selected: _showFavoritesOnly,
+                      avatar: Icon(
+                        _showFavoritesOnly ? Icons.favorite : Icons.favorite_border,
+                        size: 16,
+                        color: _showFavoritesOnly ? Colors.white : AppTheme.primary,
+                      ),
+                      selectedColor: AppTheme.primary,
+                      checkmarkColor: Colors.white,
+                      labelStyle: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                        color: _showFavoritesOnly ? Colors.white : AppTheme.onSurfaceOf(context),
+                      ),
+                      onSelected: (selected) {
+                        setState(() {
+                          _showFavoritesOnly = selected;
+                          if (selected) _showFollowingOnly = false;
+                        });
+                        if (selected && widget.favoriteMeals.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Save a meal with the heart icon to see it here.'),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
             _filterChipRow(
               chips: _dietFilters,
               selected: _selectedDiet,
@@ -844,8 +813,6 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
               selected: _selectedCategory,
               onSelected: (name) => setState(() => _selectedCategory = name),
             ),
-            const SizedBox(height: 12),
-            const DynamicUIEngine(screenName: 'customer_feed'),
             const SizedBox(height: 12),
           ],
 
@@ -887,12 +854,12 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                       });
                     },
                     icon: const Icon(Icons.close, size: 16, color: Colors.red),
-                    label: const Text('Clear', style: TextStyle(color: Colors.red)),
-                  )
+                    label: const Text('Clear', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w700)),
+                  ),
               ],
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
 
           if (_isAiSearching)
             const Center(
@@ -965,7 +932,69 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                   hasFollows: followedKitchens.isNotEmpty,
                 );
               },
-            )
+            ),
+
+          if (!_hasActiveSearch) ...[
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+              child: Text(
+                'More for you',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                  color: AppTheme.onSurfaceOf(context),
+                ),
+              ),
+            ),
+            LiveOffersFlashBanner(
+              excludedChefIds: _closedChefIds,
+              destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
+              destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
+              chefKitchenPins: _chefKitchenPins,
+              onOfferTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
+            ),
+            FestivalHampersBanner(
+              excludedChefIds: _closedChefIds,
+              destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
+              destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
+              chefKitchenPins: _chefKitchenPins,
+              onHamperTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
+            ),
+            SocietyNightsBanner(
+              excludedChefIds: _closedChefIds,
+              destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
+              destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
+              chefKitchenPins: _chefKitchenPins,
+              onNightTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
+            ),
+            ShelfItemsBanner(
+              excludedChefIds: _closedChefIds,
+              destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
+              destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
+              chefKitchenPins: _chefKitchenPins,
+              onItemTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
+            ),
+            const RescueWasteBanner(),
+            if (isLoggedIn) const WeeklyPlanDueBanner(),
+            if (isLoggedIn) const DailyStreakBanner(),
+            if (isLoggedIn) const AiRecommendationsSection(),
+            const DynamicUIEngine(screenName: 'customer_feed'),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: TextButton.icon(
+                onPressed: () {
+                  if (!isLoggedIn) {
+                    showAuthBottomSheet(context, () => setState(() {}));
+                    return;
+                  }
+                  context.push('/bulk-request');
+                },
+                icon: const Icon(Icons.campaign_outlined, size: 18),
+                label: const Text('Bulk / catering request'),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1122,7 +1151,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             final etaLabel = _etaLabelForMeal(meal);
 
             return GestureDetector(
-              onTap: () => showMealDetailsDialog(context, meal, ref),
+              onTap: () => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
               child: Container(
                 clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(

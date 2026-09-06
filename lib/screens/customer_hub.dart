@@ -17,6 +17,7 @@ import '../services/auth_session.dart';
 import '../utils/app_haptics.dart';
 import '../utils/app_theme.dart';
 import '../widgets/app_widgets.dart';
+import '../widgets/customer_ui_components.dart';
 import 'customer_feed_tab.dart';
 import 'customer_cart_tab.dart';
 import 'customer_orders_tab.dart';
@@ -70,6 +71,9 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
   }
 
   void _onNavigationItemTapped(int index) {
+    if (index == 1) {
+      dismissAppSnackBars(context);
+    }
     setState(() {
       _selectedIndex = index;
       if (index == 2) _ordersEpoch++;
@@ -121,6 +125,7 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
               child: GestureDetector(
                 onTap: () {
                   AppHaptics.light();
+                  dismissAppSnackBars(context);
                   _onNavigationItemTapped(1);
                 },
                 child: Container(

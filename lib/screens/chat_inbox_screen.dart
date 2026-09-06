@@ -173,7 +173,7 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
                           EmptyState(
                             icon: Icons.forum_outlined,
                             title: 'No Order# chats yet',
-                            message: 'Open an order, leftover, or catering lead and the group will show up here.',
+                            message: 'A chat appears here after you, the chef, or the driver send the first message.',
                           ),
                         ],
                       )

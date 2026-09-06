@@ -2,6 +2,7 @@
 
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -42,6 +43,53 @@ Future<void> shareTextOnWhatsApp(String text) async {
   }
 }
 
+Future<void> shareTextWithApps(String text) {
+  return SharePlus.instance.share(ShareParams(text: text));
+}
+
+/// Preview with a tappable HTTPS meal link (opens in-app meal screen).
+Widget shareCardPreview(BuildContext context, String text) {
+  final match = RegExp(r'https://[^\s]+').firstMatch(text);
+  if (match == null) {
+    return SelectableText(
+      text,
+      style: const TextStyle(fontSize: 13, height: 1.35, color: AppTheme.textMuted),
+    );
+  }
+  final before = text.substring(0, match.start);
+  final link = match.group(0)!;
+  final after = text.substring(match.end);
+  return SelectableText.rich(
+    TextSpan(
+      style: const TextStyle(fontSize: 13, height: 1.35, color: AppTheme.textMuted),
+      children: [
+        TextSpan(text: before),
+        TextSpan(
+          text: link,
+          style: const TextStyle(
+            color: AppTheme.primary,
+            decoration: TextDecoration.underline,
+            fontWeight: FontWeight.w600,
+          ),
+          recognizer: TapGestureRecognizer()
+            ..onTap = () {
+              final uri = Uri.tryParse(link);
+              if (uri == null) return;
+              final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+              final mealIdx = segments.indexOf('meal');
+              final mealId = mealIdx >= 0 && mealIdx + 1 < segments.length
+                  ? segments[mealIdx + 1]
+                  : (segments.isNotEmpty ? segments.last : '');
+              if (mealId.isEmpty) return;
+              context.push('/meal/$mealId');
+            },
+        ),
+        TextSpan(text: after),
+      ],
+    ),
+  );
+}
+
 Future<void> showMealShareSheet(BuildContext context, Map<String, dynamic> meal) {
   final text = mealShareText(meal);
   return showModalBottomSheet<void>(
@@ -55,16 +103,19 @@ Future<void> showMealShareSheet(BuildContext context, Map<String, dynamic> meal)
           children: [
             Text('Share this dish', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.onSurfaceOf(ctx))),
             const SizedBox(height: 8),
-            Text(text, style: const TextStyle(fontSize: 13, height: 1.35, color: AppTheme.textMuted)),
+            shareCardPreview(ctx, text),
             const SizedBox(height: 16),
             FilledButton.icon(
-              style: FilledButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.white,
+              ),
               onPressed: () {
                 Navigator.pop(ctx);
-                shareMealOnWhatsApp(meal);
+                shareTextWithApps(text);
               },
-              icon: const Icon(Icons.chat),
-              label: const Text('WhatsApp', style: TextStyle(fontWeight: FontWeight.w800)),
+              icon: const Icon(Icons.ios_share_rounded),
+              label: const Text('Share · WhatsApp, Instagram…', style: TextStyle(fontWeight: FontWeight.w800)),
             ),
             const SizedBox(height: 8),
             OutlinedButton.icon(
@@ -74,14 +125,6 @@ Future<void> showMealShareSheet(BuildContext context, Map<String, dynamic> meal)
               },
               icon: const Icon(Icons.copy_outlined),
               label: const Text('Copy card', style: TextStyle(fontWeight: FontWeight.w700)),
-            ),
-            const SizedBox(height: 8),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                SharePlus.instance.share(ShareParams(text: text));
-              },
-              child: const Text('More apps'),
             ),
           ],
         ),
@@ -122,33 +165,23 @@ Future<void> showPlateShareSheet(
             ),
             const SizedBox(height: 4),
             const Text(
-              'Tell neighbours who cooked it — with FSSAI when listed.',
+              'Tell neighbours who cooked it — with FSSAI when listed. The link opens this dish in HotPotChef.',
               style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
             ),
             const SizedBox(height: 10),
-            Text(text, style: const TextStyle(fontSize: 13, height: 1.35, color: AppTheme.textMuted)),
+            shareCardPreview(ctx, text),
             const SizedBox(height: 16),
             FilledButton.icon(
-              style: FilledButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white),
-              onPressed: () {
-                Navigator.pop(ctx);
-                shareTextOnWhatsApp(text);
-              },
-              icon: const Icon(Icons.chat),
-              label: const Text('WhatsApp', style: TextStyle(fontWeight: FontWeight.w800)),
-            ),
-            const SizedBox(height: 8),
-            FilledButton.icon(
               style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFFE1306C),
+                backgroundColor: AppTheme.primary,
                 foregroundColor: Colors.white,
               ),
               onPressed: () {
                 Navigator.pop(ctx);
-                SharePlus.instance.share(ShareParams(text: text));
+                shareTextWithApps(text);
               },
-              icon: const Icon(Icons.camera_alt_outlined),
-              label: const Text('Instagram / Stories', style: TextStyle(fontWeight: FontWeight.w800)),
+              icon: const Icon(Icons.ios_share_rounded),
+              label: const Text('Share · WhatsApp, Instagram…', style: TextStyle(fontWeight: FontWeight.w800)),
             ),
             const SizedBox(height: 8),
             OutlinedButton.icon(
@@ -947,16 +980,54 @@ Future<bool> addMealToCartWithConflict({
   return cart.addToCart(meal, quantity, addOns: addOns, clearIfVendorConflict: true);
 }
 
-void showMealDetailsDialog(BuildContext context, Map<String, dynamic> meal, WidgetRef ref) {
+void showMealDetailsDialog(
+  BuildContext context,
+  Map<String, dynamic> meal,
+  WidgetRef ref, {
+  VoidCallback? onGoToCart,
+}) {
   Navigator.push(
     context,
     appMaterialRoute(
       Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        body: MealDetailsBody(meal: meal, ref: ref),
+        body: MealDetailsBody(meal: meal, ref: ref, onGoToCart: onGoToCart),
       ),
     ),
   );
+}
+
+/// Consistent post-add snack that points diners to Cart.
+void showAddedToCartSnack(
+  BuildContext context, {
+  String message = 'Added to cart',
+  VoidCallback? onViewCart,
+}) {
+  final messenger = ScaffoldMessenger.of(context);
+  messenger.clearSnackBars();
+  messenger.showSnackBar(
+    SnackBar(
+      content: Text(message),
+      backgroundColor: AppTheme.primary,
+      behavior: SnackBarBehavior.floating,
+      duration: const Duration(seconds: 3),
+      action: onViewCart == null
+          ? null
+          : SnackBarAction(
+              label: 'View cart',
+              textColor: Colors.white,
+              onPressed: () {
+                messenger.clearSnackBars();
+                onViewCart();
+              },
+            ),
+    ),
+  );
+}
+
+/// Drop lingering “Added to cart” (and other) snacks when entering Cart / Checkout / Pay.
+void dismissAppSnackBars(BuildContext context) {
+  ScaffoldMessenger.maybeOf(context)?.clearSnackBars();
 }
 
 Widget _mealInfoChip({
@@ -1003,8 +1074,14 @@ Widget _mealInfoChip({
 class MealDetailsBody extends StatefulWidget {
   final Map<String, dynamic> meal;
   final WidgetRef ref;
+  final VoidCallback? onGoToCart;
 
-  const MealDetailsBody({super.key, required this.meal, required this.ref});
+  const MealDetailsBody({
+    super.key,
+    required this.meal,
+    required this.ref,
+    this.onGoToCart,
+  });
 
   @override
   State<MealDetailsBody> createState() => _MealDetailsBodyState();
@@ -1511,13 +1588,10 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                               );
                               if (!added || !context.mounted) return;
                               Navigator.pop(context);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Added $_quantity portion(s) to cart!'),
-                                  backgroundColor: Colors.green,
-                                  behavior: SnackBarBehavior.floating,
-                                  duration: const Duration(seconds: 2),
-                                ),
+                              showAddedToCartSnack(
+                                context,
+                                message: 'Added $_quantity portion(s) to cart',
+                                onViewCart: widget.onGoToCart,
                               );
                             },
                       child: Text(

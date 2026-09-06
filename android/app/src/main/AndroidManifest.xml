@@ -43,6 +43,16 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="hotpotchef" android:host="app"/>
             </intent-filter>
+            <!-- Clickable HTTPS meal cards (WhatsApp / Instagram). Path /meal/{id} → MealLinkScreen. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data
+                    android:scheme="https"
+                    android:host="hotpotchef.com"
+                    android:pathPrefix="/meal"/>
+            </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>

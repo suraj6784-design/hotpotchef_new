@@ -32,6 +32,51 @@ void main() {
     expect(delivery.pickupAddress, 'FC Road');
   });
 
+  test('DriverDeliveryModel navigates kitchen first then customer after out for delivery', () {
+    final assigned = DriverDeliveryModel.fromJson({
+      'id': 'order-row',
+      'chef_id': 'chef-1',
+      'status': 'Driver Assigned',
+      'delivery_address': 'Kothrud gate',
+      'delivery_lat': 18.51,
+      'delivery_lng': 73.82,
+      '_chef_pin': {
+        'name': 'Asha',
+        'address': 'Wakad kitchen',
+        'lat': 18.60,
+        'lng': 73.76,
+      },
+    });
+    expect(assigned.navigateToCustomer, isFalse);
+    expect(assigned.navigateButtonLabel, 'Navigate to kitchen');
+    expect(assigned.pickupAddress, contains('Wakad'));
+    expect(assigned.pickupLat, 18.60);
+    expect(assigned.deliveryLat, 18.51);
+    expect(assigned.toTrackingOrderExtra()['navigate_leg'], 'pickup');
+
+    final out = DriverDeliveryModel.fromJson({
+      'id': 'order-row',
+      'status': 'Out for Delivery',
+      'delivery_address': 'Kothrud gate',
+      'delivery_lat': 18.51,
+      'delivery_lng': 73.82,
+    });
+    expect(out.navigateToCustomer, isTrue);
+    expect(out.navigateButtonLabel, 'Navigate to customer');
+    expect(out.toTrackingOrderExtra()['navigate_leg'], 'dropoff');
+  });
+
+  test('googleMapsDirectionsUri prefers coordinates over address', () {
+    expect(
+      googleMapsDirectionsUri(lat: 18.6, lng: 73.7, address: 'ignored')!.toString(),
+      contains('18.6,73.7'),
+    );
+    expect(
+      googleMapsDirectionsUri(address: 'Wakad kitchen')!.toString(),
+      contains('Wakad'),
+    );
+  });
+
   test('DriverDeliveryModel reads the meal time slot', () {
     final delivery = DriverDeliveryModel.fromJson({
       'id': 'order-row',

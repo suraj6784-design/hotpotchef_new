@@ -66,6 +66,10 @@ class DriverDeliveryModel {
   final DateTime createdAt;
   final String timeSlot;
   final String? selectedDate;
+  final double? pickupLat;
+  final double? pickupLng;
+  final double? deliveryLat;
+  final double? deliveryLng;
 
   const DriverDeliveryModel({
     required this.orderId,
@@ -83,6 +87,10 @@ class DriverDeliveryModel {
     required this.createdAt,
     this.timeSlot = '',
     this.selectedDate,
+    this.pickupLat,
+    this.pickupLng,
+    this.deliveryLat,
+    this.deliveryLng,
   });
 
   Map<String, dynamic> get slotSource => {
@@ -91,16 +99,88 @@ class DriverDeliveryModel {
         if (selectedDate != null && selectedDate!.isNotEmpty) 'selected_date': selectedDate,
       };
 
+  /// After Start Delivery / Out for Delivery → navigate to customer; before that → kitchen.
+  bool get navigateToCustomer => driverRunIsOutForDelivery(statusLabel.isEmpty ? status.toDbValue() : statusLabel);
+
+  String get navigateLeg => navigateToCustomer ? 'dropoff' : 'pickup';
+
+  String get navigateButtonLabel =>
+      navigateToCustomer ? 'Navigate to customer' : 'Navigate to kitchen';
+
+  String get activeStepTitle =>
+      navigateToCustomer ? 'Deliver to customer' : 'Pickup from $chefName';
+
+  String get pickupCoordLabel => formatMapCoordinateLabel(pickupLat, pickupLng);
+
+  String get dropoffCoordLabel => formatMapCoordinateLabel(deliveryLat, deliveryLng);
+
+  Map<String, dynamic> toTrackingOrderExtra() => {
+        'id': orderId,
+        'status': statusLabel.isEmpty ? status.toDbValue() : statusLabel,
+        'delivery_address': customerAddress,
+        'pickup_address': pickupAddress,
+        'chef_address': pickupAddress,
+        'hosting_address': pickupAddress,
+        'title': chefName,
+        'chef_id': chefId,
+        'customer_id': customerId,
+        'navigate_leg': navigateLeg,
+        if (pickupLat != null) 'pickup_lat': pickupLat,
+        if (pickupLng != null) 'pickup_lng': pickupLng,
+        if (pickupLat != null) 'chef_lat': pickupLat,
+        if (pickupLng != null) 'chef_lng': pickupLng,
+        if (deliveryLat != null) 'delivery_lat': deliveryLat,
+        if (deliveryLng != null) 'delivery_lng': deliveryLng,
+      };
+
   factory DriverDeliveryModel.fromJson(Map<String, dynamic> json) {
-    final chef = _embeddedMap(json['chefs'] ?? json['chef']);
+    final chef = _embeddedMap(json['chefs'] ?? json['chef'] ?? json['_chef_pin']);
     final items = _itemsFrom(json['items'] ?? json['cart_items'] ?? json['order_items']);
     final first = items.isNotEmpty ? items.first : const <String, dynamic>{};
+    final nestedMeal = first['rawMealDetails'] ?? first['mealDetails'] ?? first['meal_details'];
+    final mealMap = nestedMeal is Map ? Map<String, dynamic>.from(nestedMeal) : const <String, dynamic>{};
+
+    final pickup = orderPickupAddress(json, items: [...items, mealMap, if (chef != null) chef]);
+    final chefFormatted = formatSavedAddress(chef);
+    final resolvedPickup = pickup.isNotEmpty
+        ? pickup
+        : (chefFormatted.isNotEmpty
+            ? chefFormatted
+            : (chef?['address']?.toString().trim() ?? ''));
+
+    final dropoff = orderDropoffAddress(json, items: items);
+    final resolvedDropoff = dropoff.isNotEmpty ? dropoff : (json['delivery_address']?.toString() ?? '');
+
+    final pickupLat = kitchenCoordinate(json, latitude: true) ??
+        kitchenCoordinate(first, latitude: true) ??
+        kitchenCoordinate(mealMap, latitude: true) ??
+        kitchenCoordinate(chef, latitude: true);
+    final pickupLng = kitchenCoordinate(json, latitude: false) ??
+        kitchenCoordinate(first, latitude: false) ??
+        kitchenCoordinate(mealMap, latitude: false) ??
+        kitchenCoordinate(chef, latitude: false);
+
+    final dropLat = double.tryParse(json['delivery_lat']?.toString() ?? '') ??
+        addressCoordinate({
+          'lat': json['customer_lat'],
+          'latitude': json['customer_lat'],
+        }, latitude: true);
+    final dropLng = double.tryParse(json['delivery_lng']?.toString() ?? '') ??
+        addressCoordinate({
+          'lng': json['customer_lng'],
+          'longitude': json['customer_lng'],
+        }, latitude: false);
+
     return DriverDeliveryModel(
       orderId: json['id']?.toString() ?? '',
       chefId: json['chef_id']?.toString() ?? '',
-      chefName: json['chef_name']?.toString() ?? chef?['business_name']?.toString() ?? 'Chef Kitchen',
-      pickupAddress: json['pickup_address']?.toString() ?? chef?['pickup_address']?.toString() ?? '',
-      customerAddress: json['delivery_address']?.toString() ?? '',
+      chefName: json['chef_name']?.toString() ??
+          chef?['business_name']?.toString() ??
+          chef?['name']?.toString() ??
+          chef?['full_name']?.toString() ??
+          'Chef Kitchen',
+      pickupAddress: resolvedPickup.isEmpty ? 'Kitchen address pending' : resolvedPickup,
+      customerAddress: resolvedDropoff.isEmpty ? 'Customer address pending' : resolvedDropoff,
       customerId: json['customer_id']?.toString() ?? json['user_id']?.toString() ?? '',
       chatRoomId: orderChatRoomId(json, items: items),
       payout: driverPayoutFromOrder(json),
@@ -115,6 +195,10 @@ class DriverDeliveryModel {
           json['delivery_slot']?.toString() ??
           '',
       selectedDate: json['selected_date']?.toString() ?? first['selected_date']?.toString(),
+      pickupLat: pickupLat,
+      pickupLng: pickupLng,
+      deliveryLat: dropLat,
+      deliveryLng: dropLng,
     );
   }
 
@@ -147,45 +231,4 @@ List<Map<String, dynamic>> _itemsFrom(dynamic raw) {
     }
   } catch (_) {}
   return const [];
-}
-
-@immutable
-class DriverDashboardState {
-  final bool isLoading;
-  final double totalEarnings;
-  final int completedCount;
-  final List<DriverDeliveryModel> recentDeliveries;
-  final List<DriverDeliveryModel> availableDeliveries;
-  final List<DriverDeliveryModel> activeDeliveries;
-  final String? errorMessage;
-
-  const DriverDashboardState({
-    this.isLoading = true,
-    this.totalEarnings = 0.0,
-    this.completedCount = 0,
-    this.recentDeliveries = const [],
-    this.availableDeliveries = const [],
-    this.activeDeliveries = const [],
-    this.errorMessage,
-  });
-
-  DriverDashboardState copyWith({
-    bool? isLoading,
-    double? totalEarnings,
-    int? completedCount,
-    List<DriverDeliveryModel>? recentDeliveries,
-    List<DriverDeliveryModel>? availableDeliveries,
-    List<DriverDeliveryModel>? activeDeliveries,
-    String? errorMessage,
-  }) {
-    return DriverDashboardState(
-      isLoading: isLoading ?? this.isLoading,
-      totalEarnings: totalEarnings ?? this.totalEarnings,
-      completedCount: completedCount ?? this.completedCount,
-      recentDeliveries: recentDeliveries ?? this.recentDeliveries,
-      availableDeliveries: availableDeliveries ?? this.availableDeliveries,
-      activeDeliveries: activeDeliveries ?? this.activeDeliveries,
-      errorMessage: errorMessage,
-    );
-  }
 }

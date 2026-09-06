@@ -569,23 +569,22 @@ class HubProfileActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (onProfile != null)
-          IconButton(
-            tooltip: 'Profile',
-            icon: const Icon(Icons.person_outline_rounded, color: AppTheme.primary),
-            onPressed: onProfile,
-          ),
-        if (onLogout != null)
-          IconButton(
-            tooltip: 'Log out',
-            icon: Icon(Icons.logout_rounded, color: AppTheme.textMuted),
-            onPressed: onLogout,
-          ),
-      ],
-    );
+    // Prefer a single Account entry — logout lives in Profile to keep hub chrome calm.
+    if (onProfile != null) {
+      return IconButton(
+        tooltip: 'Account',
+        icon: const Icon(Icons.person_outline_rounded, color: AppTheme.primary),
+        onPressed: onProfile,
+      );
+    }
+    if (onLogout != null) {
+      return IconButton(
+        tooltip: 'Log out',
+        icon: Icon(Icons.logout_rounded, color: AppTheme.textMuted),
+        onPressed: onLogout,
+      );
+    }
+    return const SizedBox.shrink();
   }
 }
 

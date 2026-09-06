@@ -52,9 +52,21 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
 
   // Legacy orders only store `customer_id`; contact + saved location come from users.
   Map<String, dynamic>? _customerRow;
+  Map<String, dynamic>? _chefRow;
 
   static const double _distanceRatio = 1.3;
   static const double _speedKmPerMin = 0.5; // Average city driving speed
+
+  bool get _driverGoingToKitchen {
+    if (!widget.isDriver || widget.isDineInNavigation) return widget.isDineInNavigation;
+    final leg = (_order['navigate_leg'] ?? '').toString().toLowerCase().trim();
+    if (leg == 'dropoff' || leg == 'customer') return false;
+    if (leg == 'pickup' || leg == 'kitchen') return true;
+    return !driverRunIsOutForDelivery(_order['status']?.toString());
+  }
+
+  String get _destinationTitle =>
+      _driverGoingToKitchen || widget.isDineInNavigation ? 'Chef kitchen' : 'Customer drop-off';
 
   @override
   void initState() {
@@ -70,7 +82,9 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
     try {
       final row = await _supabase.from('orders').select().eq('id', id).maybeSingle();
       if (row != null) {
+        final preservedLeg = _order['navigate_leg'];
         _order = {..._order, ...row, 'id': row['id']};
+        if (preservedLeg != null) _order['navigate_leg'] = preservedLeg;
       } else {
         _order['id'] = id;
       }
@@ -80,6 +94,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
     }
 
     await _loadCustomerInfo();
+    await _loadChefKitchenInfo();
   }
 
   Future<void> _loadCustomerInfo() async {
@@ -96,6 +111,42 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
       }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed loading tracking customer info');
+    }
+  }
+
+  Future<void> _loadChefKitchenInfo() async {
+    final chefId = _order['chef_id']?.toString() ?? '';
+    if (chefId.isEmpty || _chefRow != null) return;
+    try {
+      final row = await _supabase
+          .from('users')
+          .select(
+            'name, full_name, address, house_no, street, landmark, city, state, postal_code, pincode, lat, lng, latitude, longitude',
+          )
+          .eq('id', chefId)
+          .maybeSingle();
+      if (row != null) {
+        _chefRow = Map<String, dynamic>.from(row);
+        if ((_order['chef_address'] ?? _order['pickup_address'] ?? '').toString().trim().isEmpty) {
+          final formatted = formatSavedAddress(_chefRow);
+          if (formatted.isNotEmpty) {
+            _order['chef_address'] = formatted;
+            _order['pickup_address'] = formatted;
+          }
+        }
+        if (kitchenCoordinate(_order, latitude: true) == null) {
+          final lat = kitchenCoordinate(_chefRow, latitude: true);
+          final lng = kitchenCoordinate(_chefRow, latitude: false);
+          if (lat != null && lng != null) {
+            _order['pickup_lat'] = lat;
+            _order['pickup_lng'] = lng;
+            _order['chef_lat'] = lat;
+            _order['chef_lng'] = lng;
+          }
+        }
+      }
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed loading tracking chef kitchen');
     }
   }
 
@@ -214,44 +265,55 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
 
   Future<LatLng?> _resolveDestinationCoordinates() async {
     try {
-      if (widget.isDineInNavigation) {
-        final latStr = _order['chef_lat']?.toString() ?? _order['hosting_lat']?.toString();
-        final lngStr = _order['chef_lng']?.toString() ?? _order['hosting_lng']?.toString();
-
-        if (latStr != null && lngStr != null && latStr.isNotEmpty && lngStr.isNotEmpty) {
-          return LatLng(double.parse(latStr), double.parse(lngStr));
-        }
-
-        final chefAddress = _order['chef_address']?.toString() ?? _order['hosting_address']?.toString();
-        if (chefAddress != null && chefAddress.isNotEmpty) {
-          List<Location> locs = await locationFromAddress(chefAddress);
-          if (locs.isNotEmpty) return LatLng(locs.first.latitude, locs.first.longitude);
-        }
-      } else {
-        // 1. Explicit coordinates on the order (newer schema).
-        final lat = _asDouble(_order['delivery_lat'] ?? _order['customer_lat']);
-        final lng = _asDouble(_order['delivery_lng'] ?? _order['customer_lng']);
-        if (lat != null && lng != null) {
+      if (widget.isDineInNavigation || (widget.isDriver && _driverGoingToKitchen)) {
+        final lat = _asDouble(
+          _order['pickup_lat'] ?? _order['chef_lat'] ?? _order['hosting_lat'] ?? _order['kitchen_lat'],
+        );
+        final lng = _asDouble(
+          _order['pickup_lng'] ?? _order['chef_lng'] ?? _order['hosting_lng'] ?? _order['kitchen_lng'],
+        );
+        if (lat != null && lng != null && lat != 0 && lng != 0) {
           return LatLng(lat, lng);
         }
 
-        // 2. Geocode the delivery address (stored inside `items` JSON on legacy orders).
-        final addressStr = _deliveryAddress();
-        if (addressStr != null && addressStr.isNotEmpty) {
-          try {
-            final locs = await locationFromAddress(addressStr);
-            if (locs.isNotEmpty) return LatLng(locs.first.latitude, locs.first.longitude);
-          } catch (_) {
-            // Geocoding can fail on messy/free-form addresses — fall back below.
-          }
+        final chefLat = kitchenCoordinate(_chefRow, latitude: true);
+        final chefLng = kitchenCoordinate(_chefRow, latitude: false);
+        if (chefLat != null && chefLng != null) {
+          return LatLng(chefLat, chefLng);
         }
 
-        // 3. Fall back to the customer's saved coordinates.
-        final cLat = _asDouble(_customerRow?['latitude'] ?? _customerRow?['lat']);
-        final cLng = _asDouble(_customerRow?['longitude'] ?? _customerRow?['lng']);
-        if (cLat != null && cLng != null) {
-          return LatLng(cLat, cLng);
+        final chefAddress = _order['chef_address']?.toString() ??
+            _order['hosting_address']?.toString() ??
+            _order['pickup_address']?.toString() ??
+            formatSavedAddress(_chefRow);
+        if (chefAddress.trim().isNotEmpty) {
+          List<Location> locs = await locationFromAddress(chefAddress);
+          if (locs.isNotEmpty) return LatLng(locs.first.latitude, locs.first.longitude);
         }
+        return null;
+      }
+
+      // Customer drop-off (diner tracking, or driver after Start Delivery).
+      final lat = _asDouble(_order['delivery_lat'] ?? _order['customer_lat']);
+      final lng = _asDouble(_order['delivery_lng'] ?? _order['customer_lng']);
+      if (lat != null && lng != null) {
+        return LatLng(lat, lng);
+      }
+
+      final addressStr = _deliveryAddress();
+      if (addressStr != null && addressStr.isNotEmpty) {
+        try {
+          final locs = await locationFromAddress(addressStr);
+          if (locs.isNotEmpty) return LatLng(locs.first.latitude, locs.first.longitude);
+        } catch (_) {
+          // Geocoding can fail on messy/free-form addresses — fall back below.
+        }
+      }
+
+      final cLat = _asDouble(_customerRow?['latitude'] ?? _customerRow?['lat']);
+      final cLng = _asDouble(_customerRow?['longitude'] ?? _customerRow?['lng']);
+      if (cLat != null && cLng != null) {
+        return LatLng(cLat, cLng);
       }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Destination coordinate resolution failed');
@@ -294,8 +356,12 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
           Marker(
             markerId: const MarkerId('destination_pin'),
             position: destination,
-            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-            infoWindow: const InfoWindow(title: 'Destination'),
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+              _driverGoingToKitchen || widget.isDineInNavigation
+                  ? BitmapDescriptor.hueAzure
+                  : BitmapDescriptor.hueRed,
+            ),
+            infoWindow: InfoWindow(title: _destinationTitle),
           ),
       };
     });
@@ -543,7 +609,11 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_etaText),
+        title: Text(
+          widget.isDriver
+              ? (_driverGoingToKitchen ? 'To kitchen · $_etaText' : 'To customer · $_etaText')
+              : _etaText,
+        ),
         actions: [
           IconButton(
             tooltip: 'Order group',

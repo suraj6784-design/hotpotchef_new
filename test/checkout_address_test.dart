@@ -395,7 +395,7 @@ void main() {
         'chef_name': 'Asha Kitchen',
         'price': 120,
       }),
-      contains('hotpotchef://app/meal/meal-77'),
+      contains('https://hotpotchef.com/meal/meal-77'),
     );
     expect(
       mealWhatsAppShareUri('hello world').toString(),
@@ -415,8 +415,8 @@ void main() {
       'Just finished Dal Tadka from Asha Kitchen on HotPotChef\n'
       'FSSAI 11223344556677\n'
       'Home kitchen food — not restaurant haste.\n'
-      'Order in 2 taps\n'
-      'hotpotchef://app/meal/meal-9',
+      'Order in 2 taps:\n'
+      'https://hotpotchef.com/meal/meal-9',
     );
     expect(normalizeFssaiNumber('FSSAI 1122-3344-5566-77'), '11223344556677');
     expect(normalizeFssaiNumber('123'), isNull);

@@ -1,6 +1,7 @@
 // lib/screens/customer_profile_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:go_router/go_router.dart';
@@ -9,6 +10,11 @@ import 'address_form_screen.dart';
 import 'auth_screen.dart';
 import 'referral_screen.dart';
 import 'customer_order_history_screen.dart';
+import '../providers/cart_provider.dart';
+import '../providers/favorites_provider.dart';
+import '../providers/kitchen_follows_provider.dart';
+import '../providers/last_order_provider.dart';
+import '../providers/meal_plans_provider.dart';
 import '../services/auth_session.dart';
 import '../utils/helpers.dart';
 import '../utils/legal_content.dart';
@@ -18,16 +24,16 @@ import '../widgets/loyalty_badge_card.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/change_password_dialog.dart';
 
-class CustomerProfileScreen extends StatefulWidget {
+class CustomerProfileScreen extends ConsumerStatefulWidget {
   final VoidCallback? onLogout;
 
   const CustomerProfileScreen({super.key, this.onLogout});
 
   @override
-  State<CustomerProfileScreen> createState() => _CustomerProfileScreenState();
+  ConsumerState<CustomerProfileScreen> createState() => _CustomerProfileScreenState();
 }
 
-class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
+class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
   final _supabase = Supabase.instance.client;
 
   final _nameController = TextEditingController();
@@ -70,6 +76,20 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
       return;
     }
     await AuthSession.goToHub(context);
+  }
+
+  Future<void> _handleLogout() async {
+    if (widget.onLogout != null) {
+      widget.onLogout!();
+      return;
+    }
+    await AuthSession.logout(context, beforeNavigate: () async {
+      ref.read(cartProvider.notifier).clearCart();
+      ref.invalidate(favoritesProvider);
+      ref.invalidate(kitchenFollowsProvider);
+      ref.invalidate(lastOrderProvider);
+      ref.invalidate(mealPlansProvider);
+    });
   }
 
   // --- Data Loading ---
@@ -805,11 +825,11 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
           ),
           centerTitle: true,
           actions: [
-            if (widget.onLogout != null)
-              IconButton(
-                icon: const Icon(Icons.logout, color: Colors.grey),
-                onPressed: widget.onLogout,
-              ),
+            IconButton(
+              tooltip: 'Log out',
+              icon: const Icon(Icons.logout, color: Colors.grey),
+              onPressed: _handleLogout,
+            ),
           ],
         ),
         body: _isLoading
@@ -916,6 +936,14 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
                       onTap: () => context.push('/chats'),
                     ),
                     Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
+                    _buildListTile(
+                      icon: Icons.campaign_outlined,
+                      title: 'Bulk / catering request',
+                      subtitle: 'Broadcast a larger order to nearby kitchens',
+                      isDark: isDark,
+                      onTap: () => context.push('/bulk-request'),
+                    ),
+                    Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
 
                     _buildListTile(
                       icon: Icons.account_balance_wallet_outlined,
@@ -986,21 +1014,20 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
                       ),
                     ],
 
-                    if (widget.onLogout != null)
-                      Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.redAccent,
-                            side: const BorderSide(color: Colors.redAccent, width: 1.5),
-                            minimumSize: const Size(double.infinity, 54),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          ),
-                          icon: const Icon(Icons.logout),
-                          label: const Text('Log Out of Account', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                          onPressed: widget.onLogout,
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.redAccent,
+                          side: const BorderSide(color: Colors.redAccent, width: 1.5),
+                          minimumSize: const Size(double.infinity, 54),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         ),
+                        icon: const Icon(Icons.logout),
+                        label: const Text('Log Out of Account', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        onPressed: _handleLogout,
                       ),
+                    ),
 
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 8),

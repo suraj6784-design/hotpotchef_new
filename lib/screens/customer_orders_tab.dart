@@ -53,6 +53,20 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
   StreamSubscription? _reqsSub;
   RealtimeChannel? _ordersChannel;
 
+  PreferredSizeWidget _ordersAppBar() {
+    return HubAppBar(
+      title: 'My Orders',
+      onProfile: widget.onProfileTap,
+      extraActions: [
+        IconButton(
+          tooltip: 'Past orders',
+          icon: const Icon(Icons.history_rounded, color: AppTheme.primary),
+          onPressed: () => context.push('/order-history'),
+        ),
+      ],
+    );
+  }
+
   @override
   bool get wantKeepAlive => true;
 
@@ -1040,7 +1054,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
     if (_isLoading) {
       return Scaffold(
         backgroundColor: AppTheme.canvasOf(context),
-        appBar: HubAppBar(title: 'My Orders', onProfile: widget.onProfileTap, onLogout: widget.onLogout),
+        appBar: _ordersAppBar(),
         body: const Center(child: CircularProgressIndicator(color: AppTheme.primary)),
       );
     }
@@ -1048,7 +1062,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
     if (_activeOrders.isEmpty && _activeRequests.isEmpty) {
       return Scaffold(
         backgroundColor: AppTheme.canvasOf(context),
-        appBar: HubAppBar(title: 'My Orders', onProfile: widget.onProfileTap, onLogout: widget.onLogout),
+        appBar: _ordersAppBar(),
         body: ListView(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
           children: [
@@ -1060,8 +1074,15 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
               icon: Icons.soup_kitchen_outlined,
               title: 'No active orders',
               message: 'Placed meals show up here with live kitchen and delivery status.',
-              actionLabel: 'Refresh Orders',
-              onAction: () => unawaited(_fetchActiveOrders()),
+              actionLabel: 'Browse past orders',
+              onAction: () => context.push('/order-history'),
+            ),
+            const SizedBox(height: 8),
+            Center(
+              child: TextButton(
+                onPressed: () => unawaited(_fetchActiveOrders()),
+                child: const Text('Refresh'),
+              ),
             ),
           ],
         ),
@@ -1139,7 +1160,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
 
     return Scaffold(
       backgroundColor: AppTheme.canvasOf(context),
-      appBar: HubAppBar(title: 'My Orders', onProfile: widget.onProfileTap, onLogout: widget.onLogout),
+      appBar: _ordersAppBar(),
       body: RefreshIndicator(
         onRefresh: () => _fetchActiveOrders(showSpinner: false),
         color: AppTheme.primary,

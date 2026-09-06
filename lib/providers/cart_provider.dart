@@ -28,6 +28,12 @@ class CartNotifier extends Notifier<CartState> {
   final _cartService = CartService();
   final _sharedCartService = SharedCartService();
 
+  List<CartItemModel> _applySharedSlotToItems(List<CartItemModel> items, String? slot) {
+    final cleaned = slot?.trim() ?? '';
+    if (cleaned.isEmpty || items.isEmpty) return items;
+    return [for (final item in items) item.copyWith(timeSlot: cleaned)];
+  }
+
   Timer? _debounceTimer;
   RealtimeChannel? _stockChannel;
   StreamSubscription<List<CartItemModel>>? _sharedCartSub;
@@ -141,7 +147,15 @@ class CartNotifier extends Notifier<CartState> {
     final code = roomCode.trim().toUpperCase();
     if (code.isEmpty) return;
     final resolvedHost = hostId ?? await _sharedCartService.sharedCartHostId(code);
+    final slot = timeSlot?.trim();
+    var nextItems = state.items;
+    if (slot != null && slot.isNotEmpty && nextItems.isNotEmpty) {
+      nextItems = [
+        for (final item in nextItems) item.copyWith(timeSlot: slot),
+      ];
+    }
     state = state.copyWith(
+      items: nextItems,
       sharedRoomCode: code,
       sharedHostId: resolvedHost,
       sharedPlaceKind: placeKind,
@@ -159,7 +173,10 @@ class CartNotifier extends Notifier<CartState> {
         _applyingSharedCart = false;
         return;
       }
-      state = state.copyWith(items: items, sharedRoomCode: code);
+      state = state.copyWith(
+        items: _applySharedSlotToItems(items, state.sharedTimeSlot),
+        sharedRoomCode: code,
+      );
       _persistLocal();
       _applyingSharedCart = false;
     }, onError: (e, st) {
@@ -364,14 +381,19 @@ class CartNotifier extends Notifier<CartState> {
           .maybeSingle();
       final coins = double.tryParse(data?['hotpot_coins']?.toString() ?? '0') ?? 0.0;
       var packaging = state.packagingFee;
+      String? tier;
       try {
         final gam = await _supabase
             .from('user_gamification')
             .select('loyalty_tier')
             .eq('user_id', user.id)
             .maybeSingle();
-        packaging = packagingFeeForLoyaltyTier(gam?['loyalty_tier']?.toString());
+        tier = gam?['loyalty_tier']?.toString();
       } catch (_) {}
+      packaging = packagingFeeForCartItems(
+        state.items.map((item) => item.toCheckoutPayload()),
+        loyaltyTier: tier,
+      );
       state = state.copyWith(
         userCoinBalance: coins,
         packagingFee: packaging,

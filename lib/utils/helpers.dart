@@ -90,8 +90,19 @@ String mealDisplayTitle(Map<String, dynamic> meal, {String fallback = 'Meal'}) {
 String mealShareUri(String? mealId) {
   final id = mealId?.trim() ?? '';
   if (id.isEmpty) return '';
+  // HTTPS so WhatsApp / Instagram / Messages auto-link and open the app (or site).
+  return '$kMealShareWebBase/meal/$id';
+}
+
+/// In-app custom scheme (Android/iOS URL type). Prefer [mealShareUri] for shared cards.
+String mealShareAppUri(String? mealId) {
+  final id = mealId?.trim() ?? '';
+  if (id.isEmpty) return '';
   return 'hotpotchef://app/meal/$id';
 }
+
+/// Public web host used in share cards (must match Play / site deep-link setup).
+const kMealShareWebBase = 'https://hotpotchef.com';
 
 /// Must also be allow-listed in the Supabase Auth redirect URLs.
 const passwordResetRedirectUri = 'hotpotchef://app/reset-password';
@@ -323,7 +334,7 @@ String plateShareText({
     'Just finished $dish from $chef on HotPotChef',
     if (licence != null) 'FSSAI $licence',
     'Home kitchen food — not restaurant haste.',
-    'Order in 2 taps',
+    'Order in 2 taps:',
     if (link.isNotEmpty) link,
   ];
   return lines.join('\n');
@@ -1367,6 +1378,9 @@ List<Map<String, dynamic>> flashableOfferMeals(
   Set<String> excludedChefIds = const {},
   DateTime? now,
   int limit = 8,
+  double? destinationLat,
+  double? destinationLng,
+  Map<String, Map<String, dynamic>> chefKitchenPins = const {},
 }) {
   final unique = <String>{};
   final offers = <Map<String, dynamic>>[];
@@ -1374,9 +1388,17 @@ List<Map<String, dynamic>> flashableOfferMeals(
     final chefId = meal['chef_id']?.toString() ?? '';
     if (chefId.isNotEmpty && excludedChefIds.contains(chefId)) continue;
     if (!mealHasFlashableOffer(meal, now: now)) continue;
+    final pinned = mealWithKitchenPin(meal, chefPin: chefKitchenPins[chefId]);
+    if (!mealInDeliveryRadius(
+      pinned,
+      destinationLat: destinationLat,
+      destinationLng: destinationLng,
+    )) {
+      continue;
+    }
     final id = meal['id']?.toString() ?? meal['title']?.toString() ?? '';
     if (id.isNotEmpty && !unique.add(id)) continue;
-    offers.add(meal);
+    offers.add(pinned);
   }
   offers.sort((a, b) {
     final aBoosted = isMealBoosted(a, now: now);
@@ -1428,6 +1450,9 @@ List<Map<String, dynamic>> festivalHamperMeals(
   Iterable<Map<String, dynamic>> meals, {
   Set<String> excludedChefIds = const {},
   int limit = 8,
+  double? destinationLat,
+  double? destinationLng,
+  Map<String, Map<String, dynamic>> chefKitchenPins = const {},
 }) {
   final unique = <String>{};
   final hampers = <Map<String, dynamic>>[];
@@ -1436,9 +1461,17 @@ List<Map<String, dynamic>> festivalHamperMeals(
     if (!isCatalogMeal(meal) || !isMealAvailableForCart(meal)) continue;
     final chefId = meal['chef_id']?.toString() ?? '';
     if (chefId.isNotEmpty && excludedChefIds.contains(chefId)) continue;
+    final pinned = mealWithKitchenPin(meal, chefPin: chefKitchenPins[chefId]);
+    if (!mealInDeliveryRadius(
+      pinned,
+      destinationLat: destinationLat,
+      destinationLng: destinationLng,
+    )) {
+      continue;
+    }
     final id = meal['id']?.toString() ?? meal['title']?.toString() ?? '';
     if (id.isNotEmpty && !unique.add(id)) continue;
-    hampers.add(meal);
+    hampers.add(pinned);
     if (hampers.length >= limit) break;
   }
   return hampers;
@@ -1487,6 +1520,9 @@ List<Map<String, dynamic>> societyNightMeals(
   Iterable<Map<String, dynamic>> meals, {
   Set<String> excludedChefIds = const {},
   int limit = 8,
+  double? destinationLat,
+  double? destinationLng,
+  Map<String, Map<String, dynamic>> chefKitchenPins = const {},
 }) {
   final unique = <String>{};
   final nights = <Map<String, dynamic>>[];
@@ -1495,9 +1531,17 @@ List<Map<String, dynamic>> societyNightMeals(
     if (!isCatalogMeal(meal) || !isMealAvailableForCart(meal)) continue;
     final chefId = meal['chef_id']?.toString() ?? '';
     if (chefId.isNotEmpty && excludedChefIds.contains(chefId)) continue;
+    final pinned = mealWithKitchenPin(meal, chefPin: chefKitchenPins[chefId]);
+    if (!mealInDeliveryRadius(
+      pinned,
+      destinationLat: destinationLat,
+      destinationLng: destinationLng,
+    )) {
+      continue;
+    }
     final id = meal['id']?.toString() ?? meal['title']?.toString() ?? '';
     if (id.isNotEmpty && !unique.add(id)) continue;
-    nights.add(meal);
+    nights.add(pinned);
     if (nights.length >= limit) break;
   }
   return nights;
@@ -1552,6 +1596,9 @@ List<Map<String, dynamic>> shelfItems(
   Iterable<Map<String, dynamic>> meals, {
   Set<String> excludedChefIds = const {},
   int limit = 8,
+  double? destinationLat,
+  double? destinationLng,
+  Map<String, Map<String, dynamic>> chefKitchenPins = const {},
 }) {
   final unique = <String>{};
   final items = <Map<String, dynamic>>[];
@@ -1560,9 +1607,17 @@ List<Map<String, dynamic>> shelfItems(
     if (!isCatalogMeal(meal) || !isMealAvailableForCart(meal)) continue;
     final chefId = meal['chef_id']?.toString() ?? '';
     if (chefId.isNotEmpty && excludedChefIds.contains(chefId)) continue;
+    final pinned = mealWithKitchenPin(meal, chefPin: chefKitchenPins[chefId]);
+    if (!mealInDeliveryRadius(
+      pinned,
+      destinationLat: destinationLat,
+      destinationLng: destinationLng,
+    )) {
+      continue;
+    }
     final id = meal['id']?.toString() ?? meal['title']?.toString() ?? '';
     if (id.isNotEmpty && !unique.add(id)) continue;
-    items.add(meal);
+    items.add(pinned);
     if (items.length >= limit) break;
   }
   return items;
@@ -1884,6 +1939,27 @@ List<Map<String, dynamic>> checkoutCartPayload(
       'accepts_hotpot_coins': item['accepts_hotpot_coins'] ?? nestedMap['accepts_hotpot_coins'],
       'specialInstructions': item['specialInstructions'] ?? item['special_instructions'],
       'special_instructions': item['specialInstructions'] ?? item['special_instructions'],
+      // Keep specialty meal identity through place_customer_order → chef/driver/invoice.
+      'is_hamper': nestedMap['is_hamper'] ?? item['is_hamper'] ?? item['isHamper'],
+      'is_society_night':
+          nestedMap['is_society_night'] ?? item['is_society_night'] ?? item['isSocietyNight'],
+      'society_label': nestedMap['society_label'] ?? item['society_label'] ?? item['societyLabel'],
+      'is_shelf_item': nestedMap['is_shelf_item'] ?? item['is_shelf_item'] ?? item['isShelfItem'],
+      'shelf_kind': nestedMap['shelf_kind'] ?? item['shelf_kind'] ?? item['shelfKind'],
+      'rawMealDetails': {
+        ...nestedMap,
+        if (nestedMap['is_hamper'] != null || item['is_hamper'] != null)
+          'is_hamper': nestedMap['is_hamper'] ?? item['is_hamper'] ?? item['isHamper'],
+        if (nestedMap['is_society_night'] != null || item['is_society_night'] != null)
+          'is_society_night':
+              nestedMap['is_society_night'] ?? item['is_society_night'] ?? item['isSocietyNight'],
+        if ((nestedMap['society_label'] ?? item['society_label']) != null)
+          'society_label': nestedMap['society_label'] ?? item['society_label'] ?? item['societyLabel'],
+        if (nestedMap['is_shelf_item'] != null || item['is_shelf_item'] != null)
+          'is_shelf_item': nestedMap['is_shelf_item'] ?? item['is_shelf_item'] ?? item['isShelfItem'],
+        if ((nestedMap['shelf_kind'] ?? item['shelf_kind']) != null)
+          'shelf_kind': nestedMap['shelf_kind'] ?? item['shelf_kind'] ?? item['shelfKind'],
+      },
     };
   }).toList();
 }
@@ -1964,6 +2040,40 @@ double packagingFeeForLoyaltyTier(String? tier) {
   return kDefaultPackagingFee;
 }
 
+/// Shelf-only carts: ₹0. Hamper-only: capped gift wrap. Hot meals: loyalty packaging.
+double packagingFeeForCartItems(
+  Iterable<Map<String, dynamic>> items, {
+  String? loyaltyTier,
+  double? loyaltyTierFee,
+}) {
+  final base = loyaltyTierFee ?? packagingFeeForLoyaltyTier(loyaltyTier);
+  final list = items.toList();
+  if (list.isEmpty) return base;
+
+  var hot = 0;
+  var hamper = 0;
+  var shelf = 0;
+  for (final item in list) {
+    final nested = item['rawMealDetails'] ?? item['mealDetails'] ?? item['meal_details'];
+    final merged = {
+      if (nested is Map) ...Map<String, dynamic>.from(nested),
+      ...item,
+    };
+    if (isShelfItem(merged)) {
+      shelf += 1;
+    } else if (isFestivalHamper(merged)) {
+      hamper += 1;
+    } else {
+      hot += 1;
+    }
+  }
+
+  if (hot > 0) return base;
+  if (shelf > 0 && hamper == 0) return 0;
+  if (hamper > 0) return base < 10 ? base : 10;
+  return base;
+}
+
 DateTime istCalendarDate([DateTime? now]) {
   final utc = (now ?? DateTime.now()).toUtc();
   final ist = utc.add(const Duration(hours: 5, minutes: 30));
@@ -1978,8 +2088,49 @@ bool claimedStreakOnIstDate(String? lastCheckInDate, {DateTime? now}) {
   return last == istCalendarDate(now);
 }
 
-String mergedOrderInstructions(List<Map<String, dynamic>> items, [String? checkoutNote]) {
+String? orderLineSpecialtyTag(Map<String, dynamic>? item) {
+  if (item == null) return null;
+  if (isFestivalHamper(item)) return 'Hamper';
+  if (isSocietyNight(item)) return societyNightLabel(item);
+  if (isShelfItem(item)) return shelfItemKind(item);
+  return null;
+}
+
+String societyGroupCheckoutNote({
+  String? placeKind,
+  String? placeLabel,
+  String? dropoffNote,
+  String? timeSlot,
+  String? roomCode,
+}) {
+  final parts = <String>[
+    if ((placeKind ?? '').trim().isNotEmpty || (placeLabel ?? '').trim().isNotEmpty)
+      'Group ${groupPlaceKindLabel(placeKind)}'
+          '${(placeLabel ?? '').trim().isEmpty ? '' : ': ${placeLabel!.trim()}'}',
+    if ((dropoffNote ?? '').trim().isNotEmpty) 'Drop: ${dropoffNote!.trim()}',
+    if ((timeSlot ?? '').trim().isNotEmpty) 'Shared slot: ${timeSlot!.trim()}',
+    if ((roomCode ?? '').trim().isNotEmpty) 'Room: ${roomCode!.trim().toUpperCase()}',
+  ];
+  if (parts.isEmpty) return '';
+  return parts.join(' · ');
+}
+
+String mergedOrderInstructions(
+  List<Map<String, dynamic>> items, [
+  String? checkoutNote,
+  Map<String, String?>? societyGroup,
+]) {
   final notes = <String>[];
+  if (societyGroup != null) {
+    final groupNote = societyGroupCheckoutNote(
+      placeKind: societyGroup['placeKind'] ?? societyGroup['place_kind'],
+      placeLabel: societyGroup['placeLabel'] ?? societyGroup['place_label'],
+      dropoffNote: societyGroup['dropoffNote'] ?? societyGroup['dropoff_note'],
+      timeSlot: societyGroup['timeSlot'] ?? societyGroup['time_slot'],
+      roomCode: societyGroup['roomCode'] ?? societyGroup['room_code'],
+    );
+    if (groupNote.isNotEmpty) notes.add(groupNote);
+  }
   for (final item in items) {
     final note = (item['specialInstructions'] ?? item['special_instructions'] ?? '').toString().trim();
     if (note.isEmpty) continue;
@@ -1987,7 +2138,7 @@ String mergedOrderInstructions(List<Map<String, dynamic>> items, [String? checko
     notes.add(title.isEmpty ? note : '$title: $note');
   }
   final extra = checkoutNote?.trim() ?? '';
-  if (extra.isNotEmpty) notes.add(extra);
+  if (extra.isNotEmpty && !notes.contains(extra)) notes.add(extra);
   return notes.join('\n');
 }
 
@@ -2881,6 +3032,34 @@ String formatSavedAddress(Map<String, dynamic>? data) {
   return parts.join(', ');
 }
 
+bool driverRunIsOutForDelivery(String? status) {
+  final s = (status ?? '').toLowerCase();
+  return s.contains('out');
+}
+
+String formatMapCoordinateLabel(double? lat, double? lng) {
+  if (lat == null || lng == null) return '';
+  if (lat == 0 && lng == 0) return '';
+  return '${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}';
+}
+
+Uri? googleMapsDirectionsUri({
+  double? lat,
+  double? lng,
+  String? address,
+}) {
+  if (lat != null && lng != null && lat != 0 && lng != 0) {
+    return Uri.parse(
+      'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng&travelmode=driving',
+    );
+  }
+  final text = (address ?? '').trim();
+  if (text.isEmpty) return null;
+  return Uri.parse(
+    'https://www.google.com/maps/dir/?api=1&destination=${Uri.encodeComponent(text)}&travelmode=driving',
+  );
+}
+
 const _placeholderDropoffLabels = {
   'unknown location',
   'unknown address',
@@ -3143,6 +3322,53 @@ Map<String, dynamic> mealWithKitchenPin(
     'chef_lat': lat,
     'chef_lng': lng,
   };
+}
+
+/// Matches Home meal-grid radius: road-adjusted haversine ≤ [maxRoadKm].
+/// Meals without a kitchen pin stay visible (same as feed unknown-pin behavior).
+bool mealInDeliveryRadius(
+  Map<String, dynamic> meal, {
+  double? destinationLat,
+  double? destinationLng,
+  double maxRoadKm = 15,
+  double roadMultiplier = 1.3,
+}) {
+  if (destinationLat == null || destinationLng == null) return true;
+  if (destinationLat == 0 || destinationLng == 0) return true;
+  final startLat = kitchenCoordinate(meal, latitude: true);
+  final startLng = kitchenCoordinate(meal, latitude: false);
+  if (startLat == null || startLng == null) return true;
+  final roadKm = haversineKm(startLat, startLng, destinationLat, destinationLng) * roadMultiplier;
+  return roadKm <= maxRoadKm;
+}
+
+/// Soft-warn when a society-night label does not match the group place / address.
+String? societyNightAddressMismatchWarning({
+  required Iterable<Map<String, dynamic>> cartItems,
+  String? sharedPlaceLabel,
+  String? deliveryAddress,
+}) {
+  String? nightLabel;
+  for (final item in cartItems) {
+    final nested = item['rawMealDetails'] ?? item['mealDetails'] ?? item['meal_details'];
+    final merged = {
+      if (nested is Map) ...Map<String, dynamic>.from(nested),
+      ...item,
+    };
+    if (!isSocietyNight(merged)) continue;
+    final label = societyNightLabel(merged).trim();
+    if (label.isNotEmpty && label.toLowerCase() != 'society night') {
+      nightLabel = label;
+      break;
+    }
+  }
+  if (nightLabel == null) return null;
+
+  final haystack = '${sharedPlaceLabel ?? ''} ${deliveryAddress ?? ''}'.toLowerCase();
+  if (haystack.trim().isEmpty) return null;
+  final needle = nightLabel.toLowerCase();
+  if (haystack.contains(needle)) return null;
+  return 'This society night is for $nightLabel — check that your drop matches that building.';
 }
 
 Map<String, dynamic>? preferredCheckoutAddress(

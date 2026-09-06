@@ -177,7 +177,6 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
         appBar: HubAppBar(
           title: 'Your Cart',
           onProfile: isLoggedIn ? widget.onProfileTap : null,
-          onLogout: isLoggedIn ? widget.onLogout : null,
         ),
         body: EmptyState(
           icon: Icons.shopping_basket_outlined,
@@ -194,7 +193,6 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
       appBar: HubAppBar(
         title: 'Your Cart',
         onProfile: isLoggedIn ? widget.onProfileTap : null,
-        onLogout: isLoggedIn ? widget.onLogout : null,
       ),
       body: ListView(
         padding: const EdgeInsets.only(left: 20, right: 20, top: 20, bottom: 100),
@@ -904,6 +902,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
 
     final checkoutItems = cartState.items.map((i) => i.toCheckoutPayload()).toList();
 
+    dismissAppSnackBars(context);
     Navigator.push(
       context,
       appMaterialRoute(
@@ -913,6 +912,10 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
           preferredAddress: ref.read(selectedDeliveryAddressProvider),
           sharedRoomCode: cartState.sharedRoomCode,
           sharedHostId: cartState.sharedHostId,
+          sharedPlaceKind: cartState.sharedPlaceKind,
+          sharedPlaceLabel: cartState.sharedPlaceLabel,
+          sharedDropoffNote: cartState.sharedDropoffNote,
+          sharedTimeSlot: cartState.sharedTimeSlot,
           onOrderPlacedSuccess: () {
             ref.read(cartProvider.notifier).clearCart();
             widget.onOrderPlacedSuccess();

@@ -14,6 +14,7 @@ import '../utils/pricing_calculator.dart';
 import '../models/cart_enums.dart';
 import '../services/alert_service.dart';
 import '../widgets/app_widgets.dart';
+import '../widgets/customer_ui_components.dart';
 import 'address_form_screen.dart';
 
 class CheckoutScreen extends StatefulWidget {
@@ -24,6 +25,10 @@ class CheckoutScreen extends StatefulWidget {
   final String? sourceRequestId;
   final String? sharedRoomCode;
   final String? sharedHostId;
+  final String? sharedPlaceKind;
+  final String? sharedPlaceLabel;
+  final String? sharedDropoffNote;
+  final String? sharedTimeSlot;
 
   const CheckoutScreen({
     super.key,
@@ -34,6 +39,10 @@ class CheckoutScreen extends StatefulWidget {
     this.sourceRequestId,
     this.sharedRoomCode,
     this.sharedHostId,
+    this.sharedPlaceKind,
+    this.sharedPlaceLabel,
+    this.sharedDropoffNote,
+    this.sharedTimeSlot,
   });
 
   @override
@@ -68,11 +77,41 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   bool _promoIsError = false;
   late final Razorpay _razorpay;
 
+  Map<String, String?> get _societyGroupMeta => {
+        'placeKind': widget.sharedPlaceKind,
+        'placeLabel': widget.sharedPlaceLabel,
+        'dropoffNote': widget.sharedDropoffNote,
+        'timeSlot': widget.sharedTimeSlot,
+        'roomCode': widget.sharedRoomCode,
+      };
+
+  String _orderInstructions([String? checkoutNote]) {
+    return mergedOrderInstructions(
+      _checkoutCartItems(),
+      checkoutNote ?? _instructionsController.text,
+      _societyGroupMeta,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
     _initRazorpay();
     _loadUserCheckoutData();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) dismissAppSnackBars(context);
+    });
+  }
+
+  void _warnSocietyNightMismatch() {
+    if (!mounted) return;
+    final warning = societyNightAddressMismatchWarning(
+      cartItems: widget.cartItems,
+      sharedPlaceLabel: widget.sharedPlaceLabel,
+      deliveryAddress: _formattedDeliveryAddress(),
+    );
+    if (warning == null) return;
+    _showSnackBar(warning, isError: true, duration: const Duration(seconds: 6));
   }
 
   void _initRazorpay() {
@@ -170,7 +209,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           double.tryParse(userData?['hotpot_coins']?.toString() ?? '0') ?? 0.0;
       if (!_coinsAccepted && _applyCoins) _applyCoins = false;
       if (_instructionsController.text.trim().isEmpty) {
-        final note = mergedOrderInstructions(widget.cartItems);
+        final note = mergedOrderInstructions(
+          widget.cartItems,
+          null,
+          _societyGroupMeta,
+        );
         if (note.isNotEmpty) _instructionsController.text = note;
       }
       if (pricingRes != null) _serverPricing = pricingRes;
@@ -179,6 +222,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     await _loadLoyaltyPackaging(user.id);
     await _calculateDeliveryFee();
+    _warnSocietyNightMismatch();
   }
 
   Future<void> _loadLoyaltyPackaging(String userId) async {
@@ -323,10 +367,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   bool get _coinsAccepted => cartAcceptsHotpotCoins(widget.cartItems);
 
   double get _packagingFee {
+    final typed = packagingFeeForCartItems(widget.cartItems, loyaltyTierFee: _loyaltyPackaging);
     if (_serverPricing != null && _serverPricing!.containsKey('packaging_fee')) {
-      return parseMoney(_serverPricing!['packaging_fee'], _loyaltyPackaging);
+      return parseMoney(_serverPricing!['packaging_fee'], typed);
     }
-    return _loyaltyPackaging;
+    return typed;
   }
 
   double get _subTotalBeforeCoins =>
@@ -398,10 +443,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           'customer_email': user.email,
           'customer_phone': phone,
           'delivery_address': _formattedDeliveryAddress(),
-          'instructions': mergedOrderInstructions(
-            _checkoutCartItems(),
-            _instructionsController.text,
-          ),
+          'instructions': _orderInstructions(),
           'delivery_fee': _deliveryFee,
           'tip_amount': _selectedTip,
           'apply_coins': _applyCoins && _coinsAccepted,
@@ -505,7 +547,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return {
         ...item,
         'selected_date': selectedDateStr,
-        'time_slot': finalTimeSlot,
+        'time_slot': (widget.sharedTimeSlot ?? '').trim().isNotEmpty
+            ? widget.sharedTimeSlot!.trim()
+            : finalTimeSlot,
       };
     }).toList();
     return checkoutCartPayload(dated, appliedPromoCode: _appliedPromoCode);
@@ -570,10 +614,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       'p_customer_email': user.email!,
       'p_customer_phone': _phoneController.text.trim(),
       'p_delivery_address': _formattedDeliveryAddress(),
-      'p_instructions': mergedOrderInstructions(
-        _checkoutCartItems(),
-        _instructionsController.text,
-      ),
+      'p_instructions': _orderInstructions(),
       'p_cart_items': _checkoutCartItems(),
       'p_apply_coins': _applyCoins && _coinsAccepted,
       'p_tip_amount': _selectedTip,
@@ -591,15 +632,48 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (user == null) throw Exception('Authentication session expired');
     _placingOrder = true;
     final paymentId = 'coins_${user.id}_${DateTime.now().millisecondsSinceEpoch}';
+    var holdCreated = false;
     try {
+      try {
+        await _supabase.rpc('expire_checkout_holds');
+        final reserved = await _supabase.rpc(
+          'reserve_checkout_inventory',
+          params: {
+            'p_razorpay_order_id': paymentId,
+            'p_cart_items': _checkoutCartItems(),
+            'p_user_id': user.id,
+            'p_ttl_minutes': 15,
+          },
+        ).withTimeout(NetworkTimeouts.payment);
+        if (reserved is Map && reserved['success'] == true) {
+          holdCreated = true;
+        } else if (isSoldOutCheckoutError(reserved is Map ? reserved['error'] : reserved, reserved is Map ? Map<String, dynamic>.from(reserved) : null)) {
+          throw Exception(soldOutCheckoutMessage(charged: false));
+        }
+      } catch (e) {
+        if (isSoldOutCheckoutError(e) || isKitchenClosedCheckoutError(e)) rethrow;
+        // Fall through — place_customer_order still decrements when no hold.
+      }
+
       final placed = await _placeOrderRpc(
         paymentId: paymentId,
-        razorpayOrderId: null,
+        razorpayOrderId: holdCreated ? paymentId : null,
         signature: null,
       );
       if (placed == null || placed['success'] != true) {
+        if (holdCreated) {
+          try {
+            await _supabase.rpc('release_checkout_inventory', params: {
+              'p_razorpay_order_id': paymentId,
+              'p_force': true,
+            });
+          } catch (_) {}
+        }
         if (isKitchenClosedCheckoutError(placed?['error'], placed)) {
           throw Exception(kitchenClosedCheckoutMessage(charged: false));
+        }
+        if (isSoldOutCheckoutError(placed?['error'], placed)) {
+          throw Exception(soldOutCheckoutMessage(charged: false));
         }
         throw Exception(placed?['error'] ?? 'Could not record the coin-paid order.');
       }
@@ -712,10 +786,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           'razorpay_signature': signature,
           'customer_phone': _phoneController.text.trim(),
           'delivery_address': _formattedDeliveryAddress(),
-          'instructions': mergedOrderInstructions(
-            _checkoutCartItems(),
-            _instructionsController.text,
-          ),
+          'instructions': _orderInstructions(),
           'cart_items': _checkoutCartItems(),
           'apply_coins': _applyCoins && _coinsAccepted,
           'tip_amount': _selectedTip,
@@ -766,11 +837,63 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
 
     try {
-      return await _placeOrderRpc(
+      final placed = await _placeOrderRpc(
         paymentId: paymentId,
         razorpayOrderId: razorpayOrderId,
         signature: signature,
       );
+      if (placed != null && placed['success'] == true) return placed;
+
+      // Paid path: kitchen closed / sold out after charge must refund via recover-payment.
+      if (placed != null &&
+          (isSoldOutCheckoutError(placed['error'], placed) ||
+              isKitchenClosedCheckoutError(placed['error'], placed))) {
+        try {
+          final recover = await _supabase.functions.invoke(
+            'recover-payment',
+            body: {
+              'payment_id': paymentId,
+              'razorpay_order_id': razorpayOrderId,
+              'razorpay_signature': signature,
+              'customer_phone': _phoneController.text.trim(),
+              'delivery_address': _formattedDeliveryAddress(),
+              'instructions': _orderInstructions(),
+              'cart_items': _checkoutCartItems(),
+              'apply_coins': _applyCoins && _coinsAccepted,
+              'tip_amount': _selectedTip,
+              'delivery_fee': _deliveryFee,
+            },
+          ).withTimeout(NetworkTimeouts.payment);
+          final data = recover.data is Map ? Map<String, dynamic>.from(recover.data as Map) : null;
+          if (data != null && data['success'] == true) return data;
+          final refunded = data?['refunded'] == true;
+          if (isSoldOutCheckoutError(data?['error'] ?? placed['error'], data ?? placed)) {
+            throw Exception(soldOutCheckoutMessage(charged: true, refunded: refunded));
+          }
+          if (isKitchenClosedCheckoutError(data?['error'] ?? placed['error'], data ?? placed)) {
+            throw Exception(kitchenClosedCheckoutMessage(charged: true, refunded: refunded));
+          }
+          if (refunded) {
+            throw Exception(
+              'We could not record this order, so the payment was refunded. It should return in 5–7 business days.',
+            );
+          }
+        } catch (e) {
+          if (e is Exception &&
+              (e.toString().contains('refunded') ||
+                  e.toString().contains('sold out') ||
+                  e.toString().contains('went offline'))) {
+            rethrow;
+          }
+        }
+        if (isSoldOutCheckoutError(placed['error'], placed)) {
+          throw Exception(soldOutCheckoutMessage(charged: true, refunded: false));
+        }
+        if (isKitchenClosedCheckoutError(placed['error'], placed)) {
+          throw Exception(kitchenClosedCheckoutMessage(charged: true, refunded: false));
+        }
+      }
+      return placed;
     } catch (e) {
       throw Exception(lastError ?? e ?? 'Could not record paid order');
     }

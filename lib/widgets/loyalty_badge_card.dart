@@ -37,7 +37,7 @@ class _LoyaltyBadgeCardState extends State<LoyaltyBadgeCard> {
       final results = await Future.wait([
         _supabase.from('user_gamification').select().eq('user_id', user.id).maybeSingle(),
         _supabase.from('orders').select('status').eq('customer_id', user.id),
-      ]);
+      ].cast<Future<dynamic>>());
 
       if (!mounted) return;
 

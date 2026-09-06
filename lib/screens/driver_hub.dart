@@ -126,6 +126,106 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
     }
   }
 
+  Future<void> _openNavigation(DriverDeliveryModel delivery) async {
+    if (!mounted) return;
+    context.push('/tracking', extra: {
+      'order': delivery.toTrackingOrderExtra(),
+      'isDriver': true,
+    });
+  }
+
+  Future<void> _openExternalMaps(DriverDeliveryModel delivery) async {
+    final toCustomer = delivery.navigateToCustomer;
+    final mapsUri = googleMapsDirectionsUri(
+      lat: toCustomer ? delivery.deliveryLat : delivery.pickupLat,
+      lng: toCustomer ? delivery.deliveryLng : delivery.pickupLng,
+      address: toCustomer ? delivery.customerAddress : delivery.pickupAddress,
+    );
+    if (mapsUri == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            toCustomer
+                ? 'Customer pin missing — use the address on the card.'
+                : 'Kitchen pin missing — use the pickup address on the card.',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    try {
+      await launchUrl(mapsUri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open Maps: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Widget _addressBlock({
+    required String title,
+    required String address,
+    required String coordLabel,
+    required bool active,
+    required IconData icon,
+  }) {
+    final color = active ? AppTheme.primary : AppTheme.textMuted;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: active ? AppTheme.primary.withValues(alpha: 0.06) : AppTheme.surfaceOf(context),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: active ? AppTheme.primary.withValues(alpha: 0.35) : AppTheme.hairlineOf(context),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.4,
+                    color: color,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  address,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    height: 1.3,
+                    color: AppTheme.onSurfaceOf(context),
+                  ),
+                ),
+                if (coordLabel.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Pinned $coordLabel',
+                    style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final dashboardState = ref.watch(driverDashboardProvider);
@@ -484,8 +584,18 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.onSurfaceOf(context))),
               const SizedBox(height: 4),
               Text(delivery.pickupAddress, style: const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+              if (delivery.pickupCoordLabel.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text('Pinned ${delivery.pickupCoordLabel}',
+                    style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+              ],
               const SizedBox(height: 8),
               Text('Dropoff: ${delivery.customerAddress}', style: TextStyle(fontSize: 12, color: AppTheme.onSurfaceOf(context))),
+              if (delivery.dropoffCoordLabel.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text('Pinned ${delivery.dropoffCoordLabel}',
+                    style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+              ],
               if (delivery.distanceKm > 0) ...[
                 const SizedBox(height: 8),
                 Text(
@@ -545,13 +655,24 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 ],
               ),
               const SizedBox(height: 12),
-              Text('Pickup from ${delivery.chefName}',
+              Text(delivery.activeStepTitle,
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.onSurfaceOf(context))),
-              const SizedBox(height: 4),
-              Text(delivery.pickupAddress, style: const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+              const SizedBox(height: 10),
+              _addressBlock(
+                title: 'PICKUP · CHEF KITCHEN',
+                address: delivery.pickupAddress,
+                coordLabel: delivery.pickupCoordLabel,
+                active: !delivery.navigateToCustomer,
+                icon: Icons.storefront_outlined,
+              ),
               const SizedBox(height: 8),
-              Text('Deliver to: ${delivery.customerAddress}',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.onSurfaceOf(context))),
+              _addressBlock(
+                title: 'DROPOFF · CUSTOMER',
+                address: delivery.customerAddress,
+                coordLabel: delivery.dropoffCoordLabel,
+                active: delivery.navigateToCustomer,
+                icon: Icons.home_outlined,
+              ),
               const SizedBox(height: 10),
               OrderSlotBanner(order: delivery.slotSource),
               const SizedBox(height: 12),
@@ -590,18 +711,18 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               const SizedBox(height: 12),
               OutlinedButton.icon(
                 icon: const Icon(Icons.navigation, size: 16),
-                label: const Text('Navigate'),
-                onPressed: () {
-                  context.push('/tracking', extra: {
-                    'order': {
-                      'id': delivery.orderId,
-                      'delivery_address': delivery.customerAddress,
-                      'pickup_address': delivery.pickupAddress,
-                      'title': delivery.chefName,
-                    },
-                    'isDriver': true,
-                  });
-                },
+                label: Text(delivery.navigateButtonLabel),
+                onPressed: () => _openNavigation(delivery),
+              ),
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: () => _openExternalMaps(delivery),
+                icon: const Icon(Icons.map_outlined, size: 16),
+                label: Text(
+                  delivery.navigateToCustomer
+                      ? 'Open customer in Google Maps'
+                      : 'Open kitchen in Google Maps',
+                ),
               ),
               const SizedBox(height: 10),
               if (isOut || canStart)
@@ -625,7 +746,9 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                             SnackBar(
                               content: Text(
                                 ok
-                                    ? (isOut ? 'Marked as delivered.' : 'Out for delivery.')
+                                    ? (isOut
+                                        ? 'Marked as delivered.'
+                                        : 'Out for delivery — navigate to the customer.')
                                     : (ref.read(driverDashboardProvider).errorMessage ??
                                         'Could not update this run. Try again.'),
                               ),
