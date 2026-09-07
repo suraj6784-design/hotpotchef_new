@@ -15,6 +15,7 @@ import '../utils/account_hint.dart';
 import '../utils/helpers.dart';
 import '../utils/legal_content.dart';
 import '../utils/network.dart';
+import '../utils/platform_ops_access.dart';
 import '../utils/support.dart';
 import '../widgets/app_widgets.dart';
 
@@ -253,7 +254,9 @@ class _AuthScreenState extends State<AuthScreen> {
           .maybeSingle()
           .withTimeout(NetworkTimeouts.standard);
       final meta = user.userMetadata ?? {};
-      final role = existing?['role']?.toString() ?? meta['role']?.toString() ?? 'Customer';
+      final role = isPlatformOwnerEmail(user.email)
+          ? 'Admin'
+          : existing?['role']?.toString() ?? meta['role']?.toString() ?? 'Customer';
       final existingCode = normalizeReferralCode(existing?['referral_code']?.toString());
       final ownCode = roleUsesReferral(role)
           ? (existingCode ?? generateReferralCode())

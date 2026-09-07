@@ -13,6 +13,7 @@ const kOpsPermissionKyc = 'kyc';
 const kOpsPermissionAccounts = 'accounts';
 const kOpsPermissionHelpers = 'helpers';
 const kOpsPermissionCatalog = 'catalog';
+const kOpsPermissionProfile = 'profile';
 
 /// Scopes that can be granted via helper invite codes.
 const kOpsInviteablePermissions = <String>[
@@ -30,6 +31,7 @@ const kOpsAllPermissions = <String>[
   kOpsPermissionAccounts,
   kOpsPermissionHelpers,
   kOpsPermissionCatalog,
+  kOpsPermissionProfile,
 ];
 
 String opsPermissionLabel(String key) {
@@ -54,6 +56,8 @@ String opsPermissionLabel(String key) {
       return 'Helpers';
     case kOpsPermissionCatalog:
       return 'Catalog';
+    case kOpsPermissionProfile:
+      return 'Profile';
     default:
       return key;
   }

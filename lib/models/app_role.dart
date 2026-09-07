@@ -94,6 +94,8 @@ bool roleCanOpenAuthenticatedPath(AppRole role, String path) {
   if (kAdminOnlyRoutes.contains(path)) return role == AppRole.admin;
   if (kChefOnlyRoutes.contains(path)) return role == AppRole.chef;
   if (kDriverOnlyRoutes.contains(path)) return role == AppRole.driver;
-  if (kCustomerAccountRoutes.contains(path)) return role == AppRole.customer;
+  if (kCustomerAccountRoutes.contains(path)) {
+    return role == AppRole.customer || role == AppRole.admin;
+  }
   return true;
 }

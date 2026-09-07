@@ -57,7 +57,7 @@ class AppRouter {
     refreshListenable: _authRefresh,
     errorBuilder: (context, state) {
       final user = Supabase.instance.client.auth.currentUser;
-      final role = AppRole.parse(user?.userMetadata?['role']?.toString());
+      final role = AuthSession.roleForUser(user);
 
       return NotFoundPage(onHome: () => context.go(role.hubPath));
     },
@@ -65,7 +65,7 @@ class AppRouter {
       final session = Supabase.instance.client.auth.currentSession;
       final isAuthenticated = session != null;
       final path = state.uri.path;
-      final role = AppRole.parse(session?.user.userMetadata?['role']?.toString());
+      final role = AuthSession.roleForUser(session?.user);
 
       const signedInOnlyRoutes = {
         ...kChefOnlyRoutes,

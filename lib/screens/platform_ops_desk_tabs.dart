@@ -1,6 +1,155 @@
 // Extra Platform Ops tabs: Dashboard, Accounts, Helpers.
 part of 'platform_ops_screen.dart';
 
+class _AdminProfileList extends StatefulWidget {
+  const _AdminProfileList({super.key, required this.email, required this.onOpenTab});
+
+  final String email;
+  final void Function(String tabKey) onOpenTab;
+
+  @override
+  State<_AdminProfileList> createState() => _AdminProfileListState();
+}
+
+class _AdminProfileListState extends State<_AdminProfileList> {
+  bool _syncing = false;
+  String _dbRole = '…';
+  String _sessionRole = '…';
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshRoles();
+  }
+
+  Future<void> _refreshRoles() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    var table = 'unknown';
+    try {
+      final row = await Supabase.instance.client
+          .from('users')
+          .select('role')
+          .eq('id', user?.id ?? '')
+          .maybeSingle()
+          .withTimeout(NetworkTimeouts.short);
+      table = row?['role']?.toString() ?? 'missing';
+    } catch (_) {
+      table = 'unavailable';
+    }
+    if (!mounted) return;
+    setState(() {
+      _dbRole = table;
+      _sessionRole = user?.userMetadata?['role']?.toString() ?? 'none';
+    });
+  }
+
+  Future<void> _syncRole() async {
+    setState(() => _syncing = true);
+    await AuthSession.syncOwnerAdminRole();
+    await _refreshRoles();
+    if (!mounted) return;
+    setState(() => _syncing = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Admin role re-synced. Sign out and back in if the old Chef label remains.')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final actions = <(IconData, String, String, VoidCallback)>[
+      (Icons.storefront_outlined, 'Catalog', 'Pause or restore live plates', () => widget.onOpenTab(kOpsPermissionCatalog)),
+      (Icons.people_outline, 'Accounts', 'Roles, suspend, reinstate', () => widget.onOpenTab(kOpsPermissionAccounts)),
+      (Icons.confirmation_number_outlined, 'Tickets', 'Customer and chef support', () => widget.onOpenTab(kOpsPermissionTickets)),
+      (Icons.badge_outlined, 'KYC', 'Chef and driver completeness', () => widget.onOpenTab(kOpsPermissionKyc)),
+      (Icons.insights_outlined, 'Dashboard', 'GMV and paid orders', () => widget.onOpenTab(kOpsPermissionDashboard)),
+      (Icons.restaurant_outlined, 'Diner feed', 'See the customer home', () => context.go('/customer-hub')),
+    ];
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        AppCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: const Text(
+                  'ADMIN',
+                  style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w800, fontSize: 11, letterSpacing: 0.6),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(widget.email.isEmpty ? 'Platform owner' : widget.email, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              Text(
+                'Database role: $_dbRole · Session role: $_sessionRole',
+                style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+              ),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: _syncing ? null : _syncRole,
+                icon: _syncing
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.verified_user_outlined, size: 18),
+                label: const Text('Re-sync Admin role'),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        Text('Controls', style: AppTheme.sectionTitleOf(context)),
+        const SizedBox(height: 8),
+        for (final action in actions)
+          AppCard(
+            margin: const EdgeInsets.only(bottom: 8),
+            onTap: action.$4,
+            child: Row(
+              children: [
+                Icon(action.$1, color: AppTheme.primary),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(action.$2, style: const TextStyle(fontWeight: FontWeight.w800)),
+                      Text(action.$3, style: const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right),
+              ],
+            ),
+          ),
+        AppCard(
+          margin: const EdgeInsets.only(bottom: 8),
+          onTap: () => launchUrl(Uri.parse('https://hotpotchef.com'), mode: LaunchMode.externalApplication),
+          child: const Row(
+            children: [
+              Icon(Icons.language, color: AppTheme.primary),
+              SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Website', style: TextStyle(fontWeight: FontWeight.w800)),
+                    Text('hotpotchef.com catalog and policies', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _OpsDashList extends StatefulWidget {
   const _OpsDashList({super.key});
 

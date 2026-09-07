@@ -33,8 +33,33 @@ class AuthSession {
   }
 
   static AppRole roleFromSession({String? tableRole}) {
-    final metadataRole = currentUser?.userMetadata?['role']?.toString();
+    final user = currentUser;
+    if (isPlatformOwnerEmail(user?.email)) return AppRole.admin;
+    final metadataRole = user?.userMetadata?['role']?.toString();
     return AppRole.parse(tableRole ?? metadataRole);
+  }
+
+  static AppRole roleForUser(User? user, {String? tableRole}) {
+    if (isPlatformOwnerEmail(user?.email)) return AppRole.admin;
+    return AppRole.parse(tableRole ?? user?.userMetadata?['role']?.toString());
+  }
+
+  /// Keep JWT + public.users aligned when the owner still has a leftover Chef session.
+  static Future<void> syncOwnerAdminRole() async {
+    final user = currentUser;
+    if (user == null || !isPlatformOwnerEmail(user.email)) return;
+    try {
+      await _client.from('users').update({'role': 'Admin'}).eq('id', user.id);
+    } catch (e, st) {
+      FirebaseCrashlytics.instance.recordError(e, st, reason: 'Owner Admin users.role sync failed');
+    }
+    final metaRole = user.userMetadata?['role']?.toString();
+    if (AppRole.parse(metaRole) == AppRole.admin) return;
+    try {
+      await _client.auth.updateUser(UserAttributes(data: {'role': 'Admin'}));
+    } catch (e, st) {
+      FirebaseCrashlytics.instance.recordError(e, st, reason: 'Owner Admin JWT role sync failed');
+    }
   }
 
   static Future<AppRole> resolveRole() async {
@@ -43,6 +68,7 @@ class AuthSession {
 
     // Owner email is always the Admin hub, never Chef/Customer/Driver.
     if (isPlatformOwnerEmail(user.email)) {
+      await syncOwnerAdminRole();
       return AppRole.admin;
     }
 

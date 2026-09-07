@@ -2,9 +2,11 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/auth_session.dart';
 import '../utils/helpers.dart';
@@ -55,6 +57,7 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> with SingleTicker
   }
 
   Future<void> _gate() async {
+    await AuthSession.syncOwnerAdminRole();
     final ok = await AuthSession.isPlatformOps();
     final owner = await AuthSession.isPlatformOwner();
     final perms = await AuthSession.opsPermissions();
@@ -106,6 +109,20 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> with SingleTicker
     );
     add(kOpsPermissionKyc, 'KYC', () => _KycOpsList(key: ValueKey('kyc-$_reloadToken')));
     if (owner) {
+      specs.add(
+        _OpsTabSpec(
+          kOpsPermissionProfile,
+          'Profile',
+          () => _AdminProfileList(
+            key: ValueKey('profile-$_reloadToken'),
+            email: _supabase.auth.currentUser?.email ?? '',
+            onOpenTab: (key) {
+              final index = specs.indexWhere((t) => t.key == key);
+              if (index >= 0) _tabs?.animateTo(index);
+            },
+          ),
+        ),
+      );
       specs.add(
         _OpsTabSpec(
           kOpsPermissionAccounts,
