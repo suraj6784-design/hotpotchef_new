@@ -15,6 +15,7 @@ import '../models/pricing_models.dart';
 import '../models/app_role.dart';
 import '../services/auth_session.dart';
 import '../services/reorder_service.dart';
+import '../services/kitchen_media.dart';
 
 class _AddOnDraft {
   _AddOnDraft({String? id, String title = '', String price = ''})
@@ -70,6 +71,8 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
   // Media
   XFile? _selectedImageFile;
   String? _existingImageUrl;
+  String? _fssaiProofUrl;
+  String _fssaiVerificationStatus = 'unsubmitted';
 
   // Meal Specifications
   bool _isLoading = false;
@@ -218,7 +221,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
 
       final chefProfile = await _supabase
           .from('users')
-          .select('fssai_number, address, lat, lng')
+          .select('fssai_number, fssai_proof_url, fssai_verification_status, address, lat, lng')
           .eq('id', user.id)
           .maybeSingle();
 
@@ -228,6 +231,10 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
           _hostingAddressController.text = chefProfile['address']?.toString() ?? '';
           _pickupLat = (chefProfile['lat'] as num?)?.toDouble();
           _pickupLng = (chefProfile['lng'] as num?)?.toDouble();
+          _fssaiProofUrl = chefProfile['fssai_proof_url']?.toString();
+          _fssaiVerificationStatus = normalizeFssaiVerificationStatus(
+            chefProfile['fssai_verification_status']?.toString(),
+          );
         });
       }
     } catch (e, st) {
@@ -298,6 +305,22 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     if (fssai.isEmpty || kitchenAddress.isEmpty || _pickupLat == null || _pickupLng == null) {
       _showSnackBar(
         'Add your FSSAI licence, kitchen address, and map pin in Chef Profile, then try publishing again.',
+        isError: true,
+      );
+      return;
+    }
+    if (!chefCanPublishWithFssai(
+      fssaiNumber: fssai,
+      proofUrl: _fssaiProofUrl,
+      verificationStatus: _fssaiVerificationStatus,
+    )) {
+      final status = normalizeFssaiVerificationStatus(_fssaiVerificationStatus);
+      _showSnackBar(
+        status == 'rejected'
+            ? 'Your FSSAI proof was rejected. Upload a clear licence photo in Chef Profile.'
+            : status == 'pending'
+                ? 'FSSAI proof is under review (typically 1 business day). Publishing unlocks after HotPotChef verifies.'
+                : 'Upload your FSSAI licence proof in Chef Profile. Publishing requires ops verification.',
         isError: true,
       );
       return;
@@ -541,7 +564,10 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
             // Meal Image Banner
             GestureDetector(
               onTap: _pickImage,
-              child: Container(
+              child: Semantics(
+                button: true,
+                label: 'Add meal photo',
+                child: Container(
                 height: 190,
                 width: double.infinity,
                 decoration: BoxDecoration(
@@ -573,6 +599,15 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                         ],
                       )
                     : null,
+              ),
+              ),
+            ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => showKitchenPhotoChecklist(context),
+                icon: const Icon(Icons.checklist_outlined, size: 18),
+                label: const Text('Photo checklist'),
               ),
             ),
             const SizedBox(height: 24),
@@ -1142,6 +1177,12 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                       isEditing ? 'Update Meal' : 'Publish Meal to Menu',
                       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Orders from HotPotChef diners must stay on the app (Razorpay checkout). Off-app WhatsApp/UPI deals can pause boosts and Support.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12, height: 1.35, color: AppTheme.textMuted, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 40),
           ],

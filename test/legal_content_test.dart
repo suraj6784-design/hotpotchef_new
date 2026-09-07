@@ -18,4 +18,12 @@ void main() {
       isTrue,
     );
   });
+
+  test('terms keep invoice guidance after marketplace integrity section', () {
+    final terms = legalDocumentFor(LegalDocumentType.terms);
+    expect(
+      terms.sections.any((s) => s.heading.toLowerCase().contains('invoice')),
+      isTrue,
+    );
+  });
 }

@@ -204,6 +204,18 @@ bool roleUsesReferral(String? role) {
   }
 }
 
+/// Current in-app Terms / Privacy consent copy version.
+const kLegalConsentVersion = '2026-09-07';
+
+Map<String, dynamic> legalConsentFields({DateTime? at}) {
+  final stamp = (at ?? DateTime.now()).toUtc().toIso8601String();
+  return {
+    'terms_accepted_at': stamp,
+    'privacy_accepted_at': stamp,
+    'legal_consent_version': kLegalConsentVersion,
+  };
+}
+
 Map<String, dynamic> signupUserPayload({
   required String id,
   required String email,
@@ -213,6 +225,7 @@ Map<String, dynamic> signupUserPayload({
   String? referredBy,
   String? referralCode,
   String? createdAt,
+  bool recordLegalConsent = false,
 }) {
   final customer = roleUsesReferral(role);
   return {
@@ -225,6 +238,7 @@ Map<String, dynamic> signupUserPayload({
     if (createdAt != null) 'created_at': createdAt,
     if (customer && referredBy != null) 'referred_by': referredBy,
     if (customer && referralCode != null) 'referral_code': referralCode,
+    if (recordLegalConsent) ...legalConsentFields(),
   };
 }
 
@@ -300,7 +314,7 @@ String fssaiVerificationLabel(String? status) {
   }
 }
 
-/// Publish requires a valid number, uploaded proof, and not rejected.
+/// Publish requires a valid number, uploaded proof, and ops-verified status.
 bool chefCanPublishWithFssai({
   String? fssaiNumber,
   String? proofUrl,
@@ -309,8 +323,49 @@ bool chefCanPublishWithFssai({
   if (normalizeFssaiNumber(fssaiNumber) == null) return false;
   final proof = (proofUrl ?? '').trim();
   if (proof.isEmpty) return false;
+  return normalizeFssaiVerificationStatus(verificationStatus) == 'verified';
+}
+
+/// Honest diner-facing FSSAI line (never imply verified without ops status).
+String dinerFssaiTrustLabel({
+  String? fssaiNumber,
+  String? verificationStatus,
+}) {
+  final number = (fssaiNumber ?? '').trim();
   final status = normalizeFssaiVerificationStatus(verificationStatus);
-  return status == 'pending' || status == 'verified';
+  if (number.isEmpty) return 'FSSAI not listed';
+  switch (status) {
+    case 'verified':
+      return 'FSSAI verified · $number';
+    case 'pending':
+      return 'FSSAI proof under review · $number';
+    case 'rejected':
+      return 'FSSAI not verified · $number';
+    default:
+      return 'FSSAI listed · $number';
+  }
+}
+
+bool dinerFssaiIsVerified(String? verificationStatus) =>
+    normalizeFssaiVerificationStatus(verificationStatus) == 'verified';
+
+String maskPan(String? raw) {
+  final cleaned = (raw ?? '').replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
+  if (cleaned.length < 4) return cleaned.isEmpty ? '' : '****';
+  return '******${cleaned.substring(cleaned.length - 4)}';
+}
+
+String maskBankAccount(String? raw) {
+  final digits = (raw ?? '').replaceAll(RegExp(r'\D'), '');
+  if (digits.length < 4) return digits.isEmpty ? '' : '****';
+  return 'XXXXXX${digits.substring(digits.length - 4)}';
+}
+
+bool deliveryOtpMatches(String? expected, String? entered) {
+  final a = (expected ?? '').replaceAll(RegExp(r'\D'), '');
+  final b = (entered ?? '').replaceAll(RegExp(r'\D'), '');
+  if (a.length < 4 || b.length < 4) return false;
+  return a == b;
 }
 
 const kPackagingOpsStatuses = <String>[
@@ -456,10 +511,53 @@ String formatOrderId(String? rawOrderId, String fallbackId) {
 bool orderAllowsPartyChat(String? status) {
   final s = (status ?? '').toLowerCase().trim();
   if (s.isEmpty) return true;
-  if (s.contains('deliver') || s.contains('complet')) return false;
+  // Avoid matching "Out for Delivery" via the "deliver" substring.
+  if (s == 'delivered' || s.contains('delivered') || s.contains('complet')) return false;
   if (s.contains('cancel') || s.contains('refund') || s.contains('reject')) return false;
   return true;
 }
+
+/// Phone dial is only for active fulfilment — not for fishing contacts pre-prep or post-delivery.
+bool orderAllowsPhoneCall(String? status) {
+  if (!orderAllowsPartyChat(status)) return false;
+  final s = (status ?? '').toLowerCase().trim();
+  if (s.isEmpty) return false;
+  return s.contains('confirm') ||
+      s.contains('prepar') ||
+      s.contains('cook') ||
+      s.contains('ready') ||
+      s.contains('assign') ||
+      s.contains('accept') ||
+      s.contains('pickup') ||
+      s.contains('picked') ||
+      s.contains('out for') ||
+      s == 'out' ||
+      (s.contains('out') && s.contains('deliver'));
+}
+
+final _offAppPayPattern = RegExp(
+  r'(?:\bupi\b|\bpaytm\b|\bgpay\b|\bgoogle\s*pay\b|\bphonepe\b|\bphone\s*pe\b|'
+  r'@oksbi|@okicici|@okhdfc|@paytm|'
+  r'wa\.me|whatsapp\.me|whats\s*app\s*me|message\s+me\s+on\s+wa|'
+  r'pay\s+(?:me\s+)?(?:outside|offline|directly|on\s+whatsapp|via\s+upi)|'
+  r'(?:next\s+time|from\s+now).{0,40}(?:whatsapp|upi|cash)|'
+  r'(?:send|pay).{0,20}(?:to\s+my\s+number|qr)|'
+  r'\b\d{10}\b.{0,20}(?:upi|pay|gpay|phonepe))',
+  caseSensitive: false,
+);
+
+bool messageSolicitsOffAppPayment(String? text) {
+  final raw = (text ?? '').trim();
+  if (raw.length < 4) return false;
+  return _offAppPayPattern.hasMatch(raw);
+}
+
+const kPayInAppChatNotice =
+    'Pay only in the HotPotChef app. In-app checkout keeps refunds, HotPot Coins, delivery tracking, and Support. Do not move orders to WhatsApp or UPI.';
+
+String offAppPaymentNudgeCopy() =>
+    'This looks like an off-app payment request. HotPotChef may suspend accounts that move paid customers off the platform. Send anyway only if you are discussing something else.';
+
 
 Future<void> copyOrderNumber(BuildContext context, String orderNumber) async {
   final text = orderNumber.trim();
@@ -1746,12 +1844,35 @@ String societyNightLabel(Map<String, dynamic>? meal) {
   return 'Society night';
 }
 
+bool societyLabelMatchesAddress(String? societyLabel, Map<String, dynamic>? address) {
+  final label = normalizeAddressKey(societyLabel ?? '');
+  if (label.isEmpty) return true;
+  if (address == null) return false;
+  final haystack = normalizeAddressKey([
+    address['society_name'],
+    address['wing'],
+    address['flat_no'],
+    address['house_no'],
+    address['landmark'],
+    address['street'],
+    address['address_line1'],
+    address['city'],
+    address['address'],
+  ].where((v) => v != null && v.toString().trim().isNotEmpty).join(' '));
+  if (haystack.isEmpty) return false;
+  if (haystack.contains(label) || label.contains(haystack)) return true;
+  final tokens = label.split(RegExp(r'\s+')).where((t) => t.length >= 3).toList();
+  if (tokens.isEmpty) return haystack.contains(label);
+  return tokens.every(haystack.contains);
+}
+
 List<Map<String, dynamic>> societyNightMeals(
   Iterable<Map<String, dynamic>> meals, {
   Set<String> excludedChefIds = const {},
   int limit = 8,
   double? destinationLat,
   double? destinationLng,
+  Map<String, dynamic>? destinationAddress,
   Map<String, Map<String, dynamic>> chefKitchenPins = const {},
 }) {
   final unique = <String>{};
@@ -1761,6 +1882,12 @@ List<Map<String, dynamic>> societyNightMeals(
     if (!isCatalogMeal(meal) || !isMealAvailableForCart(meal)) continue;
     final chefId = meal['chef_id']?.toString() ?? '';
     if (chefId.isNotEmpty && excludedChefIds.contains(chefId)) continue;
+    final societyLabel = meal['society_label']?.toString();
+    if (destinationAddress != null &&
+        (societyLabel ?? '').trim().isNotEmpty &&
+        !societyLabelMatchesAddress(societyLabel, destinationAddress)) {
+      continue;
+    }
     final pinned = mealWithKitchenPin(meal, chefPin: chefKitchenPins[chefId]);
     if (!mealInDeliveryRadius(
       pinned,
@@ -2841,10 +2968,10 @@ bool isKitchenLivePhotoFresh(DateTime? takenAt, {DateTime? now}) {
 String kitchenLivePhotoLabel(DateTime? takenAt, {DateTime? now}) {
   if (!isKitchenLivePhotoFresh(takenAt, now: now)) return '';
   final minutes = (now ?? DateTime.now()).toLocal().difference(takenAt!.toLocal()).inMinutes;
-  if (minutes < 1) return 'Live from the kitchen · just now';
-  if (minutes < 60) return 'Live from the kitchen · ${minutes}m ago';
+  if (minutes < 1) return 'Fresh kitchen photo · just now';
+  if (minutes < 60) return 'Fresh kitchen photo · ${minutes}m ago';
   final hours = minutes ~/ 60;
-  return 'Live from the kitchen · ${hours}h ago';
+  return 'Fresh kitchen photo · ${hours}h ago';
 }
 
 String? orderDispatchPhotoUrl(Map<String, dynamic>? order) {
@@ -3102,15 +3229,17 @@ bool dinerSlotIsLate(Map<String, dynamic> order, {DateTime? now}) {
   return start.isBefore(now ?? DateTime.now());
 }
 
-/// Diner-facing promised slot, e.g. "12 min left · 06 Sep 2026, 08:00 PM".
+/// Diner-facing promised slot, e.g. "Arriving by 8:00 PM · 12 min left".
 String dinerPromisedSlotCopy(Map<String, dynamic> order, {DateTime? now, String? status}) {
   if (!dinerSlotCountdownActive(status ?? order['status']?.toString())) return '';
   final slot = formatDeliverySlotLabel(order, now: now);
   final tick = formatSlotCountdown(orderSlotStart(order, now: now), now: now);
-  if (tick.isEmpty) return slot == 'ASAP' ? 'Promised ASAP' : 'Promised $slot';
-  if (tick == 'Due now') return 'Due now · $slot';
+  if (tick.isEmpty) {
+    return slot == 'ASAP' ? 'Arriving ASAP' : 'Arriving by $slot';
+  }
+  if (tick == 'Due now') return 'Due now · arriving by $slot';
   if (tick.contains('late')) return '$tick · promised $slot';
-  return '$tick · $slot';
+  return 'Arriving by $slot · $tick';
 }
 
 /// Live countdown against the scheduled drop-off, e.g. "12 min left" / "8 min late".
@@ -3342,7 +3471,9 @@ String formatSavedAddress(Map<String, dynamic>? data) {
 
   final parts = <String>[];
   for (final value in [
-    data['house_no'],
+    data['house_no'] ?? data['flat_no'],
+    data['wing'],
+    data['society_name'],
     data['street'] ?? data['address_line1'] ?? data['address_line_1'],
     data['landmark'],
     data['city'],

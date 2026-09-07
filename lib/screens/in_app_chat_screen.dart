@@ -40,6 +40,7 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
   final Map<String, String> _roleCache = {};
   bool _isFetchingRoles = false;
   bool _partyChatOpen = true;
+  bool _phoneCallOpen = false;
 
   @override
   void initState() {
@@ -48,6 +49,8 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
     ChatReadStore.markRead(widget.mealId);
     if (widget.isGroup) {
       _loadOrderChatGate();
+    } else {
+      _phoneCallOpen = true;
     }
   }
 
@@ -59,8 +62,10 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
           .eq('id', widget.mealId)
           .maybeSingle();
       if (!mounted) return;
+      final status = row?['status']?.toString();
       setState(() {
-        _partyChatOpen = orderAllowsPartyChat(row?['status']?.toString());
+        _partyChatOpen = orderAllowsPartyChat(status);
+        _phoneCallOpen = orderAllowsPhoneCall(status);
       });
     } catch (_) {
       // Keep composer open if status lookup fails (e.g. non-order rooms).
@@ -129,6 +134,17 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
   }
 
   Future<void> _callOtherParty() async {
+    if (!_phoneCallOpen) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Phone is for active preparation/delivery only. Prefer in-app chat.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
     final me = _supabase.auth.currentUser?.id;
     try {
       final known = widget.memberIds.where((id) => id.isNotEmpty && id != me).toSet();
@@ -201,6 +217,22 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
     }
     final text = _controller.text.trim();
     if (text.isEmpty) return;
+
+    if (widget.isGroup && messageSolicitsOffAppPayment(text)) {
+      final sendAnyway = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: AppTheme.dialogShape,
+          title: const Text('Pay in the app'),
+          content: Text(offAppPaymentNudgeCopy()),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Edit message')),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Send anyway')),
+          ],
+        ),
+      );
+      if (sendAnyway != true || !mounted) return;
+    }
 
     _controller.clear();
     final user = _supabase.auth.currentUser;
@@ -293,14 +325,42 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
         iconTheme: IconThemeData(color: titleColor),
         actions: [
           IconButton(
-            tooltip: 'Call',
-            icon: const Icon(Icons.phone_outlined),
+            tooltip: _phoneCallOpen ? 'Call' : 'Call only during active fulfilment',
+            icon: Icon(
+              Icons.phone_outlined,
+              color: _phoneCallOpen ? null : Colors.grey,
+            ),
             onPressed: _callOtherParty,
           ),
         ],
       ),
       body: Column(
         children: [
+          if (widget.isGroup && _partyChatOpen)
+            Material(
+              color: AppTheme.primary.withValues(alpha: isDark ? 0.18 : 0.08),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.lock_outline, size: 16, color: AppTheme.primary.withValues(alpha: 0.9)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        kPayInAppChatNotice,
+                        style: TextStyle(
+                          color: titleColor,
+                          fontSize: 11.5,
+                          height: 1.35,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           Expanded(
             child: StreamBuilder<List<Map<String, dynamic>>>(
               stream: _supabase

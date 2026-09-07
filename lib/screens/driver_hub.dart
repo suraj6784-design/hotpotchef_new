@@ -33,6 +33,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
   int _selectedIndex = 0;
   bool _isOnline = true;
   String? _busyOrderId;
+  final Set<String> _warnedMissingOtpOrderIds = {};
 
   @override
   void initState() {
@@ -178,7 +179,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: active ? AppTheme.primary.withValues(alpha: 0.06) : AppTheme.surfaceOf(context),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppTheme.radiusLg,
         border: Border.all(
           color: active ? AppTheme.primary.withValues(alpha: 0.35) : AppTheme.hairlineOf(context),
         ),
@@ -221,6 +222,79 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _dropoffNotesCard(DriverDeliveryModel delivery) {
+    final gate = delivery.gateInstructions?.trim() ?? '';
+    final otp = delivery.deliveryOtp?.trim() ?? '';
+    var notes = delivery.specialInstructions?.trim() ?? '';
+    if (notes.isNotEmpty) {
+      notes = notes
+          .split('\n')
+          .map((line) => line.trim())
+          .where((line) {
+            if (line.isEmpty) return false;
+            final lower = line.toLowerCase();
+            if (gate.isNotEmpty && lower.startsWith('gate:')) return false;
+            if (otp.isNotEmpty && (lower.contains('delivery pin:') || lower.startsWith('otp:'))) {
+              return false;
+            }
+            return true;
+          })
+          .join('\n')
+          .trim();
+    }
+    if (gate.isEmpty && otp.isEmpty && notes.isEmpty) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.accent.withValues(alpha: 0.10),
+        borderRadius: AppTheme.radiusLg,
+        border: Border.all(color: AppTheme.accent.withValues(alpha: 0.45)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'GATE / DELIVERY NOTES',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.6,
+              color: AppTheme.onSurfaceOf(context),
+            ),
+          ),
+          if (gate.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text('Gate instructions', style: TextStyle(fontSize: 11, color: AppTheme.textMuted, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 2),
+            Text(gate, style: TextStyle(fontSize: 13, height: 1.35, color: AppTheme.onSurfaceOf(context), fontWeight: FontWeight.w600)),
+          ],
+          if (otp.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text('Delivery PIN / OTP', style: TextStyle(fontSize: 11, color: AppTheme.textMuted, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 4),
+            Text(
+              otp,
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 4,
+                fontFamily: 'monospace',
+                color: AppTheme.onSurfaceOf(context),
+              ),
+            ),
+          ],
+          if (notes.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text('Special instructions', style: TextStyle(fontSize: 11, color: AppTheme.textMuted, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 2),
+            Text(notes, style: TextStyle(fontSize: 13, height: 1.35, color: AppTheme.onSurfaceOf(context))),
+          ],
         ],
       ),
     );
@@ -311,7 +385,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
                             color: Colors.white.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(20),
+                            borderRadius: AppTheme.radiusLg,
                             border: Border.all(color: Colors.white54),
                           ),
                           child: Row(
@@ -482,8 +556,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
             ],
           ),
           const SizedBox(height: 24),
-          Text('Recent completed deliveries',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.onSurfaceOf(context))),
+          Text('Recent completed deliveries', style: AppTheme.sectionTitleOf(context).copyWith(fontSize: 18)),
           const SizedBox(height: 12),
           if (state.recentDeliveries.isEmpty)
             const SizedBox(
@@ -668,6 +741,69 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
     );
   }
 
+  Future<bool> _confirmMarkDelivered(DriverDeliveryModel delivery) async {
+    final expected = delivery.deliveryOtp?.trim() ?? '';
+    if (expected.isEmpty) {
+      if (_warnedMissingOtpOrderIds.add(delivery.orderId) && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No delivery PIN on this order — marking delivered without PIN check.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return true;
+    }
+
+    final controller = TextEditingController();
+    final matched = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          shape: AppTheme.dialogShape,
+          title: const Text('Enter delivery PIN'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            maxLength: 4,
+            obscureText: true,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: const InputDecoration(
+              labelText: '4-digit PIN from customer',
+              counterText: '',
+            ),
+            onSubmitted: (_) {
+              final ok = deliveryOtpMatches(expected, controller.text);
+              Navigator.pop(ctx, ok);
+            },
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () {
+                final ok = deliveryOtpMatches(expected, controller.text);
+                if (!ok) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(
+                      content: Text('PIN does not match. Ask the customer for the delivery PIN.'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                  return;
+                }
+                Navigator.pop(ctx, true);
+              },
+              child: const Text('Confirm'),
+            ),
+          ],
+        );
+      },
+    );
+    controller.dispose();
+    return matched == true;
+  }
+
   Widget _buildActiveDeliveryTab(List<DriverDeliveryModel> active, DriverDashboardNotifier notifier) {
     if (active.isEmpty) {
       return const EmptyState(
@@ -725,6 +861,10 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 active: delivery.navigateToCustomer,
                 icon: Icons.home_outlined,
               ),
+              if (delivery.hasDropoffNotes) ...[
+                const SizedBox(height: 8),
+                _dropoffNotesCard(delivery),
+              ],
               const SizedBox(height: 10),
               OrderSlotBanner(order: delivery.slotSource),
               const SizedBox(height: 12),
@@ -756,8 +896,10 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                   Expanded(
                     child: OutlinedButton.icon(
                       icon: const Icon(Icons.phone_outlined, size: 16),
-                      label: const Text('Call'),
-                      onPressed: !orderAllowsPartyChat(rawStatus) ? null : () => _callCustomer(delivery.customerId),
+                      label: Text(orderAllowsPhoneCall(rawStatus) ? 'Call' : 'Chat preferred'),
+                      onPressed: !orderAllowsPhoneCall(rawStatus)
+                          ? null
+                          : () => _callCustomer(delivery.customerId),
                     ),
                   ),
                 ],
@@ -780,36 +922,44 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               ),
               const SizedBox(height: 10),
               if (isOut || canStart)
-                GradientButton(
+                Semantics(
+                  button: true,
                   label: isOut ? 'Mark Delivered' : 'Start Delivery',
-                  icon: isOut ? Icons.check_rounded : Icons.delivery_dining_rounded,
-                  height: 48,
-                  loading: _busyOrderId == delivery.orderId,
-                  gradient: isOut
-                      ? const LinearGradient(colors: [AppTheme.success, Color(0xFF43C478)])
-                      : AppTheme.primaryGradient,
-                  onPressed: _busyOrderId != null
-                      ? null
-                      : () async {
-                          setState(() => _busyOrderId = delivery.orderId);
-                          final nextStatus = isOut ? DeliveryStatus.delivered : DeliveryStatus.outForDelivery;
-                          final ok = await notifier.updateDeliveryStatus(delivery.orderId, nextStatus);
-                          if (!mounted) return;
-                          setState(() => _busyOrderId = null);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                ok
-                                    ? (isOut
-                                        ? 'Marked as delivered.'
-                                        : 'Out for delivery — navigate to the customer.')
-                                    : (ref.read(driverDashboardProvider).errorMessage ??
-                                        'Could not update this run. Try again.'),
+                  child: GradientButton(
+                    label: isOut ? 'Mark Delivered' : 'Start Delivery',
+                    icon: isOut ? Icons.check_rounded : Icons.delivery_dining_rounded,
+                    height: 48,
+                    loading: _busyOrderId == delivery.orderId,
+                    gradient: isOut
+                        ? const LinearGradient(colors: [AppTheme.success, Color(0xFF43C478)])
+                        : AppTheme.primaryGradient,
+                    onPressed: _busyOrderId != null
+                        ? null
+                        : () async {
+                            if (isOut) {
+                              final allowed = await _confirmMarkDelivered(delivery);
+                              if (!allowed || !mounted) return;
+                            }
+                            setState(() => _busyOrderId = delivery.orderId);
+                            final nextStatus = isOut ? DeliveryStatus.delivered : DeliveryStatus.outForDelivery;
+                            final ok = await notifier.updateDeliveryStatus(delivery.orderId, nextStatus);
+                            if (!mounted) return;
+                            setState(() => _busyOrderId = null);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  ok
+                                      ? (isOut
+                                          ? 'Marked as delivered.'
+                                          : 'Out for delivery — navigate to the customer.')
+                                      : (ref.read(driverDashboardProvider).errorMessage ??
+                                          'Could not update this run. Try again.'),
+                                ),
+                                backgroundColor: ok ? Colors.green : Colors.red,
                               ),
-                              backgroundColor: ok ? Colors.green : Colors.red,
-                            ),
-                          );
-                        },
+                            );
+                          },
+                  ),
                 )
               else
                 const Text(

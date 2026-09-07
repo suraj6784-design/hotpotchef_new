@@ -339,7 +339,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: AppTheme.dialogShape,
         title: const Row(children: [
           Icon(Icons.warning_amber_rounded, color: Colors.orange),
           SizedBox(width: 8),
@@ -532,7 +532,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
               Container(
                 decoration: BoxDecoration(
                   color: AppTheme.surfaceOf(context),
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(AppTheme.rXl)),
                 ),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                 child: Row(
@@ -586,7 +586,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
                                 color: AppTheme.primary.withValues(alpha: 0.08),
-                                borderRadius: BorderRadius.circular(10),
+                                borderRadius: AppTheme.radiusSm,
                               ),
                               child: const Text(
                                 'Order chat with the kitchen and delivery partner is closed. Tap Support above for any post-delivery issues.',
@@ -628,6 +628,35 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                           if (dinerSlotCountdownActive(status)) ...[
                             const SizedBox(height: 10),
                             OrderSlotBanner(order: items.first, diner: true),
+                          ],
+                          if (!isDelivered) ...[
+                            Builder(
+                              builder: (_) {
+                                final pin = items.first['delivery_otp']?.toString().trim() ?? '';
+                                if (pin.isEmpty) return const SizedBox.shrink();
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 12),
+                                  child: Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.primary.withValues(alpha: 0.08),
+                                      borderRadius: AppTheme.radiusMd,
+                                      border: Border.all(color: AppTheme.primary.withValues(alpha: 0.25)),
+                                    ),
+                                    child: Text(
+                                      'Delivery PIN: $pin — share with driver at the door',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w800,
+                                        color: AppTheme.onSurfaceOf(context),
+                                        height: 1.35,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
                           ],
                           const SizedBox(height: 8),
                           Row(
@@ -727,8 +756,8 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                       padding: const EdgeInsets.all(8),
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
-                                        border: Border.all(color: Colors.grey.shade300),
-                                        color: orderAllowsPartyChat(status) ? null : Colors.grey.shade200,
+                                        border: Border.all(color: AppTheme.hairlineOf(context)),
+                                        color: orderAllowsPartyChat(status) ? null : AppTheme.surfaceMutedOf(context),
                                       ),
                                       child: Icon(
                                         Icons.chat_bubble_outline,
@@ -739,17 +768,26 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                   ),
                                   const SizedBox(width: 8),
                                   GestureDetector(
-                                    onTap: orderAllowsPartyChat(status) ? () => _initiateCall(chefId) : null,
+                                    onTap: orderAllowsPhoneCall(status)
+                                        ? () => _initiateCall(chefId)
+                                        : () {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(
+                                                content: Text('Phone is for active prep/delivery. Prefer Chat.'),
+                                                backgroundColor: Colors.orange,
+                                              ),
+                                            );
+                                          },
                                     child: Container(
                                       padding: const EdgeInsets.all(8),
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
-                                        border: Border.all(color: Colors.grey.shade300),
-                                        color: orderAllowsPartyChat(status) ? null : Colors.grey.shade200,
+                                        border: Border.all(color: AppTheme.hairlineOf(context)),
+                                        color: orderAllowsPhoneCall(status) ? null : AppTheme.surfaceMutedOf(context),
                                       ),
                                       child: Icon(
                                         Icons.phone_outlined,
-                                        color: orderAllowsPartyChat(status) ? Colors.redAccent : Colors.grey,
+                                        color: orderAllowsPhoneCall(status) ? Colors.redAccent : Colors.grey,
                                         size: 18,
                                       ),
                                     ),
@@ -757,11 +795,28 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                   if (_driverIdOf(items.first) != null) ...[
                                     const SizedBox(width: 8),
                                     GestureDetector(
-                                      onTap: () => _initiateCall(_driverIdOf(items.first)!),
+                                      onTap: orderAllowsPhoneCall(status)
+                                          ? () => _initiateCall(_driverIdOf(items.first)!)
+                                          : () {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text('Phone is for active prep/delivery. Prefer Chat.'),
+                                                  backgroundColor: Colors.orange,
+                                                ),
+                                              );
+                                            },
                                       child: Container(
                                         padding: const EdgeInsets.all(8),
-                                        decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.grey.shade300)),
-                                        child: const Icon(Icons.sports_motorsports_outlined, color: Colors.blueAccent, size: 18),
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: Border.all(color: AppTheme.hairlineOf(context)),
+                                          color: orderAllowsPhoneCall(status) ? null : AppTheme.surfaceMutedOf(context),
+                                        ),
+                                        child: Icon(
+                                          Icons.sports_motorsports_outlined,
+                                          color: orderAllowsPhoneCall(status) ? Colors.blueAccent : Colors.grey,
+                                          size: 18,
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -1085,7 +1140,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                 children: [
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(color: AppTheme.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+                    decoration: BoxDecoration(color: AppTheme.primary.withValues(alpha: 0.12), borderRadius: AppTheme.radiusSm),
                     child: const Text('Bulk broadcast', style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 11)),
                   ),
                   const SizedBox(width: 8),
@@ -1138,7 +1193,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                   child: Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: AppTheme.radiusMd,
                       border: Border.all(
                         color: selected ? AppTheme.primary : AppTheme.hairlineOf(context),
                         width: selected ? 1.5 : 1,
@@ -1183,7 +1238,15 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                   children: [
                     GestureDetector(
                       onTap: () => _initiateCall(chefId?.toString() ?? ''),
-                      child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.teal.withValues(alpha: 0.15), shape: BoxShape.circle), child: const Icon(Icons.phone, color: Colors.teal, size: 16)),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.teal.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AppTheme.hairlineOf(context)),
+                        ),
+                        child: const Icon(Icons.phone, color: Colors.teal, size: 16),
+                      ),
                     ),
                     const SizedBox(width: 8),
                     GestureDetector(
@@ -1192,7 +1255,15 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                         roomName: chefName.toString(),
                         otherUserId: chefId?.toString(),
                       )),
-                      child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.15), shape: BoxShape.circle), child: const Icon(Icons.chat_bubble, color: Colors.blue, size: 16)),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AppTheme.hairlineOf(context)),
+                        ),
+                        child: const Icon(Icons.chat_bubble, color: Colors.blue, size: 16),
+                      ),
                     ),
                   ],
                 )
@@ -1318,6 +1389,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
           'service_type': order['order_type'] ?? order['service_type'] ?? 'Delivery',
           'delivery_address': resolvedDropoff.isEmpty ? order['delivery_address'] : resolvedDropoff,
           'driver_id': order['driver_id'] ?? order['delivery_partner_id'],
+          'delivery_otp': order['delivery_otp'],
           'created_at': order['created_at'] ?? DateTime.now().toIso8601String(),
           'updated_at': order['updated_at'],
           'delivered_at': order['delivered_at'],
@@ -1339,6 +1411,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
           'service_type': order['order_type'] ?? 'Delivery',
           'delivery_address': resolvedDropoff.isEmpty ? order['delivery_address'] : resolvedDropoff,
           'driver_id': order['driver_id'] ?? order['delivery_partner_id'],
+          'delivery_otp': order['delivery_otp'],
           'created_at': order['created_at'] ?? DateTime.now().toIso8601String(),
           'updated_at': order['updated_at'],
           'delivered_at': order['delivered_at'],
@@ -1463,7 +1536,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                 decoration: BoxDecoration(
                                   color: AppTheme.surfaceOf(context),
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: AppTheme.radiusSm,
                                   border: Border.all(color: AppTheme.hairlineOf(context)),
                                 ),
                                 child: Text(displayOrderIdStr,
@@ -1548,7 +1621,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
                               color: AppTheme.surfaceOf(context),
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: AppTheme.radiusSm,
                               border: Border.all(color: AppTheme.hairlineOf(context)),
                             ),
                             child: Row(
@@ -1566,6 +1639,35 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                               ],
                             ),
                           ),
+                          if (!isDelivered) ...[
+                            Builder(
+                              builder: (_) {
+                                final pin = items.first['delivery_otp']?.toString().trim() ?? '';
+                                if (pin.isEmpty) return const SizedBox.shrink();
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 12),
+                                  child: Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.primary.withValues(alpha: 0.08),
+                                      borderRadius: AppTheme.radiusMd,
+                                      border: Border.all(color: AppTheme.primary.withValues(alpha: 0.25)),
+                                    ),
+                                    child: Text(
+                                      'Delivery PIN: $pin — share with driver at the door',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w800,
+                                        color: AppTheme.onSurfaceOf(context),
+                                        height: 1.35,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
                           if (trackableItem != null) ...[
                             const SizedBox(height: 12),
                             Row(
@@ -1581,9 +1683,11 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: OutlinedButton.icon(
-                                      onPressed: () => _initiateCall(_driverIdOf(items.first)!),
+                                      onPressed: orderAllowsPhoneCall(status)
+                                          ? () => _initiateCall(_driverIdOf(items.first)!)
+                                          : null,
                                       icon: const Icon(Icons.phone_outlined, size: 16),
-                                      label: const Text('Call driver'),
+                                      label: Text(orderAllowsPhoneCall(status) ? 'Call driver' : 'Chat preferred'),
                                     ),
                                   ),
                                 ],

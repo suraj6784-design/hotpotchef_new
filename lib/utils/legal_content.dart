@@ -18,7 +18,7 @@ LegalDocument legalDocumentFor(LegalDocumentType type) {
     case LegalDocumentType.terms:
       return const LegalDocument(
         title: 'Terms & conditions',
-        updated: '2 September 2026',
+        updated: '7 September 2026',
         sections: [
           LegalSection(
             'The marketplace',
@@ -30,7 +30,11 @@ LegalDocument legalDocumentFor(LegalDocumentType type) {
           ),
           LegalSection(
             'Orders and payment',
-            'Prices shown at checkout include food, packaging, optional delivery, tips, and any HotPot Coins you apply. Payment is collected through Razorpay. Placing an order is an offer to buy that meal; the chef may accept or decline.',
+            'Prices shown at checkout include food, packaging, optional delivery, tips, and any HotPot Coins you apply. Payment is collected through Razorpay. Placing an order is an offer to buy that meal; the chef may accept or decline. Pay only through HotPotChef for marketplace orders so refunds, coins, tracking, and support remain available.',
+          ),
+          LegalSection(
+            'Marketplace integrity (chefs and diners)',
+            'Chefs must not solicit diners found on HotPotChef to pay outside the app (WhatsApp, UPI, cash deals for the same relationship) to avoid platform fees. Diners should complete payment in-app. We may warn, withhold promotions/boost, or suspend accounts that repeatedly bypass checkout. Phone calls are for active order coordination only — not for taking future orders offline.',
           ),
           LegalSection(
             'Invoices',
@@ -48,12 +52,20 @@ LegalDocument legalDocumentFor(LegalDocumentType type) {
             'Liability',
             'Chefs are responsible for food safety, labelling, and FSSAI compliance where required. HotPotChef provides the ordering software and payment routing. To the extent allowed by Indian law, we are not liable for delays, allergen incidents, or chef kitchen issues beyond facilitating a refund or support ticket.',
           ),
+          LegalSection(
+            'Grievance',
+            'For complaints or disputes, email hello@hotpotchef.com or open an in-app support ticket from Account → Contact Us. Ops aims to reply within one business day.',
+          ),
+          LegalSection(
+            'Data and deletion',
+            'Location and payment-related data are used only to fulfil delivery, prevent fraud, and process checkout via Razorpay. You can request account deletion or a data export from Account; we process these subject to legal retention (for example tax and dispute records).',
+          ),
         ],
       );
     case LegalDocumentType.privacy:
       return const LegalDocument(
         title: 'Privacy policy',
-        updated: '2 September 2026',
+        updated: '7 September 2026',
         sections: [
           LegalSection(
             'What we collect',
@@ -64,27 +76,35 @@ LegalDocument legalDocumentFor(LegalDocumentType type) {
             'We use this information to place and track orders, notify you about order status, calculate delivery fees, prevent fraud, and improve the app. Chefs see the details needed to cook and hand over your order. Drivers see delivery address and contact for active deliveries.',
           ),
           LegalSection(
+            'Location and payment purpose',
+            'Approximate location supports maps, delivery fee estimates, and drop-off accuracy. Payment identifiers from Razorpay confirm successful checkout and refunds — we do not store full card numbers.',
+          ),
+          LegalSection(
             'Sharing',
             'We share data with Supabase (hosting), Firebase (crash reporting and push), Razorpay (payments), and Google Maps (location). We do not sell your personal information.',
           ),
           LegalSection(
-            'Retention and rights',
-            'Order records are kept as required for tax and dispute handling. You can update profile fields in the app or email support to request access, correction, or deletion of your account data, subject to legal retention needs.',
+            'Retention and rights (DPDP)',
+            'Order records are kept as required for tax and dispute handling. You can update profile fields in the app, open an in-app ticket, or use Account → Request data export / Request account deletion to ask for access, correction, or erasure, subject to legal retention needs.',
           ),
           LegalSection(
-            'Contact',
-            'Privacy questions can be sent to our support email from Contact Us in this app.',
+            'Grievance',
+            'Privacy and grievance contact: hello@hotpotchef.com, or in-app support tickets under Account.',
           ),
         ],
       );
     case LegalDocumentType.faq:
       return const LegalDocument(
         title: 'FAQs',
-        updated: '2 September 2026',
+        updated: '7 September 2026',
         sections: [
           LegalSection(
             'How do I place an order?',
             'Add meals from a chef to your cart, choose address and contact number, then pay with Razorpay. The chef is notified after payment is recorded.',
+          ),
+          LegalSection(
+            'Can I pay the chef on WhatsApp or UPI?',
+            'No for HotPotChef marketplace orders. Pay in the app so refunds, HotPot Coins, live tracking, and Support stay available. Chefs must not move diners found here to off-app payment.',
           ),
           LegalSection(
             'When can I cancel?',

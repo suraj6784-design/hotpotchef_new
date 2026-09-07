@@ -226,7 +226,9 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
 
   Widget _orderContactActions(Map<String, dynamic> order) {
     final customerId = order['customer_id']?.toString() ?? '';
-    final chatOpen = orderAllowsPartyChat(order['status']?.toString());
+    final status = order['status']?.toString();
+    final chatOpen = orderAllowsPartyChat(status);
+    final callOpen = orderAllowsPhoneCall(status);
     return Row(
       children: [
         Expanded(
@@ -240,8 +242,17 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         Expanded(
           child: OutlinedButton.icon(
             icon: const Icon(Icons.phone_outlined, size: 16),
-            label: const Text('Call'),
-            onPressed: chatOpen ? () => _callCustomer(customerId) : null,
+            label: Text(callOpen ? 'Call' : 'Chat preferred'),
+            onPressed: callOpen
+                ? () => _callCustomer(customerId)
+                : () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Phone is for active prep/delivery. Prefer Chat for coordination.'),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                  },
           ),
         ),
       ],
@@ -813,7 +824,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: AppTheme.radiusLg,
                         border: Border.all(color: Colors.white38),
                       ),
                       child: Row(
@@ -884,7 +895,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
                     color: isSelected ? AppTheme.primary : AppTheme.surfaceOf(context),
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: AppTheme.radiusXl,
                     border: Border.all(color: isSelected ? AppTheme.primary : AppTheme.hairlineOf(context)),
                     boxShadow: isSelected ? AppTheme.brandGlow(opacity: 0.28) : const [],
                   ),
@@ -1302,7 +1313,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                           padding: const EdgeInsets.symmetric(vertical: 10),
                           decoration: BoxDecoration(
                             color: _menuFilter == label ? AppTheme.primary : AppTheme.surfaceOf(context),
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: AppTheme.radiusMd,
                             border: Border.all(
                               color: _menuFilter == label ? AppTheme.primary : AppTheme.hairlineOf(context),
                             ),
@@ -1333,6 +1344,20 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                       icon: Icons.add_rounded,
                       onPressed: () => context.push('/chef-publish-meal'),
                     ),
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primary.withValues(alpha: 0.08),
+                        borderRadius: AppTheme.radiusMd,
+                        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.25)),
+                      ),
+                      child: Text(
+                        'Keep HotPotChef diners on the app — in-app pay unlocks refunds, coins, and Support. Moving orders to WhatsApp/UPI can pause boosts.',
+                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, height: 1.35, color: AppTheme.onSurfaceOf(context)),
+                      ),
+                    ),
                     if (!_isKitchenOpen) ...[
                       const SizedBox(height: 12),
                       Container(
@@ -1353,7 +1378,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   ] else ...[
                     Text(
                       'All dishes you have published — expired windows and removed plates.',
-                      style: TextStyle(fontSize: 13, color: AppTheme.textMuted, height: 1.35),
+                      style: AppTheme.metaOf(context).copyWith(height: 1.35, fontSize: 13),
                     ),
                     const SizedBox(height: 12),
                   ],
@@ -1417,7 +1442,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: AppTheme.radiusSm,
                 child: meal['image_url'] != null
                     ? CachedNetworkImage(
                         imageUrl: meal['image_url'].toString(),
@@ -1514,7 +1539,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                       foregroundColor: AppTheme.primary,
                       side: const BorderSide(color: AppTheme.primary),
                       padding: const EdgeInsets.symmetric(vertical: 10),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusSm),
                     ),
                     icon: const Icon(Icons.edit_outlined, size: 18),
                     label: const Text('Edit', style: TextStyle(fontWeight: FontWeight.w700)),
@@ -1527,7 +1552,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 child: OutlinedButton.icon(
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 10),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusSm),
                   ),
                   icon: const Icon(Icons.copy_outlined, size: 18),
                   label: const Text('Duplicate', style: TextStyle(fontWeight: FontWeight.w700)),
@@ -1541,7 +1566,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                     foregroundColor: Colors.red.shade700,
                     side: BorderSide(color: Colors.red.shade300),
                     padding: const EdgeInsets.symmetric(vertical: 10),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusSm),
                   ),
                   icon: const Icon(Icons.delete_outline, size: 18),
                   label: Text(historyMode ? 'Remove' : 'Delete', style: const TextStyle(fontWeight: FontWeight.w700)),
@@ -1561,7 +1586,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   foregroundColor: const Color(0xFF25D366),
                   side: const BorderSide(color: Color(0xFF25D366)),
                   padding: const EdgeInsets.symmetric(vertical: 10),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusSm),
                 ),
                 icon: const Icon(Icons.chat, size: 18),
                 label: const Text('WhatsApp card', style: TextStyle(fontWeight: FontWeight.w700)),
@@ -1595,7 +1620,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                     disabledBackgroundColor: Colors.grey.shade400,
                     elevation: 0,
                     padding: const EdgeInsets.symmetric(vertical: 10),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusSm),
                   ),
                   icon: const Icon(Icons.auto_awesome, size: 18),
                   label: Text(
@@ -1615,7 +1640,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   foregroundColor: AppTheme.primary,
                   side: const BorderSide(color: AppTheme.primary),
                   padding: const EdgeInsets.symmetric(vertical: 10),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusSm),
                 ),
                 icon: const Icon(Icons.refresh, size: 18),
                 label: const Text('Publish again', style: TextStyle(fontWeight: FontWeight.w700)),
@@ -1636,7 +1661,13 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     }).toList();
     final history = _historyFilter == 'Cancelled' ? cancelled : delivered;
     final double revenue = delivered.fold(0.0, (sum, o) => sum + _orderTotal(o));
-    final chefShare = revenue * 0.85;
+    final chefShare = delivered.fold(0.0, (sum, o) {
+      final settled = parseMoney(o['chef_payout']);
+      if (settled > 0) return sum + settled;
+      return sum +
+          chefPayoutBreakdown(itemsTotal: _orderTotal(o), packagingFee: 0).chefPayout;
+    });
+    final platformPct = (kPlatformMarginRate * 100).toStringAsFixed(0);
 
     if (delivered.isEmpty && cancelled.isEmpty) {
       return const EmptyState(
@@ -1652,18 +1683,25 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         AppCard(
           child: Column(
             children: [
-              const Text('Delivered order sales', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
+              Text('Delivered order sales', style: AppTheme.metaOf(context).copyWith(fontSize: 13)),
               const SizedBox(height: 6),
               Text('₹${revenue.toStringAsFixed(2)}',
-                  style: const TextStyle(color: AppTheme.success, fontSize: 28, fontWeight: FontWeight.w900)),
-              Text('${delivered.length} completed • Chef share ~₹${chefShare.toStringAsFixed(0)} after 15% platform fee',
+                  style: AppTheme.sectionTitleOf(context).copyWith(color: AppTheme.success, fontSize: 28)),
+              Text(
+                  '${delivered.length} completed • Chef share ~₹${chefShare.toStringAsFixed(0)} after $platformPct% platform fee',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+                  style: AppTheme.metaOf(context)),
+              const SizedBox(height: 4),
+              Text(
+                'Food + packaging after platform fee · delivery fee stays with HotPotChef',
+                textAlign: TextAlign.center,
+                style: AppTheme.metaOf(context).copyWith(fontSize: 11),
+              ),
               const SizedBox(height: 4),
               Text(
                 '${delivered.where((o) => (o['payout_status']?.toString().toLowerCase() ?? '') == 'released').length} payouts released',
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                style: AppTheme.metaOf(context),
               ),
             ],
           ),
@@ -1926,8 +1964,17 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                     Expanded(
                       child: OutlinedButton.icon(
                         icon: const Icon(Icons.phone_outlined, size: 18),
-                        label: const Text('Call'),
-                        onPressed: () => _callCustomer(req['customer_id']?.toString() ?? ''),
+                        label: Text(paid ? 'Call' : 'Call after pay'),
+                        onPressed: paid
+                            ? () => _callCustomer(req['customer_id']?.toString() ?? '')
+                            : () {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Call unlocks after in-app payment. Use Message to discuss the quote.'),
+                                    backgroundColor: Colors.orange,
+                                  ),
+                                );
+                              },
                       ),
                     ),
                   ],
