@@ -236,6 +236,12 @@
 
       // Keep only orderable, non-seed rows before resolving kitchen labels.
       rows = rows.filter(isCatalogWorthy);
+      if (!rows.length) {
+        allMeals = [];
+        grid.innerHTML = '';
+        setStatus('No Available plates right now. Open the app for kitchens near you.');
+        return;
+      }
 
       var chefIds = [];
       var seen = {};
