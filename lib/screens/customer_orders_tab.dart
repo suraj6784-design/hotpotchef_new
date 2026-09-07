@@ -579,6 +579,21 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                               caption: dispatchPackedLabel(takenAt: orderDispatchPhotoAt(items.first)),
                             ),
                           ],
+                          if (!orderAllowsPartyChat(status)) ...[
+                            const SizedBox(height: 12),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppTheme.primary.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Text(
+                                'Order chat with the kitchen and delivery partner is closed. Tap Support above for any post-delivery issues.',
+                                style: TextStyle(fontSize: 12, height: 1.35, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ],
                           Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: AppTheme.hairlineOf(context))),
                           
                           // Timings & Delivery Type in Details Sheet
@@ -691,19 +706,53 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                               Row(
                                 children: [
                                   GestureDetector(
-                                    onTap: () => context.push(chatPath(
-                                      items.first['order_id']?.toString() ?? items.first['id']?.toString() ?? '',
-                                      roomName: 'Order $displayOrderIdStr',
-                                      otherUserId: chefId,
-                                      memberIds: orderChatMemberIds(items.first),
-                                      isGroup: true,
-                                    )),
-                                    child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.grey.shade300)), child: const Icon(Icons.chat_bubble_outline, color: AppTheme.primary, size: 18)),
+                                    onTap: () {
+                                      if (!orderAllowsPartyChat(status)) {
+                                        showContactSupportSheet(
+                                          ctx,
+                                          orderNumber: displayOrderIdStr,
+                                          orderUuid: items.first['order_id']?.toString() ?? items.first['id']?.toString(),
+                                        );
+                                        return;
+                                      }
+                                      context.push(chatPath(
+                                        items.first['order_id']?.toString() ?? items.first['id']?.toString() ?? '',
+                                        roomName: 'Order $displayOrderIdStr',
+                                        otherUserId: chefId,
+                                        memberIds: orderChatMemberIds(items.first),
+                                        isGroup: true,
+                                      ));
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: Colors.grey.shade300),
+                                        color: orderAllowsPartyChat(status) ? null : Colors.grey.shade200,
+                                      ),
+                                      child: Icon(
+                                        Icons.chat_bubble_outline,
+                                        color: orderAllowsPartyChat(status) ? AppTheme.primary : Colors.grey,
+                                        size: 18,
+                                      ),
+                                    ),
                                   ),
                                   const SizedBox(width: 8),
                                   GestureDetector(
-                                    onTap: () => _initiateCall(chefId),
-                                    child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.grey.shade300)), child: const Icon(Icons.phone_outlined, color: Colors.redAccent, size: 18)),
+                                    onTap: orderAllowsPartyChat(status) ? () => _initiateCall(chefId) : null,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: Colors.grey.shade300),
+                                        color: orderAllowsPartyChat(status) ? null : Colors.grey.shade200,
+                                      ),
+                                      child: Icon(
+                                        Icons.phone_outlined,
+                                        color: orderAllowsPartyChat(status) ? Colors.redAccent : Colors.grey,
+                                        size: 18,
+                                      ),
+                                    ),
                                   ),
                                   if (_driverIdOf(items.first) != null) ...[
                                     const SizedBox(width: 8),

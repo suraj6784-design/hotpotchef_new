@@ -48,6 +48,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   String _historyFilter = 'Delivered';
   String _menuFilter = 'Active'; // Active | History
   final Set<String> _autoArchivedMealIds = {};
+  bool _isPlatformOps = false;
 
   final List<String> _fulfillmentTabs = const [
     'All',
@@ -77,6 +78,12 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     _ensureHubStreams();
     _loadKitchenStatus();
     _loadChefPin();
+    unawaited(_loadOpsAccess());
+  }
+
+  Future<void> _loadOpsAccess() async {
+    final ops = await AuthSession.isPlatformOps();
+    if (mounted) setState(() => _isPlatformOps = ops);
   }
 
   void _ensureHubStreams() {
@@ -190,6 +197,15 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   }
 
   void _openOrderChat(Map<String, dynamic> order) {
+    if (!orderAllowsPartyChat(order['status']?.toString())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Chat closes after delivery. Ask the diner to contact HotPotChef support for issues.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
     final items = _parseItems(order['items'] ?? order['cart_items']);
     final roomId = orderChatRoomId(order, items: items);
     if (roomId.isEmpty) {
@@ -210,13 +226,14 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
 
   Widget _orderContactActions(Map<String, dynamic> order) {
     final customerId = order['customer_id']?.toString() ?? '';
+    final chatOpen = orderAllowsPartyChat(order['status']?.toString());
     return Row(
       children: [
         Expanded(
           child: OutlinedButton.icon(
             icon: const Icon(Icons.chat_bubble_outline, size: 16),
-            label: const Text('Chat'),
-            onPressed: () => _openOrderChat(order),
+            label: Text(chatOpen ? 'Chat' : 'Chat closed'),
+            onPressed: chatOpen ? () => _openOrderChat(order) : null,
           ),
         ),
         const SizedBox(width: 8),
@@ -224,7 +241,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
           child: OutlinedButton.icon(
             icon: const Icon(Icons.phone_outlined, size: 16),
             label: const Text('Call'),
-            onPressed: () => _callCustomer(customerId),
+            onPressed: chatOpen ? () => _callCustomer(customerId) : null,
           ),
         ),
       ],
@@ -828,6 +845,8 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               _headerIcon(Icons.school_outlined, 'Academy', () => context.push('/chef-academy')),
               _headerIcon(Icons.insights, 'Analytics', () => context.push('/chef-analytics')),
               _headerIcon(Icons.person_outline, 'Profile', () => context.push('/chef-profile')),
+              if (_isPlatformOps)
+                _headerIcon(Icons.admin_panel_settings_outlined, 'Ops', () => context.push('/platform-ops')),
               _headerIcon(Icons.logout, 'Log Out', () => AuthSession.logout(context)),
             ],
           ),

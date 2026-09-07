@@ -279,6 +279,56 @@ String? normalizeFssaiNumber(String? raw) {
   return digits;
 }
 
+String normalizeFssaiVerificationStatus(String? raw) {
+  final status = (raw ?? '').trim().toLowerCase();
+  if (status == 'pending' || status == 'verified' || status == 'rejected' || status == 'unsubmitted') {
+    return status;
+  }
+  return 'unsubmitted';
+}
+
+String fssaiVerificationLabel(String? status) {
+  switch (normalizeFssaiVerificationStatus(status)) {
+    case 'verified':
+      return 'FSSAI verified';
+    case 'pending':
+      return 'FSSAI proof under review';
+    case 'rejected':
+      return 'FSSAI rejected — re-upload proof';
+    default:
+      return 'Upload FSSAI proof to publish';
+  }
+}
+
+/// Publish requires a valid number, uploaded proof, and not rejected.
+bool chefCanPublishWithFssai({
+  String? fssaiNumber,
+  String? proofUrl,
+  String? verificationStatus,
+}) {
+  if (normalizeFssaiNumber(fssaiNumber) == null) return false;
+  final proof = (proofUrl ?? '').trim();
+  if (proof.isEmpty) return false;
+  final status = normalizeFssaiVerificationStatus(verificationStatus);
+  return status == 'pending' || status == 'verified';
+}
+
+const kPackagingOpsStatuses = <String>[
+  'Open',
+  'Confirmed',
+  'Packed',
+  'Out for Delivery',
+  'Fulfilled',
+  'Rejected',
+  'Cancelled',
+];
+
+String packagingRequestStatusLabel(String? status) {
+  final raw = (status ?? 'Open').trim();
+  if (raw.isEmpty) return 'Open';
+  return raw;
+}
+
 String plateShareDishLabel(Iterable<dynamic> items) {
   final titles = <String>[];
   for (final raw in items) {
@@ -400,6 +450,15 @@ String formatOrderId(String? rawOrderId, String fallbackId) {
     return rawOrderId.length > 8 ? rawOrderId.substring(0, 8).toUpperCase() : rawOrderId.toUpperCase();
   }
   return fallbackId.length > 8 ? fallbackId.substring(0, 8).toUpperCase() : fallbackId.toUpperCase();
+}
+
+/// Order-group chat (chef / diner / driver) closes after delivery or cancel.
+bool orderAllowsPartyChat(String? status) {
+  final s = (status ?? '').toLowerCase().trim();
+  if (s.isEmpty) return true;
+  if (s.contains('deliver') || s.contains('complet')) return false;
+  if (s.contains('cancel') || s.contains('refund') || s.contains('reject')) return false;
+  return true;
 }
 
 Future<void> copyOrderNumber(BuildContext context, String orderNumber) async {

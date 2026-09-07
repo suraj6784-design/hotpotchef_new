@@ -39,12 +39,32 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
   // Cache System
   final Map<String, String> _roleCache = {};
   bool _isFetchingRoles = false;
+  bool _partyChatOpen = true;
 
   @override
   void initState() {
     super.initState();
     ChatAlertScope.activeMealId = widget.mealId;
     ChatReadStore.markRead(widget.mealId);
+    if (widget.isGroup) {
+      _loadOrderChatGate();
+    }
+  }
+
+  Future<void> _loadOrderChatGate() async {
+    try {
+      final row = await _supabase
+          .from('orders')
+          .select('status')
+          .eq('id', widget.mealId)
+          .maybeSingle();
+      if (!mounted) return;
+      setState(() {
+        _partyChatOpen = orderAllowsPartyChat(row?['status']?.toString());
+      });
+    } catch (_) {
+      // Keep composer open if status lookup fails (e.g. non-order rooms).
+    }
   }
 
   @override
@@ -168,6 +188,17 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
   // --- Send Message Pipeline ---
 
   Future<void> _sendMessage() async {
+    if (!_partyChatOpen) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Order chat is closed. Contact Support for post-delivery issues.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
@@ -420,36 +451,42 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
               border: Border(top: BorderSide(color: isDark ? Colors.black26 : Colors.black12)),
             ),
             child: SafeArea(
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      style: TextStyle(color: titleColor),
-                      decoration: InputDecoration(
-                        hintText: 'Message securely...',
-                        hintStyle: TextStyle(color: muted),
-                        filled: true,
-                        fillColor: composerFill,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
-                      ),
-                      textCapitalization: TextCapitalization.sentences,
-                      minLines: 1,
-                      maxLines: 4,
+              child: !_partyChatOpen
+                  ? Text(
+                      'This order chat is closed. Use Support for any post-delivery issues.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: muted, fontSize: 13, fontWeight: FontWeight.w600, height: 1.35),
+                    )
+                  : Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _controller,
+                            style: TextStyle(color: titleColor),
+                            decoration: InputDecoration(
+                              hintText: 'Message securely...',
+                              hintStyle: TextStyle(color: muted),
+                              filled: true,
+                              fillColor: composerFill,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
+                            ),
+                            textCapitalization: TextCapitalization.sentences,
+                            minLines: 1,
+                            maxLines: 4,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: _sendMessage,
+                          child: const CircleAvatar(
+                            radius: 22,
+                            backgroundColor: AppTheme.primary,
+                            child: Icon(Icons.send, color: Colors.white, size: 20),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: _sendMessage,
-                    child: const CircleAvatar(
-                      radius: 22,
-                      backgroundColor: AppTheme.primary,
-                      child: Icon(Icons.send, color: Colors.white, size: 20),
-                    ),
-                  ),
-                ],
-              ),
             ),
           ),
         ],

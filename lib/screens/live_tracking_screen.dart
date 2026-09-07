@@ -585,6 +585,14 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   }
 
   void _openOrderGroup() {
+    if (!orderAllowsPartyChat(_order['status']?.toString())) {
+      showContactSupportSheet(
+        context,
+        orderNumber: formatOrderId(_order['order_id']?.toString(), resolvedOrderId(_order) ?? ''),
+        orderUuid: resolvedOrderId(_order),
+      );
+      return;
+    }
     final roomId = resolvedOrderId(_order) ?? '';
     if (roomId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -607,6 +615,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final chatOpen = orderAllowsPartyChat(_order['status']?.toString());
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -616,9 +625,20 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
         ),
         actions: [
           IconButton(
-            tooltip: 'Order group',
-            icon: const Icon(Icons.chat_bubble_outline, color: AppTheme.primary),
-            onPressed: _openOrderGroup,
+            tooltip: chatOpen ? 'Order group' : 'Chat closed — use Support',
+            icon: Icon(
+              Icons.chat_bubble_outline,
+              color: chatOpen ? AppTheme.primary : Colors.grey,
+            ),
+            onPressed: chatOpen
+                ? _openOrderGroup
+                : () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Order chat closed after delivery. Use Support for issues.'),
+                      ),
+                    );
+                  },
           ),
           IconButton(
             icon: const Icon(Icons.support_agent, color: AppTheme.primary),

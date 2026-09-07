@@ -733,21 +733,23 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                   Expanded(
                     child: OutlinedButton.icon(
                       icon: const Icon(Icons.chat_bubble_outline, size: 16),
-                      label: const Text('Chat'),
-                      onPressed: () {
-                        final roomId = delivery.chatRoomId.isNotEmpty ? delivery.chatRoomId : delivery.orderId;
-                        context.push(chatPath(
-                          roomId,
-                          roomName: 'Order ${formatOrderId(null, delivery.orderId)}',
-                          otherUserId: delivery.customerId,
-                          memberIds: [
-                            delivery.customerId,
-                            delivery.chefId,
-                            Supabase.instance.client.auth.currentUser?.id ?? '',
-                          ],
-                          isGroup: true,
-                        ));
-                      },
+                      label: Text(orderAllowsPartyChat(rawStatus) ? 'Chat' : 'Chat closed'),
+                      onPressed: !orderAllowsPartyChat(rawStatus)
+                          ? null
+                          : () {
+                              final roomId = delivery.chatRoomId.isNotEmpty ? delivery.chatRoomId : delivery.orderId;
+                              context.push(chatPath(
+                                roomId,
+                                roomName: 'Order ${formatOrderId(null, delivery.orderId)}',
+                                otherUserId: delivery.customerId,
+                                memberIds: [
+                                  delivery.customerId,
+                                  delivery.chefId,
+                                  Supabase.instance.client.auth.currentUser?.id ?? '',
+                                ],
+                                isGroup: true,
+                              ));
+                            },
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -755,7 +757,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                     child: OutlinedButton.icon(
                       icon: const Icon(Icons.phone_outlined, size: 16),
                       label: const Text('Call'),
-                      onPressed: () => _callCustomer(delivery.customerId),
+                      onPressed: !orderAllowsPartyChat(rawStatus) ? null : () => _callCustomer(delivery.customerId),
                     ),
                   ),
                 ],

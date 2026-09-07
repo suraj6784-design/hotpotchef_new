@@ -276,9 +276,24 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                               ),
                             ),
                             IconButton(
-                              tooltip: 'Order group',
-                              icon: const Icon(Icons.chat_bubble_outline, color: AppTheme.primary),
+                              tooltip: orderAllowsPartyChat(orderRecord['status']?.toString())
+                                  ? 'Order group'
+                                  : 'Chat closed — use Support',
+                              icon: Icon(
+                                Icons.chat_bubble_outline,
+                                color: orderAllowsPartyChat(orderRecord['status']?.toString())
+                                    ? AppTheme.primary
+                                    : Colors.grey,
+                              ),
                               onPressed: () {
+                                if (!orderAllowsPartyChat(orderRecord['status']?.toString())) {
+                                  showContactSupportSheet(
+                                    ctx,
+                                    orderNumber: displayOrderIdStr,
+                                    orderUuid: orderRecord['id']?.toString(),
+                                  );
+                                  return;
+                                }
                                 final roomId = resolvedOrderId(orderRecord) ?? '';
                                 if (roomId.isEmpty) return;
                                 Navigator.pop(ctx);
