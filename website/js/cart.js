@@ -37,11 +37,25 @@
     });
   }
 
+  function kitchenIds() {
+    var ids = {};
+    read().forEach(function (i) {
+      var chef = (i.chef_id || '').toString();
+      if (chef) ids[chef] = true;
+    });
+    return Object.keys(ids);
+  }
+
   function add(meal, qty) {
     var id = (meal && meal.id ? meal.id : '').toString();
-    if (!id) return;
+    if (!id) return { ok: false, reason: 'missing' };
     var amount = Math.max(1, Number(qty) || 1);
     var items = read();
+    var chefId = (meal.chef_id || '').toString();
+    var kitchens = kitchenIds();
+    if (chefId && kitchens.length && kitchens.indexOf(chefId) === -1) {
+      return { ok: false, reason: 'kitchen' };
+    }
     var existing = items.find(function (i) {
       return i.id === id;
     });
@@ -64,6 +78,7 @@
       });
     }
     write(items);
+    return { ok: true };
   }
 
   function setQty(id, qty) {
@@ -105,6 +120,7 @@
   global.HotPotCart = {
     read: read,
     add: add,
+    kitchenIds: kitchenIds,
     setQty: setQty,
     remove: remove,
     clear: clear,

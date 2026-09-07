@@ -208,7 +208,7 @@
     if (chefFilterId) bits.push('from this kitchen');
     if (dietFilter === 'veg') bits.push('veg');
     if (dietFilter === 'nonveg') bits.push('non-veg');
-    bits.push('order in the app');
+    bits.push('add to cart or open the app');
     setStatus(bits.join(' · '));
   }
 

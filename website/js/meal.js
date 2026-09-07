@@ -119,7 +119,15 @@
     if (addBtn && window.HotPotCart && meal.status === 'Available') {
       addBtn.hidden = false;
       addBtn.onclick = function () {
-        window.HotPotCart.add(meal, 1);
+        var result = window.HotPotCart.add(meal, 1);
+        if (result && result.reason === 'kitchen') {
+          show('status', true);
+          setText(
+            'status',
+            'Web checkout is one kitchen at a time. Empty the cart first, or finish the current kitchen.'
+          );
+          return;
+        }
         addBtn.textContent = 'Added · view cart';
         addBtn.onclick = function () {
           window.location.href = '/cart';

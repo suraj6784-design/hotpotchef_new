@@ -62,8 +62,14 @@
     if (empty) empty.hidden = true;
     var payWeb = document.getElementById('pay-web');
     var openApp = document.getElementById('open-app');
-    if (payWeb) payWeb.hidden = false;
+    var mixed = cart.kitchenIds().length > 1;
+    if (payWeb) payWeb.hidden = mixed;
     if (openApp) openApp.hidden = false;
+    if (mixed && empty) {
+      empty.hidden = false;
+      empty.textContent =
+        'Web checkout is one kitchen at a time. Remove plates from extra kitchens, or checkout in the app.';
+    }
     list.innerHTML = items
       .map(function (item) {
         var price = api.money(item.price);

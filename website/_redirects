@@ -3,7 +3,9 @@
 /cart  /cart.html  200
 /cart/  /cart.html  200
 /auth  /auth.html  200
+/auth/  /auth.html  200
 /checkout  /checkout.html  200
+/checkout/  /checkout.html  200
 /terms  /legal.html  200
 /privacy  /legal.html  200
 /faq  /legal.html  200
