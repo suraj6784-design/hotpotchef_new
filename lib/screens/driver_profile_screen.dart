@@ -655,8 +655,8 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: const Icon(Icons.admin_panel_settings_outlined, color: AppTheme.primary),
-                      title: const Text('Platform ops desk', style: TextStyle(fontWeight: FontWeight.w700)),
-                      subtitle: const Text('Approvals, accounts, and dashboard'),
+                      title: const Text('Admin desk', style: TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: const Text('Catalog, accounts, tickets, and dashboard'),
                       onTap: () => context.push('/platform-ops'),
                     ),
                     const SizedBox(height: 12),

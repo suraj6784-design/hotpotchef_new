@@ -12,9 +12,10 @@ void main() {
       expect(normalizeOpsPermissions([], owner: true), kOpsAllPermissions);
     });
 
-    test('inviteable set excludes accounts and helpers', () {
+    test('inviteable set excludes accounts, helpers, and catalog', () {
       expect(kOpsInviteablePermissions.contains(kOpsPermissionAccounts), isFalse);
       expect(kOpsInviteablePermissions.contains(kOpsPermissionHelpers), isFalse);
+      expect(kOpsInviteablePermissions.contains(kOpsPermissionCatalog), isFalse);
       expect(kOpsInviteablePermissions.contains(kOpsPermissionFssai), isTrue);
     });
 

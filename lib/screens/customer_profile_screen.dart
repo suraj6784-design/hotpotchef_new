@@ -1213,8 +1213,8 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                     if (_isPlatformOps) ...[
                       _buildListTile(
                         icon: Icons.admin_panel_settings_outlined,
-                        title: 'Platform ops desk',
-                        subtitle: 'Approvals, accounts, and dashboard',
+                        title: 'Admin desk',
+                        subtitle: 'Catalog, accounts, tickets, and dashboard',
                         isDark: isDark,
                         onTap: () => context.push('/platform-ops'),
                       ),

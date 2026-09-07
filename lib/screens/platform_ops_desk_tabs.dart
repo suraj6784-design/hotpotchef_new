@@ -13,6 +13,9 @@ class _OpsDashListState extends State<_OpsDashList> {
   bool _loading = true;
   String? _error;
   OpsTransactionSnapshot? _snap;
+  int _openTickets = 0;
+  int _liveMeals = 0;
+  int _userCount = 0;
 
   @override
   void initState() {
@@ -26,14 +29,31 @@ class _OpsDashListState extends State<_OpsDashList> {
       _error = null;
     });
     try {
-      final raw = await Supabase.instance.client.rpc(
+      final client = Supabase.instance.client;
+      final raw = await client.rpc(
         'ops_transaction_snapshot',
         params: {'p_period': _period},
       ).withTimeout(NetworkTimeouts.standard);
       final map = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+      var tickets = 0;
+      var meals = 0;
+      var users = 0;
+      try {
+        final extras = await Future.wait([
+          client.from('support_tickets').select('id').inFilter('status', ['open', 'pending_customer', 'pending_ops']).limit(200),
+          client.from('meals').select('id').eq('status', 'Available').limit(200),
+          client.from('users').select('id').limit(200),
+        ]);
+        tickets = (extras[0] as List).length;
+        meals = (extras[1] as List).length;
+        users = (extras[2] as List).length;
+      } catch (_) {}
       if (!mounted) return;
       setState(() {
         _snap = OpsTransactionSnapshot.fromJson(map);
+        _openTickets = tickets;
+        _liveMeals = meals;
+        _userCount = users;
         _loading = false;
       });
     } catch (e) {
@@ -93,6 +113,9 @@ class _OpsDashListState extends State<_OpsDashList> {
       ('Cancelled', '${snap.cancelledCount}'),
       ('Avg ticket', '₹${snap.avgTicket.toStringAsFixed(0)}'),
       ('Delivery fees', '₹${snap.deliveryFeeSum.toStringAsFixed(0)}'),
+      ('Open tickets', '$_openTickets'),
+      ('Live plates', '$_liveMeals'),
+      ('Accounts', '$_userCount'),
     ];
     final maxGmv = snap.series.fold<double>(0, (m, b) => b.gmv > m ? b.gmv : m);
     return ListView(
@@ -264,7 +287,7 @@ class _OpsAccountsListState extends State<_OpsAccountsList> {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
             children: [
-              for (final role in const ['All', 'Chef', 'Customer', 'Driver', 'Suspended'])
+              for (final role in const ['All', 'Admin', 'Chef', 'Customer', 'Driver', 'Suspended'])
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: ChoiceChip(
@@ -307,6 +330,9 @@ class _OpsAccountsListState extends State<_OpsAccountsList> {
                   final row = rows[index];
                   final name = row['name']?.toString() ?? row['full_name']?.toString() ?? 'User';
                   final status = (row['account_status']?.toString() ?? 'active').toLowerCase();
+                  final role = row['role']?.toString() ?? '';
+                  final email = row['email']?.toString() ?? '';
+                  final isAdmin = role.toLowerCase() == 'admin' || isPlatformOwnerEmail(email);
                   return AppCard(
                     margin: const EdgeInsets.only(bottom: 10),
                     child: Column(
@@ -314,18 +340,24 @@ class _OpsAccountsListState extends State<_OpsAccountsList> {
                       children: [
                         Text(name, style: const TextStyle(fontWeight: FontWeight.w800)),
                         Text(
-                          '${row['role'] ?? ''} · ${row['email'] ?? ''} · ${status}',
+                          '${isAdmin ? 'Admin' : role} · $email · $status',
                           style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
                         ),
                         const SizedBox(height: 8),
+                        if (isAdmin)
+                          const Text(
+                            'Owner account — role locked',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primary),
+                          )
+                        else
                         Wrap(
                           spacing: 8,
                           runSpacing: 8,
                           children: [
-                            for (final role in const ['Customer', 'Chef', 'Driver'])
+                            for (final nextRole in const ['Customer', 'Chef', 'Driver'])
                               OutlinedButton(
-                                onPressed: widget.busy ? null : () => _setRole(row, role),
-                                child: Text(role, style: const TextStyle(fontSize: 12)),
+                                onPressed: widget.busy ? null : () => _setRole(row, nextRole),
+                                child: Text(nextRole, style: const TextStyle(fontSize: 12)),
                               ),
                             OutlinedButton(
                               onPressed: widget.busy
@@ -600,4 +632,75 @@ class _HelpersBundle {
   const _HelpersBundle({required this.seats, required this.invites});
   final List<Map<String, dynamic>> seats;
   final List<Map<String, dynamic>> invites;
+}
+
+class _CatalogOpsList extends StatelessWidget {
+  const _CatalogOpsList({super.key, required this.busy, required this.onStatus});
+
+  final bool busy;
+  final Future<void> Function(Map<String, dynamic> row, String status) onStatus;
+
+  @override
+  Widget build(BuildContext context) {
+    final client = Supabase.instance.client;
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: () async {
+        final rows = await client
+            .from('meals')
+            .select('id, title, chef_name, chef_id, price, status, quantity, offer_type')
+            .order('created_at', ascending: false)
+            .limit(120)
+            .withTimeout(NetworkTimeouts.standard);
+        return List<Map<String, dynamic>>.from(rows as List);
+      }(),
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snap.hasError) {
+          return EmptyState(icon: Icons.error_outline, title: 'Could not load catalog', message: '${snap.error}');
+        }
+        final rows = snap.data ?? const [];
+        if (rows.isEmpty) {
+          return const EmptyState(
+            icon: Icons.restaurant_outlined,
+            title: 'No meals yet',
+            message: 'Published plates appear here so you can pause or restore them.',
+          );
+        }
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: rows.length,
+          itemBuilder: (context, index) {
+            final row = rows[index];
+            final status = row['status']?.toString() ?? '';
+            final available = status.toLowerCase() == 'available';
+            return AppCard(
+              margin: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(mealDisplayTitle(row), style: const TextStyle(fontWeight: FontWeight.w800)),
+                        Text(
+                          '${row['chef_name'] ?? 'Kitchen'} · $status · ₹${parseMoney(row['price']).toStringAsFixed(0)}',
+                          style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: busy ? null : () => onStatus(row, available ? 'Paused' : 'Available'),
+                    child: Text(available ? 'Pause' : 'Make live'),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 }

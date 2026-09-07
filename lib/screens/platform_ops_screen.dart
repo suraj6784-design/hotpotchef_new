@@ -37,8 +37,10 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> with SingleTicker
   List<_OpsTabSpec> _tabSpecs = const [];
   bool _checking = true;
   bool _allowed = false;
+  bool _isOwner = false;
   bool _busy = false;
   int _reloadToken = 0;
+  String _opsEmail = '';
 
   @override
   void initState() {
@@ -118,6 +120,17 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> with SingleTicker
           () => _OpsHelpersList(key: ValueKey('help-$_reloadToken'), busy: _busy, onChanged: _bump),
         ),
       );
+      specs.add(
+        _OpsTabSpec(
+          kOpsPermissionCatalog,
+          'Catalog',
+          () => _CatalogOpsList(
+            key: ValueKey('cat-$_reloadToken'),
+            busy: _busy,
+            onStatus: _setMealStatus,
+          ),
+        ),
+      );
     }
 
     _tabs?.dispose();
@@ -125,6 +138,8 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> with SingleTicker
     setState(() {
       _tabSpecs = specs;
       _allowed = ok;
+      _isOwner = owner;
+      _opsEmail = _supabase.auth.currentUser?.email ?? '';
       _checking = false;
     });
   }
@@ -287,6 +302,31 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> with SingleTicker
     }
   }
 
+  Future<void> _setMealStatus(Map<String, dynamic> row, String status) async {
+    final id = row['id']?.toString();
+    if (id == null || id.isEmpty || _busy) return;
+    setState(() => _busy = true);
+    try {
+      await _supabase.rpc(
+        'ops_set_meal_status',
+        params: {'p_meal_id': id, 'p_status': status},
+      ).withTimeout(NetworkTimeouts.standard);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Meal marked $status'), backgroundColor: Colors.green),
+      );
+      _bump();
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Ops meal status failed');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not update: $e'), backgroundColor: Colors.redAccent),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _openRefundDispute(Map<String, dynamic> row) async {
     if (_busy) return;
     setState(() => _busy = true);
@@ -370,7 +410,7 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> with SingleTicker
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Log out?'),
-        content: const Text('You will leave Platform ops and return to the customer feed.'),
+        content: const Text('You will leave the Admin desk and return to the customer feed.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Log out')),
@@ -390,7 +430,7 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> with SingleTicker
     if (!_allowed) {
       return Scaffold(
         appBar: AppBar(
-          title: const Text('Platform ops'),
+          title: const Text('Admin desk'),
           actions: [
             IconButton(
               tooltip: 'Log out',
@@ -411,7 +451,17 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> with SingleTicker
     return Scaffold(
       backgroundColor: AppTheme.canvasOf(context),
       appBar: AppBar(
-        title: const Text('Platform ops'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_isOwner ? 'Admin desk' : 'Platform ops'),
+            if (_opsEmail.isNotEmpty)
+              Text(
+                _isOwner ? 'Owner · $_opsEmail' : _opsEmail,
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppTheme.textMuted),
+              ),
+          ],
+        ),
         actions: [
           IconButton(
             tooltip: 'Log out',
