@@ -69,6 +69,7 @@ const kCustomerAccountRoutes = {
   '/referral',
   '/order-history',
   '/bulk-request',
+  '/support-tickets',
 };
 
 /// Signed-in users may only open the hub and account screens for their role.

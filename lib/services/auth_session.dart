@@ -46,6 +46,26 @@ class AuthSession {
     return roleFromSession();
   }
 
+  /// Packaging + FSSAI desk access (platform_ops table or metadata role=ops).
+  static Future<bool> isPlatformOps() async {
+    final user = currentUser;
+    if (user == null) return false;
+    final meta = '${user.userMetadata?['role'] ?? ''} ${user.appMetadata['role'] ?? ''}'.toLowerCase();
+    if (meta.contains('ops')) return true;
+    try {
+      final row = await _client
+          .from('platform_ops')
+          .select('user_id')
+          .eq('user_id', user.id)
+          .maybeSingle()
+          .timeout(NetworkTimeouts.short);
+      return row != null;
+    } catch (e, st) {
+      FirebaseCrashlytics.instance.recordError(e, st, reason: 'AuthSession platform ops lookup failed');
+      return false;
+    }
+  }
+
   static Future<void> goToHub(BuildContext context, {AppRole? role}) async {
     final resolved = role ?? await resolveRole();
     if (!context.mounted) return;

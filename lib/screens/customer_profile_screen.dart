@@ -268,6 +268,93 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
     );
   }
 
+  Future<void> _requestDataExport() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Request data export'),
+        content: const Text(
+          'We will open a support ticket so ops can prepare a copy of your account data. Replies usually arrive within 1 business day.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Request')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final row = await createSupportTicket(
+        subject: 'Data export request',
+        body:
+            'Please export my HotPotChef account data (profile, addresses, orders) under applicable privacy rights and share a secure copy.',
+        category: 'account',
+        channel: 'in_app',
+      );
+      if (!mounted) return;
+      final publicId = row?['public_id']?.toString() ?? '';
+      _showSnackBar(
+        publicId.isEmpty ? 'Export request submitted' : 'Ticket $publicId opened for data export',
+      );
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Data export ticket failed');
+      if (!mounted) return;
+      _showSnackBar('Could not submit export request: $e', isError: true);
+    }
+  }
+
+  Future<void> _requestAccountDeletion() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Request account deletion'),
+        content: const Text(
+          'This marks your account for deletion review and opens a support ticket. Some records may be retained where law requires it.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Request deletion'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final user = _supabase.auth.currentUser;
+    if (user == null) {
+      _showSnackBar('Sign in required', isError: true);
+      return;
+    }
+
+    try {
+      await _supabase.from('users').update({
+        'deletion_requested_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', user.id);
+      final row = await createSupportTicket(
+        subject: 'Account deletion request',
+        body:
+            'I request deletion of my HotPotChef account. Please process under applicable retention rules and confirm when complete.',
+        category: 'account',
+        channel: 'in_app',
+      );
+      if (!mounted) return;
+      final publicId = row?['public_id']?.toString() ?? '';
+      _showSnackBar(
+        publicId.isEmpty
+            ? 'Deletion request recorded'
+            : 'Deletion marked — ticket $publicId opened',
+      );
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Account deletion request failed');
+      if (!mounted) return;
+      _showSnackBar('Could not submit deletion request: $e', isError: true);
+    }
+  }
+
   // --- Dynamic Input Helpers ---
 
   Widget _buildSheetTextField({
@@ -1055,6 +1142,14 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                       onTap: () => context.push('/bulk-request'),
                     ),
                     Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
+                    _buildListTile(
+                      icon: Icons.confirmation_number_outlined,
+                      title: 'My support tickets',
+                      subtitle: 'Track replies and open conversations',
+                      isDark: isDark,
+                      onTap: () => context.push('/support-tickets'),
+                    ),
+                    Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
 
                     _buildListTile(
                       icon: Icons.account_balance_wallet_outlined,
@@ -1120,20 +1215,34 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                     ),
                     Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
                     _buildListTile(
+                      icon: Icons.download_outlined,
+                      title: 'Request data export',
+                      subtitle: 'Ask ops for a copy of your account data',
+                      isDark: isDark,
+                      onTap: _requestDataExport,
+                    ),
+                    Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
+                    _buildListTile(
+                      icon: Icons.person_off_outlined,
+                      title: 'Request account deletion',
+                      subtitle: 'Marks your account for removal review',
+                      isDark: isDark,
+                      onTap: _requestAccountDeletion,
+                    ),
+                    Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
+                    _buildListTile(
                       icon: Icons.notifications_none,
                       title: 'Cancellation & Reschedule Policy',
                       onTap: () => openLegalDocument(context, LegalDocumentType.cancellation),
                       isDark: isDark,
                     ),
-                    if (SupportConfig.playStoreUrl != null) ...[
-                      Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
-                      _buildListTile(
-                        icon: Icons.star_outline,
-                        title: 'Rate us on Play Store',
-                        onTap: launchPlayStore,
-                        isDark: isDark,
-                      ),
-                    ],
+                    Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
+                    _buildListTile(
+                      icon: Icons.star_outline,
+                      title: 'Rate us on Play Store',
+                      onTap: launchPlayStore,
+                      isDark: isDark,
+                    ),
 
                     Padding(
                       padding: const EdgeInsets.all(20),

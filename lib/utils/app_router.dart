@@ -21,10 +21,12 @@ import '../screens/chef_analytics_screen.dart';
 import '../screens/chef_academy_screen.dart';
 import '../screens/chef_advertise_screen.dart';
 import '../screens/chef_publish_meal_screen.dart';
+import '../screens/platform_ops_screen.dart';
 import '../screens/referral_screen.dart';
 import '../screens/customer_order_history_screen.dart';
 import '../screens/customer_bulk_request_screen.dart';
 import '../screens/customer_meal_plans_screen.dart';
+import '../screens/customer_support_tickets_screen.dart';
 import '../screens/driver_id_card_screen.dart';
 import '../services/auth_session.dart';
 import '../widgets/not_found_page.dart';
@@ -71,6 +73,8 @@ class AppRouter {
         '/order-history',
         '/bulk-request',
         '/chats',
+        '/platform-ops',
+        '/support-tickets',
       };
       if (!isAuthenticated &&
           (signedInOnlyRoutes.contains(path) || path.startsWith('/chat/'))) {
@@ -180,9 +184,11 @@ class AppRouter {
       _fadeRoute('/chef-analytics', (context, state) => const ChefAnalyticsScreen()),
       _fadeRoute('/chef-academy', (context, state) => const ChefAcademyScreen()),
       _fadeRoute('/chef-advertise', (context, state) => const ChefAdvertiseScreen()),
+      _fadeRoute('/platform-ops', (context, state) => const PlatformOpsScreen()),
       _fadeRoute('/referral', (context, state) => const ReferralScreen()),
       _fadeRoute('/order-history', (context, state) => const CustomerOrderHistoryScreen()),
       _fadeRoute('/bulk-request', (context, state) => const CustomerBulkRequestScreen()),
+      _fadeRoute('/support-tickets', (context, state) => const CustomerSupportTicketsScreen()),
     ],
   );
 }

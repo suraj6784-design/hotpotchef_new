@@ -63,11 +63,38 @@ Use the SHA-256 line (colons optional; Google accepts either). If you use Play A
 
 After HTTPS is live:
 
-1. Open `https://hotpotchef.com/.well-known/assetlinks.json` — must be public JSON, `Content-Type: application/json`.
-2. [Google Statement List Generator](https://developers.google.com/digital-asset-links/tools/generator) — package `com.hotpotchef.app`.
-3. On a device with the release APK:  
+1. Put **Play App Signing** SHA-256 (and optional upload key SHA-256) into
+   `/.well-known/assetlinks.json` — replace the `REPLACE_WITH_*` placeholders.
+2. Redirect `www.hotpotchef.com` → apex (or keep both hosts; the Android app
+   verifies both `hotpotchef.com` and `www.hotpotchef.com` for `/meal`).
+3. Open `https://hotpotchef.com/.well-known/assetlinks.json` — must be public JSON, `Content-Type: application/json`.
+4. [Google Statement List Generator](https://developers.google.com/digital-asset-links/tools/generator) — package `com.hotpotchef.app`.
+5. On a device with the release APK:  
    `adb shell pm get-app-links com.hotpotchef.app`  
    Domain should show **verified**.
+
+## Play Store listing
+
+Canonical URL used by the Flutter app (default when `.env` omits `PLAY_STORE_URL`):
+
+`https://play.google.com/store/apps/details?id=com.hotpotchef.app`
+
+Set the same value in:
+
+- website `js/config.js` → `playStoreUrl`
+- app `.env` → `PLAY_STORE_URL=...`
+
+## Platform ops seed (Packaging + FSSAI desk)
+
+After applying migration `20260907093000_p0_ops_fssai_live_signals.sql`:
+
+```sql
+INSERT INTO public.platform_ops (user_id, note)
+VALUES ('YOUR-AUTH-USER-UUID', 'launch ops')
+ON CONFLICT (user_id) DO NOTHING;
+```
+
+Ops users open **Chef Profile → Platform ops desk** (or the Ops header icon).
 
 ## Local preview
 

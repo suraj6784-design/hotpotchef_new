@@ -122,7 +122,7 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
         ),
       );
       if (saved == true && mounted) {
-        _showSnackBar('Request sent to the supply store. We will confirm stock and delivery.');
+        _showSnackBar('Request filed with the HotPotChef supply desk. Track status below.');
       }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Packaging supply request failed');
@@ -231,7 +231,7 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
                           style: TextStyle(color: AppTheme.primary, fontSize: 18, fontWeight: FontWeight.bold)),
                       SizedBox(height: 4),
                       Text(
-                        'Tap Request to place the order on your kitchen account and message the HotPotChef supply store in one step.',
+                        'Tap Request to place the order on your kitchen account. The HotPotChef supply desk confirms stock in-app; WhatsApp is optional backup.',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
                       ),
@@ -353,17 +353,23 @@ class _PackagingOrderTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final status = order['status']?.toString() ?? 'Pending';
+    final status = packagingRequestStatusLabel(order['status']?.toString());
     final qty = order['quantity'] ?? 1;
     final total = parseMoney(order['quoted_total'] ?? order['budget'] ?? order['total_price']);
     final requestId = packagingRequestDisplayId(order);
+    final note = order['ops_note']?.toString().trim() ?? '';
     return AppCard(
       margin: const EdgeInsets.only(bottom: 10),
       child: ListTile(
         contentPadding: EdgeInsets.zero,
         title: Text(order['title']?.toString() ?? 'Packaging', style: const TextStyle(fontWeight: FontWeight.w800)),
         subtitle: Text(
-          '${requestId.isEmpty ? 'Packaging request' : requestId} • Qty $qty • $status',
+          [
+            if (requestId.isNotEmpty) requestId else 'Packaging request',
+            'Qty $qty',
+            status,
+            if (note.isNotEmpty) note,
+          ].join(' • '),
           style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
         ),
         trailing: Text('₹${total.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w900)),

@@ -16,6 +16,9 @@ import '../utils/network.dart';
 import '../widgets/avatar_upload.dart';
 import '../widgets/change_password_dialog.dart';
 import '../services/kitchen_media.dart';
+import '../services/auth_session.dart';
+import 'package:go_router/go_router.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class ChefReviewModel {
   final String id;
@@ -65,6 +68,11 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
   bool _isSaving = false;
   bool _isSettingUpPayout = false;
   bool _payoutEnabled = false;
+  bool _uploadingFssaiProof = false;
+  bool _isPlatformOps = false;
+  String? _fssaiProofUrl;
+  String _fssaiVerificationStatus = 'unsubmitted';
+  String? _fssaiReviewNote;
 
   // Controllers
   final _nameController = TextEditingController();
@@ -137,13 +145,18 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     _gatewayAccountController.text = userData?['gateway_account_id']?.toString() ?? '';
 
     _beneficiaryNameController.text = userData?['beneficiary_name']?.toString() ?? '';
-    _bankAccountController.text = userData?['bank_account_masked']?.toString() ??
-        userData?['bank_account_number']?.toString() ??
-        '';
+    final bankMasked = userData?['bank_account_masked']?.toString().trim() ?? '';
+    final bankFull = userData?['bank_account_number']?.toString() ?? '';
+    _bankAccountController.text = bankMasked.isNotEmpty
+        ? bankMasked
+        : maskBankAccount(bankFull);
     _ifscController.text = userData?['bank_ifsc']?.toString() ?? '';
 
     _avatarUrl = userData?['avatar_url']?.toString();
     _payoutEnabled = userData?['payout_enabled'] == true || _gatewayAccountController.text.isNotEmpty;
+    _fssaiProofUrl = userData?['fssai_proof_url']?.toString();
+    _fssaiVerificationStatus = normalizeFssaiVerificationStatus(userData?['fssai_verification_status']?.toString());
+    _fssaiReviewNote = userData?['fssai_review_note']?.toString();
 
     _latitude = (userData?['lat'] as num?)?.toDouble() ??
         (userData?['latitude'] as num?)?.toDouble();
@@ -238,10 +251,36 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     }
 
     if (mounted) {
+      final ops = await AuthSession.isPlatformOps();
+      if (!mounted) return;
       setState(() {
         _reviews = reviews;
+        _isPlatformOps = ops;
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _uploadFssaiProof() async {
+    final source = await pickKitchenImageSource(context);
+    if (source == null || !mounted) return;
+    setState(() => _uploadingFssaiProof = true);
+    try {
+      final url = await uploadKitchenImage(source: source, folder: 'fssai', fileKey: 'licence');
+      if (url == null || !mounted) return;
+      setState(() {
+        _fssaiProofUrl = url;
+        _fssaiVerificationStatus = 'pending';
+        _fssaiReviewNote = null;
+      });
+      _showSnackBar(
+        'FSSAI proof uploaded. Under review — typically 1 business day. You can publish after HotPotChef verifies.',
+      );
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'FSSAI proof upload failed');
+      if (mounted) _showSnackBar('Could not upload FSSAI proof. Try again.', isError: true);
+    } finally {
+      if (mounted) setState(() => _uploadingFssaiProof = false);
     }
   }
 
@@ -392,6 +431,10 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
         'full_name': name,
         'phone': phone,
         'fssai_number': fssai,
+        'fssai_proof_url': _fssaiProofUrl,
+        'fssai_verification_status': (_fssaiProofUrl ?? '').trim().isEmpty
+            ? 'unsubmitted'
+            : (_fssaiVerificationStatus == 'verified' ? 'verified' : 'pending'),
         'gstin': _gstinController.text.trim().toUpperCase(),
         'address': formattedAddress,
         'house_no': house,
@@ -555,9 +598,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                                     borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: Text(
-                                    _fssaiController.text.trim().isEmpty
-                                        ? 'Add FSSAI to build trust'
-                                        : 'FSSAI on file',
+                                    fssaiVerificationLabel(_fssaiVerificationStatus),
                                     style: TextStyle(color: verified, fontSize: 11, fontWeight: FontWeight.bold),
                                   ),
                                 ),
@@ -575,7 +616,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                       style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 15)),
                   const SizedBox(height: 8),
                   Text(
-                    'Diners see your FSSAI number on the kitchen card and plate shares. Keep it valid and matching FoSCoS.',
+                    'Diners see your FSSAI number on the kitchen card. Upload a clear photo of the licence for platform verification before publishing meals.',
                     style: TextStyle(color: muted, fontSize: 12, height: 1.35),
                   ),
                   const SizedBox(height: 12),
@@ -610,6 +651,41 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                       return null;
                     },
                   ),
+                  const SizedBox(height: 8),
+                  if ((_fssaiProofUrl ?? '').isNotEmpty)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: CachedNetworkImage(
+                        imageUrl: _fssaiProofUrl!,
+                        height: 140,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  if ((_fssaiReviewNote ?? '').trim().isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        _fssaiReviewNote!,
+                        style: const TextStyle(color: AppTheme.error, fontSize: 12),
+                      ),
+                    ),
+                  if (_fssaiVerificationStatus == 'pending' && (_fssaiProofUrl ?? '').trim().isNotEmpty)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: Text(
+                        'Under review — typically 1 business day. You can publish after HotPotChef verifies.',
+                        style: TextStyle(fontSize: 12, color: Colors.orange, height: 1.35, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: _uploadingFssaiProof ? null : _uploadFssaiProof,
+                    icon: _uploadingFssaiProof
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.upload_file_outlined),
+                    label: Text((_fssaiProofUrl ?? '').isEmpty ? 'Upload FSSAI proof' : 'Replace FSSAI proof'),
+                  ),
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
@@ -618,6 +694,14 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                           style: TextStyle(color: Colors.blueAccent, fontSize: 12, decoration: TextDecoration.underline)),
                     ),
                   ),
+                  if (_isPlatformOps)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.admin_panel_settings_outlined, color: AppTheme.primary),
+                      title: const Text('Open platform ops desk', style: TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: const Text('Packaging inbox and FSSAI review'),
+                      onTap: () => context.push('/platform-ops'),
+                    ),
                   _buildValidatedTextField(
                     controller: _gstinController,
                     label: 'GSTIN (for tax invoices)',
@@ -633,7 +717,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                   const Padding(
                     padding: EdgeInsets.only(top: 4, bottom: 8),
                     child: Text(
-                      'Leave blank if you are not GST-registered. Customers then get a bill of supply.',
+                      'GSTIN is only needed when you want tax invoices. Leave blank for a bill of supply. FSSAI verification is still required before you can publish meals.',
                       style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
                     ),
                   ),

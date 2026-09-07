@@ -1,29 +1,57 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../screens/legal_document_screen.dart';
+import 'helpers.dart';
 import 'legal_content.dart';
 
+final _uuidPattern = RegExp(
+  r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+);
+
+String? parseOrderUuid(String? raw) {
+  final value = raw?.trim() ?? '';
+  if (value.isEmpty || !_uuidPattern.hasMatch(value)) return null;
+  return value;
+}
+
 class SupportConfig {
+  static String? _env(String key) {
+    try {
+      return dotenv.env[key]?.trim();
+    } catch (_) {
+      return null;
+    }
+  }
+
   static String get email {
-    final value = dotenv.env['SUPPORT_EMAIL']?.trim();
+    final value = _env('SUPPORT_EMAIL');
     if (value != null && value.contains('@')) return value;
     return 'hello@hotpotchef.com';
   }
 
   static String get whatsappDigits {
-    final fromEnv = (dotenv.env['SUPPORT_WHATSAPP'] ?? '').replaceAll(RegExp(r'\D'), '');
+    final fromEnv = (_env('SUPPORT_WHATSAPP') ?? '').replaceAll(RegExp(r'\D'), '');
     if (fromEnv.length >= 10) return fromEnv;
+    // Fallback number when SUPPORT_WHATSAPP is unset (ops line, not a personal founder chat).
     return '918446609281';
   }
 
   static bool get hasWhatsApp => whatsappDigits.length >= 10;
 
-  static String? get playStoreUrl {
-    final value = dotenv.env['PLAY_STORE_URL']?.trim();
-    if (value == null || value.isEmpty) return null;
-    return value;
+  static String get playStoreUrl {
+    final value = _env('PLAY_STORE_URL');
+    if (value != null && value.isNotEmpty) return value;
+    return 'https://play.google.com/store/apps/details?id=com.hotpotchef.app';
+  }
+
+  /// Kept for callers that treated Play URL as optional.
+  static String? get playStoreUrlOrNull {
+    final value = playStoreUrl.trim();
+    return value.isEmpty ? null : value;
   }
 
   static String? urlFor(LegalDocumentType type) {
@@ -33,7 +61,7 @@ class SupportConfig {
       LegalDocumentType.faq => 'FAQ_URL',
       LegalDocumentType.cancellation => 'CANCELLATION_POLICY_URL',
     };
-    final value = dotenv.env[key]?.trim();
+    final value = _env(key);
     if (value == null || value.isEmpty) return null;
     return value;
   }
@@ -167,9 +195,7 @@ Future<bool> notifySupplyStore({
 }
 
 Future<bool> launchPlayStore() {
-  final url = SupportConfig.playStoreUrl;
-  if (url == null) return Future.value(false);
-  return launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  return launchUrl(Uri.parse(SupportConfig.playStoreUrl), mode: LaunchMode.externalApplication);
 }
 
 Future<void> openLegalDocument(BuildContext context, LegalDocumentType type) async {
@@ -184,6 +210,33 @@ Future<void> openLegalDocument(BuildContext context, LegalDocumentType type) asy
   );
 }
 
+/// Creates an in-app support ticket via `create_support_ticket`.
+Future<Map<String, dynamic>?> createSupportTicket({
+  required String subject,
+  required String body,
+  String? orderId,
+  String? orderNumber,
+  String category = 'general',
+  String channel = 'in_app',
+}) async {
+  final parsedOrderId = parseOrderUuid(orderId);
+  final response = await Supabase.instance.client.rpc(
+    'create_support_ticket',
+    params: {
+      'p_subject': subject,
+      'p_body': body,
+      'p_order_id': parsedOrderId,
+      'p_order_number': (orderNumber?.trim().isEmpty ?? true) ? null : orderNumber!.trim(),
+      'p_category': category,
+      'p_channel': channel,
+    },
+  );
+  if (response == null) return null;
+  if (response is Map<String, dynamic>) return response;
+  if (response is Map) return Map<String, dynamic>.from(response);
+  return null;
+}
+
 Future<void> showContactSupportSheet(
   BuildContext context, {
   String? orderNumber,
@@ -191,33 +244,92 @@ Future<void> showContactSupportSheet(
   String? orderRef,
 }) {
   final number = (orderNumber ?? orderRef)?.trim();
+  final isDark = Theme.of(context).brightness == Brightness.dark;
   return showModalBottomSheet<void>(
     context: context,
-    backgroundColor: Colors.white,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-    ),
-    builder: (ctx) => ContactSupportSheet(
-      orderNumber: (number == null || number.isEmpty) ? null : number,
-      orderUuid: orderUuid,
+    backgroundColor: Colors.transparent,
+    builder: (ctx) => Container(
+      decoration: AppTheme.bottomSheetDecoration(isDark: isDark),
+      child: ContactSupportSheet(
+        orderNumber: (number == null || number.isEmpty) ? null : number,
+        orderUuid: orderUuid,
+      ),
     ),
   );
 }
 
-class ContactSupportSheet extends StatelessWidget {
+class ContactSupportSheet extends StatefulWidget {
   const ContactSupportSheet({super.key, this.orderNumber, this.orderUuid});
 
   final String? orderNumber;
   final String? orderUuid;
 
+  @override
+  State<ContactSupportSheet> createState() => _ContactSupportSheetState();
+}
+
+class _ContactSupportSheetState extends State<ContactSupportSheet> {
+  bool _submitting = false;
+
   String get _message => supportContactMessage(
-        orderNumber: orderNumber,
-        orderUuid: orderUuid,
+        orderNumber: widget.orderNumber,
+        orderUuid: widget.orderUuid,
       );
+
+  String get _subject => supportContactSubject(orderNumber: widget.orderNumber);
+
+  Future<void> _openTicket() async {
+    if (_submitting) return;
+    setState(() => _submitting = true);
+    try {
+      final hasOrder = parseOrderUuid(widget.orderUuid) != null;
+      final row = await createSupportTicket(
+        subject: _subject,
+        body: _message,
+        orderId: widget.orderUuid,
+        orderNumber: widget.orderNumber,
+        category: hasOrder ? 'order' : 'general',
+        channel: 'in_app',
+      );
+      if (!mounted) return;
+      final publicId = row?['public_id']?.toString() ?? '';
+      final router = GoRouter.maybeOf(context);
+      final messenger = ScaffoldMessenger.of(context);
+      Navigator.of(context).pop();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            publicId.isEmpty
+                ? 'Support ticket opened'
+                : 'Ticket $publicId opened — we typically reply within one business day.',
+          ),
+          backgroundColor: AppTheme.success,
+          action: router == null
+              ? null
+              : SnackBarAction(
+                  label: 'View tickets',
+                  textColor: Colors.white,
+                  onPressed: () => router.push('/support-tickets'),
+                ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not open ticket: $e'),
+          backgroundColor: AppTheme.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final linkedOrder = orderNumber?.trim() ?? '';
+    final linkedOrder = widget.orderNumber?.trim() ?? '';
+    final onSurface = AppTheme.onSurfaceOf(context);
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
@@ -230,20 +342,25 @@ class ContactSupportSheet extends StatelessWidget {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.black12,
-                  borderRadius: BorderRadius.circular(99),
+                  color: onSurface.withValues(alpha: 0.12),
+                  borderRadius: AppTheme.radiusXl,
                 ),
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'Contact support',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: onSurface),
             ),
             const SizedBox(height: 8),
             Text(
-              supportLinkedOrderCopy(orderNumber: orderNumber),
-              style: const TextStyle(color: Color(0xFF8C8279), fontSize: 13, height: 1.4),
+              supportLinkedOrderCopy(orderNumber: widget.orderNumber),
+              style: const TextStyle(color: AppTheme.textMuted, fontSize: 13, height: 1.4),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Ops replies within 1 business day (SLA)',
+              style: TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w600),
             ),
             if (linkedOrder.isNotEmpty) ...[
               const SizedBox(height: 12),
@@ -252,13 +369,13 @@ class ContactSupportSheet extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: const Color(0x14F4511E),
-                    borderRadius: BorderRadius.circular(8),
+                    color: AppTheme.primary.withValues(alpha: 0.08),
+                    borderRadius: AppTheme.radiusSm,
                   ),
                   child: Text(
                     'Order $linkedOrder',
                     style: const TextStyle(
-                      color: Color(0xFFF4511E),
+                      color: AppTheme.primary,
                       fontWeight: FontWeight.w800,
                       fontSize: 12,
                       letterSpacing: 0.4,
@@ -268,31 +385,50 @@ class ContactSupportSheet extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 20),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              onPressed: _submitting ? null : _openTicket,
+              icon: _submitting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.confirmation_number_outlined),
+              label: Text(
+                _submitting ? 'Opening ticket…' : 'Open support ticket',
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+            const SizedBox(height: 8),
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: const CircleAvatar(
-                backgroundColor: Color(0x1AF4511E),
-                child: Icon(Icons.email_outlined, color: Color(0xFFF4511E)),
+              leading: CircleAvatar(
+                backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
+                child: const Icon(Icons.email_outlined, color: AppTheme.primary),
               ),
-              title: const Text('Email us', style: TextStyle(fontWeight: FontWeight.w700)),
+              title: Text('Email us', style: TextStyle(fontWeight: FontWeight.w700, color: onSurface)),
               subtitle: Text(SupportConfig.email),
-              onTap: () async {
-                await launchSupportEmail(
-                  subject: supportContactSubject(orderNumber: orderNumber),
-                  body: _message,
-                );
-              },
+              onTap: _submitting
+                  ? null
+                  : () async {
+                      await launchSupportEmail(subject: _subject, body: _message);
+                    },
             ),
             if (SupportConfig.hasWhatsApp)
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: const CircleAvatar(
-                  backgroundColor: Color(0x1A2E9E5B),
-                  child: Icon(Icons.chat_outlined, color: Color(0xFF2E9E5B)),
+                leading: CircleAvatar(
+                  backgroundColor: AppTheme.success.withValues(alpha: 0.1),
+                  child: const Icon(Icons.chat_outlined, color: AppTheme.success),
                 ),
-                title: const Text('WhatsApp', style: TextStyle(fontWeight: FontWeight.w700)),
+                title: Text('WhatsApp', style: TextStyle(fontWeight: FontWeight.w700, color: onSurface)),
                 subtitle: const Text('Message the support line'),
-                onTap: () => launchSupportWhatsApp(message: _message),
+                onTap: _submitting ? null : () => launchSupportWhatsApp(message: _message),
               ),
           ],
         ),
