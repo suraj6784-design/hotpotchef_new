@@ -51,17 +51,26 @@
               <input id="co-delivery-fee" type="checkbox" checked />
               Add ₹40 delivery partner fee
             </label>
-            <p class="status" id="co-status" hidden></p>
-            <div class="cta-row">
+            <div class="cta-row" id="co-actions">
               <button class="btn btn-primary" type="submit" id="co-pay">Pay with Razorpay</button>
               <a class="btn btn-ghost" href="/cart">Back to cart</a>
             </div>
           </form>
+          <p class="status" id="co-status" hidden></p>
+          <div class="cta-row" id="co-done" hidden>
+            <a class="btn btn-primary" id="co-app" href="https://play.google.com/store/apps/details?id=com.hotpotchef.app">Track in the app</a>
+            <a class="btn btn-ghost" href="/">Back to menu</a>
+          </div>
         </article>
       </div>
     </main>
 
-    <p class="footer-note">Uses the same create-split-order / recover-payment flow as the Android app.</p>
+    <nav class="site-footer-links" aria-label="Policies">
+      <a href="/terms">Terms</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/faq">FAQs</a>
+      <a href="/cancellation">Cancellation</a>
+    </nav>
 
     <script src="/js/config.js"></script>
     <script src="/js/api.js"></script>

@@ -53,14 +53,17 @@
       if (empty) empty.hidden = false;
       if (totalEl) totalEl.hidden = true;
       var pay = document.getElementById('pay-web');
+      var open = document.getElementById('open-app');
       if (pay) pay.hidden = true;
-      wireOpenApp();
+      if (open) open.hidden = true;
       return;
     }
 
     if (empty) empty.hidden = true;
     var payWeb = document.getElementById('pay-web');
+    var openApp = document.getElementById('open-app');
     if (payWeb) payWeb.hidden = false;
+    if (openApp) openApp.hidden = false;
     list.innerHTML = items
       .map(function (item) {
         var price = api.money(item.price);

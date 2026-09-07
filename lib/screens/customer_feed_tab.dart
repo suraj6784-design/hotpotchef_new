@@ -319,7 +319,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         _filteredChefId = null;
         _filteredChefName = null;
         _offerBrowseLabel = null;
-        _offerBrowseGroupKey = null;
+      _offerBrowseGroupKey = null;
       });
       return;
     }
@@ -330,7 +330,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       _filteredChefId = null;
       _filteredChefName = null;
       _offerBrowseLabel = null;
-        _offerBrowseGroupKey = null;
+      _offerBrowseGroupKey = null;
     });
 
     try {
@@ -479,7 +479,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           _filteredChefId = null;
           _filteredChefName = null;
           _offerBrowseLabel = null;
-        _offerBrowseGroupKey = null;
+      _offerBrowseGroupKey = null;
         });
       }
     } finally {
@@ -497,7 +497,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       _filteredChefId = id;
       _filteredChefName = name;
       _offerBrowseLabel = null;
-        _offerBrowseGroupKey = null;
+      _offerBrowseGroupKey = null;
       _searchController.text = name;
     });
     try {
@@ -539,7 +539,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       _filteredChefId = null;
       _filteredChefName = null;
       _offerBrowseLabel = null;
-        _offerBrowseGroupKey = null;
+      _offerBrowseGroupKey = null;
     });
   }
 

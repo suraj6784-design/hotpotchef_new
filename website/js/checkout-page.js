@@ -42,11 +42,18 @@
     var list = document.getElementById('checkout-items');
     var sub = document.getElementById('checkout-subtotal');
     if (!list) return;
+    var form = document.getElementById('checkout-form');
+    var payBtn = document.getElementById('co-pay');
     if (!items.length) {
-      list.innerHTML = '<p class="chef-empty">Cart is empty. Add a plate first.</p>';
+      list.innerHTML =
+        '<p class="chef-empty">Cart is empty. <a href="/#live-menu">Browse the live menu</a> first.</p>';
       if (sub) sub.hidden = true;
+      if (form) form.hidden = true;
+      if (payBtn) payBtn.disabled = true;
       return;
     }
+    if (form) form.hidden = false;
+    if (payBtn) payBtn.disabled = false;
     var total = 0;
     list.innerHTML = items
       .map(function (item) {
@@ -183,8 +190,13 @@
               throw new Error((placed && placed.error) || 'Payment received but order was not recorded');
             }
             cart.clear();
+            cart.syncBadge();
             setStatus('Order placed. Open the HotPotChef app to track it.');
             btn.textContent = 'Order placed';
+            var form = document.getElementById('checkout-form');
+            var done = document.getElementById('co-done');
+            if (form) form.hidden = true;
+            if (done) done.hidden = false;
           } catch (err) {
             setStatus((err && err.message) || 'Could not record order after payment.', true);
             btn.disabled = false;

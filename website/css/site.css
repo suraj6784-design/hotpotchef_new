@@ -778,6 +778,11 @@ a {
   height: 1.1rem;
 }
 
+.auth-check a {
+  color: var(--flame);
+  font-weight: 700;
+}
+
 .status.is-error {
   color: #b71c1c;
   background: rgba(183, 28, 28, 0.08);

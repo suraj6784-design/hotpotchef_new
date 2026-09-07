@@ -48,10 +48,7 @@ class _CartImportScreenState extends ConsumerState<CartImportScreen> {
     final specs = _parseItems(widget.itemsParam);
     if (specs.isEmpty) {
       if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = 'No plates found in this cart link.';
-      });
+      context.go('/customer-hub?tab=cart');
       return;
     }
 

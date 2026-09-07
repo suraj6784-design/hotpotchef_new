@@ -28,6 +28,10 @@
       name.hidden = !isSignUp;
       name.required = isSignUp;
     }
+    var termsWrap = document.getElementById('auth-terms-wrap');
+    var terms = document.getElementById('auth-terms');
+    if (termsWrap) termsWrap.hidden = !isSignUp;
+    if (terms) terms.required = isSignUp;
     if (password) {
       password.autocomplete = isSignUp ? 'new-password' : 'current-password';
     }
@@ -49,6 +53,10 @@
     var email = (document.getElementById('auth-email').value || '').trim();
     var password = document.getElementById('auth-password').value || '';
     var name = (document.getElementById('auth-name').value || '').trim();
+    if (mode === 'signup' && !document.getElementById('auth-terms').checked) {
+      setStatus('Please agree to the Terms and Privacy policy.', true);
+      return;
+    }
     setStatus(mode === 'signup' ? 'Creating account…' : 'Signing in…');
     try {
       if (mode === 'signup') {
