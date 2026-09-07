@@ -1,7 +1,0 @@
-{
-  "name": "hotpotchef-website",
-  "private": true,
-  "scripts": {
-    "build": "node scripts/write-config.js"
-  }
-}
