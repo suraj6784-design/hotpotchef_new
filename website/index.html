@@ -22,6 +22,10 @@
     <link rel="stylesheet" href="/css/site.css" />
   </head>
   <body>
+    <div class="wrap site-top site-top--home">
+      <a href="/">HotPot<strong>Chef</strong></a>
+      <a class="cart-link" href="/cart">Cart <span data-cart-count hidden></span></a>
+    </div>
     <main class="home-hero">
       <div class="wrap">
         <h1 class="brand">HotPot<span>Chef</span></h1>
@@ -33,18 +37,50 @@
           <a class="btn btn-primary" id="play-cta" href="https://play.google.com/store/apps/details?id=com.hotpotchef.app"
             >Get the app</a
           >
-          <a class="btn btn-ghost" href="mailto:hello@hotpotchef.com">hello@hotpotchef.com</a>
+          <a class="btn btn-ghost" href="#live-menu">See live menu</a>
         </div>
       </div>
     </main>
-    <p class="footer-note">Shared dish links open at hotpotchef.com/meal/… and deep-link into the app when installed.</p>
+
+    <section class="catalog" id="live-menu" aria-labelledby="catalog-heading">
+      <div class="wrap catalog-wrap">
+        <h2 class="catalog-heading" id="catalog-heading">On the menu now</h2>
+        <p class="catalog-lead">Same Available plates as the HotPotChef app. Tap a dish to preview — order in the app.</p>
+
+        <div class="catalog-controls">
+          <label class="catalog-search-label" for="catalog-search">Search</label>
+          <input
+            id="catalog-search"
+            class="catalog-search"
+            type="search"
+            placeholder="Search dishes or home chefs"
+            autocomplete="off"
+          />
+          <label class="catalog-diet-label" for="catalog-diet">Diet</label>
+          <select id="catalog-diet" class="catalog-diet" aria-label="Diet filter">
+            <option value="all">All</option>
+            <option value="veg">Veg</option>
+            <option value="nonveg">Non-veg</option>
+          </select>
+        </div>
+
+        <div class="chef-strip" id="chef-strip" hidden>
+          <p class="chef-strip-label">Matching kitchens</p>
+          <div class="chef-strip-list" id="chef-strip-list"></div>
+        </div>
+
+        <p class="catalog-status" id="catalog-status" hidden></p>
+        <div class="catalog-grid" id="catalog-grid"></div>
+      </div>
+    </section>
+
+    <p class="footer-note">
+      Shared dish links open at hotpotchef.com/meal/… · kitchens at /chef/… · deep-link into the app when installed.
+    </p>
+
     <script src="/js/config.js"></script>
-    <script>
-      (function () {
-        var cfg = window.HOTPOTCHEF || {};
-        var play = document.getElementById('play-cta');
-        if (play && cfg.playStoreUrl) play.href = cfg.playStoreUrl;
-      })();
-    </script>
+    <script src="/js/api.js"></script>
+    <script src="/js/cart.js"></script>
+    <script src="/js/catalog.js"></script>
   </body>
 </html>

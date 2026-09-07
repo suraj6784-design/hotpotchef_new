@@ -1,1 +1,6 @@
 /meal/*  /meal.html  200
+/chef/*  /chef.html  200
+/cart  /cart.html  200
+/cart/  /cart.html  200
+/auth  /auth.html  200
+/checkout  /checkout.html  200

@@ -3,13 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Dish · HotPotChef</title>
-    <meta name="description" content="A home-kitchen plate on HotPotChef. Open in the app to order on your slot." />
+    <title>Home kitchen · HotPotChef</title>
+    <meta name="description" content="A neighbourhood home kitchen on HotPotChef. Open in the app to order on your slot." />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="HotPotChef" />
-    <meta property="og:title" content="HotPotChef dish" />
+    <meta property="og:title" content="HotPotChef kitchen" />
     <meta property="og:description" content="Home kitchens. Near you. On your slot." />
-    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:card" content="summary" />
     <meta name="theme-color" content="#1a1410" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -25,20 +25,15 @@
       <a class="cart-link" href="/cart">Cart <span data-cart-count hidden></span></a>
     </div>
 
-    <div id="visual" class="meal-visual placeholder" aria-hidden="true">HotPotChef</div>
-
-    <main class="meal-page">
+    <main class="meal-page chef-page">
       <div class="wrap">
         <article class="meal-card">
-          <p class="meal-kicker" id="kicker">Home kitchen plate</p>
-          <h1 class="meal-title" id="title">Loading dish…</h1>
+          <p class="meal-kicker">Home kitchen</p>
+          <h1 class="meal-title" id="title">Loading kitchen…</h1>
           <p class="meal-meta" id="meta"></p>
-          <p class="meal-price" id="price" hidden></p>
           <p class="meal-desc" id="desc" hidden></p>
           <p class="status" id="status" hidden></p>
-          <a class="chef-inline" id="chef-link" href="#" hidden>View kitchen</a>
           <div class="cta-row">
-            <button type="button" class="btn btn-primary" id="add-cart" hidden>Add to web cart</button>
             <a class="btn btn-primary" id="open-app" href="#">Open in HotPotChef</a>
             <a class="btn btn-ghost" id="play-cta" href="https://play.google.com/store/apps/details?id=com.hotpotchef.app"
               >Get the app</a
@@ -46,10 +41,8 @@
           </div>
         </article>
 
-        <section class="more-kitchen" id="more-kitchen" hidden>
-          <h2 class="more-kitchen-heading">More from this kitchen</h2>
-          <div class="catalog-grid" id="more-grid"></div>
-        </section>
+        <h2 class="chef-meals-heading">Available plates</h2>
+        <div id="meal-list" class="chef-meal-list"></div>
       </div>
     </main>
 
@@ -58,6 +51,6 @@
     <script src="/js/config.js"></script>
     <script src="/js/api.js"></script>
     <script src="/js/cart.js"></script>
-    <script src="/js/meal.js"></script>
+    <script src="/js/chef.js"></script>
   </body>
 </html>

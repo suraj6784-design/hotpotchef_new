@@ -13,6 +13,8 @@ import '../screens/driver_hub.dart';
 import '../screens/in_app_chat_screen.dart';
 import '../screens/chat_inbox_screen.dart';
 import '../screens/meal_link_screen.dart';
+import '../screens/chef_link_screen.dart';
+import '../screens/cart_import_screen.dart';
 import '../screens/live_tracking_screen.dart';
 import '../screens/chef_profile_screen.dart';
 import '../screens/driver_profile_screen.dart';
@@ -138,6 +140,17 @@ class AppRouter {
       _fadeRoute(
         '/meal/:mealId',
         (context, state) => MealLinkScreen(mealId: state.pathParameters['mealId'] ?? ''),
+      ),
+      _fadeRoute(
+        '/chef/:chefId',
+        (context, state) => ChefLinkScreen(chefId: state.pathParameters['chefId'] ?? ''),
+      ),
+      GoRoute(
+        path: '/cart',
+        pageBuilder: (context, state) => appFadeSlidePage(
+          key: state.pageKey,
+          child: CartImportScreen(itemsParam: state.uri.queryParameters['items'] ?? ''),
+        ),
       ),
       _fadeRoute('/chats', (context, state) => const ChatInboxScreen()),
       _fadeRoute('/chat/:mealId', (context, state) {

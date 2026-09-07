@@ -1,0 +1,28 @@
+# HotPotChef static site — Apache (GoDaddy cPanel / Linux hosting)
+Options -MultiViews
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Don't rewrite real files or directories
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  RewriteRule ^meal/[^/]+/?$ meal.html [L]
+  RewriteRule ^chef/[^/]+/?$ chef.html [L]
+  RewriteRule ^cart/?$ cart.html [L]
+  RewriteRule ^auth/?$ auth.html [L]
+  RewriteRule ^checkout/?$ checkout.html [L]
+</IfModule>
+
+# Correct type for App Links / Universal Links
+<IfModule mod_headers.c>
+  <Files "assetlinks.json">
+    Header set Content-Type "application/json"
+  </Files>
+  <Files "apple-app-site-association">
+    Header set Content-Type "application/json"
+  </Files>
+</IfModule>

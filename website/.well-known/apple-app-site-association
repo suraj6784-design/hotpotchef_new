@@ -4,7 +4,7 @@
     "details": [
       {
         "appID": "TEAMID.com.hotpotchef.app",
-        "paths": ["/meal/*"]
+        "paths": ["/meal/*", "/chef/*", "/cart", "/cart/*"]
       }
     ]
   }

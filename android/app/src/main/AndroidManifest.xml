@@ -38,7 +38,7 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="hotpotchef" android:host="app"/>
             </intent-filter>
-            <!-- Clickable HTTPS meal cards (WhatsApp / Instagram). Path /meal/{id} → MealLinkScreen. -->
+            <!-- Clickable HTTPS meal/chef cards (WhatsApp / Instagram). -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
@@ -47,6 +47,14 @@
                     android:scheme="https"
                     android:host="hotpotchef.com"
                     android:pathPrefix="/meal"/>
+                <data
+                    android:scheme="https"
+                    android:host="hotpotchef.com"
+                    android:pathPrefix="/chef"/>
+                <data
+                    android:scheme="https"
+                    android:host="hotpotchef.com"
+                    android:pathPrefix="/cart"/>
             </intent-filter>
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW"/>
@@ -56,6 +64,14 @@
                     android:scheme="https"
                     android:host="www.hotpotchef.com"
                     android:pathPrefix="/meal"/>
+                <data
+                    android:scheme="https"
+                    android:host="www.hotpotchef.com"
+                    android:pathPrefix="/chef"/>
+                <data
+                    android:scheme="https"
+                    android:host="www.hotpotchef.com"
+                    android:pathPrefix="/cart"/>
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>

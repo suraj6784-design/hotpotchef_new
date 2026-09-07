@@ -101,6 +101,18 @@ String mealShareAppUri(String? mealId) {
   return 'hotpotchef://app/meal/$id';
 }
 
+String chefShareUri(String? chefId) {
+  final id = chefId?.trim() ?? '';
+  if (id.isEmpty) return '';
+  return '$kMealShareWebBase/chef/$id';
+}
+
+String chefShareAppUri(String? chefId) {
+  final id = chefId?.trim() ?? '';
+  if (id.isEmpty) return '';
+  return 'hotpotchef://app/chef/$id';
+}
+
 /// Public web host used in share cards (must match Play / site deep-link setup).
 const kMealShareWebBase = 'https://hotpotchef.com';
 
@@ -557,6 +569,30 @@ const kPayInAppChatNotice =
 
 String offAppPaymentNudgeCopy() =>
     'This looks like an off-app payment request. HotPotChef may suspend accounts that move paid customers off the platform. Send anyway only if you are discussing something else.';
+
+/// True when a chef/kitchen label matches a diner search string.
+bool chefNameMatchesQuery(String? query, Map<String, dynamic>? chefOrMeal) {
+  final q = (query ?? '').trim().toLowerCase();
+  if (q.isEmpty || chefOrMeal == null) return false;
+  final compactQ = q.replaceAll(RegExp(r'\s+'), '');
+  for (final key in const [
+    'chef_name',
+    'kitchen_name',
+    'local_kitchen_name',
+    'name',
+    'full_name',
+    'display_name',
+  ]) {
+    final value = chefOrMeal[key]?.toString().trim().toLowerCase() ?? '';
+    if (value.isEmpty) continue;
+    if (value.contains(q) || value.replaceAll(RegExp(r'\s+'), '').contains(compactQ)) {
+      return true;
+    }
+  }
+  final display = chefDisplayName(chefOrMeal, fallback: '').toLowerCase();
+  if (display.isEmpty) return false;
+  return display.contains(q) || display.replaceAll(RegExp(r'\s+'), '').contains(compactQ);
+}
 
 
 Future<void> copyOrderNumber(BuildContext context, String orderNumber) async {
@@ -1027,8 +1063,10 @@ FeedEmptyCopy feedEmptyCopy({
   if (hasSearch) {
     final q = searchQuery.trim();
     return FeedEmptyCopy(
-      title: 'No meals found',
-      message: q.isEmpty ? 'Try a different search.' : 'Nothing matched "$q". Try another dish or category.',
+      title: 'No dishes or chefs found',
+      message: q.isEmpty
+          ? 'Try a different search.'
+          : 'Nothing matched "$q". Try another dish name or home chef.',
     );
   }
   if (hasChipFilter) {
@@ -1058,7 +1096,11 @@ bool _haystackHasAny(String haystack, Iterable<String> needles) {
 
 bool isStackAlertPath(String path) {
   final route = Uri.tryParse(path)?.path ?? path;
-  return route.startsWith('/chat/') || route.startsWith('/meal/');
+  return route.startsWith('/chat/') ||
+      route.startsWith('/meal/') ||
+      route.startsWith('/chef/') ||
+      route == '/cart' ||
+      route.startsWith('/cart?');
 }
 
 class ChatInboxItem {

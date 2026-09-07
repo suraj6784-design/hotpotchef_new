@@ -1,6 +1,10 @@
 {
   "rewrites": [
     { "source": "/meal/:id", "destination": "/meal.html" },
+    { "source": "/chef/:id", "destination": "/chef.html" },
+    { "source": "/cart", "destination": "/cart.html" },
+    { "source": "/auth", "destination": "/auth.html" },
+    { "source": "/checkout", "destination": "/checkout.html" },
     { "source": "/.well-known/assetlinks.json", "destination": "/.well-known/assetlinks.json" },
     { "source": "/.well-known/apple-app-site-association", "destination": "/.well-known/apple-app-site-association" }
   ],

@@ -15,3 +15,28 @@
   from = "/meal/*"
   to = "/meal.html"
   status = 200
+
+[[redirects]]
+  from = "/chef/*"
+  to = "/chef.html"
+  status = 200
+
+[[redirects]]
+  from = "/cart"
+  to = "/cart.html"
+  status = 200
+
+[[redirects]]
+  from = "/cart/"
+  to = "/cart.html"
+  status = 200
+
+[[redirects]]
+  from = "/auth"
+  to = "/auth.html"
+  status = 200
+
+[[redirects]]
+  from = "/checkout"
+  to = "/checkout.html"
+  status = 200
