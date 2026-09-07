@@ -2241,6 +2241,40 @@ bool isPackagingSupplyRequest(Map<String, dynamic>? request) {
   return _supplyRequestIdPattern.hasMatch('${request['description'] ?? ''} ${request['title'] ?? ''}');
 }
 
+bool isOpenPackagingSupplyRequest(Map<String, dynamic>? request) {
+  if (!isPackagingSupplyRequest(request)) return false;
+  final status = request?['status']?.toString().toLowerCase().trim() ?? '';
+  if (status.contains('cancel') ||
+      status.contains('close') ||
+      status.contains('reject') ||
+      status.contains('deliver') ||
+      status.contains('fulfill') ||
+      status.contains('complete')) {
+    return false;
+  }
+  return true;
+}
+
+bool packagingCatalogItemRequested(
+  Iterable<Map<String, dynamic>> requests,
+  Map<String, dynamic> item,
+) {
+  final title = item['title']?.toString().trim().toLowerCase() ?? '';
+  final sku = (item['sku'] ?? item['id'])?.toString().trim() ?? '';
+  for (final request in requests) {
+    if (!isOpenPackagingSupplyRequest(request)) continue;
+    final requestTitle = request['title']?.toString().trim().toLowerCase() ?? '';
+    if (title.isNotEmpty && requestTitle == title) return true;
+    if (sku.isNotEmpty) {
+      final desc = request['description']?.toString() ?? '';
+      if (desc.contains('SKU $sku') || RegExp('\\bSKU\\s+$sku\\b', caseSensitive: false).hasMatch(desc)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 String packagingRequestDisplayId(Map<String, dynamic> request) {
   final explicit = request['request_id']?.toString().trim() ?? '';
   if (explicit.isNotEmpty) return explicit;
@@ -2485,6 +2519,40 @@ double fleetEarningsFrom({
   if (lifetime > 0) return lifetime;
   if (wallet > 0) return wallet;
   return deliveryPayouts.fold<double>(0, (sum, payout) => sum + payout);
+}
+
+/// Compact dish list for driver cards (e.g. "2 items · Dal · Rice").
+String driverOrderItemsSummary(Iterable<Map<String, dynamic>> items, {int maxTitles = 2}) {
+  final titles = <String>[];
+  var totalQty = 0;
+  for (final item in items) {
+    final rawQty = int.tryParse(item['quantity']?.toString() ?? '') ?? 1;
+    totalQty += rawQty < 1 ? 1 : rawQty;
+    final title = (item['title'] ?? item['name'] ?? item['meal_name'])?.toString().trim() ?? '';
+    if (title.isEmpty) continue;
+    if (titles.length < maxTitles && !titles.any((t) => t.toLowerCase() == title.toLowerCase())) {
+      titles.add(title);
+    }
+  }
+  if (totalQty <= 0) totalQty = titles.isEmpty ? 0 : titles.length;
+  if (titles.isEmpty) {
+    if (totalQty <= 0) return '';
+    return totalQty == 1 ? '1 item' : '$totalQty items';
+  }
+  final joined = titles.join(' · ');
+  final hasMoreDishes = items.length > titles.length;
+  if (totalQty <= 1 && !hasMoreDishes) return joined;
+  return hasMoreDishes ? '$totalQty items · $joined…' : '$totalQty items · $joined';
+}
+
+/// Short dropoff snippet for driver history rows.
+String briefDriverAddress(String? address, {int maxChars = 40}) {
+  final cleaned = (address ?? '').trim().replaceAll(RegExp(r'\s+'), ' ');
+  if (cleaned.isEmpty) return '';
+  final lower = cleaned.toLowerCase();
+  if (lower.contains('pending') || lower == 'n/a') return '';
+  if (cleaned.length <= maxChars) return cleaned;
+  return '${cleaned.substring(0, maxChars - 1)}…';
 }
 
 double roundMoney(double value) => (value * 100).round() / 100;

@@ -52,12 +52,14 @@ enum DeliveryStatus {
 @immutable
 class DriverDeliveryModel {
   final String orderId;
+  final String orderNumber;
   final String chefId;
   final String chefName;
   final String pickupAddress;
   final String customerAddress;
   final String customerId;
   final String chatRoomId;
+  final String itemsSummary;
   final double payout;
   final double distanceKm;
   final int totalItemsCount;
@@ -73,12 +75,14 @@ class DriverDeliveryModel {
 
   const DriverDeliveryModel({
     required this.orderId,
+    this.orderNumber = '',
     required this.chefId,
     required this.chefName,
     required this.pickupAddress,
     required this.customerAddress,
     this.customerId = '',
     this.chatRoomId = '',
+    this.itemsSummary = '',
     required this.payout,
     this.distanceKm = 0.0,
     this.totalItemsCount = 1,
@@ -92,6 +96,19 @@ class DriverDeliveryModel {
     this.deliveryLat,
     this.deliveryLng,
   });
+
+  String get displayOrderNumber =>
+      orderNumber.isNotEmpty ? orderNumber : formatOrderId(null, orderId);
+
+  String get dropoffBrief => briefDriverAddress(customerAddress);
+
+  /// One-line reference under the kitchen name on Home history.
+  String get driverHistoryDetail {
+    final parts = <String>[];
+    if (itemsSummary.isNotEmpty) parts.add(itemsSummary);
+    if (dropoffBrief.isNotEmpty) parts.add(dropoffBrief);
+    return parts.join(' · ');
+  }
 
   Map<String, dynamic> get slotSource => {
         'created_at': createdAt.toIso8601String(),
@@ -139,6 +156,11 @@ class DriverDeliveryModel {
     final first = items.isNotEmpty ? items.first : const <String, dynamic>{};
     final nestedMeal = first['rawMealDetails'] ?? first['mealDetails'] ?? first['meal_details'];
     final mealMap = nestedMeal is Map ? Map<String, dynamic>.from(nestedMeal) : const <String, dynamic>{};
+    final itemsSummary = driverOrderItemsSummary(items);
+    final totalQty = items.fold<int>(0, (sum, item) {
+      final qty = int.tryParse(item['quantity']?.toString() ?? '') ?? 1;
+      return sum + (qty < 1 ? 1 : qty);
+    });
 
     final pickup = orderPickupAddress(json, items: [...items, mealMap, if (chef != null) chef]);
     final chefFormatted = formatSavedAddress(chef);
@@ -171,8 +193,10 @@ class DriverDeliveryModel {
           'longitude': json['customer_lng'],
         }, latitude: false);
 
+    final orderId = json['id']?.toString() ?? '';
     return DriverDeliveryModel(
-      orderId: json['id']?.toString() ?? '',
+      orderId: orderId,
+      orderNumber: formatOrderId(json['order_id']?.toString(), orderId),
       chefId: json['chef_id']?.toString() ?? '',
       chefName: json['chef_name']?.toString() ??
           chef?['business_name']?.toString() ??
@@ -183,9 +207,10 @@ class DriverDeliveryModel {
       customerAddress: resolvedDropoff.isEmpty ? 'Customer address pending' : resolvedDropoff,
       customerId: json['customer_id']?.toString() ?? json['user_id']?.toString() ?? '',
       chatRoomId: orderChatRoomId(json, items: items),
+      itemsSummary: itemsSummary,
       payout: driverPayoutFromOrder(json),
       distanceKm: (json['estimated_distance_km'] as num?)?.toDouble() ?? 0.0,
-      totalItemsCount: (json['order_items'] as List?)?.length ?? items.length,
+      totalItemsCount: totalQty > 0 ? totalQty : (items.isEmpty ? 1 : items.length),
       status: DeliveryStatus.fromString(json['status']?.toString()),
       statusLabel: json['status']?.toString() ?? '',
       createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ?? DateTime.now(),

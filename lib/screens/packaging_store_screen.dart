@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
-import '../models/app_role.dart';
 import '../services/auth_session.dart';
 import '../utils/helpers.dart';
 import '../utils/network.dart';
@@ -123,7 +122,7 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
         ),
       );
       if (saved == true && mounted) {
-        _showSnackBar('Packaging request saved. We will confirm stock and delivery shortly.');
+        _showSnackBar('Request sent to the supply store. We will confirm stock and delivery.');
       }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Packaging supply request failed');
@@ -232,7 +231,7 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
                           style: TextStyle(color: AppTheme.primary, fontSize: 18, fontWeight: FontWeight.bold)),
                       SizedBox(height: 4),
                       Text(
-                        'Request branded packaging for your kitchen. It is saved as a HotPotChef request on your account. Email or WhatsApp is optional after that.',
+                        'Tap Request to place the order on your kitchen account and message the HotPotChef supply store in one step.',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
                       ),
@@ -259,6 +258,7 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
               final iconData = _parseIcon(item['icon_code'] ?? item['icon']);
               final itemKey = item['id']?.toString() ?? title;
               final busy = _isLoadingChef && _busyItemKey == itemKey;
+              final alreadyRequested = packagingCatalogItemRequested(myOrders, item);
 
               return Container(
                 margin: const EdgeInsets.only(bottom: 14),
@@ -308,19 +308,24 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
                                     style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17, color: AppTheme.primary)),
                                 ElevatedButton(
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppTheme.primary,
+                                    backgroundColor: alreadyRequested ? AppTheme.success : AppTheme.primary,
                                     foregroundColor: Colors.white,
+                                    disabledBackgroundColor: alreadyRequested ? AppTheme.success : null,
+                                    disabledForegroundColor: Colors.white,
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                                   ),
-                                  onPressed: _isLoadingChef ? null : () => _requestSupply(item),
+                                  onPressed: (_isLoadingChef || alreadyRequested) ? null : () => _requestSupply(item),
                                   child: busy
                                       ? const SizedBox(
                                           width: 16,
                                           height: 16,
                                           child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                                         )
-                                      : const Text('Request', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                      : Text(
+                                          alreadyRequested ? 'Requested' : 'Request',
+                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                        ),
                                 ),
                               ],
                             ),
@@ -394,6 +399,7 @@ class _SupplyRequestSheetState extends State<SupplyRequestSheet> {
   int _quantity = 1;
   bool _placing = false;
   bool _placed = false;
+  bool _notified = false;
   String? _saveError;
 
   String get _itemTitle => widget.item['title']?.toString() ?? 'Packaging supply';
@@ -429,21 +435,42 @@ class _SupplyRequestSheetState extends State<SupplyRequestSheet> {
       }
       await _insertCustomerRequest(payload, extras).withTimeout(NetworkTimeouts.standard);
       if (!mounted) return;
+
+      final notified = await notifySupplyStore(
+        requestId: _requestId,
+        message: _message,
+      );
+
+      if (!mounted) return;
       setState(() {
         _placed = true;
+        _notified = notified;
         _placing = false;
       });
-      Navigator.pop(context, true);
+      if (notified) {
+        await Future<void>.delayed(const Duration(milliseconds: 450));
+        if (mounted) Navigator.pop(context, true);
+      }
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to save packaging request');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to send packaging request');
       if (!mounted) return;
       setState(() {
         _placing = false;
         _saveError = (e is NetworkException)
             ? e.message
-            : 'Could not save this packaging request. Try again.';
+            : 'Could not send this packaging request. Try again.';
       });
     }
+  }
+
+  Future<void> _notifyAgain() async {
+    final notified = await notifySupplyStore(
+      requestId: _requestId,
+      message: _message,
+    );
+    if (!mounted) return;
+    setState(() => _notified = notified || _notified);
+    if (notified) Navigator.pop(context, true);
   }
 
   Future<void> _insertCustomerRequest(
@@ -540,6 +567,7 @@ class _SupplyRequestSheetState extends State<SupplyRequestSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final channel = SupportConfig.hasWhatsApp ? 'WhatsApp' : 'email';
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.fromLTRB(24, 12, 24, 16 + MediaQuery.viewInsetsOf(context).bottom),
@@ -563,8 +591,10 @@ class _SupplyRequestSheetState extends State<SupplyRequestSheet> {
             const SizedBox(height: 6),
             Text(
               _placed
-                  ? 'Request $_requestId is saved. Email or WhatsApp support if you want a faster confirmation.'
-                  : 'Save request $_requestId as a Packaging request on your kitchen account. Email or WhatsApp is optional after that.',
+                  ? (_notified
+                      ? 'Request $_requestId is on your account and was sent to the supply store via $channel.'
+                      : 'Request $_requestId is on your account. Open $channel below if the store message did not open.')
+                  : 'One tap places request $_requestId on your kitchen account and opens $channel to notify the HotPotChef supply store.',
               style: const TextStyle(color: AppTheme.textMuted, fontSize: 13, height: 1.4),
             ),
             const SizedBox(height: 16),
@@ -575,12 +605,12 @@ class _SupplyRequestSheetState extends State<SupplyRequestSheet> {
                 const Text('Quantity', style: TextStyle(fontWeight: FontWeight.w700)),
                 const Spacer(),
                 IconButton(
-                  onPressed: _quantity > 1 ? () => setState(() => _quantity--) : null,
+                  onPressed: (!_placed && _quantity > 1) ? () => setState(() => _quantity--) : null,
                   icon: const Icon(Icons.remove_circle_outline),
                 ),
                 Text('$_quantity', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
                 IconButton(
-                  onPressed: _quantity < 20 ? () => setState(() => _quantity++) : null,
+                  onPressed: (!_placed && _quantity < 20) ? () => setState(() => _quantity++) : null,
                   icon: const Icon(Icons.add_circle_outline),
                 ),
               ],
@@ -594,41 +624,33 @@ class _SupplyRequestSheetState extends State<SupplyRequestSheet> {
             ElevatedButton(
               onPressed: _placing || _placed ? null : _placeOrder,
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primary,
+                backgroundColor: _placed ? AppTheme.success : AppTheme.primary,
                 foregroundColor: Colors.white,
+                disabledBackgroundColor: _placed ? AppTheme.success : null,
+                disabledForegroundColor: Colors.white,
                 minimumSize: const Size.fromHeight(48),
               ),
               child: _placing
                   ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : Text(_placed ? 'Request saved' : 'Save request', style: const TextStyle(fontWeight: FontWeight.w800)),
+                  : Text(
+                      _placed ? 'Requested' : 'Request',
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
             ),
-            const SizedBox(height: 8),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const CircleAvatar(
-                backgroundColor: Color(0x1AF4511E),
-                child: Icon(Icons.email_outlined, color: Color(0xFFF4511E)),
-              ),
-              title: const Text('Email us', style: TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: Text(SupportConfig.email),
-              onTap: () async {
-                await launchSupportEmail(
-                  subject: supportSupplyRequestSubject(_requestId),
-                  body: _message,
-                );
-              },
-            ),
-            if (SupportConfig.hasWhatsApp)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const CircleAvatar(
-                  backgroundColor: Color(0x1A2E9E5B),
-                  child: Icon(Icons.chat_outlined, color: Color(0xFF2E9E5B)),
+            if (_placed) ...[
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: _notifyAgain,
+                icon: Icon(
+                  SupportConfig.hasWhatsApp ? Icons.chat_outlined : Icons.email_outlined,
+                  size: 18,
                 ),
-                title: const Text('WhatsApp', style: TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: const Text('Message the support line'),
-                onTap: () => launchSupportWhatsApp(message: _message),
+                label: Text(
+                  SupportConfig.hasWhatsApp ? 'Message store again' : 'Email store again',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
               ),
+            ],
           ],
         ),
         ),

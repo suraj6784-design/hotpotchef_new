@@ -497,35 +497,75 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
           else
             ...state.recentDeliveries.asMap().entries.map((entry) {
               final delivery = entry.value;
+              final detail = delivery.driverHistoryDetail;
               return AppCard(
                   margin: const EdgeInsets.only(bottom: 12),
                   padding: const EdgeInsets.all(16),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          CircleAvatar(
-                            backgroundColor: AppTheme.success.withValues(alpha: 0.15),
-                            radius: 16,
-                            child: const Icon(Icons.check, color: AppTheme.success, size: 16),
-                          ),
-                          const SizedBox(width: 12),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(delivery.chefName,
-                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.onSurfaceOf(context))),
-                              const SizedBox(height: 2),
-                              Text(formatOrderDate(delivery.createdAt.toIso8601String()),
-                                  style: const TextStyle(color: AppTheme.textMuted, fontSize: 11)),
-                            ],
-                          ),
-                        ],
+                      CircleAvatar(
+                        backgroundColor: AppTheme.success.withValues(alpha: 0.15),
+                        radius: 16,
+                        child: const Icon(Icons.check, color: AppTheme.success, size: 16),
                       ),
-                      Text(
-                        '+₹${delivery.payout.toStringAsFixed(0)}',
-                        style: const TextStyle(fontWeight: FontWeight.w900, color: AppTheme.success, fontSize: 15),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    'Order #${delivery.displayOrderNumber}',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 14,
+                                      color: AppTheme.onSurfaceOf(context),
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  '+₹${delivery.payout.toStringAsFixed(0)}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    color: AppTheme.success,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              delivery.chefName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                                color: AppTheme.textMuted,
+                              ),
+                            ),
+                            if (detail.isNotEmpty) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                detail,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  height: 1.35,
+                                  color: AppTheme.onSurfaceOf(context).withValues(alpha: 0.78),
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 4),
+                            Text(
+                              formatOrderDate(delivery.createdAt.toIso8601String()),
+                              style: const TextStyle(color: AppTheme.textMuted, fontSize: 11),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -582,6 +622,11 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               const SizedBox(height: 10),
               Text('Pickup: ${delivery.chefName}',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.onSurfaceOf(context))),
+              if (delivery.itemsSummary.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(delivery.itemsSummary,
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.onSurfaceOf(context))),
+              ],
               const SizedBox(height: 4),
               Text(delivery.pickupAddress, style: const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
               if (delivery.pickupCoordLabel.isNotEmpty) ...[
@@ -657,6 +702,13 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               const SizedBox(height: 12),
               Text(delivery.activeStepTitle,
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.onSurfaceOf(context))),
+              if (delivery.itemsSummary.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Order #${delivery.displayOrderNumber} · ${delivery.itemsSummary}',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textMuted),
+                ),
+              ],
               const SizedBox(height: 10),
               _addressBlock(
                 title: 'PICKUP · CHEF KITCHEN',

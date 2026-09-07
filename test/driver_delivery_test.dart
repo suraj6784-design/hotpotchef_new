@@ -89,6 +89,32 @@ void main() {
     expect(formatDeliverySlotLabel(delivery.slotSource), contains('02:00'));
   });
 
+  test('DriverDeliveryModel exposes brief order details for history cards', () {
+    final delivery = DriverDeliveryModel.fromJson({
+      'id': 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      'order_id': 'OCB30688',
+      'status': 'Delivered',
+      'delivery_address': 'Flat 12, Kothrud Gate, Pune 411038',
+      'created_at': '2026-09-05T03:36:00Z',
+      'items': [
+        {'title': 'Egg Dish', 'quantity': 2},
+        {'title': 'Dal Tadka', 'quantity': 1},
+      ],
+      '_chef_pin': {'name': 'Asha Kitchen'},
+    });
+
+    expect(delivery.displayOrderNumber, 'OCB30688');
+    expect(delivery.chefName, 'Asha Kitchen');
+    expect(delivery.itemsSummary, contains('Egg Dish'));
+    expect(delivery.itemsSummary, contains('3 items'));
+    expect(delivery.driverHistoryDetail, contains('Egg Dish'));
+    expect(delivery.driverHistoryDetail, contains('Kothrud'));
+    expect(driverOrderItemsSummary(const [
+      {'title': 'Dal', 'quantity': 1},
+    ]), 'Dal');
+    expect(briefDriverAddress('Customer address pending'), isEmpty);
+  });
+
   test('driver payout ignores a stored zero and uses the default', () {
     expect(driverPayoutFromOrder({'delivery_fee': 0, 'driver_payout': 0}), 40);
     expect(driverPayoutFromOrder({'delivery_fee': 35}), 35);

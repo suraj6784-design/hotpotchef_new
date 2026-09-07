@@ -94,6 +94,33 @@ void main() {
       expect(payload['description'], contains('SUP-ABC123'));
       expect(packagingRequestDisplayId(payload), 'SUP-ABC123');
     });
+
+    test('marks open catalog items as Requested until fulfilled', () {
+      final open = packagingSupplyRequestPayload(
+        chefId: 'chef-1',
+        chefName: 'Asha',
+        chefEmail: 'asha@example.com',
+        chefPhone: '9999999999',
+        kitchenAddress: '12 Kitchen Lane',
+        title: 'Branded Paper Carry Bags',
+        requestId: 'SUP-QO3FDZ',
+        sku: 'm4',
+        description: 'Pack of 50.',
+        quantity: 1,
+        unitPrice: 300,
+      );
+      expect(isOpenPackagingSupplyRequest(open), isTrue);
+      expect(
+        packagingCatalogItemRequested([open], {'id': 'm4', 'title': 'Branded Paper Carry Bags'}),
+        isTrue,
+      );
+      expect(
+        packagingCatalogItemRequested([
+          {...open, 'status': 'Cancelled'},
+        ], {'id': 'm4', 'title': 'Branded Paper Carry Bags'}),
+        isFalse,
+      );
+    });
   });
 
   group('chef prep window', () {

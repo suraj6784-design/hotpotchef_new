@@ -151,6 +151,21 @@ Future<bool> launchSupportWhatsApp({String? message}) {
   return launchUrl(uri, mode: LaunchMode.externalApplication);
 }
 
+/// Opens WhatsApp (preferred) or email so the supply store gets the request details.
+Future<bool> notifySupplyStore({
+  required String requestId,
+  required String message,
+}) async {
+  if (SupportConfig.hasWhatsApp) {
+    final opened = await launchSupportWhatsApp(message: message);
+    if (opened) return true;
+  }
+  return launchSupportEmail(
+    subject: supportSupplyRequestSubject(requestId),
+    body: message,
+  );
+}
+
 Future<bool> launchPlayStore() {
   final url = SupportConfig.playStoreUrl;
   if (url == null) return Future.value(false);
