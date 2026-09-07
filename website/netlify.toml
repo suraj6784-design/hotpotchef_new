@@ -40,3 +40,33 @@
   from = "/checkout"
   to = "/checkout.html"
   status = 200
+
+[[redirects]]
+  from = "/terms"
+  to = "/legal.html"
+  status = 200
+
+[[redirects]]
+  from = "/privacy"
+  to = "/legal.html"
+  status = 200
+
+[[redirects]]
+  from = "/faq"
+  to = "/legal.html"
+  status = 200
+
+[[redirects]]
+  from = "/faqs"
+  to = "/legal.html"
+  status = 200
+
+[[redirects]]
+  from = "/cancellation"
+  to = "/legal.html"
+  status = 200
+
+[[redirects]]
+  from = "/help"
+  to = "/legal.html"
+  status = 200

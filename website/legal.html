@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Help · HotPotChef</title>
+    <meta name="description" content="HotPotChef terms, privacy, FAQs, and cancellation policy." />
+    <meta name="theme-color" content="#1a1410" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Figtree:wght@500;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/css/site.css" />
+  </head>
+  <body>
+    <div class="wrap site-top">
+      <a href="/">HotPot<strong>Chef</strong></a>
+      <a class="cart-link" href="/cart">Cart <span data-cart-count hidden></span></a>
+    </div>
+
+    <main class="meal-page legal-page">
+      <div class="wrap">
+        <nav class="legal-nav" id="legal-nav" aria-label="Help documents"></nav>
+        <article class="meal-card legal-card" id="legal-root">
+          <p class="meal-meta">Loading…</p>
+        </article>
+        <p class="footer-note">
+          Same policies as Account in the HotPotChef app ·
+          <a href="/terms">Terms</a> ·
+          <a href="/privacy">Privacy</a> ·
+          <a href="/faq">FAQs</a> ·
+          <a href="/cancellation">Cancellation</a>
+        </p>
+      </div>
+    </main>
+
+    <script src="/js/config.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/cart.js"></script>
+    <script src="/js/legal-content.js"></script>
+    <script src="/js/legal-page.js"></script>
+    <script>
+      if (window.HotPotCart) HotPotCart.syncBadge();
+    </script>
+  </body>
+</html>

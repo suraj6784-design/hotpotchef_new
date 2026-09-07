@@ -13,6 +13,8 @@ Phase 1–2: browse, web cart, hybrid app handoff, and web Razorpay checkout.
 | `/cart` | Web cart → **Pay on web** or **Checkout in app** |
 | `/auth` | Email/password (same Supabase Auth as the app) |
 | `/checkout` | Razorpay Checkout.js via `create-split-order` + `recover-payment` |
+| `/terms` `/privacy` `/faq` `/cancellation` | Help docs (same copy as in-app Account links) |
+| `/help` | Index of the policy pages |
 | `/.well-known/assetlinks.json` | Android App Links verification |
 | `/.well-known/apple-app-site-association` | iOS Universal Links stub |
 

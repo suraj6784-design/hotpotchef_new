@@ -5,6 +5,12 @@
     { "source": "/cart", "destination": "/cart.html" },
     { "source": "/auth", "destination": "/auth.html" },
     { "source": "/checkout", "destination": "/checkout.html" },
+    { "source": "/terms", "destination": "/legal.html" },
+    { "source": "/privacy", "destination": "/legal.html" },
+    { "source": "/faq", "destination": "/legal.html" },
+    { "source": "/faqs", "destination": "/legal.html" },
+    { "source": "/cancellation", "destination": "/legal.html" },
+    { "source": "/help", "destination": "/legal.html" },
     { "source": "/.well-known/assetlinks.json", "destination": "/.well-known/assetlinks.json" },
     { "source": "/.well-known/apple-app-site-association", "destination": "/.well-known/apple-app-site-association" }
   ],

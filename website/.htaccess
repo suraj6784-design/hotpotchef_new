@@ -15,6 +15,7 @@ Options -MultiViews
   RewriteRule ^cart/?$ cart.html [L]
   RewriteRule ^auth/?$ auth.html [L]
   RewriteRule ^checkout/?$ checkout.html [L]
+  RewriteRule ^(terms|privacy|faq|faqs|cancellation|help)/?$ legal.html [L]
 </IfModule>
 
 # Correct type for App Links / Universal Links

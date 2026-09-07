@@ -62,8 +62,14 @@ class SupportConfig {
       LegalDocumentType.cancellation => 'CANCELLATION_POLICY_URL',
     };
     final value = _env(key);
-    if (value == null || value.isEmpty) return null;
-    return value;
+    if (value != null && value.isNotEmpty) return value;
+    // Public site pages (same copy as in-app LegalDocumentScreen).
+    return switch (type) {
+      LegalDocumentType.terms => 'https://hotpotchef.com/terms',
+      LegalDocumentType.privacy => 'https://hotpotchef.com/privacy',
+      LegalDocumentType.faq => 'https://hotpotchef.com/faq',
+      LegalDocumentType.cancellation => 'https://hotpotchef.com/cancellation',
+    };
   }
 }
 
