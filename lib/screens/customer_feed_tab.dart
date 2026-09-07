@@ -81,6 +81,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   String? _filteredChefId;
   String? _filteredChefName;
   String? _offerBrowseLabel;
+  String? _offerBrowseGroupKey;
   final Map<String, Map<String, dynamic>> _chefKitchenPins = {};
   final Set<String> _chefPinsResolved = {};
   bool _hydratingChefPins = false;
@@ -318,6 +319,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         _filteredChefId = null;
         _filteredChefName = null;
         _offerBrowseLabel = null;
+        _offerBrowseGroupKey = null;
       });
       return;
     }
@@ -328,6 +330,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       _filteredChefId = null;
       _filteredChefName = null;
       _offerBrowseLabel = null;
+        _offerBrowseGroupKey = null;
     });
 
     try {
@@ -476,6 +479,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           _filteredChefId = null;
           _filteredChefName = null;
           _offerBrowseLabel = null;
+        _offerBrowseGroupKey = null;
         });
       }
     } finally {
@@ -493,6 +497,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       _filteredChefId = id;
       _filteredChefName = name;
       _offerBrowseLabel = null;
+        _offerBrowseGroupKey = null;
       _searchController.text = name;
     });
     try {
@@ -534,17 +539,20 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       _filteredChefId = null;
       _filteredChefName = null;
       _offerBrowseLabel = null;
+        _offerBrowseGroupKey = null;
     });
   }
 
-  Future<void> _showBogoOfferMeals() async {
+  Future<void> _showGroupedOfferMeals(String groupKey) async {
+    final label = offerFlashGroupLabel(groupKey);
     setState(() {
       _isAiSearching = true;
       _hasActiveSearch = true;
       _filteredChefId = null;
       _filteredChefName = null;
       _chefSearchResults.clear();
-      _offerBrowseLabel = 'BOGO';
+      _offerBrowseLabel = label;
+      _offerBrowseGroupKey = groupKey;
       _searchController.clear();
     });
     try {
@@ -558,9 +566,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       final destLng = addressCoordinate(_selectedAddressMap, latitude: false);
       final meals = <Map<String, dynamic>>[];
       for (final raw in List<Map<String, dynamic>>.from(rows as List)) {
-        if (OfferType.fromString(raw['offer_type']?.toString()) != OfferType.bogo) {
-          continue;
-        }
+        if (offerFlashGroupKeyForMeal(raw) != groupKey) continue;
         if (!isCatalogMeal(raw) || !isMealAvailableForCart(raw)) continue;
         final chefId = raw['chef_id']?.toString() ?? '';
         if (chefId.isNotEmpty && _closedChefIds.contains(chefId)) continue;
@@ -583,7 +589,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       if (!mounted) return;
       setState(() => _aiSearchResults = meals);
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'BOGO offer browse failed');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: '$label offer browse failed');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(networkErrorMessage(e)), backgroundColor: Colors.red),
@@ -595,10 +601,9 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   }
 
   void _onHomeOfferTap(Map<String, dynamic> meal) {
-    final isBogo = meal['_bogo_group'] == true ||
-        OfferType.fromString(meal['offer_type']?.toString()) == OfferType.bogo;
-    if (isBogo) {
-      _showBogoOfferMeals();
+    final grouped = offerFlashGroupKey(meal) ?? offerFlashGroupKeyForMeal(meal);
+    if (grouped != null) {
+      _showGroupedOfferMeals(grouped);
       return;
     }
     showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart);
@@ -1364,8 +1369,8 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                       _hasActiveSearch
                           ? (_filteredChefId != null
                               ? 'Only Available meals from this kitchen'
-                              : (_offerBrowseLabel == 'BOGO'
-                                  ? 'All Buy 1 Get 1 plates near you'
+                              : (_offerBrowseGroupKey != null
+                                  ? offerFlashGroupBrowseHint(_offerBrowseGroupKey)
                                   : (_chefSearchResults.isEmpty
                                       ? '"${_searchController.text}"'
                                       : '${_chefSearchResults.length} chef${_chefSearchResults.length == 1 ? '' : 's'} · "${_searchController.text}"')))

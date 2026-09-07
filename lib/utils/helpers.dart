@@ -1778,41 +1778,136 @@ List<Map<String, dynamic>> flashableOfferMeals(
     return 0;
   });
 
-  // One carousel card for all BOGO plates — tap opens the full BOGO list.
-  final bogos = <Map<String, dynamic>>[];
+  // One carousel card per offer family — tap opens every matching plate.
+  const groupOrder = <String>[
+    'festive',
+    'flashSale',
+    'bogo',
+    'percentage',
+    'flat',
+  ];
+  final buckets = <String, List<Map<String, dynamic>>>{
+    for (final key in groupOrder) key: <Map<String, dynamic>>[],
+  };
   final rest = <Map<String, dynamic>>[];
+
   for (final meal in offers) {
-    if (OfferType.fromString(meal['offer_type']?.toString()) == OfferType.bogo) {
-      bogos.add(meal);
+    final key = offerFlashGroupKeyForMeal(meal);
+    if (key != null && buckets.containsKey(key)) {
+      buckets[key]!.add(meal);
     } else {
       rest.add(meal);
     }
   }
-  final collapsed = <Map<String, dynamic>>[...rest];
-  if (bogos.isNotEmpty) {
-    Map<String, dynamic> rep = Map<String, dynamic>.from(bogos.first);
-    for (final meal in bogos) {
-      if ((meal['image_url']?.toString() ?? '').trim().isNotEmpty) {
-        rep = Map<String, dynamic>.from(meal);
-        break;
-      }
-    }
-    rep['_bogo_group'] = true;
-    rep['_bogo_count'] = bogos.length;
-    collapsed.insert(0, rep);
+
+  final collapsed = <Map<String, dynamic>>[];
+  for (final key in groupOrder) {
+    final group = buckets[key]!;
+    if (group.isEmpty) continue;
+    collapsed.add(buildOfferFlashGroupCard(key, group));
   }
+  collapsed.addAll(rest);
 
   if (collapsed.length <= limit) return collapsed;
   return collapsed.sublist(0, limit);
 }
 
+/// Carousel group key for a live meal (festive hampers win over offer_type).
+String? offerFlashGroupKeyForMeal(Map<String, dynamic> meal) {
+  if (isFestivalHamper(meal)) return 'festive';
+  final type = OfferType.fromString(meal['offer_type']?.toString());
+  switch (type) {
+    case OfferType.bogo:
+      return 'bogo';
+    case OfferType.flashSale:
+      return 'flashSale';
+    case OfferType.percentage:
+      return 'percentage';
+    case OfferType.flat:
+      return 'flat';
+    case OfferType.none:
+      return null;
+  }
+}
+
+Map<String, dynamic> buildOfferFlashGroupCard(String groupKey, List<Map<String, dynamic>> meals) {
+  Map<String, dynamic> rep = Map<String, dynamic>.from(meals.first);
+  for (final meal in meals) {
+    if ((meal['image_url']?.toString() ?? '').trim().isNotEmpty) {
+      rep = Map<String, dynamic>.from(meal);
+      break;
+    }
+  }
+  rep['_offer_group'] = groupKey;
+  rep['_offer_group_count'] = meals.length;
+  // Back-compat for older BOGO-only callers.
+  if (groupKey == 'bogo') {
+    rep['_bogo_group'] = true;
+    rep['_bogo_count'] = meals.length;
+  }
+  return rep;
+}
+
+String offerFlashGroupLabel(String? groupKey) {
+  switch (groupKey) {
+    case 'festive':
+      return 'Festive';
+    case 'flashSale':
+      return 'Flash Sale';
+    case 'bogo':
+      return 'BOGO';
+    case 'percentage':
+      return '% Discount';
+    case 'flat':
+      return 'Flat Discount';
+    default:
+      return 'Offers';
+  }
+}
+
+String offerFlashGroupBrowseHint(String? groupKey) {
+  switch (groupKey) {
+    case 'festive':
+      return 'All festive / hamper plates near you';
+    case 'flashSale':
+      return 'All Flash Sale plates near you';
+    case 'bogo':
+      return 'All Buy 1 Get 1 plates near you';
+    case 'percentage':
+      return 'All % discount plates near you';
+    case 'flat':
+      return 'All flat ₹ discount plates near you';
+    default:
+      return 'Matching offer plates near you';
+  }
+}
+
+String? offerFlashGroupKey(Map<String, dynamic> meal) {
+  final grouped = meal['_offer_group']?.toString().trim();
+  if (grouped != null && grouped.isNotEmpty) return grouped;
+  if (meal['_bogo_group'] == true) return 'bogo';
+  return null;
+}
+
 String offerFlashHeadline(Map<String, dynamic> meal, {DateTime? now}) {
-  if (meal['_bogo_group'] == true) {
+  final group = offerFlashGroupKey(meal);
+  if (group != null) {
     final code = PricingCalculator.mealPromoCode(meal);
     if (code != null && PricingCalculator.isOfferGated(meal)) {
       return 'Use $code';
     }
-    return 'Use BOGO';
+    switch (group) {
+      case 'festive':
+        return 'Festive offers';
+      case 'flashSale':
+        return 'Flash Sale';
+      case 'bogo':
+        return 'Use BOGO';
+      case 'percentage':
+        return '% Discount';
+      case 'flat':
+        return 'Flat Discount';
+    }
   }
   if (isMealBoosted(meal, now: now) && PricingCalculator.mealPromoCode(meal) == null) {
     return 'Boosted today';
@@ -1828,13 +1923,19 @@ String offerFlashHeadline(Map<String, dynamic> meal, {DateTime? now}) {
 }
 
 String offerFlashSubhead(Map<String, dynamic> meal) {
-  if (meal['_bogo_group'] == true) {
-    final count = int.tryParse(meal['_bogo_count']?.toString() ?? '') ?? 0;
-    if (count > 1) return '$count plates · tap to see all BOGO deals';
-    return 'Buy 1 Get 1 · tap to browse';
+  final group = offerFlashGroupKey(meal);
+  if (group != null) {
+    final count = int.tryParse(meal['_offer_group_count']?.toString() ?? meal['_bogo_count']?.toString() ?? '') ?? 0;
+    final label = offerFlashGroupLabel(group);
+    if (count > 1) return '$count plates · tap to see all $label deals';
+    return '$label · tap to browse';
   }
-  if (OfferType.fromString(meal['offer_type']?.toString()) == OfferType.bogo) {
-    return 'Buy 1 Get 1 · tap to see all BOGO plates';
+  final type = OfferType.fromString(meal['offer_type']?.toString());
+  if (type != OfferType.none) {
+    return '${offerFlashGroupLabel(offerFlashGroupKeyForMeal(meal))} · tap to see all matching plates';
+  }
+  if (isFestivalHamper(meal)) {
+    return 'Festive · tap to see all festive plates';
   }
   final title = meal['title']?.toString().trim() ?? meal['name']?.toString().trim() ?? '';
   return title.isEmpty ? 'Tap to see this kitchen special' : title;
