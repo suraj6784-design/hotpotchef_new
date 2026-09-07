@@ -63,7 +63,7 @@ class _ChefBoostSheetState extends State<ChefBoostSheet> {
 
       final data = response.data is Map ? Map<String, dynamic>.from(response.data as Map) : <String, dynamic>{};
       if (response.status != 200 || data['success'] != true) {
-        throw Exception(data['error'] ?? 'Could not start the boost payment.');
+        throw Exception(data['error']?.toString() ?? 'Could not start the boost payment.');
       }
 
       final key = dotenv.env['RAZORPAY_KEY_ID'] ?? '';
@@ -84,7 +84,7 @@ class _ChefBoostSheetState extends State<ChefBoostSheet> {
       if (!mounted) return;
       setState(() => _paying = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(checkoutErrorMessage(e)), backgroundColor: Colors.orangeAccent),
+        SnackBar(content: Text(boostPaymentErrorMessage(e)), backgroundColor: Colors.orangeAccent),
       );
     }
   }

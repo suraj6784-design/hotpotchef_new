@@ -1913,6 +1913,66 @@ bool isMealExpired(String? timeSlot, {DateTime? orderDate, DateTime? now}) {
   return !n.isBefore(end);
 }
 
+const _kMonthNames = <String, int>{
+  'jan': 1,
+  'feb': 2,
+  'mar': 3,
+  'apr': 4,
+  'may': 5,
+  'jun': 6,
+  'jul': 7,
+  'aug': 8,
+  'sep': 9,
+  'oct': 10,
+  'nov': 11,
+  'dec': 12,
+};
+
+/// Parses a calendar day from labels like "Sun, 18th Aug at 9:30 AM".
+DateTime? parseSlotCalendarDay(String? raw, {DateTime? now}) {
+  if (raw == null || raw.trim().isEmpty) return null;
+  final n = (now ?? DateTime.now()).toLocal();
+  final match = RegExp(
+    r'(\d{1,2})(?:st|nd|rd|th)?\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*(?:\s+(\d{4}))?',
+    caseSensitive: false,
+  ).firstMatch(raw);
+  if (match == null) return null;
+  final day = int.tryParse(match.group(1) ?? '');
+  final month = _kMonthNames[(match.group(2) ?? '').toLowerCase().substring(0, 3)];
+  if (day == null || month == null) return null;
+  var year = int.tryParse(match.group(3) ?? '') ?? n.year;
+  var parsed = DateTime(year, month, day);
+  // If label has no year and the day is far ahead, it was likely last year.
+  if (match.group(3) == null && parsed.difference(n).inDays > 180) {
+    parsed = DateTime(year - 1, month, day);
+  }
+  return parsed;
+}
+
+bool isChefMealArchived(Map<String, dynamic> meal) {
+  final status = meal['status']?.toString().toLowerCase().trim() ?? '';
+  return status == 'archived' || status == 'deleted' || status == 'expired';
+}
+
+/// True when the dish window is over (for Menu Active vs History).
+bool isPublishedMealExpired(Map<String, dynamic> meal, {DateTime? now}) {
+  if (isChefMealArchived(meal)) return true;
+  final n = now ?? DateTime.now();
+  final selected = DateTime.tryParse(meal['selected_date']?.toString() ?? '');
+  final slot = meal['time_slot']?.toString();
+  final labeledDay = parseSlotCalendarDay(slot, now: n);
+  final day = selected ?? labeledDay;
+  if (day != null && calendarDay(day).isBefore(calendarDay(n))) {
+    return true;
+  }
+  return isMealExpired(slot, orderDate: day, now: n);
+}
+
+bool isChefMenuActiveMeal(Map<String, dynamic> meal, {DateTime? now}) {
+  if (isChefMealArchived(meal)) return false;
+  return !isPublishedMealExpired(meal, now: now);
+}
+
 bool isTimeWithinChefBounds(String selectedTime, String chefScheduleStr) {
   if (chefScheduleStr.isEmpty) return true;
   
@@ -2042,6 +2102,25 @@ String checkoutErrorMessage(Object error) {
     text = text.substring('Exception: '.length);
   }
   return text;
+}
+
+/// Prefer the edge-function `error` field over raw FunctionsHttpException text.
+String boostPaymentErrorMessage(Object error) {
+  try {
+    final details = (error as dynamic).details;
+    if (details is Map && details['error'] != null) {
+      return details['error'].toString();
+    }
+  } catch (_) {}
+  final raw = error.toString();
+  final match = RegExp(r'error:\s*([^}\]]+)').firstMatch(raw);
+  if (match != null) {
+    final extracted = match.group(1)?.trim() ?? '';
+    if (extracted.isNotEmpty && !extracted.toLowerCase().startsWith('false')) {
+      return extracted.replaceAll(RegExp(r'[,\s]+$'), '');
+    }
+  }
+  return checkoutErrorMessage(error);
 }
 
 dynamic _jsonSafeValue(dynamic value) {

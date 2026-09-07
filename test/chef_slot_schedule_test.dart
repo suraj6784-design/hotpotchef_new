@@ -93,5 +93,28 @@ void main() {
         isTrue,
       );
     });
+
+    test('dated slot labels leave Active Menu after that calendar day', () {
+      final now = DateTime(2026, 9, 7, 10);
+      expect(parseSlotCalendarDay('Sun, 18th Aug at 9:30 AM', now: now)?.month, 8);
+      expect(
+        isPublishedMealExpired(
+          {'time_slot': 'Sun, 18th Aug at 9:30 AM', 'status': 'Available'},
+          now: now,
+        ),
+        isTrue,
+      );
+      expect(
+        isChefMenuActiveMeal(
+          {'time_slot': 'Today (9:00 AM to 5:00 PM)', 'status': 'Available'},
+          now: DateTime(2026, 9, 7, 11),
+        ),
+        isTrue,
+      );
+      expect(
+        isChefMenuActiveMeal({'status': 'Archived', 'time_slot': 'Today (9:00 AM to 5:00 PM)'}, now: now),
+        isFalse,
+      );
+    });
   });
 }

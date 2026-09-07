@@ -100,11 +100,32 @@ serve(async (req) => {
     if (meal.chef_id !== user.id) {
       return jsonResponse({ success: false, error: 'Only the kitchen that owns this dish can boost it' }, 403)
     }
-    if (String(meal.status ?? '').toLowerCase() !== 'available') {
-      return jsonResponse({ success: false, error: 'Publish the dish before boosting it' }, 400)
+
+    const status = String(meal.status ?? '').toLowerCase().trim()
+    const quantity = Number(meal.quantity) || 0
+    if (status === 'paused') {
+      return jsonResponse({
+        success: false,
+        error: 'Turn the dish ON in Menu before boosting it',
+      }, 400)
     }
-    if ((Number(meal.quantity) || 0) <= 0) {
+    if (quantity <= 0) {
       return jsonResponse({ success: false, error: 'Restock the dish before boosting it' }, 400)
+    }
+    // Sold out / other leftovers still show as ON in Menu when not Paused.
+    // Normalize to Available so a restocked plate can be boosted.
+    if (status !== 'available') {
+      const { error: publishError } = await admin
+        .from('meals')
+        .update({ status: 'Available' })
+        .eq('id', mealId)
+        .eq('chef_id', user.id)
+      if (publishError) {
+        return jsonResponse({
+          success: false,
+          error: `Publish the dish before boosting it (now: ${meal.status || 'unknown'})`,
+        }, 400)
+      }
     }
     if (meal.boosted_until && new Date(String(meal.boosted_until)).getTime() > Date.now()) {
       return jsonResponse({ success: false, error: 'This dish is already boosted today' }, 400)

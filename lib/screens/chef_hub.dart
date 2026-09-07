@@ -46,6 +46,8 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   bool _isKitchenOpen = true;
   String _fulfillmentFilter = 'All';
   String _historyFilter = 'Delivered';
+  String _menuFilter = 'Active'; // Active | History
+  final Set<String> _autoArchivedMealIds = {};
 
   final List<String> _fulfillmentTabs = const [
     'All',
@@ -1185,6 +1187,49 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     _openMealEditor(copy);
   }
 
+  Future<void> _archiveMeal(Map<String, dynamic> meal, {required String reason}) async {
+    final id = meal['id']?.toString() ?? '';
+    if (id.isEmpty) return;
+    try {
+      await _supabase.from('meals').update({
+        'status': 'Archived',
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(reason == 'expired' ? 'Expired dish moved to History.' : 'Dish removed from Menu.')),
+      );
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Archive meal failed');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not remove dish: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _confirmDeleteMeal(Map<String, dynamic> meal) async {
+    final title = meal['title']?.toString() ?? 'this dish';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove dish?'),
+        content: Text(
+          '“$title” will leave Active Menu and move to History. Past orders keep their receipts.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) await _archiveMeal(meal, reason: 'delete');
+  }
+
   String get _chefDisplayName {
     final user = _supabase.auth.currentUser;
     return user?.userMetadata?['name']?.toString() ??
@@ -1199,229 +1244,369 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
           .stream(primaryKey: ['id'])
           .eq('chef_id', _currentUserId),
       builder: (context, snapshot) {
-        final items = snapshot.data ?? [];
+        final all = List<Map<String, dynamic>>.from(snapshot.data ?? const []);
+        all.sort((a, b) => (b['updated_at'] ?? b['created_at'] ?? '').toString().compareTo(
+              (a['updated_at'] ?? a['created_at'] ?? '').toString(),
+            ));
 
-        return ListView(
-          padding: const EdgeInsets.all(16),
+        final active = all.where(isChefMenuActiveMeal).toList();
+        final history = all.where((m) => !isChefMenuActiveMeal(m)).toList();
+        final showing = _menuFilter == 'History' ? history : active;
+
+        // Soft-clean: archive expired dishes still marked Available/Paused.
+        for (final meal in all) {
+          if (isChefMealArchived(meal)) continue;
+          if (!isPublishedMealExpired(meal)) continue;
+          final id = meal['id']?.toString();
+          if (id == null || id.isEmpty || !_autoArchivedMealIds.add(id)) continue;
+          unawaited(
+            _supabase.from('meals').update({
+              'status': 'Archived',
+              'updated_at': DateTime.now().toUtc().toIso8601String(),
+            }).eq('id', id),
+          );
+        }
+
+        return Column(
           children: [
-            GradientButton(
-              label: 'Publish New Dish',
-              icon: Icons.add_rounded,
-              onPressed: () => context.push('/chef-publish-meal'),
-            ),
-            if (!_isKitchenOpen) ...[
-              const SizedBox(height: 12),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: AppTheme.warning.withValues(alpha: 0.12),
-                  borderRadius: AppTheme.radiusMd,
-                  border: Border.all(color: AppTheme.warning.withValues(alpha: 0.4)),
-                ),
-                child: Text(
-                  'Kitchen is offline for new orders. Dishes are hidden on Home. Finish or cancel orders you already accepted.',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.onSurfaceOf(context)),
-                ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: Row(
+                children: [
+                  for (final label in const ['Active', 'History']) ...[
+                    if (label == 'History') const SizedBox(width: 8),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => setState(() => _menuFilter = label),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            color: _menuFilter == label ? AppTheme.primary : AppTheme.surfaceOf(context),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: _menuFilter == label ? AppTheme.primary : AppTheme.hairlineOf(context),
+                            ),
+                          ),
+                          child: Text(
+                            label == 'Active' ? 'Active (${active.length})' : 'History (${history.length})',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: _menuFilter == label ? Colors.white : AppTheme.onSurfaceOf(context),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
-            ],
-            const SizedBox(height: 16),
-            if (items.isEmpty)
-              const EmptyState(
-                icon: Icons.restaurant_menu_rounded,
-                title: 'No dishes yet',
-                message: 'Publish your first dish to start receiving orders from hungry customers.',
-              )
-            else
-              ...items.asMap().entries.map((entry) {
-                final meal = entry.value;
-                final isPaused = meal['status']?.toString().toLowerCase() == 'paused';
-                final stock = int.tryParse(meal['quantity']?.toString() ?? '0') ?? 0;
-                final lowStock = stock > 0 && stock <= 3;
-                final slot = meal['time_slot']?.toString().trim() ?? '';
-                final services = (meal['service_type']?.toString() ?? '')
-                    .split(',')
-                    .map((s) => s.trim())
-                    .where((s) => s.isNotEmpty)
-                    .toList();
-
-                return AppCard(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: meal['image_url'] != null
-                                ? CachedNetworkImage(
-                                    imageUrl: meal['image_url'].toString(),
-                                    width: 56,
-                                    height: 56,
-                                    fit: BoxFit.cover,
-                                    placeholder: (_, _) => const AppShimmer(
-                                      child: ShimmerBox(width: 56, height: 56),
-                                    ),
-                                    errorWidget: (_, _, _) => Container(
-                                        width: 56, height: 56, color: Colors.grey.shade200, child: const Icon(Icons.fastfood)),
-                                  )
-                                : Container(width: 56, height: 56, color: Colors.grey.shade200, child: const Icon(Icons.fastfood)),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  meal['title'] ?? 'Meal',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    decoration: isPaused ? TextDecoration.lineThrough : null,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  '₹${meal['price']} • Stock: ${meal['quantity']} remaining',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: lowStock ? AppTheme.warning : AppTheme.textMuted,
-                                    fontWeight: lowStock ? FontWeight.w700 : FontWeight.w500,
-                                  ),
-                                ),
-                                if (lowStock) ...[
-                                  const SizedBox(height: 4),
-                                  const Text('Low stock — restock soon',
-                                      style: TextStyle(fontSize: 11, color: AppTheme.warning, fontWeight: FontWeight.w600)),
-                                ],
-                                if (slot.isNotEmpty) ...[
-                                  const SizedBox(height: 6),
-                                  Row(
-                                    children: [
-                                      const Icon(Icons.schedule, size: 14, color: AppTheme.primary),
-                                      const SizedBox(width: 4),
-                                      Expanded(
-                                        child: Text(
-                                          slot,
-                                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.primary),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                                if (services.isNotEmpty) ...[
-                                  const SizedBox(height: 8),
-                                  Wrap(
-                                    spacing: 6,
-                                    runSpacing: 6,
-                                    children: services
-                                        .map((s) => PillTag(
-                                              label: s,
-                                              icon: ServiceType.fromString(s).isDelivery
-                                                  ? Icons.delivery_dining
-                                                  : Icons.storefront,
-                                              color: AppTheme.primary,
-                                            ))
-                                        .toList(),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                          Switch.adaptive(
-                            activeThumbColor: AppTheme.primary,
-                            value: !isPaused,
-                            onChanged: (active) async {
-                              await _supabase.from('meals').update({'status': active ? 'Available' : 'Paused'}).eq('id', meal['id']);
-                            },
-                          ),
-                        ],
-                      ),
+            ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  if (_menuFilter == 'Active') ...[
+                    GradientButton(
+                      label: 'Publish New Dish',
+                      icon: Icons.add_rounded,
+                      onPressed: () => context.push('/chef-publish-meal'),
+                    ),
+                    if (!_isKitchenOpen) ...[
                       const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: AppTheme.primary,
-                                side: const BorderSide(color: AppTheme.primary),
-                                padding: const EdgeInsets.symmetric(vertical: 10),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              ),
-                              icon: const Icon(Icons.edit_outlined, size: 18),
-                              label: const Text('Edit', style: TextStyle(fontWeight: FontWeight.w700)),
-                              onPressed: () => _openMealEditor(meal),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 10),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              ),
-                              icon: const Icon(Icons.copy_outlined, size: 18),
-                              label: const Text('Duplicate', style: TextStyle(fontWeight: FontWeight.w700)),
-                              onPressed: () => _duplicateMeal(meal),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      SizedBox(
+                      Container(
                         width: double.infinity,
-                        child: OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFF25D366),
-                            side: const BorderSide(color: Color(0xFF25D366)),
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          ),
-                          icon: const Icon(Icons.chat, size: 18),
-                          label: const Text('WhatsApp card', style: TextStyle(fontWeight: FontWeight.w700)),
-                          onPressed: () => showMealShareSheet(context, {
-                            ...meal,
-                            'chef_name': _chefDisplayName,
-                          }),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: AppTheme.warning.withValues(alpha: 0.12),
+                          borderRadius: AppTheme.radiusMd,
+                          border: Border.all(color: AppTheme.warning.withValues(alpha: 0.4)),
+                        ),
+                        child: Text(
+                          'Kitchen is offline for new orders. Dishes are hidden on Home. Finish or cancel orders you already accepted.',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.onSurfaceOf(context)),
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      if (isMealBoosted(meal))
-                        Text(
-                          mealBoostUntilLabel(meal),
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppTheme.primary),
-                        )
-                      else
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppTheme.primary,
-                              foregroundColor: Colors.white,
-                              disabledBackgroundColor: Colors.grey.shade400,
-                              elevation: 0,
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            ),
-                            icon: const Icon(Icons.auto_awesome, size: 18),
-                            label: Text(
-                              'Boost on Home · ₹$kChefBoostRupees',
-                              style: const TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                            onPressed: isPaused || stock <= 0
-                                ? null
-                                : () => showChefBoostSheet(context, meal),
+                    ],
+                    const SizedBox(height: 16),
+                  ] else ...[
+                    Text(
+                      'All dishes you have published — expired windows and removed plates.',
+                      style: TextStyle(fontSize: 13, color: AppTheme.textMuted, height: 1.35),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  if (showing.isEmpty)
+                    EmptyState(
+                      icon: _menuFilter == 'History' ? Icons.history_rounded : Icons.restaurant_menu_rounded,
+                      title: _menuFilter == 'History' ? 'No meal history yet' : 'No active dishes',
+                      message: _menuFilter == 'History'
+                          ? 'Expired and deleted dishes will appear here.'
+                          : 'Publish your first dish to start receiving orders from hungry customers.',
+                    )
+                  else
+                    ...showing.asMap().entries.map(
+                          (entry) => _buildChefMealCard(
+                            entry.value,
+                            index: entry.key,
+                            historyMode: _menuFilter == 'History',
                           ),
                         ),
-                    ],
-                  ),
-                ).entrance(index: entry.key);
-              }),
+                ],
+              ),
+            ),
           ],
         );
       },
     );
+  }
+
+  Widget _buildChefMealCard(
+    Map<String, dynamic> meal, {
+    required int index,
+    required bool historyMode,
+  }) {
+    final isPaused = meal['status']?.toString().toLowerCase() == 'paused';
+    final isAvailable = meal['status']?.toString().toLowerCase().trim() == 'available';
+    final archived = isChefMealArchived(meal);
+    final expired = isPublishedMealExpired(meal);
+    final stock = int.tryParse(meal['quantity']?.toString() ?? '0') ?? 0;
+    final canBoost = !historyMode && !isPaused && stock > 0;
+    final lowStock = stock > 0 && stock <= 3;
+    final slot = meal['time_slot']?.toString().trim() ?? '';
+    final services = (meal['service_type']?.toString() ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    final statusNote = archived
+        ? 'Removed'
+        : expired
+            ? 'Expired'
+            : isPaused
+                ? 'Paused'
+                : 'Published';
+
+    return AppCard(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: meal['image_url'] != null
+                    ? CachedNetworkImage(
+                        imageUrl: meal['image_url'].toString(),
+                        width: 56,
+                        height: 56,
+                        fit: BoxFit.cover,
+                        placeholder: (_, _) => const AppShimmer(
+                          child: ShimmerBox(width: 56, height: 56),
+                        ),
+                        errorWidget: (_, _, _) => Container(
+                            width: 56, height: 56, color: Colors.grey.shade200, child: const Icon(Icons.fastfood)),
+                      )
+                    : Container(width: 56, height: 56, color: Colors.grey.shade200, child: const Icon(Icons.fastfood)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      meal['title'] ?? 'Meal',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        decoration: isPaused || historyMode ? TextDecoration.lineThrough : null,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      historyMode
+                          ? '₹${meal['price']} · $statusNote'
+                          : '₹${meal['price']} • Stock: ${meal['quantity']} remaining',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: lowStock && !historyMode ? AppTheme.warning : AppTheme.textMuted,
+                        fontWeight: lowStock && !historyMode ? FontWeight.w700 : FontWeight.w500,
+                      ),
+                    ),
+                    if (!historyMode && lowStock) ...[
+                      const SizedBox(height: 4),
+                      const Text('Low stock — restock soon',
+                          style: TextStyle(fontSize: 11, color: AppTheme.warning, fontWeight: FontWeight.w600)),
+                    ],
+                    if (slot.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          const Icon(Icons.schedule, size: 14, color: AppTheme.primary),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              slot,
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.primary),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    if (services.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: services
+                            .map((s) => PillTag(
+                                  label: s,
+                                  icon: ServiceType.fromString(s).isDelivery
+                                      ? Icons.delivery_dining
+                                      : Icons.storefront,
+                                  color: AppTheme.primary,
+                                ))
+                            .toList(),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (!historyMode)
+                Switch.adaptive(
+                  activeThumbColor: AppTheme.primary,
+                  value: !isPaused,
+                  onChanged: (active) async {
+                    await _supabase.from('meals').update({'status': active ? 'Available' : 'Paused'}).eq('id', meal['id']);
+                  },
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              if (!historyMode) ...[
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.primary,
+                      side: const BorderSide(color: AppTheme.primary),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    label: const Text('Edit', style: TextStyle(fontWeight: FontWeight.w700)),
+                    onPressed: () => _openMealEditor(meal),
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
+              Expanded(
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  icon: const Icon(Icons.copy_outlined, size: 18),
+                  label: const Text('Duplicate', style: TextStyle(fontWeight: FontWeight.w700)),
+                  onPressed: () => _duplicateMeal(meal),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red.shade700,
+                    side: BorderSide(color: Colors.red.shade300),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  label: Text(historyMode ? 'Remove' : 'Delete', style: const TextStyle(fontWeight: FontWeight.w700)),
+                  onPressed: historyMode && archived
+                      ? null
+                      : () => _confirmDeleteMeal(meal),
+                ),
+              ),
+            ],
+          ),
+          if (!historyMode) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF25D366),
+                  side: const BorderSide(color: Color(0xFF25D366)),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                icon: const Icon(Icons.chat, size: 18),
+                label: const Text('WhatsApp card', style: TextStyle(fontWeight: FontWeight.w700)),
+                onPressed: () => showMealShareSheet(context, {
+                  ...meal,
+                  'chef_name': _chefDisplayName,
+                }),
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (isMealBoosted(meal))
+              Text(
+                mealBoostUntilLabel(meal),
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppTheme.primary),
+              )
+            else ...[
+              if (canBoost && !isAvailable)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 6),
+                  child: Text(
+                    'Stock is back — boost will publish this dish on Home again.',
+                    style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                  ),
+                ),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: Colors.grey.shade400,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  icon: const Icon(Icons.auto_awesome, size: 18),
+                  label: Text(
+                    'Boost on Home · ₹$kChefBoostRupees',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  onPressed: canBoost ? () => showChefBoostSheet(context, meal) : null,
+                ),
+              ),
+            ],
+          ] else ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppTheme.primary,
+                  side: const BorderSide(color: AppTheme.primary),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Publish again', style: TextStyle(fontWeight: FontWeight.w700)),
+                onPressed: () => _duplicateMeal(meal),
+              ),
+            ),
+          ],
+        ],
+      ),
+    ).entrance(index: index);
   }
 
   Widget _buildHistoryTab(List<Map<String, dynamic>> orders) {
