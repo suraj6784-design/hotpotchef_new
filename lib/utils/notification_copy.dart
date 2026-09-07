@@ -135,7 +135,7 @@ class KitchenLiveAlertCopy {
 KitchenLiveAlertCopy kitchenLiveAlertCopy({String chefName = 'A home kitchen'}) {
   final name = chefName.trim().isEmpty ? 'A home kitchen' : chefName.trim();
   return KitchenLiveAlertCopy(
-    title: '$name is live',
+    title: '$name is open',
     body: '$name just opened. Order leftovers and today\'s meals now.',
   );
 }

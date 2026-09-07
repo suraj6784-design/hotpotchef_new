@@ -828,7 +828,7 @@ FeedEmptyCopy feedEmptyCopy({
   if (!signedIn && followingOnly) {
     return const FeedEmptyCopy(
       title: 'Sign in to follow kitchens',
-      message: 'Follow a home chef and we will ping you when they go live.',
+      message: 'Follow a home chef and we will ping you when their kitchen opens.',
       promptSignIn: true,
     );
   }
@@ -2641,71 +2641,6 @@ String kitchenLivePhotoLabel(DateTime? takenAt, {DateTime? now}) {
   return 'Live from the kitchen · ${hours}h ago';
 }
 
-const int kKitchenLiveMaxViewers = 12;
-const int kKitchenLiveMaxSeconds = 120;
-const int kKitchenLiveJoinGuardSeconds = 15;
-
-bool isKitchenLiveStreaming(Map<String, dynamic>? profile, {DateTime? now}) {
-  if (profile == null) return false;
-  final raw = profile['is_live'] ?? profile['isLive'];
-  final live = raw is bool
-      ? raw
-      : raw?.toString().toLowerCase().trim() == 'true' || raw?.toString().trim() == '1';
-  if (!live) return false;
-  final started = DateTime.tryParse(profile['live_started_at']?.toString() ?? '');
-  if (started == null) return true;
-  return !kitchenLiveTimeUp(startedAt: started, now: now);
-}
-
-Duration kitchenLiveRemaining({
-  DateTime? startedAt,
-  DateTime? now,
-  int maxSeconds = kKitchenLiveMaxSeconds,
-}) {
-  if (startedAt == null) return Duration(seconds: maxSeconds);
-  final elapsed = (now ?? DateTime.now()).toUtc().difference(startedAt.toUtc());
-  final left = Duration(seconds: maxSeconds) - elapsed;
-  return left.isNegative ? Duration.zero : left;
-}
-
-bool kitchenLiveTimeUp({DateTime? startedAt, DateTime? now, int maxSeconds = kKitchenLiveMaxSeconds}) {
-  return kitchenLiveRemaining(startedAt: startedAt, now: now, maxSeconds: maxSeconds) <= Duration.zero;
-}
-
-bool kitchenLiveCanAdmitViewer({DateTime? startedAt, DateTime? now}) {
-  return kitchenLiveRemaining(startedAt: startedAt, now: now) >=
-      const Duration(seconds: kKitchenLiveJoinGuardSeconds);
-}
-
-String kitchenLiveCountdownLabel(Duration remaining) {
-  final seconds = remaining.inSeconds < 0 ? 0 : remaining.inSeconds;
-  final minutes = seconds ~/ 60;
-  final rest = seconds % 60;
-  return '$minutes:${rest.toString().padLeft(2, '0')}';
-}
-
-bool canHostKitchenLive({required String chefId, String? userId}) {
-  final kitchen = chefId.trim();
-  final user = (userId ?? '').trim();
-  return kitchen.isNotEmpty && kitchen == user;
-}
-
-String kitchenLiveViewerId({String? userId}) {
-  final id = (userId ?? '').trim();
-  if (id.isNotEmpty) return id;
-  return 'guest-${DateTime.now().microsecondsSinceEpoch}';
-}
-
-bool kitchenLiveSignalForMe({
-  required String myId,
-  required String senderId,
-  String? targetId,
-}) {
-  if (senderId.trim().isEmpty || senderId == myId) return false;
-  final target = (targetId ?? '').trim();
-  return target.isEmpty || target == myId;
-}
-
 String? orderDispatchPhotoUrl(Map<String, dynamic>? order) {
   if (order == null) return null;
   final url = (order['dispatch_photo_url'] ?? order['dispatchPhotoUrl'])?.toString().trim() ?? '';
@@ -2726,17 +2661,6 @@ String dispatchPackedLabel({DateTime? takenAt, DateTime? now}) {
   if (minutes < 1) return 'Your box is packed · just now';
   if (minutes < 60) return 'Your box is packed · ${minutes}m ago';
   return 'Your box is packed';
-}
-
-String kitchenLivePath(String chefId, {bool host = false, String? chefName}) {
-  final id = chefId.trim();
-  final name = (chefName ?? '').trim();
-  final buffer = StringBuffer(host ? '/kitchen-live/$id?host=1' : '/kitchen-live/$id');
-  if (name.isNotEmpty) {
-    buffer.write(host ? '&' : '?');
-    buffer.write('name=${Uri.encodeQueryComponent(name)}');
-  }
-  return buffer.toString();
 }
 
 ChefRatingSummary chefRatingSummaryFromRows(Iterable<dynamic> rows) {

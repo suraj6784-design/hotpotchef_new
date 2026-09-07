@@ -45,7 +45,6 @@ dependencies:
   google_fonts: ^6.2.1
   flutter_animate: ^4.5.2
   connectivity_plus: ^7.3.1
-  flutter_webrtc: ^1.6.1
 
 dev_dependencies:
   flutter_test:
@@ -66,15 +65,21 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: "assets/app_icon.png"
+  image_path: "assets/app_icon_launcher.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/app_icon_launcher.png"
+  remove_alpha_ios: true
   min_sdk_android: 21
   web:
     generate: false
 
 flutter_native_splash:
   color: "#FAFAFA"
-  image: "assets/app_icon.png"
+  image: "assets/app_icon_splash.png"
+  android_gravity: center
+  ios_content_mode: center
   android_12:
     color: "#FAFAFA"
-    image: "assets/app_icon.png"
+    image: "assets/app_icon_splash.png"
+    icon_background_color: "#FAFAFA"
   fullscreen: true

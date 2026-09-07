@@ -486,12 +486,15 @@ class AppLogo extends StatelessWidget {
     final radius = BorderRadius.circular((size * 0.28).clamp(6, 14));
     final mark = ClipRRect(
       borderRadius: radius,
-      child: Image.asset(
-        assetPath,
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        errorBuilder: (_, _, _) => Icon(Icons.local_dining_rounded, size: size * 0.72, color: AppTheme.primary),
+      child: ColoredBox(
+        color: Colors.white,
+        child: Image.asset(
+          assetPath,
+          width: size,
+          height: size,
+          fit: BoxFit.contain,
+          errorBuilder: (_, _, _) => Icon(Icons.local_dining_rounded, size: size * 0.72, color: AppTheme.primary),
+        ),
       ),
     );
     if (!elevated && !onDark) return mark;

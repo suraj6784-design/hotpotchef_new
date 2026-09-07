@@ -93,6 +93,7 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
         onProfileTap: _navigateToProfile,
         onLogout: _handleLogout,
         onGoToCart: () => _onNavigationItemTapped(1),
+        onReorderToOrders: () => _onNavigationItemTapped(2),
       ),
       CustomerCartTab(
         onAddMoreMeals: () => _onNavigationItemTapped(0),
@@ -104,7 +105,7 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
         refreshEpoch: _ordersEpoch,
         onProfileTap: _navigateToProfile,
         onLogout: _handleLogout,
-        onReorderToCart: () => _onNavigationItemTapped(1),
+        onReorderToCart: () => _onNavigationItemTapped(2),
       ),
     ];
 

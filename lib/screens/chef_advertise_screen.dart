@@ -5,7 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../utils/helpers.dart';
 import '../widgets/customer_ui_components.dart';
 
-/// Chef / partner stub for the third-party advertising monetization framework.
+/// Chef brand-referral intake. Pricing and go-live stay with the platform.
 class ChefAdvertiseScreen extends StatefulWidget {
   const ChefAdvertiseScreen({super.key});
 
@@ -20,6 +20,7 @@ class _ChefAdvertiseScreenState extends State<ChefAdvertiseScreen> {
   final _ctaUrl = TextEditingController();
   final _city = TextEditingController();
   final _brand = TextEditingController();
+  final _contact = TextEditingController();
 
   String _reach = 'overall';
   bool _loading = true;
@@ -39,6 +40,7 @@ class _ChefAdvertiseScreenState extends State<ChefAdvertiseScreen> {
     _ctaUrl.dispose();
     _city.dispose();
     _brand.dispose();
+    _contact.dispose();
     super.dispose();
   }
 
@@ -64,13 +66,13 @@ class _ChefAdvertiseScreenState extends State<ChefAdvertiseScreen> {
       if (mounted) {
         setState(() => _loading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not load campaigns. Apply the ad_campaigns migration if missing. ($e)')),
+          SnackBar(content: Text('Could not load brand referrals. ($e)')),
         );
       }
     }
   }
 
-  Future<void> _createDraft({required bool goLive}) async {
+  Future<void> _submit({required bool forReview}) async {
     final uid = _supabase.auth.currentUser?.id;
     if (uid == null) return;
     final brand = _brand.text.trim();
@@ -83,7 +85,7 @@ class _ChefAdvertiseScreenState extends State<ChefAdvertiseScreen> {
     }
     if (title.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Add a campaign headline')),
+        const SnackBar(content: Text('Add a suggested headline')),
       );
       return;
     }
@@ -105,9 +107,11 @@ class _ChefAdvertiseScreenState extends State<ChefAdvertiseScreen> {
         'cta_label': 'Learn more',
         'reach_mode': _reach,
         'city': _reach == 'targeted' ? _city.text.trim() : null,
-        'status': goLive ? 'live' : 'draft',
-        'starts_at': DateTime.now().toUtc().toIso8601String(),
-        'package_label': _reach == 'overall' ? 'Overall broadcast' : 'Targeted audience',
+        'status': forReview ? 'pending_review' : 'draft',
+        'source_role': 'chef_referral',
+        'contact_note': _contact.text.trim().isEmpty ? null : _contact.text.trim(),
+        'package_label': _reach == 'overall' ? 'Suggested: overall' : 'Suggested: targeted',
+        'starts_at': null,
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       });
       _brand.clear();
@@ -115,16 +119,23 @@ class _ChefAdvertiseScreenState extends State<ChefAdvertiseScreen> {
       _body.clear();
       _ctaUrl.clear();
       _city.clear();
+      _contact.clear();
       await _refresh();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(goLive ? 'Brand placement is live on diner Home.' : 'Draft saved.')),
+        SnackBar(
+          content: Text(
+            forReview
+                ? 'Sent to HotPotChef for pricing and approval. It will not show to diners until we go live.'
+                : 'Draft saved. Submit for review when the brand details look right.',
+          ),
+        ),
       );
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Create ad campaign failed');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Create ad referral failed');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not save campaign: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('Could not save referral: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -140,7 +151,15 @@ class _ChefAdvertiseScreenState extends State<ChefAdvertiseScreen> {
       }).eq('id', id);
       await _refresh();
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Update ad status failed');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Update ad referral status failed');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not update. Live campaigns are managed by HotPotChef. ($e)'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -152,7 +171,7 @@ class _ChefAdvertiseScreenState extends State<ChefAdvertiseScreen> {
     return Scaffold(
       backgroundColor: canvas,
       appBar: AppBar(
-        title: const Text('Brand ads'),
+        title: const Text('Refer a brand'),
         backgroundColor: canvas,
         foregroundColor: onSurface,
         elevation: 0,
@@ -163,13 +182,13 @@ class _ChefAdvertiseScreenState extends State<ChefAdvertiseScreen> {
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
               children: [
                 Text(
-                  'Brand & partner advertising',
+                  'Suggest a grocery or partner brand',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: onSurface),
                 ),
                 const SizedBox(height: 6),
                 const Text(
-                  'Third-party placements for grocery brands, pantry labels, and other partners — not your own meal boosts. '
-                  'Broadcast overall or to a targeted city. Diners see a clear Sponsored card on Home.',
+                  'HotPotChef owns pricing, packages, and when a Sponsored card goes live on diner Home. '
+                  'You refer the brand — we review, bill the partner, and publish.',
                   style: TextStyle(fontSize: 13, color: AppTheme.textMuted, height: 1.4),
                 ),
                 const SizedBox(height: 16),
@@ -189,7 +208,7 @@ class _ChefAdvertiseScreenState extends State<ChefAdvertiseScreen> {
                       TextField(
                         controller: _title,
                         decoration: const InputDecoration(
-                          labelText: 'Campaign headline *',
+                          labelText: 'Suggested headline *',
                           border: OutlineInputBorder(),
                         ),
                       ),
@@ -198,7 +217,7 @@ class _ChefAdvertiseScreenState extends State<ChefAdvertiseScreen> {
                         controller: _body,
                         maxLines: 2,
                         decoration: const InputDecoration(
-                          labelText: 'Short body',
+                          labelText: 'Short pitch',
                           hintText: 'What should diners know?',
                           border: OutlineInputBorder(),
                         ),
@@ -207,12 +226,21 @@ class _ChefAdvertiseScreenState extends State<ChefAdvertiseScreen> {
                       TextField(
                         controller: _ctaUrl,
                         decoration: const InputDecoration(
-                          labelText: 'CTA link (https://…)',
+                          labelText: 'Brand link (https://…)',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _contact,
+                        decoration: const InputDecoration(
+                          labelText: 'Brand contact (optional)',
+                          hintText: 'Phone / email / WhatsApp',
                           border: OutlineInputBorder(),
                         ),
                       ),
                       const SizedBox(height: 12),
-                      Text('Reach', style: TextStyle(fontWeight: FontWeight.w800, color: onSurface)),
+                      Text('Suggested reach', style: TextStyle(fontWeight: FontWeight.w800, color: onSurface)),
                       const SizedBox(height: 6),
                       SegmentedButton<String>(
                         segments: const [
@@ -238,14 +266,14 @@ class _ChefAdvertiseScreenState extends State<ChefAdvertiseScreen> {
                         children: [
                           Expanded(
                             child: OutlinedButton(
-                              onPressed: _saving ? null : () => _createDraft(goLive: false),
+                              onPressed: _saving ? null : () => _submit(forReview: false),
                               child: const Text('Save draft'),
                             ),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
                             child: ElevatedButton(
-                              onPressed: _saving ? null : () => _createDraft(goLive: true),
+                              onPressed: _saving ? null : () => _submit(forReview: true),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppTheme.primary,
                                 foregroundColor: Colors.white,
@@ -256,7 +284,7 @@ class _ChefAdvertiseScreenState extends State<ChefAdvertiseScreen> {
                                       height: 18,
                                       child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                                     )
-                                  : const Text('Go live'),
+                                  : const Text('Submit for review'),
                             ),
                           ),
                         ],
@@ -265,17 +293,18 @@ class _ChefAdvertiseScreenState extends State<ChefAdvertiseScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                Text('Partner campaigns', style: TextStyle(fontWeight: FontWeight.w900, color: onSurface)),
+                Text('Your referrals', style: TextStyle(fontWeight: FontWeight.w900, color: onSurface)),
                 const SizedBox(height: 8),
                 if (_mine.isEmpty)
                   const Text(
-                    'No brand campaigns yet. Add a grocery or partner placement above.',
+                    'No brand referrals yet. Suggest a grocery or partner brand above.',
                     style: TextStyle(color: AppTheme.textMuted, fontSize: 13),
                   )
                 else
                   ..._mine.map((row) {
                     final status = (row['status'] ?? 'draft').toString();
                     final reach = (row['reach_mode'] ?? 'overall').toString();
+                    final editable = status == 'draft' || status == 'pending_review';
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 10),
                       child: AppCard(
@@ -295,31 +324,39 @@ class _ChefAdvertiseScreenState extends State<ChefAdvertiseScreen> {
                             ],
                             const SizedBox(height: 4),
                             Text(
-                              '${status.toUpperCase()} · ${reach == 'targeted' ? 'Targeted' : 'Overall'}'
+                              '${adCampaignStatusLabel(status)} · ${reach == 'targeted' ? 'Targeted' : 'Overall'}'
                               '${reach == 'targeted' && (row['city']?.toString().isNotEmpty ?? false) ? ' · ${row['city']}' : ''}',
                               style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
                             ),
-                            const SizedBox(height: 10),
-                            Wrap(
-                              spacing: 8,
-                              children: [
-                                if (status != 'live')
-                                  TextButton(
-                                    onPressed: () => _setStatus(row['id'].toString(), 'live'),
-                                    child: const Text('Set live'),
-                                  ),
-                                if (status == 'live')
+                            if (editable) ...[
+                              const SizedBox(height: 10),
+                              Wrap(
+                                spacing: 8,
+                                children: [
+                                  if (status == 'draft')
+                                    TextButton(
+                                      onPressed: () => _setStatus(row['id'].toString(), 'pending_review'),
+                                      child: const Text('Submit for review'),
+                                    ),
+                                  if (status == 'pending_review')
+                                    TextButton(
+                                      onPressed: () => _setStatus(row['id'].toString(), 'draft'),
+                                      child: const Text('Back to draft'),
+                                    ),
                                   TextButton(
                                     onPressed: () => _setStatus(row['id'].toString(), 'ended'),
-                                    child: const Text('End'),
+                                    child: const Text('Withdraw'),
                                   ),
-                                if (status != 'draft')
-                                  TextButton(
-                                    onPressed: () => _setStatus(row['id'].toString(), 'draft'),
-                                    child: const Text('Back to draft'),
-                                  ),
-                              ],
-                            ),
+                                ],
+                              ),
+                            ] else if (status == 'live')
+                              const Padding(
+                                padding: EdgeInsets.only(top: 8),
+                                child: Text(
+                                  'Live on diner Home. Contact HotPotChef to pause or change terms.',
+                                  style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                                ),
+                              ),
                           ],
                         ),
                       ),
@@ -328,5 +365,21 @@ class _ChefAdvertiseScreenState extends State<ChefAdvertiseScreen> {
               ],
             ),
     );
+  }
+}
+
+String adCampaignStatusLabel(String? status) {
+  switch ((status ?? '').toLowerCase().trim()) {
+    case 'pending_review':
+      return 'With HotPotChef for review';
+    case 'live':
+      return 'Live (platform published)';
+    case 'ended':
+      return 'Ended';
+    case 'draft':
+    case '':
+      return 'Draft';
+    default:
+      return status!;
   }
 }

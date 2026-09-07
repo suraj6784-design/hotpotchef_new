@@ -44,7 +44,6 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
 
   late int _selectedIndex = widget.initialTab;
   bool _isKitchenOpen = true;
-  bool _isKitchenLive = false;
   String _fulfillmentFilter = 'All';
   String _historyFilter = 'Delivered';
 
@@ -283,25 +282,14 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   Future<void> _loadKitchenStatus() async {
     if (_currentUserId.isEmpty) return;
     try {
-      Map<String, dynamic>? res;
-      try {
-        res = await _supabase
-            .from('chef_profiles')
-            .select('is_open, is_live')
-            .eq('user_id', _currentUserId)
-            .maybeSingle();
-      } catch (_) {
-        res = await _supabase
-            .from('chef_profiles')
-            .select('is_open')
-            .eq('user_id', _currentUserId)
-            .maybeSingle();
-      }
+      final res = await _supabase
+          .from('chef_profiles')
+          .select('is_open')
+          .eq('user_id', _currentUserId)
+          .maybeSingle();
       if (res != null && mounted) {
-        final row = res;
         setState(() {
-          _isKitchenOpen = row['is_open'] == true;
-          _isKitchenLive = isKitchenLiveStreaming(row);
+          _isKitchenOpen = res['is_open'] == true;
         });
       }
     } catch (e) {
@@ -325,7 +313,6 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         if (!nextState) 'is_live': false,
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       });
-      if (!nextState && mounted) setState(() => _isKitchenLive = false);
       if (nextState) {
         AlertService.notifyKitchenLive(chefId: _currentUserId);
       }
@@ -352,17 +339,6 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         );
       }
     }
-  }
-
-  Future<void> _openKitchenLive() async {
-    if (_currentUserId.isEmpty) return;
-    setState(() {
-      _isKitchenOpen = true;
-      _isKitchenLive = true;
-    });
-    AlertService.notifyKitchenLive(chefId: _currentUserId);
-    await context.push(kitchenLivePath(_currentUserId, host: true));
-    if (mounted) await _loadKitchenStatus();
   }
 
   Future<bool?> _confirmGoOffline() async {
@@ -838,32 +814,6 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                       ),
                     ),
                   ),
-                  GestureDetector(
-                    onTap: _openKitchenLive,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: _isKitchenLive ? Colors.red.shade700 : Colors.white.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white38),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.videocam,
-                            color: _isKitchenLive ? Colors.white : Colors.white70,
-                            size: 14,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            _isKitchenLive ? 'LIVE · 2 min' : 'Go live · 2 min',
-                            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ],
@@ -872,7 +822,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
           Row(
             children: [
               _headerIcon(Icons.forum_outlined, 'Order chats', () => context.push('/chats')),
-              _headerIcon(Icons.campaign_outlined, 'Brand ads', () => context.push('/chef-advertise')),
+              _headerIcon(Icons.campaign_outlined, 'Refer brand', () => context.push('/chef-advertise')),
               _headerIcon(Icons.school_outlined, 'Academy', () => context.push('/chef-academy')),
               _headerIcon(Icons.insights, 'Analytics', () => context.push('/chef-analytics')),
               _headerIcon(Icons.person_outline, 'Profile', () => context.push('/chef-profile')),

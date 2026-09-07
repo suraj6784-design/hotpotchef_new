@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hotpotchef_new/screens/chef_advertise_screen.dart';
 import 'package:hotpotchef_new/widgets/sponsored_placement_banner.dart';
 
 void main() {
@@ -28,6 +29,12 @@ void main() {
       },
       {
         'id': '4',
+        'status': 'pending_review',
+        'reach_mode': 'overall',
+        'title': 'Awaiting platform',
+      },
+      {
+        'id': '5',
         'status': 'live',
         'reach_mode': 'targeted',
         'city': 'Mumbai',
@@ -40,6 +47,14 @@ void main() {
     expect(pune.map((e) => e['id']), ['1', '2']);
 
     final unknownCity = liveSponsoredCampaigns(rows, now: now);
-    expect(unknownCity.map((e) => e['id']), containsAll(['1', '2', '4']));
+    expect(unknownCity.map((e) => e['id']), containsAll(['1', '2', '5']));
+    expect(unknownCity.map((e) => e['id']), isNot(contains('3')));
+    expect(unknownCity.map((e) => e['id']), isNot(contains('4')));
+  });
+
+  test('chef-facing labels never imply self-serve go-live', () {
+    expect(adCampaignStatusLabel('pending_review'), contains('HotPotChef'));
+    expect(adCampaignStatusLabel('live'), contains('platform'));
+    expect(adCampaignStatusLabel('draft'), 'Draft');
   });
 }

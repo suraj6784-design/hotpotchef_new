@@ -13,7 +13,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../screens/kitchen_live_screen.dart';
+import '../widgets/kitchen_live_badge.dart';
 
 import '../utils/helpers.dart';
 import '../utils/app_page.dart';
@@ -477,7 +477,6 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
   String _cardLocale = 'en';
   String _liveUrl = '';
   String _liveLabel = '';
-  bool _isStreaming = false;
   List<String> _photos = const [];
   ChefRatingSummary _rating = const ChefRatingSummary();
   List<Map<String, dynamic>> _recentReviews = const [];
@@ -539,7 +538,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
       try {
         final row = await client
             .from('chef_profiles')
-            .select('kitchen_story, hygiene_note, kitchen_photos, live_photo_url, live_photo_at, is_live, card_locale, local_kitchen_name')
+            .select('kitchen_story, hygiene_note, kitchen_photos, live_photo_url, live_photo_at, card_locale, local_kitchen_name')
             .eq('user_id', chefId)
             .maybeSingle();
         if (row != null) kitchen = Map<String, dynamic>.from(row);
@@ -595,7 +594,6 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
         _photos = kitchenPhotosFrom(kitchen?['kitchen_photos']);
         _liveUrl = isKitchenLivePhotoFresh(liveAt) ? liveUrl : '';
         _liveLabel = kitchenLivePhotoLabel(liveAt);
-        _isStreaming = isKitchenLiveStreaming(kitchen);
         _cookedLabel = copy.cookedMeals(cooked);
         _rating = rating;
         _recentReviews = reviewRows
@@ -637,10 +635,10 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
                   children: [
                     Flexible(
                       child: Text(
-                        _isStreaming ? 'Live from the kitchen' : _copy.homeKitchen,
+                        _liveUrl.isNotEmpty ? 'Live from the kitchen' : _copy.homeKitchen,
                         style: TextStyle(
                           fontSize: 12,
-                          color: _isStreaming ? Colors.red.shade700 : muted,
+                          color: _liveUrl.isNotEmpty ? Colors.red.shade700 : muted,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -664,7 +662,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
               ],
             ),
           ),
-          if (_isStreaming) const KitchenLiveBadge(compact: false),
+          if (_liveUrl.isNotEmpty) const KitchenLiveBadge(compact: false),
         ],
       ),
       content: SizedBox(
@@ -678,13 +676,6 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
               'Verified Home Chef Partner',
               style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13),
             ),
-            if (_isStreaming) ...[
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: KitchenWatchLiveButton(onPressed: _openKitchenLive),
-              ),
-            ],
             const SizedBox(height: 14),
             if (_loading)
               const Padding(
@@ -833,11 +824,6 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
         ),
       ),
       actions: [
-        if (_isStreaming)
-          TextButton(
-            onPressed: _openKitchenLive,
-            child: const Text('Watch live · 2 min', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-          ),
         KitchenFollowButton(
           chefId: widget.chefId,
           chefName: _name.isEmpty ? widget.chefName : _name,
@@ -849,13 +835,6 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
         ),
       ],
     );
-  }
-
-  void _openKitchenLive() {
-    final router = GoRouter.of(context);
-    final path = kitchenLivePath(widget.chefId, chefName: _name.isEmpty ? widget.chefName : _name);
-    Navigator.pop(context);
-    router.push(path);
   }
 
   Widget _infoRow(IconData icon, String text, Color muted) {
@@ -1089,27 +1068,7 @@ class MealDetailsBody extends StatefulWidget {
 
 class _MealDetailsBodyState extends State<MealDetailsBody> {
   int _quantity = 1;
-  bool _chefIsLive = false;
   final Set<String> _selectedAddOnIds = {};
-
-  @override
-  void initState() {
-    super.initState();
-    _loadChefLive();
-  }
-
-  Future<void> _loadChefLive() async {
-    final chefId = widget.meal['chef_id']?.toString() ?? '';
-    if (chefId.isEmpty) return;
-    try {
-      final row = await Supabase.instance.client
-          .from('chef_profiles')
-          .select('is_live')
-          .eq('user_id', chefId)
-          .maybeSingle();
-      if (mounted) setState(() => _chefIsLive = isKitchenLiveStreaming(row));
-    } catch (_) {}
-  }
 
   List<CartItemAddOn> get _availableAddOns => ReorderService.parseMealAddOns(
         widget.meal['add_ons'] ?? widget.meal['addons'] ?? widget.meal['selectedAddOns'],
@@ -1410,17 +1369,6 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                           ),
                         ),
                       ),
-                      if (_chefIsLive) ...[
-                        const SizedBox(height: 10),
-                        SizedBox(
-                          width: double.infinity,
-                          child: KitchenWatchLiveButton(
-                            onPressed: () => context.push(
-                              kitchenLivePath(chefId, chefName: chefName),
-                            ),
-                          ),
-                        ),
-                      ],
                       const SizedBox(height: 24),
                       _mealInfoChip(
                         icon: Icons.delivery_dining,
@@ -1688,7 +1636,7 @@ class KitchenFollowButton extends ConsumerWidget {
         SnackBar(
           content: Text(
             nowFollowing
-                ? 'Following $chefName. We will ping you when they go live.'
+                ? 'Following $chefName. We will ping you when their kitchen opens.'
                 : 'Unfollowed $chefName.',
           ),
         ),

@@ -18,7 +18,6 @@ import '../services/chef_directory.dart';
 import '../services/reorder_service.dart';
 import '../services/invoice_pdf_service.dart';
 import '../providers/cart_provider.dart';
-import 'customer_hub.dart';
 
 class CustomerOrderHistoryScreen extends StatelessWidget {
   const CustomerOrderHistoryScreen({super.key});
@@ -731,8 +730,7 @@ class _HistoryOrdersListState extends ConsumerState<_HistoryOrdersList> {
       );
       return;
     }
-    CustomerHubScreen.returnToCartAfterLogin = true;
-    if (context.mounted) context.go('/customer-hub');
+    if (context.mounted) context.go('/customer-hub?tab=orders');
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(ReorderService.resultMessage(result))),
     );
