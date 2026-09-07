@@ -2,7 +2,7 @@
   var api = window.HotPotApi;
   if (!api) return;
 
-  var LIMIT = 48;
+  var LIMIT = 80;
   var allMeals = [];
   var dietFilter = 'all';
   var searchQuery = '';
@@ -20,11 +20,38 @@
     return (s || '').toString().toLowerCase().trim();
   }
 
+  /** Drop seed/test rows so the public menu only shows orderable plates. */
+  function isCatalogWorthy(meal) {
+    var price = Number(meal.price);
+    if (!isFinite(price) || price <= 0) return false;
+    var title = (meal.title || '').toString().trim();
+    if (!title) return false;
+    var t = norm(title);
+    if (
+      t === 'guest' ||
+      t === 'user account' ||
+      t === 'test' ||
+      t.indexOf('test') === 0
+    ) {
+      return false;
+    }
+    if (/^(new)?chef\d+$/i.test(title)) return false;
+    if (/^hungry\d+$/i.test(title)) return false;
+    if (/^user[_]?hungry/i.test(title)) return false;
+    if (/^driver\d+$/i.test(title)) return false;
+    return true;
+  }
+
+  function dietLabel(meal) {
+    if (meal.is_veg === true || meal.is_veg === 'true') return 'Veg';
+    if (meal.is_veg === false || meal.is_veg === 'false') return 'Non-veg';
+    return 'Home plate';
+  }
+
   function matchesQuery(meal, q) {
     if (!q) return true;
     var hay = [
       meal.title,
-      meal.name,
       meal.chef_name,
       meal.local_kitchen_name,
       meal.city,
@@ -40,7 +67,6 @@
     var chef = api.chefLabel(meal);
     var price = api.money(meal.price);
     var image = (meal.image_url || '').toString().trim();
-    var veg = meal.is_veg === true || meal.is_veg === 'true';
     var city = (meal.city || '').toString().trim();
     var href = '/meal/' + encodeURIComponent(id);
     var media = image
@@ -58,7 +84,7 @@
       media +
       '<div class="catalog-body">' +
       '<p class="catalog-kicker">' +
-      (veg ? 'Veg' : 'Non-veg') +
+      dietLabel(meal) +
       (city ? ' · ' + api.escapeHtml(city) : '') +
       '</p>' +
       '<h3 class="catalog-title">' +
@@ -67,7 +93,9 @@
       '<p class="catalog-chef">' +
       api.escapeHtml(chef) +
       '</p>' +
-      (price ? '<p class="catalog-price">' + api.escapeHtml(price) + '</p>' : '') +
+      '<p class="catalog-price">' +
+      api.escapeHtml(price || 'Price in app') +
+      '</p>' +
       '</div></a>'
     );
   }
@@ -75,10 +103,12 @@
   function filteredMeals() {
     var q = norm(searchQuery);
     return allMeals.filter(function (m) {
+      if (!isCatalogWorthy(m)) return false;
       if (chefFilterId && (m.chef_id || '').toString() !== chefFilterId) return false;
       var veg = m.is_veg === true || m.is_veg === 'true';
+      var nonVeg = m.is_veg === false || m.is_veg === 'false';
       if (dietFilter === 'veg' && !veg) return false;
-      if (dietFilter === 'nonveg' && veg) return false;
+      if (dietFilter === 'nonveg' && !nonVeg) return false;
       return matchesQuery(m, q);
     });
   }
@@ -87,6 +117,7 @@
     if (!q) return [];
     var map = {};
     allMeals.forEach(function (m) {
+      if (!isCatalogWorthy(m)) return;
       var id = (m.chef_id || '').toString();
       if (!id) return;
       var label = api.chefLabel(m);

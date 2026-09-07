@@ -35,13 +35,37 @@
     if (!mealOrChef) return 'Home kitchen';
     var local = (mealOrChef.local_kitchen_name || '').toString().trim();
     if (local) return local;
-    var chef = (mealOrChef.chef_name || mealOrChef.name || mealOrChef.full_name || '').toString().trim();
-    return chef || 'Home kitchen';
+    var chef = (mealOrChef.chef_name || mealOrChef.name || mealOrChef.full_name || '')
+      .toString()
+      .trim();
+    var lower = chef.toLowerCase();
+    if (
+      !chef ||
+      lower === 'guest' ||
+      lower === 'user account' ||
+      /^(new)?chef\d+$/i.test(chef) ||
+      /^hungry\d+$/i.test(chef) ||
+      /^driver\d+$/i.test(chef)
+    ) {
+      return 'Home kitchen';
+    }
+    return chef;
   }
 
   function mealTitle(meal) {
     if (!meal) return 'Home kitchen plate';
-    return (meal.title || meal.name || 'Home kitchen plate').toString();
+    var title = (meal.title || meal.name || '').toString().trim();
+    if (!title) return 'Home kitchen plate';
+    var lower = title.toLowerCase();
+    if (
+      lower === 'guest' ||
+      lower === 'user account' ||
+      /^(new)?chef\d+$/i.test(title) ||
+      /^hungry\d+$/i.test(title)
+    ) {
+      return 'Home kitchen plate';
+    }
+    return title;
   }
 
   async function supabaseGet(pathAndQuery) {
