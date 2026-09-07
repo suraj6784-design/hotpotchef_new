@@ -17,6 +17,7 @@ import '../utils/dynamic_ui_engine.dart';
 import '../utils/network.dart';
 import '../utils/pinned_address.dart';
 import '../utils/pricing_calculator.dart';
+import '../models/pricing_models.dart';
 import '../providers/cart_provider.dart';
 import '../providers/delivery_preference.dart';
 import '../providers/kitchen_follows_provider.dart';
@@ -79,6 +80,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   List<Map<String, dynamic>> _chefSearchResults = [];
   String? _filteredChefId;
   String? _filteredChefName;
+  String? _offerBrowseLabel;
   final Map<String, Map<String, dynamic>> _chefKitchenPins = {};
   final Set<String> _chefPinsResolved = {};
   bool _hydratingChefPins = false;
@@ -315,6 +317,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         _chefSearchResults.clear();
         _filteredChefId = null;
         _filteredChefName = null;
+        _offerBrowseLabel = null;
       });
       return;
     }
@@ -324,6 +327,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       _hasActiveSearch = true;
       _filteredChefId = null;
       _filteredChefName = null;
+      _offerBrowseLabel = null;
     });
 
     try {
@@ -471,6 +475,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           _chefSearchResults.clear();
           _filteredChefId = null;
           _filteredChefName = null;
+          _offerBrowseLabel = null;
         });
       }
     } finally {
@@ -487,6 +492,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       _hasActiveSearch = true;
       _filteredChefId = id;
       _filteredChefName = name;
+      _offerBrowseLabel = null;
       _searchController.text = name;
     });
     try {
@@ -527,7 +533,75 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       _chefSearchResults.clear();
       _filteredChefId = null;
       _filteredChefName = null;
+      _offerBrowseLabel = null;
     });
+  }
+
+  Future<void> _showBogoOfferMeals() async {
+    setState(() {
+      _isAiSearching = true;
+      _hasActiveSearch = true;
+      _filteredChefId = null;
+      _filteredChefName = null;
+      _chefSearchResults.clear();
+      _offerBrowseLabel = 'BOGO';
+      _searchController.clear();
+    });
+    try {
+      final client = Supabase.instance.client;
+      final rows = await client
+          .from('meals')
+          .select()
+          .eq('status', 'Available')
+          .withTimeout(NetworkTimeouts.standard);
+      final destLat = addressCoordinate(_selectedAddressMap, latitude: true);
+      final destLng = addressCoordinate(_selectedAddressMap, latitude: false);
+      final meals = <Map<String, dynamic>>[];
+      for (final raw in List<Map<String, dynamic>>.from(rows as List)) {
+        if (OfferType.fromString(raw['offer_type']?.toString()) != OfferType.bogo) {
+          continue;
+        }
+        if (!isCatalogMeal(raw) || !isMealAvailableForCart(raw)) continue;
+        final chefId = raw['chef_id']?.toString() ?? '';
+        if (chefId.isNotEmpty && _closedChefIds.contains(chefId)) continue;
+        final pinned = mealWithKitchenPin(raw, chefPin: _chefKitchenPins[chefId]);
+        if (!mealInDeliveryRadius(
+          pinned,
+          destinationLat: destLat,
+          destinationLng: destLng,
+        )) {
+          continue;
+        }
+        meals.add(pinned);
+      }
+      meals.sort((a, b) {
+        final aBoosted = isMealBoosted(a);
+        final bBoosted = isMealBoosted(b);
+        if (aBoosted != bBoosted) return aBoosted ? -1 : 1;
+        return mealDisplayTitle(a).compareTo(mealDisplayTitle(b));
+      });
+      if (!mounted) return;
+      setState(() => _aiSearchResults = meals);
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'BOGO offer browse failed');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(networkErrorMessage(e)), backgroundColor: Colors.red),
+      );
+      _clearHomeSearch();
+    } finally {
+      if (mounted) setState(() => _isAiSearching = false);
+    }
+  }
+
+  void _onHomeOfferTap(Map<String, dynamic> meal) {
+    final isBogo = meal['_bogo_group'] == true ||
+        OfferType.fromString(meal['offer_type']?.toString()) == OfferType.bogo;
+    if (isBogo) {
+      _showBogoOfferMeals();
+      return;
+    }
+    showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart);
   }
 
   Future<void> _fetchUserAddresses({bool preserveActivePin = false}) async {
@@ -1171,7 +1245,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
               destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
               destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
               chefKitchenPins: _chefKitchenPins,
-              onOfferTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
+              onOfferTap: _onHomeOfferTap,
             ),
             SponsoredPlacementBanner(
               destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
@@ -1277,7 +1351,9 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                       _hasActiveSearch
                           ? (_filteredChefId != null
                               ? 'Dishes from ${_filteredChefName ?? 'this chef'}'
-                              : 'Search results')
+                              : (_offerBrowseLabel != null
+                                  ? '$_offerBrowseLabel offers'
+                                  : 'Search results'))
                           : (showFollowing
                               ? 'Kitchens you follow'
                               : (showFavorites ? 'Your favorites' : 'Fresh from the kitchen')),
@@ -1288,9 +1364,11 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                       _hasActiveSearch
                           ? (_filteredChefId != null
                               ? 'Only Available meals from this kitchen'
-                              : (_chefSearchResults.isEmpty
-                                  ? '"${_searchController.text}"'
-                                  : '${_chefSearchResults.length} chef${_chefSearchResults.length == 1 ? '' : 's'} · "${_searchController.text}"'))
+                              : (_offerBrowseLabel == 'BOGO'
+                                  ? 'All Buy 1 Get 1 plates near you'
+                                  : (_chefSearchResults.isEmpty
+                                      ? '"${_searchController.text}"'
+                                      : '${_chefSearchResults.length} chef${_chefSearchResults.length == 1 ? '' : 's'} · "${_searchController.text}"')))
                           : (showFollowing
                               ? 'Live dishes from kitchens you follow'
                               : (showFavorites ? 'Meals you loved' : 'Support your local home chefs')),

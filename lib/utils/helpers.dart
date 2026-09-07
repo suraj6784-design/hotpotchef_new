@@ -11,6 +11,7 @@ import 'app_theme.dart';
 import 'network.dart';
 import 'notification_copy.dart';
 import 'pricing_calculator.dart';
+import '../models/pricing_models.dart';
 
 // Export the theme so all screens automatically inherit it
 export 'app_theme.dart'; 
@@ -1776,11 +1777,43 @@ List<Map<String, dynamic>> flashableOfferMeals(
     if (aBoosted != bBoosted) return aBoosted ? -1 : 1;
     return 0;
   });
-  if (offers.length <= limit) return offers;
-  return offers.sublist(0, limit);
+
+  // One carousel card for all BOGO plates — tap opens the full BOGO list.
+  final bogos = <Map<String, dynamic>>[];
+  final rest = <Map<String, dynamic>>[];
+  for (final meal in offers) {
+    if (OfferType.fromString(meal['offer_type']?.toString()) == OfferType.bogo) {
+      bogos.add(meal);
+    } else {
+      rest.add(meal);
+    }
+  }
+  final collapsed = <Map<String, dynamic>>[...rest];
+  if (bogos.isNotEmpty) {
+    Map<String, dynamic> rep = Map<String, dynamic>.from(bogos.first);
+    for (final meal in bogos) {
+      if ((meal['image_url']?.toString() ?? '').trim().isNotEmpty) {
+        rep = Map<String, dynamic>.from(meal);
+        break;
+      }
+    }
+    rep['_bogo_group'] = true;
+    rep['_bogo_count'] = bogos.length;
+    collapsed.insert(0, rep);
+  }
+
+  if (collapsed.length <= limit) return collapsed;
+  return collapsed.sublist(0, limit);
 }
 
 String offerFlashHeadline(Map<String, dynamic> meal, {DateTime? now}) {
+  if (meal['_bogo_group'] == true) {
+    final code = PricingCalculator.mealPromoCode(meal);
+    if (code != null && PricingCalculator.isOfferGated(meal)) {
+      return 'Use $code';
+    }
+    return 'Use BOGO';
+  }
   if (isMealBoosted(meal, now: now) && PricingCalculator.mealPromoCode(meal) == null) {
     return 'Boosted today';
   }
@@ -1795,6 +1828,14 @@ String offerFlashHeadline(Map<String, dynamic> meal, {DateTime? now}) {
 }
 
 String offerFlashSubhead(Map<String, dynamic> meal) {
+  if (meal['_bogo_group'] == true) {
+    final count = int.tryParse(meal['_bogo_count']?.toString() ?? '') ?? 0;
+    if (count > 1) return '$count plates · tap to see all BOGO deals';
+    return 'Buy 1 Get 1 · tap to browse';
+  }
+  if (OfferType.fromString(meal['offer_type']?.toString()) == OfferType.bogo) {
+    return 'Buy 1 Get 1 · tap to see all BOGO plates';
+  }
   final title = meal['title']?.toString().trim() ?? meal['name']?.toString().trim() ?? '';
   return title.isEmpty ? 'Tap to see this kitchen special' : title;
 }
