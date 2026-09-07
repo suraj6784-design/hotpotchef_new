@@ -59,7 +59,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppTheme.surfaceOf(context),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: AppTheme.dialogShape,
         title: const Text('Multi-Chef Cart Notice', style: TextStyle(fontWeight: FontWeight.bold)),
         content: const Text(
           'Your cart contains dishes from multiple kitchens. Food delivery orders must be placed from a single kitchen at a time. Would you like to clear your cart and proceed with this order?',
@@ -138,7 +138,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: AppTheme.primary.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: AppTheme.radiusMd,
                 border: Border.all(color: AppTheme.primary.withValues(alpha: 0.28)),
               ),
               child: Column(
@@ -209,7 +209,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: Colors.red.shade50,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: AppTheme.radiusMd,
                 border: Border.all(color: Colors.red.shade200),
               ),
               child: Row(
@@ -274,7 +274,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                           imageUrl: item.rawMealDetails['image_url'],
                           width: 50,
                           height: 50,
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: AppTheme.radiusSm,
                         ),
                         const SizedBox(width: 12),
                       ],
@@ -358,7 +358,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     decoration: BoxDecoration(
                       color: AppTheme.primary.withValues(alpha: 0.05),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: AppTheme.radiusMd,
                       border: Border.all(color: AppTheme.primary.withValues(alpha: 0.2)),
                     ),
                     child: DropdownButtonHideUnderline(
@@ -427,7 +427,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                             decoration: BoxDecoration(
                               color: AppTheme.surfaceOf(context),
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: AppTheme.radiusSm,
                               border: Border.all(color: AppTheme.hairlineOf(context)),
                             ),
                             child: Row(
@@ -455,6 +455,8 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                             final pickedSlot = await showDialog<String>(
                               context: context,
                               builder: (ctx) => AlertDialog(
+                                backgroundColor: AppTheme.surfaceOf(context),
+                                shape: AppTheme.dialogShape,
                                 title: const Text('Select Time Slot', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                                 content: SizedBox(
                                   width: double.maxFinite,
@@ -491,7 +493,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                             decoration: BoxDecoration(
                               color: AppTheme.surfaceOf(context),
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: AppTheme.radiusSm,
                               border: Border.all(color: AppTheme.hairlineOf(context)),
                             ),
                             child: Row(
@@ -536,7 +538,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                       Container(
                         decoration: BoxDecoration(
                           color: AppTheme.surfaceOf(context),
-                          borderRadius: BorderRadius.circular(24),
+                          borderRadius: AppTheme.radiusXl,
                           border: Border.all(color: AppTheme.hairlineOf(context)),
                         ),
                         child: Row(
@@ -615,12 +617,10 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
+              color: AppTheme.surfaceOf(context),
               borderRadius: AppTheme.radiusLg,
               boxShadow: AppTheme.softShadow,
-              border: Theme.of(context).brightness == Brightness.dark
-                  ? Border.all(color: Colors.white.withValues(alpha: 0.06))
-                  : null,
+              border: Border.all(color: AppTheme.hairlineOf(context)),
             ),
             child: Row(
               children: [
@@ -628,7 +628,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                 const SizedBox(width: 12),
                 InkWell(
                   onTap: () => _showCartBillBreakup(cartState),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: AppTheme.radiusSm,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
                     child: Column(
@@ -698,7 +698,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: promo.isActive ? AppTheme.surfaceOf(context) : AppTheme.canvasOf(context),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: AppTheme.radiusMd,
                 border: Border.all(
                   color: promo.isActive ? AppTheme.primary : AppTheme.hairlineOf(context),
                 ),

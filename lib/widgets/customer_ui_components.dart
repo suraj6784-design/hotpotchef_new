@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -92,41 +93,46 @@ Widget shareCardPreview(BuildContext context, String text) {
 
 Future<void> showMealShareSheet(BuildContext context, Map<String, dynamic> meal) {
   final text = mealShareText(meal);
+  final isDark = Theme.of(context).brightness == Brightness.dark;
   return showModalBottomSheet<void>(
     context: context,
-    builder: (ctx) => SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('Share this dish', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.onSurfaceOf(ctx))),
-            const SizedBox(height: 8),
-            shareCardPreview(ctx, text),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              style: FilledButton.styleFrom(
-                backgroundColor: AppTheme.primary,
-                foregroundColor: Colors.white,
+    backgroundColor: Colors.transparent,
+    builder: (ctx) => Container(
+      decoration: AppTheme.bottomSheetDecoration(isDark: isDark),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Share this dish', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.onSurfaceOf(ctx))),
+              const SizedBox(height: 8),
+              shareCardPreview(ctx, text),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppTheme.primary,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  shareTextWithApps(text);
+                },
+                icon: const Icon(Icons.ios_share_rounded),
+                label: const Text('Share · WhatsApp, Instagram…', style: TextStyle(fontWeight: FontWeight.w800)),
               ),
-              onPressed: () {
-                Navigator.pop(ctx);
-                shareTextWithApps(text);
-              },
-              icon: const Icon(Icons.ios_share_rounded),
-              label: const Text('Share · WhatsApp, Instagram…', style: TextStyle(fontWeight: FontWeight.w800)),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: text));
-                if (ctx.mounted) Navigator.pop(ctx);
-              },
-              icon: const Icon(Icons.copy_outlined),
-              label: const Text('Copy card', style: TextStyle(fontWeight: FontWeight.w700)),
-            ),
-          ],
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: text));
+                  if (ctx.mounted) Navigator.pop(ctx);
+                },
+                icon: const Icon(Icons.copy_outlined),
+                label: const Text('Copy card', style: TextStyle(fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
         ),
       ),
     ),
@@ -150,49 +156,54 @@ Future<void> showPlateShareSheet(
   if (!context.mounted) return;
   final text = plateShareText(chefName: chefName, items: items, fssai: fssai);
 
+  final isDark = Theme.of(context).brightness == Brightness.dark;
   return showModalBottomSheet<void>(
     context: context,
-    builder: (ctx) => SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Share your plate',
-              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.onSurfaceOf(ctx)),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Share who cooked it — and the FSSAI number when the kitchen has listed one. The link opens this dish in HotPotChef.',
-              style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
-            ),
-            const SizedBox(height: 10),
-            shareCardPreview(ctx, text),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              style: FilledButton.styleFrom(
-                backgroundColor: AppTheme.primary,
-                foregroundColor: Colors.white,
+    backgroundColor: Colors.transparent,
+    builder: (ctx) => Container(
+      decoration: AppTheme.bottomSheetDecoration(isDark: isDark),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Share your plate',
+                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.onSurfaceOf(ctx)),
               ),
-              onPressed: () {
-                Navigator.pop(ctx);
-                shareTextWithApps(text);
-              },
-              icon: const Icon(Icons.ios_share_rounded),
-              label: const Text('Share · WhatsApp, Instagram…', style: TextStyle(fontWeight: FontWeight.w800)),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: text));
-                if (ctx.mounted) Navigator.pop(ctx);
-              },
-              icon: const Icon(Icons.copy_outlined),
-              label: const Text('Copy card', style: TextStyle(fontWeight: FontWeight.w700)),
-            ),
-          ],
+              const SizedBox(height: 4),
+              const Text(
+                'Share who cooked it — and the FSSAI number when the kitchen has listed one. The link opens this dish in HotPotChef.',
+                style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+              ),
+              const SizedBox(height: 10),
+              shareCardPreview(ctx, text),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppTheme.primary,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  shareTextWithApps(text);
+                },
+                icon: const Icon(Icons.ios_share_rounded),
+                label: const Text('Share · WhatsApp, Instagram…', style: TextStyle(fontWeight: FontWeight.w800)),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: text));
+                  if (ctx.mounted) Navigator.pop(ctx);
+                },
+                icon: const Icon(Icons.copy_outlined),
+                label: const Text('Copy card', style: TextStyle(fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
         ),
       ),
     ),
@@ -214,7 +225,7 @@ class DispatchPackedPhoto extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: AppTheme.radiusMd,
       child: Stack(
         children: [
           CachedNetworkImage(
@@ -234,7 +245,7 @@ class DispatchPackedPhoto extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
                 color: Colors.black.withValues(alpha: 0.55),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: AppTheme.radiusSm,
               ),
               child: Text(
                 caption,
@@ -325,8 +336,7 @@ Widget buildStatusBadge(String status) {
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
     decoration: BoxDecoration(
       color: color.withValues(alpha: 0.15),
-      borderRadius: BorderRadius.circular(8),
-      border: Border.all(color: color.withValues(alpha: 0.4)),
+      borderRadius: AppTheme.radiusSm,
     ),
     child: Text(
       status.toUpperCase(),
@@ -469,6 +479,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
   bool _loading = true;
   String _name = '';
   String _fssai = '';
+  String _fssaiStatus = '';
   String _city = '';
   String _memberSince = '';
   String _story = '';
@@ -506,7 +517,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
       try {
         final row = await client
             .from('users')
-            .select('name, full_name, fssai_number, city, address, created_at')
+            .select('name, full_name, fssai_number, fssai_verification_status, city, address, created_at')
             .eq('id', chefId)
             .maybeSingle();
         if (row != null) profile = Map<String, dynamic>.from(row);
@@ -515,7 +526,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
         try {
           final row = await client
               .from('users')
-              .select('name, full_name, fssai_number, created_at')
+              .select('name, full_name, fssai_number, fssai_verification_status, created_at')
               .eq('id', chefId)
               .maybeSingle();
           if (row != null) profile = Map<String, dynamic>.from(row);
@@ -575,6 +586,9 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
         'card_locale': cardLocale,
       }, locale: cardLocale);
       final listedFssai = profile?['fssai_number']?.toString().trim() ?? '';
+      final fssaiStatus = normalizeFssaiVerificationStatus(
+        profile?['fssai_verification_status']?.toString(),
+      );
       final city = kitchenStoryArea(
         city: profile?['city']?.toString(),
         address: profile?['address']?.toString(),
@@ -587,6 +601,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
         _name = resolvedName;
         _cardLocale = cardLocale;
         if (listedFssai.isNotEmpty) _fssai = listedFssai;
+        _fssaiStatus = fssaiStatus;
         _city = city;
         _memberSince = joined == null ? '' : formatAppDate(joined);
         _story = kitchen?['kitchen_story']?.toString().trim() ?? '';
@@ -617,7 +632,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
     final muted = isDark ? Colors.grey.shade400 : AppTheme.textMuted;
 
     return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: AppTheme.dialogShape,
       backgroundColor: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
       title: Row(
         children: [
@@ -649,7 +664,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
                           color: AppTheme.primary.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: AppTheme.radiusSm,
                         ),
                         child: Text(
                           chefCardLocaleLabel(_cardLocale),
@@ -672,9 +687,29 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Verified Home Chef Partner',
-              style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13),
+            Builder(
+              builder: (context) {
+                final verified = dinerFssaiIsVerified(_fssaiStatus);
+                final status = normalizeFssaiVerificationStatus(_fssaiStatus);
+                final trustLabel = verified
+                    ? 'FSSAI verified home kitchen'
+                    : dinerFssaiTrustLabel(
+                        fssaiNumber: _fssai,
+                        verificationStatus: _fssaiStatus,
+                      );
+                final Color trustColor;
+                if (verified) {
+                  trustColor = Colors.green;
+                } else if (status == 'pending') {
+                  trustColor = Colors.orange;
+                } else {
+                  trustColor = muted;
+                }
+                return Text(
+                  trustLabel,
+                  style: TextStyle(color: trustColor, fontWeight: FontWeight.bold, fontSize: 13),
+                );
+              },
             ),
             const SizedBox(height: 14),
             if (_loading)
@@ -711,7 +746,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
             if (_liveUrl.isNotEmpty) ...[
               const SizedBox(height: 12),
               ClipRRect(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: AppTheme.radiusMd,
                 child: Stack(
                   children: [
                     CachedNetworkImage(
@@ -728,7 +763,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: Colors.black.withValues(alpha: 0.55),
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: AppTheme.radiusSm,
                         ),
                         child: Text(
                           _liveLabel.isEmpty ? 'Live from the kitchen' : _liveLabel,
@@ -749,7 +784,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
                   itemCount: _photos.length,
                   separatorBuilder: (_, _) => const SizedBox(width: 8),
                   itemBuilder: (context, index) => ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: AppTheme.radiusSm,
                     child: CachedNetworkImage(
                       imageUrl: _photos[index],
                       width: 72,
@@ -854,7 +889,7 @@ Future<bool> confirmReplaceKitchenCart(BuildContext context) async {
     context: context,
     builder: (ctx) => AlertDialog(
       backgroundColor: AppTheme.surfaceOf(ctx),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: AppTheme.dialogShape,
       title: Text(
         'Different kitchen',
         style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(ctx)),
@@ -984,9 +1019,17 @@ void showAddedToCartSnack(
 }) {
   final messenger = ScaffoldMessenger.of(context);
   messenger.clearSnackBars();
+  SemanticsService.sendAnnouncement(
+    View.of(context),
+    message,
+    TextDirection.ltr,
+  );
   messenger.showSnackBar(
     SnackBar(
-      content: Text(message),
+      content: Semantics(
+        liveRegion: true,
+        child: Text(message),
+      ),
       backgroundColor: AppTheme.primary,
       behavior: SnackBarBehavior.floating,
       duration: const Duration(seconds: 3),
@@ -1022,7 +1065,7 @@ Widget _mealInfoChip({
     padding: const EdgeInsets.all(12),
     decoration: BoxDecoration(
       color: background,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: AppTheme.radiusMd,
     ),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1094,6 +1137,12 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
     final chefName = chefDisplayName(meal);
     final chefId = meal['chef_id']?.toString() ?? '';
     final fssai = meal['fssai_number']?.toString() ?? '';
+    final fssaiStatus = meal['fssai_verification_status']?.toString();
+    final fssaiVerified = dinerFssaiIsVerified(fssaiStatus);
+    final fssaiTrustLine = dinerFssaiTrustLabel(
+      fssaiNumber: fssai,
+      verificationStatus: fssaiStatus,
+    );
     final serviceType = meal['service_type']?.toString() ?? 'Delivery, Pickup';
     final timeSlot = meal['time_slot']?.toString() ?? 'Available Today';
 
@@ -1163,7 +1212,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                           decoration: BoxDecoration(
                             color: AppTheme.accent.withValues(alpha: 0.18),
-                            borderRadius: BorderRadius.circular(20),
+                            borderRadius: AppTheme.radiusXl,
                             border: Border.all(color: AppTheme.accent.withValues(alpha: 0.45)),
                           ),
                           child: const Row(
@@ -1185,7 +1234,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                           decoration: BoxDecoration(
                             color: AppTheme.primary.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(20),
+                            borderRadius: AppTheme.radiusXl,
                             border: Border.all(color: AppTheme.primary.withValues(alpha: 0.35)),
                           ),
                           child: Row(
@@ -1211,7 +1260,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                           decoration: BoxDecoration(
                             color: AppTheme.accent.withValues(alpha: 0.14),
-                            borderRadius: BorderRadius.circular(20),
+                            borderRadius: AppTheme.radiusXl,
                             border: Border.all(color: AppTheme.accent.withValues(alpha: 0.40)),
                           ),
                           child: Row(
@@ -1284,13 +1333,13 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                       const SizedBox(height: 24),
                       InkWell(
                         onTap: () => showChefProfileDialog(context, chefId, chefName, fssai),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: AppTheme.radiusMd,
                         child: Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
                             color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: isDark ? Colors.white12 : Colors.grey.shade200),
+                            borderRadius: AppTheme.radiusLg,
+                            border: Border.all(color: AppTheme.hairlineOf(context)),
                             boxShadow: isDark ? [] : AppTheme.softShadow,
                           ),
                           child: Row(
@@ -1346,10 +1395,12 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                                         const SizedBox(height: 4),
                                         Text(
                                           fssai.isNotEmpty
-                                              ? '${copy.fssaiListed} $fssai • ${copy.tapForInfo}'
+                                              ? '$fssaiTrustLine • ${copy.tapForInfo}'
                                               : '${copy.fssaiMissing} • ${copy.tapForInfo}',
                                           style: TextStyle(
-                                            color: fssai.isNotEmpty ? Colors.green : AppTheme.textMuted,
+                                            color: fssaiVerified
+                                                ? Colors.green
+                                                : (isDark ? Colors.grey.shade400 : AppTheme.textMuted),
                                             fontSize: 12,
                                             fontWeight: FontWeight.w600,
                                           ),
@@ -1407,14 +1458,14 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                                   _selectedAddOnIds.add(addon.id);
                                 }
                               }),
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: AppTheme.radiusMd,
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                                 decoration: BoxDecoration(
                                   color: selected
                                       ? AppTheme.primary.withValues(alpha: 0.1)
                                       : (isDark ? AppTheme.surfaceDark : AppTheme.surfaceMutedLight),
-                                  borderRadius: BorderRadius.circular(12),
+                                  borderRadius: AppTheme.radiusMd,
                                   border: Border.all(color: selected ? AppTheme.primary : AppTheme.hairlineOf(context)),
                                 ),
                                 child: Row(
@@ -1483,21 +1534,27 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                 children: [
                   Container(
                     decoration: BoxDecoration(
-                      border: Border.all(color: isDark ? Colors.white24 : Colors.grey.shade300),
-                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppTheme.hairlineOf(context)),
+                      borderRadius: AppTheme.radiusLg,
                     ),
                     child: Row(
                       children: [
                         IconButton(
+                          tooltip: 'Decrease quantity',
                           icon: const Icon(Icons.remove, size: 20, color: AppTheme.primary),
                           onPressed: _quantity > 1 ? () => setState(() => _quantity--) : null,
                         ),
-                        Text('$_quantity',
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 18,
-                                color: isDark ? AppTheme.textMainDark : AppTheme.textMain)),
+                        Semantics(
+                          liveRegion: true,
+                          label: 'Quantity $_quantity',
+                          child: Text('$_quantity',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18,
+                                  color: isDark ? AppTheme.textMainDark : AppTheme.textMain)),
+                        ),
                         IconButton(
+                          tooltip: 'Increase quantity',
                           icon: const Icon(Icons.add, size: 20, color: AppTheme.primary),
                           onPressed: _quantity < maxStock
                               ? () => setState(() => _quantity++)
@@ -1515,13 +1572,20 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                   ),
                   const SizedBox(width: 16),
                   Expanded(
-                    child: ElevatedButton(
+                    child: Semantics(
+                      button: true,
+                      enabled: isMealAvailableForCart(meal),
+                      label: isMealAvailableForCart(meal)
+                          ? 'Add $_quantity portions to cart'
+                          : 'Meal sold out',
+                      child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppTheme.primary,
                         foregroundColor: Colors.white,
                         disabledBackgroundColor: Colors.grey.shade400,
                         padding: const EdgeInsets.symmetric(vertical: 18),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        minimumSize: const Size(0, 48),
+                        shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusLg),
                         elevation: 0,
                       ),
                       onPressed: !isMealAvailableForCart(meal)
@@ -1548,6 +1612,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                             : 'Sold out',
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                       ),
+                    ).successPulse(),
                     ),
                   ),
                 ],
@@ -1563,7 +1628,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                     foregroundColor: const Color(0xFF25D366),
                     side: const BorderSide(color: Color(0xFF25D366)),
                     padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusLg),
                   ),
                 ),
               ),
@@ -1583,7 +1648,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                     foregroundColor: AppTheme.primary,
                     side: const BorderSide(color: AppTheme.primary),
                     padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusLg),
                   ),
                 ),
               ),
@@ -1799,12 +1864,10 @@ class _AppCardState extends State<AppCard> {
         padding: widget.padding,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: widget.backgroundColor ?? (isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight),
+          color: widget.backgroundColor ?? AppTheme.surfaceOf(context),
           borderRadius: AppTheme.radiusLg,
           boxShadow: isDark ? const [] : AppTheme.softShadow,
-          border: Border.all(
-            color: isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFEDE6E0),
-          ),
+          border: Border.all(color: AppTheme.hairlineOf(context)),
         ),
         child: widget.child,
       ),

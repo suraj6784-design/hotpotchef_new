@@ -40,7 +40,7 @@ class AppTheme {
 
   // Text
   static const Color textMain = Color(0xFF241F1C);
-  static const Color textMuted = Color(0xFF8C8279);
+  static const Color textMuted = Color(0xFF6F675F);
   static const Color textMainLight = Colors.black87;
   static const Color textMainDark = Colors.white;
 
@@ -133,6 +133,65 @@ class AppTheme {
       color: isDark ? surfaceDark : surfaceLight,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(rXl)),
       boxShadow: heavyShadow,
+    );
+  }
+
+  static ShapeBorder get sheetShape =>
+      const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(rXl)));
+
+  static ShapeBorder get dialogShape =>
+      const RoundedRectangleBorder(borderRadius: radiusLg);
+
+  // ---------------------------------------------------------------------------
+  // Typography + chip helpers (premium uniformity)
+  // ---------------------------------------------------------------------------
+  static TextStyle sectionTitleOf(BuildContext context) => GoogleFonts.poppins(
+        fontSize: 20,
+        fontWeight: FontWeight.w900,
+        color: onSurfaceOf(context),
+        height: 1.2,
+      );
+
+  static TextStyle cardTitleOf(BuildContext context) => GoogleFonts.poppins(
+        fontSize: 15,
+        fontWeight: FontWeight.w700,
+        color: onSurfaceOf(context),
+        height: 1.25,
+      );
+
+  static TextStyle bodyOf(BuildContext context) => GoogleFonts.poppins(
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+        color: onSurfaceOf(context),
+        height: 1.4,
+      );
+
+  static TextStyle metaOf(BuildContext context) => GoogleFonts.poppins(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        color: textMuted,
+        height: 1.35,
+      );
+
+  static BoxDecoration filterChipDecoration(
+    BuildContext context, {
+    required bool selected,
+  }) {
+    return BoxDecoration(
+      color: selected ? primary : surfaceOf(context),
+      borderRadius: radiusXl,
+      border: Border.all(color: selected ? primary : hairlineOf(context)),
+      boxShadow: selected ? brandGlow(opacity: 0.22) : const [],
+    );
+  }
+
+  static ButtonStyle secondaryOutline(BuildContext context) {
+    return OutlinedButton.styleFrom(
+      foregroundColor: primary,
+      minimumSize: const Size(0, 48),
+      side: const BorderSide(color: primary, width: 1.4),
+      shape: const RoundedRectangleBorder(borderRadius: radiusMd),
+      textStyle: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700),
     );
   }
 

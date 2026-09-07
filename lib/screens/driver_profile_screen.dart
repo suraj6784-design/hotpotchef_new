@@ -8,7 +8,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'map_picker_screen.dart';
 import 'driver_id_card_screen.dart';
 import '../utils/app_page.dart';
-import '../utils/app_theme.dart';
+import '../utils/helpers.dart';
 import '../utils/pinned_address.dart';
 import '../utils/gst_invoice.dart';
 import '../widgets/avatar_upload.dart';
@@ -103,7 +103,8 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
         final rawAadhaar = userData['aadhaar_masked']?.toString() ?? userData['aadhaar_number']?.toString() ?? '';
         _aadhaarMaskedController.text = maskAadhaar(rawAadhaar);
 
-        _panController.text = userData['pan_number']?.toString() ?? userData['pan']?.toString() ?? '';
+        final rawPan = userData['pan_number']?.toString() ?? userData['pan']?.toString() ?? '';
+        _panController.text = maskPan(rawPan);
         _bloodGroup = userData['blood_group']?.toString() ?? 'O+';
         _avatarUrl = userData['avatar_url']?.toString();
 
@@ -238,7 +239,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
         'full_name': name,
         'phone': phone,
         'emergency_phone': emergency,
-        'pan_number': pan,
+        if (_panRegex.hasMatch(pan)) 'pan_number': pan,
         'blood_group': _bloodGroup,
         'address': fullAddress,
         'house_no': house,
@@ -492,7 +493,9 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                     maxLength: 10,
                     inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]'))],
                     validator: (v) {
-                      if (v != null && v.isNotEmpty && !_panRegex.hasMatch(v.trim().toUpperCase())) {
+                      final t = v?.trim().toUpperCase() ?? '';
+                      if (t.isEmpty || t.contains('*')) return null;
+                      if (!_panRegex.hasMatch(t)) {
                         return 'Invalid PAN format';
                       }
                       return null;

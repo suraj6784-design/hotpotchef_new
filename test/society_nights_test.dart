@@ -46,5 +46,62 @@ void main() {
         contains('Society night at Green Valley A: Building Thali from Meera'),
       );
     });
+
+    test('hard-matches society_label against diner address', () {
+      expect(
+        societyLabelMatchesAddress('Green Valley A', {
+          'society_name': 'Green Valley Society',
+          'wing': 'A',
+          'flat_no': '1204',
+        }),
+        isTrue,
+      );
+      expect(
+        societyLabelMatchesAddress('Green Valley A', {
+          'society_name': 'Other Heights',
+          'wing': 'B',
+        }),
+        isFalse,
+      );
+
+      final matched = societyNightMeals(
+        [
+          {
+            'id': '1',
+            'title': 'Building Thali',
+            'is_society_night': true,
+            'society_label': 'Green Valley A',
+            'quantity': 12,
+            'status': 'Available',
+            'price': 149,
+          },
+        ],
+        destinationAddress: {
+          'society_name': 'Green Valley',
+          'wing': 'A',
+          'house_no': '12',
+        },
+      );
+      expect(matched, hasLength(1));
+
+      final filtered = societyNightMeals(
+        [
+          {
+            'id': '1',
+            'title': 'Building Thali',
+            'is_society_night': true,
+            'society_label': 'Green Valley A',
+            'quantity': 12,
+            'status': 'Available',
+            'price': 149,
+          },
+        ],
+        destinationAddress: {
+          'society_name': 'Lakeview Residency',
+          'wing': 'C',
+        },
+      );
+      expect(filtered, isEmpty);
+    });
   });
 }

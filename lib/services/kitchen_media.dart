@@ -5,26 +5,135 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
-Future<ImageSource?> pickKitchenImageSource(BuildContext context) {
-  return showModalBottomSheet<ImageSource>(
+import '../utils/app_theme.dart';
+import '../widgets/app_widgets.dart';
+
+const kKitchenPhotoChecklist = <String>[
+  'Bright natural light — avoid heavy filters',
+  'Plated food or a clean kitchen counter',
+  'No children’s faces or private papers in frame',
+  'Fill the frame; one hero dish works best',
+  'Fresh kitchen shots show as FRESH for 4 hours',
+];
+
+/// Brand photography tips before camera/gallery.
+Future<void> showKitchenPhotoChecklist(BuildContext context) {
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+  return showModalBottomSheet<void>(
     context: context,
-    builder: (ctx) => SafeArea(
+    backgroundColor: Colors.transparent,
+    builder: (ctx) => Container(
+      decoration: AppTheme.bottomSheetDecoration(isDark: isDark),
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 28),
       child: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ListTile(
-            leading: const Icon(Icons.photo_camera_outlined),
-            title: const Text('Take a kitchen photo'),
-            onTap: () => Navigator.pop(ctx, ImageSource.camera),
+          Text(
+            'Kitchen photo checklist',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: AppTheme.onSurfaceOf(context),
+            ),
+          ).popIn(),
+          const SizedBox(height: 8),
+          Text(
+            'Good photos build diner trust. Use these before you shoot.',
+            style: TextStyle(fontSize: 13, height: 1.35, color: AppTheme.textMuted),
           ),
-          ListTile(
-            leading: const Icon(Icons.photo_library_outlined),
-            title: const Text('Choose from gallery'),
-            onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+          const SizedBox(height: 14),
+          for (var i = 0; i < kKitchenPhotoChecklist.length; i++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.check_circle_outline, size: 18, color: AppTheme.primary),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      kKitchenPhotoChecklist[i],
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.35,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.onSurfaceOf(context),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ).entrance(index: i),
+          const SizedBox(height: 8),
+          Semantics(
+            button: true,
+            label: 'Got it',
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(48),
+              ),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Got it'),
+            ),
           ),
         ],
       ),
     ),
+  );
+}
+
+Future<ImageSource?> pickKitchenImageSource(BuildContext context) {
+  return showModalBottomSheet<ImageSource>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    builder: (ctx) {
+      final isDark = Theme.of(ctx).brightness == Brightness.dark;
+      return Container(
+        decoration: AppTheme.bottomSheetDecoration(isDark: isDark),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Good light, plated food or clean counter, no faces of kids. Fresh photos show as FRESH for 4 hours.',
+                      style: TextStyle(fontSize: 12, height: 1.35, color: AppTheme.textMuted),
+                    ),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          showKitchenPhotoChecklist(context);
+                        },
+                        child: const Text('Full photo checklist'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_camera_outlined),
+                title: const Text('Take a kitchen photo'),
+                onTap: () => Navigator.pop(ctx, ImageSource.camera),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('Choose from gallery'),
+                onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
   );
 }
 

@@ -122,7 +122,7 @@ class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      'LIVE OFFERS',
+                      'HOME OFFERS',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w900,
@@ -148,7 +148,7 @@ class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
                       shimmer: _shimmer,
                       pulse: _pulse,
                       onTap: () => widget.onOfferTap(meal),
-                    );
+                    ).entrance(index: index.clamp(0, 4));
                   },
                 ),
               ),
@@ -309,7 +309,7 @@ class _OfferFlashCard extends StatelessWidget {
                                           border: Border.all(color: Colors.white.withValues(alpha: 0.4)),
                                         ),
                                         child: const Text(
-                                          'BOOSTED',
+                                          'PAID PROMO',
                                           style: TextStyle(
                                             color: Colors.white,
                                             fontSize: 11,

@@ -16,24 +16,52 @@ import '../utils/app_theme.dart';
 // ---------------------------------------------------------------------------
 
 /// Consistent entrance animations used across the app.
+/// Honors system "reduce motion" / disableAnimations.
 extension AppMotion on Widget {
+  static bool _reduce(BuildContext? context) {
+    if (context == null) return false;
+    return MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+  }
+
   /// Fade + gentle upward slide. Pass [index] for a staggered list effect.
   Widget entrance({int index = 0, Duration? delay}) {
-    final d = delay ?? Duration(milliseconds: 60 * index);
-    return animate()
-        .fadeIn(duration: 420.ms, delay: d, curve: Curves.easeOut)
-        .slideY(begin: 0.12, end: 0, duration: 420.ms, delay: d, curve: Curves.easeOutCubic);
+    return Builder(
+      builder: (context) {
+        if (_reduce(context)) return this;
+        final d = delay ?? Duration(milliseconds: 60 * index);
+        return animate()
+            .fadeIn(duration: 420.ms, delay: d, curve: Curves.easeOut)
+            .slideY(begin: 0.12, end: 0, duration: 420.ms, delay: d, curve: Curves.easeOutCubic);
+      },
+    );
   }
 
   /// Subtle scale-in, good for hero elements and badges.
   Widget popIn({Duration? delay}) {
-    return animate().fadeIn(duration: 300.ms, delay: delay).scaleXY(
-          begin: 0.92,
-          end: 1,
-          duration: 380.ms,
-          delay: delay,
-          curve: Curves.easeOutBack,
-        );
+    return Builder(
+      builder: (context) {
+        if (_reduce(context)) return this;
+        return animate().fadeIn(duration: 300.ms, delay: delay).scaleXY(
+              begin: 0.92,
+              end: 1,
+              duration: 380.ms,
+              delay: delay,
+              curve: Curves.easeOutBack,
+            );
+      },
+    );
+  }
+
+  /// Soft success pulse for confirmations (add-to-cart, FRESH badge).
+  Widget successPulse({Duration? delay}) {
+    return Builder(
+      builder: (context) {
+        if (_reduce(context)) return this;
+        return animate(delay: delay)
+            .fadeIn(duration: 240.ms)
+            .scaleXY(begin: 0.96, end: 1, duration: 320.ms, curve: Curves.easeOutBack);
+      },
+    );
   }
 }
 
@@ -120,17 +148,22 @@ class _GradientButtonState extends State<GradientButton> {
       ),
     );
 
-    return GestureDetector(
-      onTap: enabled
-          ? () {
-              AppHaptics.light();
-              widget.onPressed?.call();
-            }
-          : null,
-      onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
-      onTapUp: enabled ? (_) => setState(() => _pressed = false) : null,
-      onTapCancel: () => setState(() => _pressed = false),
-      child: widget.expand ? SizedBox(width: double.infinity, child: button) : button,
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: widget.loading ? '${widget.label}, loading' : widget.label,
+      child: GestureDetector(
+        onTap: enabled
+            ? () {
+                AppHaptics.light();
+                widget.onPressed?.call();
+              }
+            : null,
+        onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
+        onTapUp: enabled ? (_) => setState(() => _pressed = false) : null,
+        onTapCancel: () => setState(() => _pressed = false),
+        child: widget.expand ? SizedBox(width: double.infinity, child: button) : button,
+      ),
     );
   }
 }
@@ -687,40 +720,52 @@ class _HubDockButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 280),
-        curve: Curves.easeOutCubic,
-        padding: EdgeInsets.symmetric(horizontal: selected ? 18 : 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: selected ? AppTheme.primary.withValues(alpha: 0.14) : Colors.transparent,
-          borderRadius: BorderRadius.circular(30),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Badge(
-              label: Text('${destination.badgeCount}'),
-              isLabelVisible: destination.badgeCount > 0,
-              child: Icon(
-                selected ? destination.selectedIcon : destination.icon,
-                color: selected ? AppTheme.primary : AppTheme.textMuted,
-                size: 22,
-              ),
+    final badge = destination.badgeCount > 0 ? ', ${destination.badgeCount} items' : '';
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: '${destination.label}$badge',
+      child: GestureDetector(
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+          child: AnimatedContainer(
+            duration: MediaQuery.disableAnimationsOf(context)
+                ? Duration.zero
+                : const Duration(milliseconds: 280),
+            curve: Curves.easeOutCubic,
+            padding: EdgeInsets.symmetric(horizontal: selected ? 18 : 14, vertical: 10),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: selected ? AppTheme.primary.withValues(alpha: 0.14) : Colors.transparent,
+              borderRadius: BorderRadius.circular(30),
             ),
-            if (selected) ...[
-              const SizedBox(width: 6),
-              Text(
-                destination.label,
-                style: const TextStyle(
-                  color: AppTheme.primary,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Badge(
+                  label: Text('${destination.badgeCount}'),
+                  isLabelVisible: destination.badgeCount > 0,
+                  child: Icon(
+                    selected ? destination.selectedIcon : destination.icon,
+                    color: selected ? AppTheme.primary : AppTheme.textMuted,
+                    size: 22,
+                  ),
                 ),
-              ),
-            ],
-          ],
+                if (selected) ...[
+                  const SizedBox(width: 6),
+                  Text(
+                    destination.label,
+                    style: const TextStyle(
+                      color: AppTheme.primary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ),
       ),
     );

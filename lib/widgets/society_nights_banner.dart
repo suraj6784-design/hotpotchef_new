@@ -11,6 +11,7 @@ class SocietyNightsBanner extends StatefulWidget {
     this.excludedChefIds = const {},
     this.destinationLat,
     this.destinationLng,
+    this.destinationAddress,
     this.chefKitchenPins = const {},
     required this.onNightTap,
   });
@@ -18,6 +19,7 @@ class SocietyNightsBanner extends StatefulWidget {
   final Set<String> excludedChefIds;
   final double? destinationLat;
   final double? destinationLng;
+  final Map<String, dynamic>? destinationAddress;
   final Map<String, Map<String, dynamic>> chefKitchenPins;
   final ValueChanged<Map<String, dynamic>> onNightTap;
 
@@ -47,9 +49,24 @@ class _SocietyNightsBannerState extends State<SocietyNightsBanner> {
           excludedChefIds: widget.excludedChefIds,
           destinationLat: widget.destinationLat,
           destinationLng: widget.destinationLng,
+          destinationAddress: widget.destinationAddress,
           chefKitchenPins: widget.chefKitchenPins,
         );
-        if (nights.isEmpty) return const SizedBox.shrink();
+        if (nights.isEmpty) {
+          final anySociety = (snapshot.data ?? const []).any(isSocietyNight);
+          final hasPin = widget.destinationAddress != null ||
+              (widget.destinationLat != null && widget.destinationLng != null);
+          if (anySociety && hasPin && widget.destinationAddress != null) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
+              child: Text(
+                'Society nights nearby are hidden — they are not listed for your society / wing.',
+                style: TextStyle(fontSize: 12, color: AppTheme.textMuted, fontWeight: FontWeight.w600),
+              ),
+            );
+          }
+          return const SizedBox.shrink();
+        }
 
         return Padding(
           padding: const EdgeInsets.fromLTRB(0, 4, 0, 10),

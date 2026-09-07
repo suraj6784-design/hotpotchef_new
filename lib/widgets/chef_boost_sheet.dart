@@ -8,15 +8,16 @@ import '../utils/helpers.dart';
 import '../utils/network.dart';
 
 Future<void> showChefBoostSheet(BuildContext context, Map<String, dynamic> meal) {
+  final isDark = Theme.of(context).brightness == Brightness.dark;
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    backgroundColor: Colors.transparent,
+    builder: (ctx) => Container(
+      decoration: AppTheme.bottomSheetDecoration(isDark: isDark),
+      child: ChefBoostSheet(meal: meal),
     ),
-    builder: (ctx) => ChefBoostSheet(meal: meal),
   );
 }
 
@@ -109,7 +110,9 @@ class _ChefBoostSheetState extends State<ChefBoostSheet> {
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${widget.meal['title'] ?? 'Dish'} is now first on LIVE OFFERS until midnight.'),
+          content: Text(
+            '${widget.meal['title'] ?? 'Dish'} is now a paid Home placement (paid promotion) until midnight.',
+          ),
           backgroundColor: Colors.green,
         ),
       );
@@ -139,7 +142,6 @@ class _ChefBoostSheetState extends State<ChefBoostSheet> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final title = widget.meal['title']?.toString() ?? 'This dish';
     final until = formatAppTime(boostEndsAtLocalMidnight(DateTime.now()));
 
     return Padding(
@@ -153,8 +155,8 @@ class _ChefBoostSheetState extends State<ChefBoostSheet> {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: isDark ? Colors.white24 : Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(2),
+                color: AppTheme.hairlineOf(context),
+                borderRadius: AppTheme.radiusXl,
               ),
             ),
           ),
@@ -169,7 +171,7 @@ class _ChefBoostSheetState extends State<ChefBoostSheet> {
           ),
           const SizedBox(height: 8),
           Text(
-            '$title will sit first on the diner LIVE OFFERS strip until $until. This is a test Razorpay charge of ₹$kChefBoostRupees — it is not taken from diner orders.',
+            '₹$kChefBoostRupees buys a paid Home placement (paid promotion) — this dish first on diner Home offers until $until. Charged to your kitchen — not taken from diner orders.',
             style: TextStyle(fontSize: 14, height: 1.4, color: isDark ? Colors.grey.shade400 : AppTheme.textMuted),
           ),
           const SizedBox(height: 20),
