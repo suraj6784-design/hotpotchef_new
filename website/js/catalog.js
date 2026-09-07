@@ -31,7 +31,10 @@
       t === 'guest' ||
       t === 'user account' ||
       t === 'test' ||
-      t.indexOf('test') === 0
+      t.indexOf('test') === 0 ||
+      t.indexOf('discount') === 0 ||
+      t.indexOf('promo') === 0 ||
+      t.indexOf('fest') === 0
     ) {
       return false;
     }
@@ -39,6 +42,9 @@
     if (/^hungry\d+$/i.test(title)) return false;
     if (/^user[_]?hungry/i.test(title)) return false;
     if (/^driver\d+$/i.test(title)) return false;
+    // Placeholder rows often reuse the chef/login name as the dish title.
+    var chef = norm(meal.chef_name || meal.local_kitchen_name || '');
+    if (chef && t === chef) return false;
     return true;
   }
 
@@ -94,7 +100,7 @@
       api.escapeHtml(chef) +
       '</p>' +
       '<p class="catalog-price">' +
-      api.escapeHtml(price || 'Price in app') +
+      api.escapeHtml(price) +
       '</p>' +
       '</div></a>'
     );
@@ -218,7 +224,7 @@
     setStatus('Loading neighbourhood plates…');
     try {
       var rows = await api.supabaseGet(
-        'meals?status=eq.Available&select=id,title,price,image_url,chef_name,chef_id,is_veg,created_at&order=created_at.desc&limit=' +
+        'meals?status=eq.Available&price=gt.0&select=id,title,price,image_url,chef_name,chef_id,is_veg,created_at&order=created_at.desc&limit=' +
           LIMIT
       );
       if (!rows || !rows.length) {
@@ -227,6 +233,9 @@
         setStatus('No Available plates right now. Open the app for kitchens near you.');
         return;
       }
+
+      // Keep only orderable, non-seed rows before resolving kitchen labels.
+      rows = rows.filter(isCatalogWorthy);
 
       var chefIds = [];
       var seen = {};
