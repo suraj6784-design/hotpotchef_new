@@ -755,7 +755,8 @@ BEGIN
   FROM (
     SELECT
       o.id,
-      o.order_id,
+      -- orders store the UUID in id only (no order_id column)
+      NULL::text AS order_id,
       o.created_at,
       o.status,
       coalesce(

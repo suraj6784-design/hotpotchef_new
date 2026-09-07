@@ -365,6 +365,23 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> with SingleTicker
     );
   }
 
+  Future<void> _confirmLogout() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Log out?'),
+        content: const Text('You will leave Platform ops and return to the customer feed.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Log out')),
+        ],
+      ),
+    );
+    if (ok == true && mounted) {
+      await AuthSession.logout(context);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_checking) {
@@ -372,7 +389,16 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> with SingleTicker
     }
     if (!_allowed) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Platform ops')),
+        appBar: AppBar(
+          title: const Text('Platform ops'),
+          actions: [
+            IconButton(
+              tooltip: 'Log out',
+              icon: const Icon(Icons.logout),
+              onPressed: _confirmLogout,
+            ),
+          ],
+        ),
         body: const EmptyState(
           icon: Icons.lock_outline,
           title: 'Ops access required',
@@ -386,6 +412,13 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> with SingleTicker
       backgroundColor: AppTheme.canvasOf(context),
       appBar: AppBar(
         title: const Text('Platform ops'),
+        actions: [
+          IconButton(
+            tooltip: 'Log out',
+            icon: const Icon(Icons.logout),
+            onPressed: _confirmLogout,
+          ),
+        ],
         bottom: _tabs == null || _tabSpecs.isEmpty
             ? null
             : TabBar(
@@ -1094,17 +1127,32 @@ class _KycOpsList extends StatelessWidget {
   const _KycOpsList({super.key});
 
   Future<List<Map<String, dynamic>>> _loadRows(SupabaseClient client) async {
-    final rows = await client
-        .from('users')
-        .select(
-          'id, role, name, full_name, email, fssai_number, fssai_proof_url, '
-          'fssai_verification_status, gstin, bank_account_number, ifsc_code, '
-          'pan_number, aadhaar_masked, bank_ifsc',
-        )
-        .inFilter('role', ['Chef', 'Driver'])
-        .limit(120)
-        .withTimeout(NetworkTimeouts.standard);
-    final list = List<Map<String, dynamic>>.from(rows as List);
+    List<Map<String, dynamic>> list;
+    try {
+      final rows = await client
+          .from('users')
+          .select(
+            'id, role, name, full_name, email, fssai_number, fssai_proof_url, '
+            'fssai_verification_status, gstin, bank_account_number, bank_ifsc, '
+            'pan_number, aadhaar_masked',
+          )
+          .inFilter('role', ['Chef', 'Driver'])
+          .limit(120)
+          .withTimeout(NetworkTimeouts.standard);
+      list = List<Map<String, dynamic>>.from(rows as List);
+    } catch (_) {
+      // Older DBs may lack bank_* columns — still load KYC identity / FSSAI fields.
+      final rows = await client
+          .from('users')
+          .select(
+            'id, role, name, full_name, email, fssai_number, fssai_proof_url, '
+            'fssai_verification_status, gstin, pan_number, aadhaar_masked',
+          )
+          .inFilter('role', ['Chef', 'Driver'])
+          .limit(120)
+          .withTimeout(NetworkTimeouts.standard);
+      list = List<Map<String, dynamic>>.from(rows as List);
+    }
 
     final chefIds = list
         .where((row) => (row['role']?.toString() ?? '').toLowerCase() == 'chef')
