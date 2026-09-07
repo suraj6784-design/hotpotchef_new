@@ -187,7 +187,7 @@
     setStatus('Loading neighbourhood plates…');
     try {
       var rows = await api.supabaseGet(
-        'meals?status=eq.Available&select=id,title,name,price,image_url,chef_name,chef_id,is_veg,created_at&order=created_at.desc&limit=' +
+        'meals?status=eq.Available&select=id,title,price,image_url,chef_name,chef_id,is_veg,created_at&order=created_at.desc&limit=' +
           LIMIT
       );
       if (!rows || !rows.length) {

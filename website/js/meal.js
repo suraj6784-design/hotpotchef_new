@@ -57,7 +57,7 @@
       var rows = await api.supabaseGet(
         'meals?chef_id=eq.' +
           encodeURIComponent(chefId) +
-          '&status=eq.Available&select=id,title,name,price,image_url&order=created_at.desc&limit=6'
+          '&status=eq.Available&select=id,title,price,image_url&order=created_at.desc&limit=6'
       );
       var others = (rows || []).filter(function (m) {
         return (m.id || '').toString() !== excludeId;
@@ -146,7 +146,7 @@
       var rows = await api.supabaseGet(
         'meals?id=eq.' +
           encodeURIComponent(mealId) +
-          '&select=id,title,name,price,image_url,chef_name,chef_id,fssai_number,description,quantity,status,is_veg'
+          '&select=id,title,price,image_url,chef_name,chef_id,fssai_number,description,quantity,status,is_veg'
       );
       if (!rows || !rows.length) {
         renderMissing(mealId, 'This dish is no longer on the menu.');

@@ -89,7 +89,7 @@
       var meals = await api.supabaseGet(
         'meals?chef_id=eq.' +
           encodeURIComponent(chefId) +
-          '&status=eq.Available&select=id,title,name,price,image_url,created_at&order=created_at.desc&limit=48'
+          '&status=eq.Available&select=id,title,price,image_url,created_at&order=created_at.desc&limit=48'
       );
 
       var list = document.getElementById('meal-list');

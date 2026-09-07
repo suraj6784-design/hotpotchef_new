@@ -77,7 +77,7 @@
       var meals = await api.supabaseGet(
         'meals?id=eq.' +
           encodeURIComponent(row.id) +
-          '&select=id,title,name,price,chef_id,chef_name,quantity,status,time_slot,service_type'
+          '&select=id,title,price,chef_id,chef_name,quantity,status,time_slot,service_type'
       );
       if (!meals || !meals[0]) throw new Error('A plate in your cart is no longer available');
       var meal = meals[0];
