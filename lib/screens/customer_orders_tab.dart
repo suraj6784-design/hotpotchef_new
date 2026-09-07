@@ -1683,11 +1683,11 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: OutlinedButton.icon(
-                                      onPressed: orderAllowsPhoneCall(status)
+                                      onPressed: orderAllowsPhoneCall(groupStatus)
                                           ? () => _initiateCall(_driverIdOf(items.first)!)
                                           : null,
                                       icon: const Icon(Icons.phone_outlined, size: 16),
-                                      label: Text(orderAllowsPhoneCall(status) ? 'Call driver' : 'Chat preferred'),
+                                      label: Text(orderAllowsPhoneCall(groupStatus) ? 'Call driver' : 'Chat preferred'),
                                     ),
                                   ),
                                 ],
