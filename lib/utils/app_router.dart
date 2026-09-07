@@ -22,6 +22,7 @@ import '../screens/chef_academy_screen.dart';
 import '../screens/chef_advertise_screen.dart';
 import '../screens/chef_publish_meal_screen.dart';
 import '../screens/platform_ops_screen.dart';
+import '../screens/ops_invite_screen.dart';
 import '../screens/referral_screen.dart';
 import '../screens/customer_order_history_screen.dart';
 import '../screens/customer_bulk_request_screen.dart';
@@ -185,6 +186,13 @@ class AppRouter {
       _fadeRoute('/chef-academy', (context, state) => const ChefAcademyScreen()),
       _fadeRoute('/chef-advertise', (context, state) => const ChefAdvertiseScreen()),
       _fadeRoute('/platform-ops', (context, state) => const PlatformOpsScreen()),
+      GoRoute(
+        path: '/ops-invite',
+        pageBuilder: (context, state) => appFadeSlidePage(
+          key: state.pageKey,
+          child: OpsInviteScreen(initialCode: state.uri.queryParameters['code']),
+        ),
+      ),
       _fadeRoute('/referral', (context, state) => const ReferralScreen()),
       _fadeRoute('/order-history', (context, state) => const CustomerOrderHistoryScreen()),
       _fadeRoute('/bulk-request', (context, state) => const CustomerBulkRequestScreen()),

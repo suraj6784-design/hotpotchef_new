@@ -2,11 +2,13 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import 'map_picker_screen.dart';
 import 'driver_id_card_screen.dart';
+import '../services/auth_session.dart';
 import '../utils/app_page.dart';
 import '../utils/helpers.dart';
 import '../utils/pinned_address.dart';
@@ -28,6 +30,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
   bool _isEditing = false;
   bool _isLoading = true;
   bool _isSaving = false;
+  bool _isPlatformOps = false;
 
   // Controllers
   final _nameController = TextEditingController();
@@ -128,6 +131,8 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
         _stateController.text = userData['state']?.toString() ?? 'Maharashtra';
         _pincodeController.text = userData['pincode']?.toString() ?? userData['postal_code']?.toString() ?? '';
       }
+      final ops = await AuthSession.isPlatformOps();
+      if (mounted) _isPlatformOps = ops;
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Driver profile load failure');
     } finally {
@@ -645,6 +650,17 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                     prefixIcon: Icons.security,
                   ),
                   const SizedBox(height: 32),
+
+                  if (_isPlatformOps) ...[
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.admin_panel_settings_outlined, color: AppTheme.primary),
+                      title: const Text('Platform ops desk', style: TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: const Text('Approvals, accounts, and dashboard'),
+                      onTap: () => context.push('/platform-ops'),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
 
                   if (_isEditing)
                     ElevatedButton.icon(

@@ -7,11 +7,13 @@ import 'package:hotpotchef_new/services/order_lifecycle.dart';
 
 void main() {
   group('AppRole', () {
-    test('parses chef, driver, and customer aliases', () {
+    test('parses chef, driver, admin, and customer aliases', () {
       expect(AppRole.parse('Chef'), AppRole.chef);
       expect(AppRole.parse('driver'), AppRole.driver);
+      expect(AppRole.parse('Admin'), AppRole.admin);
       expect(AppRole.parse(null), AppRole.customer);
       expect(AppRole.chef.hubPath, '/chef-hub');
+      expect(AppRole.admin.hubPath, '/platform-ops');
     });
   });
 

@@ -2,7 +2,8 @@
 enum AppRole {
   customer,
   chef,
-  driver;
+  driver,
+  admin;
 
   String get storageValue {
     switch (this) {
@@ -12,6 +13,8 @@ enum AppRole {
         return 'Chef';
       case AppRole.driver:
         return 'Driver';
+      case AppRole.admin:
+        return 'Admin';
     }
   }
 
@@ -29,6 +32,8 @@ enum AppRole {
         return '/chef-hub';
       case AppRole.driver:
         return '/driver-hub';
+      case AppRole.admin:
+        return '/platform-ops';
     }
   }
 
@@ -41,6 +46,12 @@ enum AppRole {
       case 'delivery partner':
       case 'delivery_partner':
         return AppRole.driver;
+      case 'admin':
+      case 'ops':
+      case 'platform':
+      case 'platform admin':
+      case 'platform_admin':
+        return AppRole.admin;
       default:
         return AppRole.customer;
     }
@@ -72,8 +83,15 @@ const kCustomerAccountRoutes = {
   '/support-tickets',
 };
 
+const kAdminOnlyRoutes = {
+  '/platform-ops',
+};
+
 /// Signed-in users may only open the hub and account screens for their role.
 bool roleCanOpenAuthenticatedPath(AppRole role, String path) {
+  // Helpers (chef/customer/driver with ops seat) still need the desk.
+  if (path == '/platform-ops' || path == '/ops-invite') return true;
+  if (kAdminOnlyRoutes.contains(path)) return role == AppRole.admin;
   if (kChefOnlyRoutes.contains(path)) return role == AppRole.chef;
   if (kDriverOnlyRoutes.contains(path)) return role == AppRole.driver;
   if (kCustomerAccountRoutes.contains(path)) return role == AppRole.customer;

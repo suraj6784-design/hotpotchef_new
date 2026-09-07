@@ -54,6 +54,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
 
   bool _isLoading = true;
   bool _isSaving = false;
+  bool _isPlatformOps = false;
 
   @override
   void initState() {
@@ -135,12 +136,14 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
       }).length;
 
       final preferredPay = await loadPreferredPaymentMethod();
+      final ops = await AuthSession.isPlatformOps();
 
       if (mounted) {
         setState(() {
           _addresses = uniqueSavedAddresses(List<Map<String, dynamic>>.from(addressResponse));
           _orderCount = pastOrdersCount;
           _preferredPayMethod = preferredPay;
+          _isPlatformOps = ops;
           _isLoading = false;
         });
       }
@@ -1207,6 +1210,16 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                       isDark: isDark,
                     ),
                     Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
+                    if (_isPlatformOps) ...[
+                      _buildListTile(
+                        icon: Icons.admin_panel_settings_outlined,
+                        title: 'Platform ops desk',
+                        subtitle: 'Approvals, accounts, and dashboard',
+                        isDark: isDark,
+                        onTap: () => context.push('/platform-ops'),
+                      ),
+                      Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
+                    ],
                     _buildListTile(
                       icon: Icons.chat_bubble_outline,
                       title: 'Contact Us',

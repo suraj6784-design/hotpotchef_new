@@ -9,11 +9,14 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../services/auth_session.dart';
 import '../utils/helpers.dart';
 import '../utils/network.dart';
+import '../utils/platform_ops_access.dart';
 import '../utils/support.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/customer_ui_components.dart';
 
-/// In-app desk for Packaging, FSSAI, brand-referral, refunds, tickets, and KYC.
+part 'platform_ops_desk_tabs.dart';
+
+/// In-app desk for packaging, FSSAI, brand ads, refunds, tickets, KYC, accounts, and helpers.
 class PlatformOpsScreen extends StatefulWidget {
   const PlatformOpsScreen({super.key});
 
@@ -21,9 +24,17 @@ class PlatformOpsScreen extends StatefulWidget {
   State<PlatformOpsScreen> createState() => _PlatformOpsScreenState();
 }
 
+class _OpsTabSpec {
+  const _OpsTabSpec(this.key, this.label, this.builder);
+  final String key;
+  final String label;
+  final Widget Function() builder;
+}
+
 class _PlatformOpsScreenState extends State<PlatformOpsScreen> with SingleTickerProviderStateMixin {
   final _supabase = Supabase.instance.client;
-  late final TabController _tabs;
+  TabController? _tabs;
+  List<_OpsTabSpec> _tabSpecs = const [];
   bool _checking = true;
   bool _allowed = false;
   bool _busy = false;
@@ -32,20 +43,87 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> with SingleTicker
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 6, vsync: this);
     _gate();
   }
 
   @override
   void dispose() {
-    _tabs.dispose();
+    _tabs?.dispose();
     super.dispose();
   }
 
   Future<void> _gate() async {
     final ok = await AuthSession.isPlatformOps();
+    final owner = await AuthSession.isPlatformOwner();
+    final perms = await AuthSession.opsPermissions();
     if (!mounted) return;
+
+    final specs = <_OpsTabSpec>[];
+    void add(String key, String label, Widget Function() builder) {
+      if (owner || opsPermissionsContain(perms, key, owner: owner)) {
+        specs.add(_OpsTabSpec(key, label, builder));
+      }
+    }
+
+    add(kOpsPermissionDashboard, 'Dashboard', () => _OpsDashList(key: ValueKey('dash-$_reloadToken')));
+    add(
+      kOpsPermissionPackaging,
+      'Packaging',
+      () => _PackagingOpsList(key: ValueKey('pack-$_reloadToken'), busy: _busy, onStatus: _setPackagingStatus),
+    );
+    add(
+      kOpsPermissionFssai,
+      'FSSAI',
+      () => _FssaiOpsList(key: ValueKey('fssai-$_reloadToken'), busy: _busy, onStatus: _setFssaiStatus),
+    );
+    add(
+      kOpsPermissionBrands,
+      'Brands',
+      () => _BrandOpsList(
+        key: ValueKey('brand-$_reloadToken'),
+        busy: _busy,
+        onEnd: (row) => _setBrandStatus(row, 'ended'),
+        onReject: (row) => _setBrandStatus(row, 'draft', packageLabel: 'Returned to draft'),
+        onPublish: _publishBrand,
+      ),
+    );
+    add(
+      kOpsPermissionRefunds,
+      'Refunds',
+      () => _RefundsOpsList(
+        key: ValueKey('refund-$_reloadToken'),
+        busy: _busy,
+        onOpenDispute: _openRefundDispute,
+        onDisputeStatus: _setDisputeStatus,
+      ),
+    );
+    add(
+      kOpsPermissionTickets,
+      'Tickets',
+      () => _TicketsOpsList(key: ValueKey('ticket-$_reloadToken'), busy: _busy, onStatus: _setTicketStatus),
+    );
+    add(kOpsPermissionKyc, 'KYC', () => _KycOpsList(key: ValueKey('kyc-$_reloadToken')));
+    if (owner) {
+      specs.add(
+        _OpsTabSpec(
+          kOpsPermissionAccounts,
+          'Accounts',
+          () => _OpsAccountsList(key: ValueKey('acct-$_reloadToken'), busy: _busy, onChanged: _bump),
+        ),
+      );
+      specs.add(
+        _OpsTabSpec(
+          kOpsPermissionHelpers,
+          'Helpers',
+          () => _OpsHelpersList(key: ValueKey('help-$_reloadToken'), busy: _busy, onChanged: _bump),
+        ),
+      );
+    }
+
+    _tabs?.dispose();
+    _tabs = specs.isEmpty ? null : TabController(length: specs.length, vsync: this);
     setState(() {
+      _tabSpecs = specs;
       _allowed = ok;
       _checking = false;
     });
@@ -308,55 +386,24 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> with SingleTicker
       backgroundColor: AppTheme.canvasOf(context),
       appBar: AppBar(
         title: const Text('Platform ops'),
-        bottom: TabBar(
-          controller: _tabs,
-          isScrollable: true,
-          tabs: const [
-            Tab(text: 'Packaging'),
-            Tab(text: 'FSSAI'),
-            Tab(text: 'Brands'),
-            Tab(text: 'Refunds'),
-            Tab(text: 'Tickets'),
-            Tab(text: 'KYC'),
-          ],
-        ),
+        bottom: _tabs == null || _tabSpecs.isEmpty
+            ? null
+            : TabBar(
+                controller: _tabs,
+                isScrollable: true,
+                tabs: [for (final t in _tabSpecs) Tab(text: t.label)],
+              ),
       ),
-      body: TabBarView(
-        controller: _tabs,
-        children: [
-          _PackagingOpsList(
-            key: ValueKey('pack-$_reloadToken'),
-            busy: _busy,
-            onStatus: _setPackagingStatus,
-          ),
-          _FssaiOpsList(
-            key: ValueKey('fssai-$_reloadToken'),
-            busy: _busy,
-            onStatus: _setFssaiStatus,
-          ),
-          _BrandOpsList(
-            key: ValueKey('brand-$_reloadToken'),
-            busy: _busy,
-            onEnd: (row) => _setBrandStatus(row, 'ended'),
-            onReject: (row) => _setBrandStatus(row, 'draft', packageLabel: 'Returned to draft'),
-            onPublish: _publishBrand,
-          ),
-          _RefundsOpsList(
-            key: ValueKey('refund-$_reloadToken'),
-            busy: _busy,
-            onOpenDispute: _openRefundDispute,
-            onDisputeStatus: _setDisputeStatus,
-          ),
-          _TicketsOpsList(
-            key: ValueKey('ticket-$_reloadToken'),
-            busy: _busy,
-            onStatus: _setTicketStatus,
-          ),
-          _KycOpsList(
-            key: ValueKey('kyc-$_reloadToken'),
-          ),
-        ],
-      ),
+      body: _tabs == null || _tabSpecs.isEmpty
+          ? const EmptyState(
+              icon: Icons.lock_outline,
+              title: 'No ops permissions',
+              message: 'Ask the platform owner for a helper invite code.',
+            )
+          : TabBarView(
+              controller: _tabs,
+              children: [for (final t in _tabSpecs) t.builder()],
+            ),
     );
   }
 }
@@ -1015,7 +1062,7 @@ class _KycChecklist {
 _KycChecklist _kycChecklistFor(Map<String, dynamic> row) {
   final role = (row['role']?.toString() ?? '').toLowerCase();
   final checks = <String, String>{
-    'Name': row['name']?.toString() ?? '',
+    'Name': row['name']?.toString() ?? row['full_name']?.toString() ?? '',
     'Email': row['email']?.toString() ?? '',
     'FSSAI number': row['fssai_number']?.toString() ?? '',
     'FSSAI proof': row['fssai_proof_url']?.toString() ?? '',
@@ -1029,7 +1076,7 @@ _KycChecklist _kycChecklistFor(Map<String, dynamic> row) {
     'Aadhaar': row['aadhaar_masked']?.toString() ?? '',
   };
   if (role == 'chef') {
-    checks['Kitchen name'] = row['kitchen_name']?.toString() ?? '';
+    checks['Kitchen name'] = row['local_kitchen_name']?.toString() ?? '';
   }
   final missing = <String>[];
   var done = 0;
@@ -1046,30 +1093,62 @@ _KycChecklist _kycChecklistFor(Map<String, dynamic> row) {
 class _KycOpsList extends StatelessWidget {
   const _KycOpsList({super.key});
 
+  Future<List<Map<String, dynamic>>> _loadRows(SupabaseClient client) async {
+    final rows = await client
+        .from('users')
+        .select(
+          'id, role, name, full_name, email, fssai_number, fssai_proof_url, '
+          'fssai_verification_status, gstin, bank_account_number, ifsc_code, '
+          'pan_number, aadhaar_masked, bank_ifsc',
+        )
+        .inFilter('role', ['Chef', 'Driver'])
+        .limit(120)
+        .withTimeout(NetworkTimeouts.standard);
+    final list = List<Map<String, dynamic>>.from(rows as List);
+
+    final chefIds = list
+        .where((row) => (row['role']?.toString() ?? '').toLowerCase() == 'chef')
+        .map((row) => row['id']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toList();
+    if (chefIds.isNotEmpty) {
+      try {
+        final profiles = await client
+            .from('chef_profiles')
+            .select('user_id, local_kitchen_name')
+            .inFilter('user_id', chefIds)
+            .withTimeout(NetworkTimeouts.standard);
+        final byUser = <String, String>{};
+        for (final profile in List<Map<String, dynamic>>.from(profiles as List)) {
+          final id = profile['user_id']?.toString() ?? '';
+          if (id.isEmpty) continue;
+          byUser[id] = profile['local_kitchen_name']?.toString() ?? '';
+        }
+        for (final row in list) {
+          final id = row['id']?.toString() ?? '';
+          if (byUser.containsKey(id)) {
+            row['local_kitchen_name'] = byUser[id];
+          }
+        }
+      } catch (_) {
+        // KYC still loads bank/FSSAI fields if chef_profiles is unavailable.
+      }
+    }
+
+    list.sort((a, b) {
+      final ca = _kycChecklistFor(a);
+      final cb = _kycChecklistFor(b);
+      if (ca.incomplete != cb.incomplete) return ca.incomplete ? -1 : 1;
+      return ca.done.compareTo(cb.done);
+    });
+    return list;
+  }
+
   @override
   Widget build(BuildContext context) {
     final client = Supabase.instance.client;
     return FutureBuilder<List<Map<String, dynamic>>>(
-      future: () async {
-        final rows = await client
-            .from('users')
-            .select(
-              'id, role, name, kitchen_name, email, fssai_number, fssai_proof_url, '
-              'fssai_verification_status, gstin, bank_account_number, ifsc_code, '
-              'pan_number, aadhaar_masked, bank_ifsc',
-            )
-            .inFilter('role', ['Chef', 'Driver'])
-            .limit(120)
-            .withTimeout(NetworkTimeouts.standard);
-        final list = List<Map<String, dynamic>>.from(rows as List);
-        list.sort((a, b) {
-          final ca = _kycChecklistFor(a);
-          final cb = _kycChecklistFor(b);
-          if (ca.incomplete != cb.incomplete) return ca.incomplete ? -1 : 1;
-          return ca.done.compareTo(cb.done);
-        });
-        return list;
-      }(),
+      future: _loadRows(client),
       builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) {
           return const Center(child: CircularProgressIndicator());
@@ -1095,9 +1174,9 @@ class _KycOpsList extends StatelessWidget {
           itemBuilder: (context, index) {
             final row = rows[index];
             final checklist = _kycChecklistFor(row);
-            final name = row['name']?.toString() ?? 'Partner';
+            final name = row['name']?.toString() ?? row['full_name']?.toString() ?? 'Partner';
             final role = row['role']?.toString() ?? '';
-            final kitchen = row['kitchen_name']?.toString() ?? '';
+            final kitchen = row['local_kitchen_name']?.toString() ?? '';
             return AppCard(
               margin: const EdgeInsets.only(bottom: 12),
               child: Column(

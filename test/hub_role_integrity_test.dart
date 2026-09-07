@@ -25,6 +25,16 @@ void main() {
       expect(roleCanOpenAuthenticatedPath(AppRole.customer, '/chats'), isTrue);
       expect(roleCanOpenAuthenticatedPath(AppRole.chef, '/tracking'), isTrue);
       expect(roleCanOpenAuthenticatedPath(AppRole.driver, '/meal/abc'), isTrue);
+      expect(roleCanOpenAuthenticatedPath(AppRole.admin, '/platform-ops'), isTrue);
+      expect(roleCanOpenAuthenticatedPath(AppRole.chef, '/platform-ops'), isTrue);
+    });
+
+    test('admin is not a marketplace chef/customer/driver hub', () {
+      expect(roleCanOpenAuthenticatedPath(AppRole.admin, '/chef-hub'), isFalse);
+      expect(roleCanOpenAuthenticatedPath(AppRole.admin, '/customer-hub'), isFalse);
+      expect(roleCanOpenAuthenticatedPath(AppRole.admin, '/driver-hub'), isFalse);
+      expect(AppRole.admin.canUsePackagingStore, isFalse);
+      expect(AppRole.admin.usesReferral, isFalse);
     });
   });
 }
