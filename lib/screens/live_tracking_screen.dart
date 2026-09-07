@@ -621,7 +621,9 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
         title: Text(
           widget.isDriver
               ? (_driverGoingToKitchen ? 'To kitchen · $_etaText' : 'To customer · $_etaText')
-              : _etaText,
+              : (_etaText.toLowerCase().startsWith('arriving')
+                  ? _etaText
+                  : 'Arriving · $_etaText'),
         ),
         actions: [
           IconButton(

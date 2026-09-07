@@ -12,6 +12,8 @@ import '../utils/helpers.dart';
 import '../utils/network.dart';
 import '../utils/payment_preferences.dart';
 import '../utils/pricing_calculator.dart';
+import '../utils/legal_content.dart';
+import '../utils/support.dart';
 import '../models/cart_enums.dart';
 import '../services/alert_service.dart';
 import '../widgets/app_widgets.dart';
@@ -69,6 +71,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   String? _heldRazorpayOrderId;
   bool _orderRecorded = false;
   bool _placingOrder = false;
+  String? _deliveryOtp;
 
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _instructionsController = TextEditingController();
@@ -86,12 +89,36 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         'roomCode': widget.sharedRoomCode,
       };
 
+  String _ensureDeliveryOtp() {
+    final existing = _deliveryOtp?.trim() ?? '';
+    if (existing.length == 4) return existing;
+    final otp = (1000 + Random().nextInt(9000)).toString();
+    _deliveryOtp = otp;
+    return otp;
+  }
+
+  String _gateAndOtpInstructionLine() {
+    if (!_hasDelivery || _selectedAddressData == null) return '';
+    final gate = _selectedAddressData!['gate_instructions']?.toString().trim() ?? '';
+    final otp = _ensureDeliveryOtp();
+    final parts = <String>[
+      if (gate.isNotEmpty) 'Gate: $gate',
+      'Delivery PIN: $otp',
+    ];
+    return parts.join(' · ');
+  }
+
   String _orderInstructions([String? checkoutNote]) {
-    return mergedOrderInstructions(
+    final base = mergedOrderInstructions(
       _checkoutCartItems(),
       checkoutNote ?? _instructionsController.text,
       _societyGroupMeta,
     );
+    final gateLine = _gateAndOtpInstructionLine();
+    if (gateLine.isEmpty) return base;
+    if (base.isEmpty) return gateLine;
+    if (base.contains(gateLine)) return base;
+    return '$base\n$gateLine';
   }
 
   @override
@@ -707,23 +734,49 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (orderId == null || orderId.isEmpty || !_hasDelivery) return;
     final lat = addressCoordinate(_selectedAddressData, latitude: true);
     final lng = addressCoordinate(_selectedAddressData, latitude: false);
-    if (lat == null || lng == null) return;
-    try {
-      await _supabase.rpc('set_order_dropoff', params: {
-        'p_order_id': orderId,
-        'p_lat': lat,
-        'p_lng': lng,
-      }).withTimeout(NetworkTimeouts.short);
-    } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to persist order dropoff via RPC');
+    final a = _selectedAddressData ?? const <String, dynamic>{};
+    final wing = a['wing']?.toString().trim() ?? '';
+    final flat = a['flat_no']?.toString().trim() ?? '';
+    final house = a['house_no']?.toString().trim() ?? '';
+    final society = a['society_name']?.toString().trim() ?? '';
+    final gate = a['gate_instructions']?.toString().trim() ?? '';
+    final societyFields = <String, dynamic>{
+      if (wing.isNotEmpty) 'wing': wing,
+      if (flat.isNotEmpty)
+        'flat_no': flat
+      else if (house.isNotEmpty)
+        'flat_no': house,
+      if (society.isNotEmpty) 'society_name': society,
+      if (gate.isNotEmpty) 'gate_instructions': gate,
+      'delivery_otp': _ensureDeliveryOtp(),
+    };
+
+    if (lat != null && lng != null) {
       try {
-        await _supabase.from('orders').update({
-          'delivery_lat': lat,
-          'delivery_lng': lng,
-        }).eq('id', orderId);
-      } catch (retry, retryStack) {
-        FirebaseCrashlytics.instance.recordError(retry, retryStack, reason: 'Failed to persist order dropoff');
+        await _supabase.rpc('set_order_dropoff', params: {
+          'p_order_id': orderId,
+          'p_lat': lat,
+          'p_lng': lng,
+        }).withTimeout(NetworkTimeouts.short);
+      } catch (e, stack) {
+        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to persist order dropoff via RPC');
+        try {
+          await _supabase.from('orders').update({
+            'delivery_lat': lat,
+            'delivery_lng': lng,
+            ...societyFields,
+          }).eq('id', orderId);
+          return;
+        } catch (retry, retryStack) {
+          FirebaseCrashlytics.instance.recordError(retry, retryStack, reason: 'Failed to persist order dropoff');
+        }
       }
+    }
+
+    try {
+      await _supabase.from('orders').update(societyFields).eq('id', orderId);
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to stamp society/gate on order');
     }
   }
 
@@ -911,7 +964,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       }
       return placed;
     } catch (e) {
-      throw Exception(lastError ?? e ?? 'Could not record paid order');
+      throw Exception(lastError ?? e.toString());
     }
   }
 
@@ -1017,60 +1070,64 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppTheme.surfaceOf(context),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      backgroundColor: Colors.transparent,
       builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text('Select delivery address',
-                    style: TextStyle(color: AppTheme.onSurfaceOf(context), fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 16),
-                ..._savedAddresses.map((addr) {
-                  final isSelected = _selectedAddressData?['id'] == addr['id'];
-                  final displayStr = formatSavedAddress(addr);
+        return Container(
+          decoration: AppTheme.bottomSheetDecoration(
+            isDark: Theme.of(context).brightness == Brightness.dark,
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('Select delivery address',
+                      style: TextStyle(color: AppTheme.onSurfaceOf(context), fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 16),
+                  ..._savedAddresses.map((addr) {
+                    final isSelected = _selectedAddressData?['id'] == addr['id'];
+                    final displayStr = formatSavedAddress(addr);
 
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: isSelected ? AppTheme.primary.withValues(alpha: 0.08) : AppTheme.surfaceOf(context),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: isSelected ? AppTheme.primary : AppTheme.hairlineOf(context)),
-                    ),
-                    child: ListTile(
-                      dense: true,
-                      leading: Icon(Icons.location_on, color: isSelected ? Colors.deepOrange : Colors.grey),
-                      title: Text(
-                        displayStr.isEmpty ? 'Saved address' : displayStr,
-                        style: TextStyle(
-                          color: isSelected ? Colors.deepOrange : AppTheme.onSurfaceOf(context),
-                          fontSize: 13,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                        ),
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: isSelected ? AppTheme.primary.withValues(alpha: 0.08) : AppTheme.surfaceOf(context),
+                        borderRadius: AppTheme.radiusMd,
+                        border: Border.all(color: isSelected ? AppTheme.primary : AppTheme.hairlineOf(context)),
                       ),
-                      onTap: () {
-                        setState(() => _selectedAddressData = addr);
-                        Navigator.pop(context);
-                        _calculateDeliveryFee();
-                      },
-                    ),
-                  );
-                }),
-                const SizedBox(height: 8),
-                TextButton.icon(
-                  icon: const Icon(Icons.add_location_alt, color: Colors.deepOrange),
-                  label: const Text('Add New Address',
-                      style: TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold)),
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _openAddressForm();
-                  },
-                ),
-              ],
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(Icons.location_on, color: isSelected ? Colors.deepOrange : Colors.grey),
+                        title: Text(
+                          displayStr.isEmpty ? 'Saved address' : displayStr,
+                          style: TextStyle(
+                            color: isSelected ? Colors.deepOrange : AppTheme.onSurfaceOf(context),
+                            fontSize: 13,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                        onTap: () {
+                          setState(() => _selectedAddressData = addr);
+                          Navigator.pop(context);
+                          _calculateDeliveryFee();
+                        },
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    icon: const Icon(Icons.add_location_alt, color: Colors.deepOrange),
+                    label: const Text('Add New Address',
+                        style: TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold)),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _openAddressForm();
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -1086,7 +1143,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected ? AppTheme.success : AppTheme.surfaceOf(context),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppTheme.radiusMd,
           border: Border.all(color: isSelected ? AppTheme.success : AppTheme.hairlineOf(context)),
           boxShadow: [if (!isSelected) const BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
         ),
@@ -1107,7 +1164,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppTheme.surfaceOf(context),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: AppTheme.radiusLg,
         border: Border.all(color: AppTheme.hairlineOf(context)),
         boxShadow: AppTheme.softShadow,
       ),
@@ -1154,7 +1211,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           : promo.isActive
                               ? AppTheme.surfaceOf(context)
                               : AppTheme.canvasOf(context),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: AppTheme.radiusMd,
                       border: Border.all(
                         color: selected
                             ? AppTheme.success
@@ -1209,7 +1266,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   decoration: InputDecoration(
                     hintText: 'Enter chef promo code',
                     isDense: true,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    border: OutlineInputBorder(borderRadius: AppTheme.radiusMd),
                   ),
                   onSubmitted: (_) => _applyPromoCode(),
                 ),
@@ -1266,7 +1323,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             margin: const EdgeInsets.only(bottom: 16),
             decoration: BoxDecoration(
               color: AppTheme.surfaceOf(context),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: AppTheme.radiusLg,
               border: Border.all(color: AppTheme.hairlineOf(context)),
               boxShadow: AppTheme.softShadow,
             ),
@@ -1316,7 +1373,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(
                 color: AppTheme.surfaceOf(context),
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: AppTheme.radiusLg,
                 border: Border.all(color: AppTheme.hairlineOf(context)),
                 boxShadow: AppTheme.softShadow,
               ),
@@ -1360,7 +1417,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: AppTheme.surfaceOf(context),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: AppTheme.radiusLg,
               border: Border.all(color: AppTheme.hairlineOf(context)),
               boxShadow: AppTheme.softShadow,
             ),
@@ -1397,7 +1454,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: AppTheme.success.withValues(alpha: Theme.of(context).brightness == Brightness.dark ? 0.12 : 0.08),
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: AppTheme.radiusLg,
                 border: Border.all(color: AppTheme.success.withValues(alpha: 0.35)),
                 boxShadow: AppTheme.softShadow,
               ),
@@ -1448,7 +1505,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: AppTheme.surfaceOf(context),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: AppTheme.radiusLg,
               border: Border.all(color: AppTheme.hairlineOf(context)),
               boxShadow: AppTheme.softShadow,
             ),
@@ -1566,7 +1623,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Widget _buildPayBar() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: EdgeInsets.only(
         left: 20,
@@ -1575,36 +1631,81 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         bottom: MediaQuery.of(context).padding.bottom > 0 ? MediaQuery.of(context).padding.bottom : 16,
       ),
       decoration: BoxDecoration(
-        color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+        color: AppTheme.surfaceOf(context),
         boxShadow: AppTheme.heavyShadow,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(AppTheme.rXl)),
+        border: Border(top: BorderSide(color: AppTheme.hairlineOf(context))),
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          const AppLogo(size: 36),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
+          Row(
             children: [
-              Text('You pay',
-                  style: TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w500)),
-              const SizedBox(height: 2),
-              Text('₹${_grandTotal.toStringAsFixed(0)}',
-                  style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurface,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800)),
+              const AppLogo(size: 36),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('You pay',
+                      style: TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 2),
+                  Text('₹${_grandTotal.toStringAsFixed(0)}',
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800)),
+                ],
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: GradientButton(
+                  label: (_applyCoins && _grandTotal < 1) ? 'Place order with coins' : 'Pay & Place Order',
+                  icon: Icons.lock_rounded,
+                  loading: _isCheckingOut,
+                  onPressed: _isCheckingOut ? null : _startRazorpayPayment,
+                ),
+              ),
             ],
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: GradientButton(
-              label: (_applyCoins && _grandTotal < 1) ? 'Place order with coins' : 'Pay & Place Order',
-              icon: Icons.lock_rounded,
-              loading: _isCheckingOut,
-              onPressed: _isCheckingOut ? null : _startRazorpayPayment,
-            ),
+          const SizedBox(height: 8),
+          Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              TextButton(
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                ),
+                onPressed: () => openLegalDocument(context, LegalDocumentType.terms),
+                child: Text('Terms', style: AppTheme.metaOf(context).copyWith(fontWeight: FontWeight.w700, color: AppTheme.primary)),
+              ),
+              Text('·', style: AppTheme.metaOf(context)),
+              TextButton(
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                ),
+                onPressed: () => openLegalDocument(context, LegalDocumentType.privacy),
+                child: Text('Privacy', style: AppTheme.metaOf(context).copyWith(fontWeight: FontWeight.w700, color: AppTheme.primary)),
+              ),
+              Text('·', style: AppTheme.metaOf(context)),
+              TextButton(
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                ),
+                onPressed: () => openLegalDocument(context, LegalDocumentType.cancellation),
+                child: Text('Cancellation', style: AppTheme.metaOf(context).copyWith(fontWeight: FontWeight.w700, color: AppTheme.primary)),
+              ),
+            ],
           ),
         ],
       ),

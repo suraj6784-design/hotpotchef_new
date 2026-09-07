@@ -142,7 +142,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
         if (response.user != null) {
           // Write referred_by before the diner can reach checkout, or the first-order bonus is missed.
-          await _ensurePublicUserProfile();
+          await _ensurePublicUserProfile(recordLegalConsent: _acceptedTerms);
           unawaited(PushNotificationService.syncTokenForCurrentUser());
           _leaveAuthAfterSuccess();
         } else {
@@ -205,6 +205,7 @@ class _AuthScreenState extends State<AuthScreen> {
               referredBy: referredBy,
               referralCode: _selectedRole.usesReferral ? generateReferralCode() : null,
               createdAt: DateTime.now().toIso8601String(),
+              recordLegalConsent: true,
             ),
           );
 
@@ -241,7 +242,7 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
-  Future<void> _ensurePublicUserProfile() async {
+  Future<void> _ensurePublicUserProfile({bool recordLegalConsent = false}) async {
     final user = _supabase.auth.currentUser;
     if (user == null) return;
     try {
@@ -273,6 +274,7 @@ class _AuthScreenState extends State<AuthScreen> {
           // Keep an existing referred_by if metadata is empty (email-confirm then sign-in).
           referredBy: referredBy ?? normalizeReferralCode(existing?['referred_by']?.toString()),
           referralCode: ownCode,
+          recordLegalConsent: recordLegalConsent,
         ),
       );
     } catch (e, stack) {

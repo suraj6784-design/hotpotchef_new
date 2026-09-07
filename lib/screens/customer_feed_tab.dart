@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -14,6 +15,7 @@ import '../utils/helpers.dart';
 import '../utils/customer_constants.dart';
 import '../utils/dynamic_ui_engine.dart';
 import '../utils/network.dart';
+import '../utils/pinned_address.dart';
 import '../utils/pricing_calculator.dart';
 import '../providers/cart_provider.dart';
 import '../providers/delivery_preference.dart';
@@ -60,8 +62,12 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   late final Stream<List<Map<String, dynamic>>> _mealsStream;
   String _selectedCategory = 'All';
   String _selectedDiet = 'All';
-  String _currentAddress = 'Select Delivery Address';
+  String _currentAddress = 'Locating...';
   List<Map<String, dynamic>> _savedAddresses = [];
+  /// GPS pin used for guests (and signed-in users without a saved map pin).
+  /// Kept across login so the feed radius does not jump after Sign In.
+  Map<String, dynamic>? _deviceLocationPin;
+  bool _resolvingDeviceLocation = false;
   String _allergies = '';
   bool _showFavoritesOnly = false;
   bool _showFollowingOnly = false;
@@ -112,17 +118,28 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         .from('meals')
         .stream(primaryKey: ['id'])
         .eq('status', 'Available');
-    _fetchUserAddresses();
+    _bootstrapDeliveryPin();
     _fetchDietaryPrefs();
     _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       if (!mounted) return;
       if (data.session == null) {
         setState(_resetGuestFeedState);
+        _captureDeviceLocation();
       } else {
-        _fetchUserAddresses();
+        // Keep the active GPS pin so kitchens stay in the same radius after Sign In.
+        _fetchUserAddresses(preserveActivePin: true);
         _fetchDietaryPrefs();
       }
     });
+  }
+
+  Future<void> _bootstrapDeliveryPin() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user != null) {
+      await _fetchUserAddresses(preserveActivePin: false);
+      if (_hasDeliveryPin) return;
+    }
+    await _captureDeviceLocation();
   }
 
   void _resetGuestFeedState() {
@@ -131,8 +148,139 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     _allergies = '';
     _selectedDiet = 'All';
     _savedAddresses = [];
-    _currentAddress = 'Select Delivery Address';
+    _deviceLocationPin = null;
+    _currentAddress = 'Locating...';
     ref.read(selectedDeliveryAddressProvider.notifier).setAddress(null);
+  }
+
+  bool get _isUsingDevicePin {
+    final pin = _deviceLocationPin;
+    if (pin == null) return false;
+    return _currentAddress == (pin['address']?.toString() ?? '');
+  }
+
+  Future<void> _captureDeviceLocation({bool notifyOnFailure = false}) async {
+    if (_resolvingDeviceLocation) return;
+    _resolvingDeviceLocation = true;
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        _applyDeviceLocationFallback(
+          message: notifyOnFailure ? 'Turn on location to see kitchens near you.' : null,
+        );
+        return;
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        _applyDeviceLocationFallback(
+          message: notifyOnFailure
+              ? 'Allow location access so guest browsing matches kitchens after Sign In.'
+              : null,
+        );
+        return;
+      }
+
+      Position position;
+      try {
+        position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+        ).timeout(const Duration(seconds: 8));
+      } catch (_) {
+        position = await Geolocator.getLastKnownPosition() ??
+            Position(
+              latitude: 18.6298,
+              longitude: 73.7997,
+              timestamp: DateTime.now(),
+              accuracy: 0,
+              altitude: 0,
+              altitudeAccuracy: 0,
+              heading: 0,
+              headingAccuracy: 0,
+              speed: 0,
+              speedAccuracy: 0,
+            );
+      }
+
+      String label = 'Near you';
+      String city = '';
+      String state = '';
+      String pincode = '';
+      String street = '';
+      try {
+        final parts = await reverseGeocodeLatLng(position.latitude, position.longitude);
+        city = parts.city;
+        state = parts.state;
+        pincode = parts.pincode;
+        street = parts.street;
+        final formatted = parts.formatted.isNotEmpty
+            ? parts.formatted
+            : [parts.street, parts.city, parts.state, parts.pincode]
+                .where((part) => part.isNotEmpty)
+                .join(', ');
+        if (formatted.isNotEmpty) {
+          label = formatted;
+        } else if (city.isNotEmpty) {
+          label = city;
+        }
+      } catch (_) {
+        // Keep "Near you" if reverse geocode fails; coords still filter meals.
+      }
+
+      final pin = <String, dynamic>{
+        'id': 'device-location',
+        'title': 'Current location',
+        'landmark': 'Current location',
+        'address': label,
+        'street': street,
+        'city': city,
+        'state': state,
+        'pincode': pincode,
+        'latitude': position.latitude,
+        'longitude': position.longitude,
+        'lat': position.latitude,
+        'lng': position.longitude,
+        'is_device_location': true,
+      };
+
+      if (!mounted) return;
+      setState(() {
+        _deviceLocationPin = pin;
+        // Do not steal a saved address the diner already picked.
+        final keepSavedSelection = _savedAddresses.any(
+          (addr) => addr['address']?.toString() == _currentAddress,
+        );
+        if (!keepSavedSelection) {
+          _currentAddress = label;
+          ref.read(selectedDeliveryAddressProvider.notifier).setAddress(pin);
+        }
+      });
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Guest delivery location capture failed');
+      _applyDeviceLocationFallback(
+        message: notifyOnFailure ? 'Could not read your location. Try again.' : null,
+      );
+    } finally {
+      _resolvingDeviceLocation = false;
+    }
+  }
+
+  void _applyDeviceLocationFallback({String? message}) {
+    if (!mounted) return;
+    setState(() {
+      if (_currentAddress == 'Locating...' || _currentAddress.isEmpty) {
+        _currentAddress = 'Select Delivery Address';
+      }
+    });
+    if (message != null && message.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: Colors.orange),
+      );
+    }
   }
 
   @override
@@ -226,7 +374,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     }
   }
 
-  Future<void> _fetchUserAddresses() async {
+  Future<void> _fetchUserAddresses({bool preserveActivePin = false}) async {
     try {
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) return;
@@ -251,10 +399,19 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       if (mounted) {
         setState(() {
           _savedAddresses = normalized;
-          if (_savedAddresses.isNotEmpty && (_currentAddress == 'Select Delivery Address' || _currentAddress.isEmpty)) {
+          final keepDevicePin = preserveActivePin && _isUsingDevicePin && _hasDeliveryPin;
+          if (!keepDevicePin &&
+              _savedAddresses.isNotEmpty &&
+              (_currentAddress == 'Select Delivery Address' ||
+                  _currentAddress == 'Locating...' ||
+                  _currentAddress.isEmpty ||
+                  (!_isUsingDevicePin &&
+                      !_savedAddresses.any((a) => a['address']?.toString() == _currentAddress)))) {
             final preferred = preferredCheckoutAddress(_savedAddresses);
             final label = preferred?['address']?.toString() ?? formatSavedAddress(preferred);
-            _currentAddress = label.isEmpty ? 'Select Delivery Address' : label;
+            if (label.isNotEmpty) {
+              _currentAddress = label;
+            }
           }
           final selected = _selectedAddressMap;
           if (selected != null) {
@@ -271,7 +428,17 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     for (final addr in _savedAddresses) {
       if (addr['address']?.toString() == _currentAddress) return addr;
     }
-    return preferredCheckoutAddress(_savedAddresses);
+    if (_deviceLocationPin != null &&
+        _deviceLocationPin!['address']?.toString() == _currentAddress) {
+      return _deviceLocationPin;
+    }
+    final preferred = preferredCheckoutAddress(_savedAddresses);
+    if (preferred != null &&
+        addressCoordinate(preferred, latitude: true) != null &&
+        addressCoordinate(preferred, latitude: false) != null) {
+      return preferred;
+    }
+    return _deviceLocationPin ?? preferred;
   }
 
   Future<void> _fetchDietaryPrefs() async {
@@ -450,6 +617,84 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     );
   }
 
+  Future<void> _showGuestLocationSheet(BuildContext context) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: AppTheme.bottomSheetDecoration(
+          isDark: Theme.of(context).brightness == Brightness.dark,
+        ),
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Delivering near you',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.onSurfaceOf(context),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _hasDeliveryPin
+                  ? 'We use your current location so guest browsing matches kitchens after Sign In.'
+                  : 'Allow location so only nearby kitchens appear — the same list stays after Sign In.',
+              style: const TextStyle(fontSize: 13, color: AppTheme.textMuted, height: 1.35),
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(
+                _hasDeliveryPin ? Icons.my_location : Icons.location_searching,
+                color: brandPrimary,
+              ),
+              title: Text(
+                _hasDeliveryPin ? (_deviceLocationPin?['address']?.toString() ?? _currentAddress) : 'Location not set',
+                style: TextStyle(fontWeight: FontWeight.w700, color: AppTheme.onSurfaceOf(context)),
+              ),
+              subtitle: Text(
+                _resolvingDeviceLocation ? 'Updating…' : 'Current location',
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _resolvingDeviceLocation
+                  ? null
+                  : () async {
+                      Navigator.pop(ctx);
+                      setState(() => _currentAddress = 'Locating...');
+                      await _captureDeviceLocation(notifyOnFailure: true);
+                    },
+              icon: const Icon(Icons.refresh),
+              label: const Text('Use current location'),
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: brandPrimary,
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(44),
+              ),
+              onPressed: () {
+                Navigator.pop(ctx);
+                showAuthBottomSheet(context, () {
+                  setState(() {});
+                  _fetchUserAddresses(preserveActivePin: true);
+                });
+              },
+              child: const Text('Sign In to save addresses'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -491,17 +736,17 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
-                          child: GestureDetector(
+                          child: Semantics(
+                            button: true,
+                            label: 'Delivering to $_currentAddress. Double tap to change delivery location.',
+                            child: GestureDetector(
                           onTap: () async {
                             if (!isLoggedIn) {
-                              showAuthBottomSheet(context, () {
-                                setState(() {});
-                                _fetchUserAddresses();
-                              });
+                              await _showGuestLocationSheet(context);
                               return;
                             }
 
-                            await _fetchUserAddresses();
+                            await _fetchUserAddresses(preserveActivePin: true);
                             if (!context.mounted) return;
 
                             showModalBottomSheet(
@@ -521,6 +766,43 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                     Text('Select delivery location',
                                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                                     const SizedBox(height: 16),
+                                    if (_deviceLocationPin != null)
+                                      Container(
+                                        margin: const EdgeInsets.only(bottom: 12),
+                                        decoration: BoxDecoration(
+                                          color: _isUsingDevicePin
+                                              ? AppTheme.primary.withValues(alpha: 0.08)
+                                              : AppTheme.surfaceOf(context),
+                                          borderRadius: AppTheme.radiusMd,
+                                          border: Border.all(
+                                            color: _isUsingDevicePin ? AppTheme.primary : AppTheme.hairlineOf(context),
+                                          ),
+                                        ),
+                                        child: ListTile(
+                                          dense: true,
+                                          leading: Icon(
+                                            Icons.my_location,
+                                            color: _isUsingDevicePin ? brandPrimary : Colors.grey,
+                                          ),
+                                          title: Text(
+                                            _deviceLocationPin!['address']?.toString() ?? 'Current location',
+                                            style: TextStyle(
+                                              color: _isUsingDevicePin ? AppTheme.primary : AppTheme.onSurfaceOf(context),
+                                              fontSize: 13,
+                                              fontWeight: _isUsingDevicePin ? FontWeight.bold : FontWeight.normal,
+                                            ),
+                                          ),
+                                          subtitle: const Text('Current location', style: TextStyle(fontSize: 11)),
+                                          onTap: () {
+                                            final label = _deviceLocationPin!['address']?.toString() ?? 'Near you';
+                                            setState(() => _currentAddress = label);
+                                            ref
+                                                .read(selectedDeliveryAddressProvider.notifier)
+                                                .setAddress(_deviceLocationPin);
+                                            Navigator.pop(ctx);
+                                          },
+                                        ),
+                                      ),
                                     if (_savedAddresses.isEmpty)
                                       Padding(
                                         padding: const EdgeInsets.only(bottom: 16),
@@ -539,7 +821,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                                 color: isSelected
                                                     ? AppTheme.primary.withValues(alpha: 0.08)
                                                     : AppTheme.surfaceOf(context),
-                                                borderRadius: BorderRadius.circular(12),
+                                                borderRadius: AppTheme.radiusMd,
                                                 border: Border.all(
                                                     color: isSelected ? AppTheme.primary : AppTheme.hairlineOf(context)),
                                               ),
@@ -576,7 +858,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                         Navigator.push(
                                           context,
                                           appMaterialRoute(const AddressFormScreen()),
-                                        ).then((_) => _fetchUserAddresses());
+                                        ).then((_) => _fetchUserAddresses(preserveActivePin: true));
                                       },
                                     ),
                                   ],
@@ -616,30 +898,42 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                           ),
                         ),
                         ),
+                        ),
                         const SizedBox(width: 12),
                         Row(
                           children: [
                             if (isLoggedIn) ...[
                               GestureDetector(
                                 onTap: widget.onProfileTap,
-                                child: const CircleAvatar(
-                                  backgroundColor: Colors.white,
-                                  radius: 18,
-                                  child: Icon(Icons.person, color: brandPrimary, size: 20),
+                                child: Semantics(
+                                  button: true,
+                                  label: 'Open profile',
+                                  child: const CircleAvatar(
+                                    backgroundColor: Colors.white,
+                                    radius: 18,
+                                    child: Icon(Icons.person, color: brandPrimary, size: 20),
+                                  ),
                                 ),
                               ),
                             ] else ...[
-                              ElevatedButton(
+                              Semantics(
+                                button: true,
+                                label: 'Sign In',
+                                child: ElevatedButton(
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.white,
                                   foregroundColor: brandPrimary,
                                   elevation: 0,
                                   minimumSize: const Size(0, 36),
                                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                  shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusXl),
                                 ),
-                                onPressed: () => showAuthBottomSheet(context, () => setState(() {})),
+                                onPressed: () => showAuthBottomSheet(context, () {
+                                  setState(() {});
+                                  _fetchUserAddresses(preserveActivePin: true);
+                                }),
                                 child: const Text('Sign In', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                              ),
                               ),
                             ]
                           ],
@@ -657,7 +951,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                   height: 52,
                   decoration: BoxDecoration(
                     color: AppTheme.surfaceOf(context),
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: AppTheme.radiusLg,
                     border: Border.all(color: AppTheme.hairlineOf(context)),
                     boxShadow: AppTheme.softShadow,
                   ),
@@ -676,9 +970,9 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                         onTap: () => _performAiSearch(_searchController.text),
                         child: Container(
                           margin: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
+                          decoration: const BoxDecoration(
                             gradient: AppTheme.primaryGradient,
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: AppTheme.radiusSm,
                           ),
                           child: const Icon(Icons.search_rounded, color: Colors.white, size: 20),
                         ),
@@ -695,15 +989,19 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
               child: Text(
-                'Showing kitchens within ${DeliveryEstimatorService.maxDeliveryRadiusKm.toInt()} km of your pin. Offline kitchens are hidden.',
+                _isUsingDevicePin
+                    ? 'Showing kitchens within ${DeliveryEstimatorService.maxDeliveryRadiusKm.toInt()} km of your current location. Sign In keeps this same area.'
+                    : 'Showing kitchens within ${DeliveryEstimatorService.maxDeliveryRadiusKm.toInt()} km of your pin. Offline kitchens are hidden.',
                 style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
               ),
             )
-          else if (isLoggedIn)
+          else
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
               child: Text(
-                'Drop a map pin on your delivery address to hide kitchens outside ${DeliveryEstimatorService.maxDeliveryRadiusKm.toInt()} km.',
+                isLoggedIn
+                    ? 'Drop a map pin on your delivery address to hide kitchens outside ${DeliveryEstimatorService.maxDeliveryRadiusKm.toInt()} km.'
+                    : 'Allow location access to see kitchens near you — the same list stays after Sign In.',
                 style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
               ),
             ),
@@ -712,6 +1010,18 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             LastOrderReorderBanner(onAddedToCart: widget.onReorderToOrders ?? widget.onGoToCart),
 
           if (!_hasActiveSearch) ...[
+            LiveOffersFlashBanner(
+              excludedChefIds: _closedChefIds,
+              destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
+              destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
+              chefKitchenPins: _chefKitchenPins,
+              onOfferTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
+            ),
+            SponsoredPlacementBanner(
+              destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
+              destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
+              cityHint: _selectedAddressMap?['city']?.toString(),
+            ),
             if (isLoggedIn) ...[
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
@@ -813,7 +1123,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                           : (showFollowing
                               ? 'Kitchens you follow'
                               : (showFavorites ? 'Your favorites' : 'Fresh from the kitchen')),
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppTheme.onSurfaceOf(context)),
+                      style: AppTheme.sectionTitleOf(context),
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -929,18 +1239,6 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                 ),
               ),
             ),
-            LiveOffersFlashBanner(
-              excludedChefIds: _closedChefIds,
-              destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
-              destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
-              chefKitchenPins: _chefKitchenPins,
-              onOfferTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
-            ),
-            SponsoredPlacementBanner(
-              destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
-              destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
-              cityHint: _selectedAddressMap?['city']?.toString(),
-            ),
             FestivalHampersBanner(
               excludedChefIds: _closedChefIds,
               destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
@@ -952,6 +1250,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
               excludedChefIds: _closedChefIds,
               destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
               destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
+              destinationAddress: _selectedAddressMap,
               chefKitchenPins: _chefKitchenPins,
               onNightTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
             ),
@@ -1023,12 +1322,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
               duration: const Duration(milliseconds: 200),
               margin: const EdgeInsets.only(right: 12),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: isSelected ? AppTheme.primary : AppTheme.surfaceOf(context),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: isSelected ? AppTheme.primary : AppTheme.hairlineOf(context)),
-                boxShadow: isSelected ? AppTheme.brandGlow(opacity: 0.28) : const [],
-              ),
+              decoration: AppTheme.filterChipDecoration(context, selected: isSelected),
               child: Row(
                 children: [
                   Icon(chip['icon'] as IconData, color: isSelected ? Colors.white : AppTheme.textMuted, size: 16),
@@ -1142,7 +1436,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
               child: Container(
                 clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
+                  color: AppTheme.surfaceOf(context),
                   borderRadius: AppTheme.radiusLg,
                   boxShadow: AppTheme.softShadow,
                 ),
@@ -1211,7 +1505,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                   child: Container(
                                     decoration: BoxDecoration(
                                       color: Colors.black.withValues(alpha: 0.5),
-                                      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                                      borderRadius: const BorderRadius.vertical(top: Radius.circular(AppTheme.rLg)),
                                     ),
                                     child: Center(
                                       child: Text(
@@ -1239,7 +1533,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                               Positioned(
                                 top: 12,
                                 right: 12,
-                                child: GestureDetector(
+                                child: Semantics(
+                                  button: true,
+                                  label: isFavorite ? 'Remove from favorites' : 'Save to favorites',
+                                  child: GestureDetector(
                                   onTap: () {
                                     if (!isLoggedIn) {
                                       showAuthBottomSheet(context, () => setState(() {}));
@@ -1248,15 +1545,18 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                     widget.onToggleFavorite(meal['id'].toString());
                                   },
                                   child: Container(
-                                    padding: const EdgeInsets.all(6),
+                                    padding: const EdgeInsets.all(10),
+                                    constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                                    alignment: Alignment.center,
                                     decoration: BoxDecoration(
-                                        color: Colors.white.withValues(alpha: 0.9), shape: BoxShape.circle),
+                                        color: AppTheme.surfaceOf(context).withValues(alpha: 0.9), shape: BoxShape.circle),
                                     child: Icon(
                                       isFavorite ? Icons.favorite : Icons.favorite_border,
                                       color: brandPrimary,
                                       size: 16,
                                     ),
                                   ),
+                                ),
                                 ),
                               ),
                               Positioned(
@@ -1265,7 +1565,8 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                 child: Container(
                                   padding: const EdgeInsets.all(4),
                                   decoration: BoxDecoration(
-                                      color: Colors.white.withValues(alpha: 0.9), borderRadius: BorderRadius.circular(4)),
+                                      color: AppTheme.surfaceOf(context).withValues(alpha: 0.9),
+                                      borderRadius: BorderRadius.circular(4)),
                                   child: Icon(
                                     Icons.circle,
                                     color: meal['is_veg'] == true ? Colors.green : Colors.red,
@@ -1282,7 +1583,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                               children: [
                                 Text(
                                   meal['title'] ?? 'Home Meal',
-                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.onSurfaceOf(context)),
+                                  style: AppTheme.cardTitleOf(context),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -1398,15 +1699,22 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                     ),
                                     Material(
                                       color: Colors.transparent,
-                                      child: InkWell(
-                                        borderRadius: BorderRadius.circular(12),
+                                      child: Semantics(
+                                        button: true,
+                                        enabled: isAvailable,
+                                        label: isAvailable
+                                            ? 'Add ${meal['title'] ?? 'meal'} to cart'
+                                            : 'Kitchen closed',
+                                        child: InkWell(
+                                        borderRadius: AppTheme.radiusMd,
                                         onTap: isAvailable ? () => _handleAddToCart(meal) : null,
                                         child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                          constraints: const BoxConstraints(minHeight: 44),
                                           decoration: BoxDecoration(
                                             gradient: isAvailable ? AppTheme.primaryGradient : null,
                                             color: isAvailable ? null : Colors.grey.shade200,
-                                            borderRadius: BorderRadius.circular(12),
+                                            borderRadius: AppTheme.radiusMd,
                                             boxShadow: isAvailable ? AppTheme.brandGlow(opacity: 0.25) : null,
                                           ),
                                           child: Row(
@@ -1425,6 +1733,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                             ],
                                           ),
                                         ),
+                                      ),
                                       ),
                                     ),
                                   ],

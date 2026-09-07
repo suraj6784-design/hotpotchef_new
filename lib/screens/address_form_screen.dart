@@ -55,6 +55,10 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
 
   // Form Controllers
   final _houseController = TextEditingController();
+  final _wingController = TextEditingController();
+  final _flatController = TextEditingController();
+  final _societyController = TextEditingController();
+  final _gateController = TextEditingController();
   final _streetController = TextEditingController();
   final _landmarkController = TextEditingController();
   final _cityController = TextEditingController();
@@ -79,6 +83,12 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     if (widget.existingAddress != null) {
       final a = widget.existingAddress!;
       _houseController.text = a['house_no']?.toString() ?? '';
+      _wingController.text = a['wing']?.toString() ?? '';
+      final flatNo = a['flat_no']?.toString().trim() ?? '';
+      _flatController.text =
+          flatNo.isNotEmpty ? flatNo : (a['house_no']?.toString() ?? '');
+      _societyController.text = a['society_name']?.toString() ?? '';
+      _gateController.text = a['gate_instructions']?.toString() ?? '';
       _streetController.text = a['street']?.toString() ?? '';
       _landmarkController.text = a['landmark']?.toString() ?? '';
       _cityController.text = a['city']?.toString() ?? '';
@@ -102,6 +112,10 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
   void dispose() {
     _debounceTimer?.cancel();
     _houseController.dispose();
+    _wingController.dispose();
+    _flatController.dispose();
+    _societyController.dispose();
+    _gateController.dispose();
     _streetController.dispose();
     _landmarkController.dispose();
     _cityController.dispose();
@@ -287,6 +301,10 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     final payload = {
       'user_id': addressData['user_id'],
       'house_no': addressData['house_no'],
+      'wing': addressData['wing'],
+      'flat_no': addressData['flat_no'],
+      'society_name': addressData['society_name'],
+      'gate_instructions': addressData['gate_instructions'],
       'street': addressData['street'],
       'address_line1': (line1 != null && line1.isNotEmpty)
           ? line1
@@ -380,6 +398,10 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
       final addressData = {
         'user_id': user.id,
         'house_no': houseNo,
+        'wing': _wingController.text.trim(),
+        'flat_no': _flatController.text.trim(),
+        'society_name': _societyController.text.trim(),
+        'gate_instructions': _gateController.text.trim(),
         'street': street,
         'address_line1': '$houseNo, $street',
         'city': city,
@@ -609,7 +631,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
                   backgroundColor: fill,
                   foregroundColor: AppTheme.primary,
                   padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  shape: RoundedRectangleBorder(borderRadius: AppTheme.radiusMd),
                   side: const BorderSide(color: AppTheme.primary, width: 1.2),
                 ),
                 icon: Icon(_latitude == null ? Icons.map_outlined : Icons.check_circle, size: 20),
@@ -631,6 +653,35 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
                 controller: _houseController,
                 label: 'House / Flat / Block No. *',
                 validator: (v) => v == null || v.trim().isEmpty ? 'Enter house or flat number' : null,
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildHighContrastTextField(
+                      controller: _wingController,
+                      label: 'Wing',
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildHighContrastTextField(
+                      controller: _flatController,
+                      label: 'Flat No',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              _buildHighContrastTextField(
+                controller: _societyController,
+                label: 'Society / Building name',
+              ),
+              const SizedBox(height: 14),
+              _buildHighContrastTextField(
+                controller: _gateController,
+                label: 'Gate instructions (optional)',
+                maxLines: 2,
               ),
               const SizedBox(height: 14),
               _buildHighContrastTextField(
@@ -725,6 +776,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     required String label,
     TextInputType? keyboardType,
     int? maxLength,
+    int maxLines = 1,
     String? Function(String?)? validator,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -738,6 +790,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
       style: TextStyle(color: titleColor, fontSize: 14, fontWeight: FontWeight.w500),
       keyboardType: keyboardType,
       maxLength: maxLength,
+      maxLines: maxLines,
       validator: validator,
       decoration: InputDecoration(
         labelText: label,

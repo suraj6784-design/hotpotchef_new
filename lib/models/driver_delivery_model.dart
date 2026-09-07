@@ -72,6 +72,9 @@ class DriverDeliveryModel {
   final double? pickupLng;
   final double? deliveryLat;
   final double? deliveryLng;
+  final String? gateInstructions;
+  final String? deliveryOtp;
+  final String? specialInstructions;
 
   const DriverDeliveryModel({
     required this.orderId,
@@ -95,7 +98,17 @@ class DriverDeliveryModel {
     this.pickupLng,
     this.deliveryLat,
     this.deliveryLng,
+    this.gateInstructions,
+    this.deliveryOtp,
+    this.specialInstructions,
   });
+
+  bool get hasDropoffNotes {
+    final gate = gateInstructions?.trim() ?? '';
+    final otp = deliveryOtp?.trim() ?? '';
+    final notes = specialInstructions?.trim() ?? '';
+    return gate.isNotEmpty || otp.isNotEmpty || notes.isNotEmpty;
+  }
 
   String get displayOrderNumber =>
       orderNumber.isNotEmpty ? orderNumber : formatOrderId(null, orderId);
@@ -194,6 +207,17 @@ class DriverDeliveryModel {
         }, latitude: false);
 
     final orderId = json['id']?.toString() ?? '';
+    final special = json['special_instructions']?.toString();
+    var gate = json['gate_instructions']?.toString();
+    var otp = json['delivery_otp']?.toString();
+    if ((gate == null || gate.trim().isEmpty) && special != null) {
+      final gateMatch = RegExp(r'Gate:\s*(.+?)(?:\s*·|$)', caseSensitive: false).firstMatch(special);
+      if (gateMatch != null) gate = gateMatch.group(1)?.trim();
+    }
+    if ((otp == null || otp.trim().isEmpty) && special != null) {
+      final otpMatch = RegExp(r'(?:Delivery PIN|OTP):\s*(\d{4})', caseSensitive: false).firstMatch(special);
+      if (otpMatch != null) otp = otpMatch.group(1);
+    }
     return DriverDeliveryModel(
       orderId: orderId,
       orderNumber: formatOrderId(json['order_id']?.toString(), orderId),
@@ -224,6 +248,9 @@ class DriverDeliveryModel {
       pickupLng: pickupLng,
       deliveryLat: dropLat,
       deliveryLng: dropLng,
+      gateInstructions: gate,
+      deliveryOtp: otp,
+      specialInstructions: special,
     );
   }
 
