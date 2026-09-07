@@ -76,6 +76,9 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   bool _isAiSearching = false;
   bool _hasActiveSearch = false;
   List<Map<String, dynamic>> _aiSearchResults = [];
+  List<Map<String, dynamic>> _chefSearchResults = [];
+  String? _filteredChefId;
+  String? _filteredChefName;
   final Map<String, Map<String, dynamic>> _chefKitchenPins = {};
   final Set<String> _chefPinsResolved = {};
   bool _hydratingChefPins = false;
@@ -309,6 +312,9 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       setState(() {
         _hasActiveSearch = false;
         _aiSearchResults.clear();
+        _chefSearchResults.clear();
+        _filteredChefId = null;
+        _filteredChefName = null;
       });
       return;
     }
@@ -316,10 +322,13 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     setState(() {
       _isAiSearching = true;
       _hasActiveSearch = true;
+      _filteredChefId = null;
+      _filteredChefName = null;
     });
 
     try {
-      final response = await Supabase.instance.client.functions.invoke(
+      final client = Supabase.instance.client;
+      final response = await client.functions.invoke(
         'ai-search',
         body: {'prompt': trimmed},
       ).withTimeout(NetworkTimeouts.payment);
@@ -329,23 +338,102 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         rawMeals = List<Map<String, dynamic>>.from(response.data['meals']);
       }
 
-      final localResponse = await Supabase.instance.client
+      final localResponse = await client
           .from('meals')
           .select()
           .eq('status', 'Available')
           .withTimeout(NetworkTimeouts.standard);
       final localMeals = List<Map<String, dynamic>>.from(localResponse);
       final qClean = trimmed.toLowerCase().replaceAll(' ', '');
+      final qLower = trimmed.toLowerCase();
 
       final localMatches = localMeals.where((m) {
         final title = m['title']?.toString().toLowerCase().replaceAll(' ', '') ?? '';
         final desc = m['description']?.toString().toLowerCase().replaceAll(' ', '') ?? '';
-        return title.contains(qClean) || desc.contains(qClean);
+        if (title.contains(qClean) || desc.contains(qClean)) return true;
+        return chefNameMatchesQuery(trimmed, m);
       }).toList();
 
       for (var lm in localMatches) {
         if (!rawMeals.any((rm) => rm['id'] == lm['id'])) {
           rawMeals.add(lm);
+        }
+      }
+
+      // Chef / kitchen name search (users + local kitchen labels).
+      final chefHits = <String, Map<String, dynamic>>{};
+      try {
+        final chefRows = await client
+            .from('users')
+            .select('id, name, full_name, email, fssai_number, role')
+            .eq('role', 'Chef')
+            .limit(250)
+            .withTimeout(NetworkTimeouts.standard);
+        for (final row in List<Map<String, dynamic>>.from(chefRows as List)) {
+          if (!chefNameMatchesQuery(trimmed, row)) continue;
+          final id = row['id']?.toString() ?? '';
+          if (id.isEmpty) continue;
+          chefHits[id] = row;
+        }
+      } catch (e, stack) {
+        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chef name search failed');
+      }
+
+      try {
+        final kitchenRows = await client
+            .from('chef_profiles')
+            .select('user_id, local_kitchen_name')
+            .ilike('local_kitchen_name', '%$trimmed%')
+            .limit(24)
+            .withTimeout(NetworkTimeouts.standard);
+        final kitchenIds = <String>[];
+        final kitchenLabels = <String, String>{};
+        for (final row in List<Map<String, dynamic>>.from(kitchenRows as List)) {
+          final id = row['user_id']?.toString() ?? '';
+          if (id.isEmpty) continue;
+          kitchenIds.add(id);
+          kitchenLabels[id] = row['local_kitchen_name']?.toString() ?? '';
+        }
+        if (kitchenIds.isNotEmpty) {
+          final extraChefs = await client
+              .from('users')
+              .select('id, name, full_name, email, fssai_number, role')
+              .inFilter('id', kitchenIds)
+              .withTimeout(NetworkTimeouts.standard);
+          for (final row in List<Map<String, dynamic>>.from(extraChefs as List)) {
+            final id = row['id']?.toString() ?? '';
+            if (id.isEmpty) continue;
+            final merged = Map<String, dynamic>.from(row);
+            merged['local_kitchen_name'] = kitchenLabels[id];
+            chefHits[id] = {...?chefHits[id], ...merged};
+          }
+        }
+      } catch (e, stack) {
+        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Kitchen name search failed');
+      }
+
+      // Also pick chefs already present on local meal rows whose display name matches.
+      for (final meal in localMeals) {
+        if (!chefNameMatchesQuery(trimmed, meal)) continue;
+        final id = meal['chef_id']?.toString() ?? '';
+        if (id.isEmpty || chefHits.containsKey(id)) continue;
+        chefHits[id] = {
+          'id': id,
+          'name': chefDisplayName(meal),
+          'chef_name': meal['chef_name'],
+          'fssai_number': meal['fssai_number'],
+        };
+      }
+
+      if (chefHits.isNotEmpty) {
+        final chefMealMatches = localMeals.where((m) {
+          final id = m['chef_id']?.toString() ?? '';
+          return id.isNotEmpty && chefHits.containsKey(id);
+        }).toList();
+        for (final meal in chefMealMatches) {
+          if (!rawMeals.any((rm) => rm['id'] == meal['id'])) {
+            rawMeals.add(meal);
+          }
         }
       }
 
@@ -355,8 +443,21 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         return isInventory && status != 'paused' && status != 'cancelled';
       }).toList();
 
+      final rankedChefs = chefHits.values.toList()
+        ..sort((a, b) {
+          final an = chefDisplayName(a).toLowerCase();
+          final bn = chefDisplayName(b).toLowerCase();
+          final aExact = an == qLower || an.startsWith(qLower);
+          final bExact = bn == qLower || bn.startsWith(qLower);
+          if (aExact != bExact) return aExact ? -1 : 1;
+          return an.compareTo(bn);
+        });
+
       if (mounted) {
-        setState(() => _aiSearchResults = validMeals);
+        setState(() {
+          _aiSearchResults = validMeals;
+          _chefSearchResults = rankedChefs.take(12).toList();
+        });
       }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'AI Search Failure');
@@ -367,11 +468,66 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         setState(() {
           _hasActiveSearch = false;
           _aiSearchResults.clear();
+          _chefSearchResults.clear();
+          _filteredChefId = null;
+          _filteredChefName = null;
         });
       }
     } finally {
       if (mounted) setState(() => _isAiSearching = false);
     }
+  }
+
+  Future<void> _filterFeedToChef(Map<String, dynamic> chef) async {
+    final id = chef['id']?.toString() ?? '';
+    if (id.isEmpty) return;
+    final name = chefDisplayName(chef);
+    setState(() {
+      _isAiSearching = true;
+      _hasActiveSearch = true;
+      _filteredChefId = id;
+      _filteredChefName = name;
+      _searchController.text = name;
+    });
+    try {
+      final rows = await Supabase.instance.client
+          .from('meals')
+          .select()
+          .eq('status', 'Available')
+          .eq('chef_id', id)
+          .withTimeout(NetworkTimeouts.standard);
+      final meals = List<Map<String, dynamic>>.from(rows as List).where((m) {
+        final status = m['status']?.toString().toLowerCase() ?? '';
+        final isInventory = (m['customer_name'] == null || m['customer_name'].toString().isEmpty);
+        return isInventory && status != 'paused' && status != 'cancelled';
+      }).toList();
+      if (!mounted) return;
+      setState(() {
+        _aiSearchResults = meals;
+        // Keep the selected chef first in the strip.
+        final others = _chefSearchResults.where((c) => c['id']?.toString() != id).toList();
+        _chefSearchResults = [chef, ...others];
+      });
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Filter feed to chef failed');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(networkErrorMessage(e)), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _isAiSearching = false);
+    }
+  }
+
+  void _clearHomeSearch() {
+    _searchController.clear();
+    setState(() {
+      _hasActiveSearch = false;
+      _aiSearchResults.clear();
+      _chefSearchResults.clear();
+      _filteredChefId = null;
+      _filteredChefName = null;
+    });
   }
 
   Future<void> _fetchUserAddresses({bool preserveActivePin = false}) async {
@@ -959,7 +1115,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                     controller: _searchController,
                     onSubmitted: (val) => _performAiSearch(val),
                     decoration: InputDecoration(
-                      hintText: 'What are you craving today?',
+                      hintText: 'Search dishes or home chefs',
                       hintStyle: TextStyle(color: AppTheme.textMuted, fontSize: 14),
                       filled: false,
                       border: InputBorder.none,
@@ -1119,7 +1275,9 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                   children: [
                     Text(
                       _hasActiveSearch
-                          ? 'Search results'
+                          ? (_filteredChefId != null
+                              ? 'Dishes from ${_filteredChefName ?? 'this chef'}'
+                              : 'Search results')
                           : (showFollowing
                               ? 'Kitchens you follow'
                               : (showFavorites ? 'Your favorites' : 'Fresh from the kitchen')),
@@ -1128,7 +1286,11 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                     const SizedBox(height: 4),
                     Text(
                       _hasActiveSearch
-                          ? '"${_searchController.text}"'
+                          ? (_filteredChefId != null
+                              ? 'Only Available meals from this kitchen'
+                              : (_chefSearchResults.isEmpty
+                                  ? '"${_searchController.text}"'
+                                  : '${_chefSearchResults.length} chef${_chefSearchResults.length == 1 ? '' : 's'} · "${_searchController.text}"'))
                           : (showFollowing
                               ? 'Live dishes from kitchens you follow'
                               : (showFavorites ? 'Meals you loved' : 'Support your local home chefs')),
@@ -1138,13 +1300,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                 ),
                 if (_hasActiveSearch)
                   TextButton.icon(
-                    onPressed: () {
-                      _searchController.clear();
-                      setState(() {
-                        _hasActiveSearch = false;
-                        _aiSearchResults.clear();
-                      });
-                    },
+                    onPressed: _clearHomeSearch,
                     icon: const Icon(Icons.close, size: 16, color: Colors.red),
                     label: const Text('Clear', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w700)),
                   ),
@@ -1161,17 +1317,25 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                   children: [
                     CircularProgressIndicator(color: AppTheme.primary),
                     SizedBox(height: 16),
-                    Text('Scanning menus...', style: TextStyle(color: AppTheme.textMuted, fontWeight: FontWeight.bold)),
+                    Text('Searching dishes and chefs...', style: TextStyle(color: AppTheme.textMuted, fontWeight: FontWeight.bold)),
                   ],
                 ),
               ),
             )
-          else if (_hasActiveSearch)
+          else if (_hasActiveSearch) ...[
+            if (_chefSearchResults.isNotEmpty) _buildChefSearchStrip(_chefSearchResults),
             _buildMealGrid(
               _applyFeedChips(_mealsForSelectedAddress(_filterFollowedMeals(
-                showFavorites
-                    ? _aiSearchResults.where((m) => widget.favoriteMeals.contains(m['id'].toString())).toList()
-                    : _aiSearchResults,
+                () {
+                  var meals = showFavorites
+                      ? _aiSearchResults.where((m) => widget.favoriteMeals.contains(m['id'].toString())).toList()
+                      : List<Map<String, dynamic>>.from(_aiSearchResults);
+                  final chefId = _filteredChefId;
+                  if (chefId != null && chefId.isNotEmpty) {
+                    meals = meals.where((m) => m['chef_id']?.toString() == chefId).toList();
+                  }
+                  return meals;
+                }(),
                 followedKitchens,
                 showFollowing,
               ))),
@@ -1179,7 +1343,8 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
               showFavorites: showFavorites,
               showFollowing: showFollowing,
               hasFollows: followedKitchens.isNotEmpty,
-            )
+            ),
+          ]
           else
             StreamBuilder<List<Map<String, dynamic>>>(
               stream: _mealsStream,
@@ -1299,6 +1464,108 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     return meals
         .where((meal) => mealMatchesFeedDiet(meal, _selectedDiet) && mealMatchesCuisine(meal, _selectedCategory))
         .toList();
+  }
+
+  Widget _buildChefSearchStrip(List<Map<String, dynamic>> chefs) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+          child: Text(
+            'Matching chefs · tap to show only their dishes',
+            style: AppTheme.sectionTitleOf(context).copyWith(fontSize: 15),
+          ),
+        ),
+        SizedBox(
+          height: 100,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            itemCount: chefs.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 10),
+            itemBuilder: (context, index) {
+              final chef = chefs[index];
+              final id = chef['id']?.toString() ?? '';
+              final name = chefDisplayName(chef);
+              final local = chef['local_kitchen_name']?.toString().trim() ?? '';
+              final fssai = chef['fssai_number']?.toString() ?? '';
+              final selected = id.isNotEmpty && id == _filteredChefId;
+              return Semantics(
+                button: true,
+                label: 'Show all dishes from $name',
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: AppTheme.radiusMd,
+                    onTap: id.isEmpty ? null : () => _filterFeedToChef(chef),
+                    child: Container(
+                      width: 188,
+                      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? AppTheme.primary.withValues(alpha: 0.10)
+                            : AppTheme.surfaceOf(context),
+                        borderRadius: AppTheme.radiusMd,
+                        border: Border.all(
+                          color: selected ? AppTheme.primary : AppTheme.hairlineOf(context),
+                          width: selected ? 1.5 : 1,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                selected ? Icons.storefront : Icons.storefront_outlined,
+                                size: 16,
+                                color: AppTheme.primary,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Chef profile',
+                                visualDensity: VisualDensity.compact,
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                icon: const Icon(Icons.info_outline, size: 18, color: AppTheme.textMuted),
+                                onPressed: id.isEmpty
+                                    ? null
+                                    : () => showChefProfileDialog(context, id, name, fssai),
+                              ),
+                            ],
+                          ),
+                          Text(
+                            local.isNotEmpty ? local : (selected ? 'Showing this kitchen only' : 'Tap for all dishes'),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: selected ? AppTheme.primary : AppTheme.textMuted,
+                              height: 1.3,
+                              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 8),
+      ],
+    );
   }
 
   Widget _filterChipRow({

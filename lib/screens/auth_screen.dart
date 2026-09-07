@@ -432,7 +432,7 @@ class _AuthScreenState extends State<AuthScreen> {
             top: 0,
             left: 0,
             right: 0,
-            height: 280,
+            height: 320,
             child: Container(
               decoration: const BoxDecoration(
                 gradient: AppTheme.primaryGradient,
@@ -444,45 +444,47 @@ class _AuthScreenState extends State<AuthScreen> {
             ),
           ),
           SafeArea(
-            child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-                child: AutofillGroup(
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const SizedBox(height: 12),
-                        const Center(child: AppLogo(size: 72, elevated: true)).popIn(),
-                        const SizedBox(height: 16),
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 250),
-                          child: Text(
-                            _isLogin ? 'Welcome back' : 'Join HotPotChef',
-                            key: ValueKey(_isLogin),
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 26,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white,
-                            ),
+            child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+              child: AutofillGroup(
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SizedBox(height: 20),
+                      const Center(child: AppLogo(size: 72, elevated: true)).popIn(),
+                      const SizedBox(height: 18),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 250),
+                        child: Text(
+                          _isLogin ? 'Welcome back' : 'Join HotPotChef',
+                          key: ValueKey(_isLogin),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            height: 1.2,
                           ),
                         ),
-                        const SizedBox(height: 6),
-                        Text(
-                          _isLogin
-                              ? 'Sign in to kitchens, orders, and your wallet'
-                              : 'Create an account as a diner, home chef, or driver',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.85)),
-                        ),
-                        const SizedBox(height: 28),
-                        _buildCredentialCard(isDark).entrance(),
-                        const SizedBox(height: 8),
-                        ..._buildAuthLinks(compact: false),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _isLogin
+                            ? 'Sign in to kitchens, orders, and your wallet'
+                            : 'Create an account as a diner, home chef, or driver',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 13, height: 1.35, color: Colors.white.withValues(alpha: 0.9)),
+                      ),
+                      // Keep the white card below the header copy so it cannot cover the title
+                      // when the keyboard opens or the form grows with validation errors.
+                      const SizedBox(height: 36),
+                      _buildCredentialCard(isDark).entrance(),
+                      const SizedBox(height: 8),
+                      ..._buildAuthLinks(compact: false),
+                    ],
                   ),
                 ),
               ),

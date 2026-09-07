@@ -9,6 +9,23 @@ import '../data/chef_academy_quizzes.dart';
 import '../services/chef_academy_progress.dart';
 import '../utils/app_theme.dart';
 
+EdgeInsets _academyListPadding(BuildContext context) {
+  final bottomInset = MediaQuery.paddingOf(context).bottom;
+  return EdgeInsets.fromLTRB(20, 8, 20, 28 + bottomInset);
+}
+
+ButtonStyle _academyPrimaryButtonStyle(BuildContext context, {bool outlined = false}) {
+  return ElevatedButton.styleFrom(
+    backgroundColor: outlined ? AppTheme.surfaceOf(context) : AppTheme.primary,
+    foregroundColor: outlined ? AppTheme.primary : Colors.white,
+    elevation: 0,
+    minimumSize: const Size(double.infinity, 52),
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    side: outlined ? BorderSide(color: AppTheme.primary.withValues(alpha: 0.45)) : BorderSide.none,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+  );
+}
+
 IconData _moduleIcon(String name) {
   switch (name) {
     case 'clean_hands':
@@ -92,7 +109,7 @@ class _ChefAcademyScreenState extends State<ChefAcademyScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+              padding: _academyListPadding(context),
               children: [
                 Text(
                   kChefAcademyTagline,
@@ -144,6 +161,11 @@ class _ChefAcademyScreenState extends State<ChefAcademyScreen> {
                           width: double.infinity,
                           child: OutlinedButton.icon(
                             onPressed: _openCertificate,
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size(double.infinity, 52),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
                             icon: const Icon(Icons.workspace_premium_outlined, size: 18),
                             label: const Text('View certificate', style: TextStyle(fontWeight: FontWeight.w800)),
                           ),
@@ -331,7 +353,7 @@ class _AcademyModuleScreenState extends State<_AcademyModuleScreen> {
           ),
         ),
         body: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+          padding: _academyListPadding(context),
           children: [
             for (final lesson in widget.module.lessons) ...[
               _LessonTile(
@@ -543,7 +565,7 @@ class _AcademyLessonScreenState extends State<_AcademyLessonScreen> {
           ),
         ),
         body: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+          padding: _academyListPadding(context),
           children: [
             Text(
               '${widget.module.title} · ${widget.lesson.minutes} min',
@@ -558,6 +580,11 @@ class _AcademyLessonScreenState extends State<_AcademyLessonScreen> {
               const SizedBox(height: 20),
               OutlinedButton.icon(
                 onPressed: _openVideo,
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 52),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
                 icon: const Icon(Icons.ondemand_video_outlined),
                 label: const Text('Watch related video tip', style: TextStyle(fontWeight: FontWeight.w700)),
               ),
@@ -565,16 +592,9 @@ class _AcademyLessonScreenState extends State<_AcademyLessonScreen> {
             const SizedBox(height: 28),
             SizedBox(
               width: double.infinity,
-              height: 48,
               child: ElevatedButton.icon(
                 onPressed: _saving ? null : _toggleComplete,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _isDone ? AppTheme.surfaceOf(context) : AppTheme.primary,
-                  foregroundColor: _isDone ? AppTheme.primary : Colors.white,
-                  elevation: 0,
-                  side: _isDone ? BorderSide(color: AppTheme.primary.withValues(alpha: 0.45)) : BorderSide.none,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
+                style: _academyPrimaryButtonStyle(context, outlined: _isDone),
                 icon: Icon(_isDone ? Icons.undo : Icons.check),
                 label: Text(
                   _isDone ? 'Mark as not done' : 'Mark lesson complete',
@@ -667,7 +687,7 @@ class _AcademyQuizScreenState extends State<_AcademyQuizScreen> {
           ),
         ),
         body: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+          padding: _academyListPadding(context),
           children: [
             if (!lessonsDone)
               Container(
@@ -727,15 +747,9 @@ class _AcademyQuizScreenState extends State<_AcademyQuizScreen> {
             ],
             SizedBox(
               width: double.infinity,
-              height: 48,
               child: ElevatedButton(
                 onPressed: _saving ? null : _submit,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primary,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
+                style: _academyPrimaryButtonStyle(context),
                 child: Text(
                   _saving ? 'Saving…' : 'Submit quiz',
                   style: const TextStyle(fontWeight: FontWeight.w800),
@@ -793,7 +807,7 @@ class _AcademyCertificateScreen extends StatelessWidget {
         elevation: 0,
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+        padding: _academyListPadding(context),
         children: [
           Container(
             padding: const EdgeInsets.all(20),
@@ -850,31 +864,33 @@ class _AcademyCertificateScreen extends StatelessWidget {
           const SizedBox(height: 20),
           SizedBox(
             width: double.infinity,
-            height: 48,
             child: ElevatedButton.icon(
               onPressed: () => _share(context),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primary,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
+              style: _academyPrimaryButtonStyle(context),
               icon: const Icon(Icons.share_outlined),
               label: const Text('Share certificate', style: TextStyle(fontWeight: FontWeight.w800)),
             ),
           ),
           const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: () async {
-              final code = snapshot.certificateCode ?? '';
-              await Clipboard.setData(ClipboardData(text: code));
-              if (!context.mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Certificate code copied')),
-              );
-            },
-            icon: const Icon(Icons.copy_outlined, size: 18),
-            label: const Text('Copy code', style: TextStyle(fontWeight: FontWeight.w700)),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                final code = snapshot.certificateCode ?? '';
+                await Clipboard.setData(ClipboardData(text: code));
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Certificate code copied')),
+                );
+              },
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 52),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              icon: const Icon(Icons.copy_outlined, size: 18),
+              label: const Text('Copy code', style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
           ),
         ],
       ),
