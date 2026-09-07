@@ -85,6 +85,62 @@
     return res.json();
   }
 
+  /** REST read with the signed-in user's JWT (for profile / addresses). */
+  async function supabaseAuthedGet(pathAndQuery) {
+    var url = restBase();
+    var key = restKey();
+    var token = accessToken();
+    if (!configReady()) {
+      throw new Error('Site config is incomplete. Add Supabase URL and anon key in js/config.js.');
+    }
+    if (!token) throw new Error('Please sign in first.');
+    var res = await fetch(url + '/rest/v1/' + pathAndQuery, {
+      headers: {
+        apikey: key,
+        Authorization: 'Bearer ' + token,
+        Accept: 'application/json',
+      },
+    });
+    if (!res.ok) throw new Error('Request failed (' + res.status + ')');
+    return res.json();
+  }
+
+  function formatSavedAddress(data) {
+    if (!data) return '';
+    function clean(v) {
+      return (v == null ? '' : String(v)).trim();
+    }
+    var parts = [];
+    [
+      data.house_no || data.flat_no,
+      data.wing,
+      data.society_name,
+      data.street || data.address_line1 || data.address_line_1,
+      data.landmark,
+      data.city,
+      data.state,
+    ].forEach(function (value) {
+      var part = clean(value);
+      if (!part) return;
+      var lower = part.toLowerCase();
+      for (var i = 0; i < parts.length; i++) {
+        if (parts[i].toLowerCase().indexOf(lower) !== -1 || lower.indexOf(parts[i].toLowerCase()) !== -1) {
+          return;
+        }
+      }
+      parts.push(part);
+    });
+    var pin = clean(data.postal_code || data.pincode);
+    if (!parts.length) {
+      var fallback = clean(data.address || data.full_address || data.formatted_address);
+      if (!fallback) return pin;
+      if (pin && fallback.toLowerCase().indexOf(pin.toLowerCase()) === -1) return fallback + ' - ' + pin;
+      return fallback;
+    }
+    if (pin) return parts.join(', ') + ' - ' + pin;
+    return parts.join(', ');
+  }
+
   function playStoreUrl() {
     return cfg().playStoreUrl || 'https://play.google.com/store/apps/details?id=com.hotpotchef.app';
   }
@@ -270,6 +326,8 @@
     chefLabel: chefLabel,
     mealTitle: mealTitle,
     supabaseGet: supabaseGet,
+    supabaseAuthedGet: supabaseAuthedGet,
+    formatSavedAddress: formatSavedAddress,
     playStoreUrl: playStoreUrl,
     wireOpenApp: wireOpenApp,
     setOg: setOg,

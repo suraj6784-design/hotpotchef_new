@@ -218,4 +218,115 @@
   document.getElementById('checkout-form').addEventListener('submit', pay);
   renderCart();
   cart.syncBadge();
+  loadAccountDetails();
+
+  async function loadAccountDetails() {
+    var phoneEl = document.getElementById('co-phone');
+    var addressEl = document.getElementById('co-address');
+    var notesEl = document.getElementById('co-notes');
+    var savedWrap = document.getElementById('co-saved-wrap');
+    var savedSelect = document.getElementById('co-saved-address');
+    if (!user || !user.id) return;
+
+    setStatus('Loading your saved details…');
+    try {
+      var profiles = await api.supabaseAuthedGet(
+        'users?id=eq.' +
+          encodeURIComponent(user.id) +
+          '&select=phone,address,house_no,street,city,state,pincode,full_name,name'
+      );
+      var profile = profiles && profiles[0];
+      var meta = (user && user.user_metadata) || {};
+      var phone =
+        (profile && profile.phone) || meta.phone || user.phone || '';
+      phone = String(phone || '').trim();
+      if (phoneEl && phone && !phoneEl.value) phoneEl.value = phone;
+
+      var addresses = [];
+      try {
+        addresses = await api.supabaseAuthedGet(
+          'user_addresses?user_id=eq.' +
+            encodeURIComponent(user.id) +
+            '&select=*&order=is_default.desc,updated_at.desc'
+        );
+      } catch (_) {
+        try {
+          addresses = await api.supabaseAuthedGet(
+            'user_addresses?user_id=eq.' + encodeURIComponent(user.id) + '&select=*'
+          );
+        } catch (_) {}
+      }
+
+      var formatted = (addresses || [])
+        .map(function (row) {
+          return {
+            row: row,
+            text: api.formatSavedAddress(row),
+            isDefault: row.is_default === true || row.is_default === 'true',
+          };
+        })
+        .filter(function (item) {
+          return item.text;
+        });
+
+      if (!formatted.length && profile) {
+        var fallback = api.formatSavedAddress(profile);
+        if (fallback) {
+          formatted.push({ row: profile, text: fallback, isDefault: true });
+        }
+      }
+
+      if (formatted.length && savedWrap && savedSelect) {
+        savedWrap.hidden = false;
+        var initial = 0;
+        for (var i = 0; i < formatted.length; i++) {
+          if (formatted[i].isDefault) {
+            initial = i;
+            break;
+          }
+        }
+
+        savedSelect.innerHTML = formatted
+          .map(function (item, index) {
+            var label = item.text;
+            if (item.isDefault) label = 'Default · ' + label;
+            return (
+              '<option value="' +
+              index +
+              '"' +
+              (index === initial ? ' selected' : '') +
+              '>' +
+              api.escapeHtml(label) +
+              '</option>'
+            );
+          })
+          .join('');
+
+        function applySaved(index) {
+          var item = formatted[index];
+          if (!item || !addressEl) return;
+          addressEl.value = item.text;
+          if (notesEl && !notesEl.value) {
+            var gate = (item.row.gate_instructions || item.row.delivery_notes || '')
+              .toString()
+              .trim();
+            if (gate) notesEl.value = gate.indexOf('Gate:') === 0 ? gate : 'Gate: ' + gate;
+          }
+        }
+
+        savedSelect.value = String(initial);
+        applySaved(initial);
+        savedSelect.addEventListener('change', function () {
+          applySaved(Number(savedSelect.value) || 0);
+        });
+      } else if (addressEl && !addressEl.value && profile) {
+        var only = api.formatSavedAddress(profile);
+        if (only) addressEl.value = only;
+      }
+
+      setStatus('');
+    } catch (err) {
+      setStatus('Could not load saved phone/address — enter them below.', true);
+    }
+  }
 })();
