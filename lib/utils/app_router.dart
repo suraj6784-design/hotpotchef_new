@@ -15,13 +15,16 @@ import '../screens/driver_profile_screen.dart';
 import '../screens/customer_profile_screen.dart';
 import '../screens/chef_analytics_screen.dart';
 import '../screens/chef_publish_meal_screen.dart';
+import 'route_authz.dart';
 
 class AppRouter {
   static final GoRouter router = GoRouter(
     initialLocation: '/customer-hub',
     errorBuilder: (context, state) {
       final user = Supabase.instance.client.auth.currentUser;
-      final role = (user?.userMetadata?['role'] ?? 'customer').toString().toLowerCase();
+      final home = RouteAuthz.hubForRole(
+        RouteAuthz.parseRole(user?.userMetadata?['role']?.toString()),
+      );
 
       return Scaffold(
         backgroundColor: const Color(0xFF121212),
@@ -40,15 +43,7 @@ class AppRouter {
                 const SizedBox(height: 24),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white),
-                  onPressed: () {
-                    if (role == 'chef') {
-                      context.go('/chef-hub');
-                    } else if (role == 'driver') {
-                      context.go('/driver-hub');
-                    } else {
-                      context.go('/customer-hub');
-                    }
-                  },
+                  onPressed: () => context.go(home),
                   child: const Text('Return Home'),
                 ),
               ],
@@ -59,39 +54,11 @@ class AppRouter {
     },
     redirect: (context, state) {
       final session = Supabase.instance.client.auth.currentSession;
-      final isAuthenticated = session != null;
-      final path = state.uri.path;
-      final role = session?.user.userMetadata?['role']?.toString().toLowerCase() ?? 'customer';
-
-      // 1. Protect Chef and Driver routes against unauthenticated access
-      const protectedChefDriverRoutes = [
-        '/chef-hub',
-        '/driver-hub',
-        '/chef-analytics',
-        '/chef-profile',
-        '/driver-profile',
-        '/chef-publish-meal',
-      ];
-      if (!isAuthenticated && protectedChefDriverRoutes.contains(path)) {
-        return '/auth';
-      }
-
-      // 2. Enforce correct role-based landing on app startup or auth navigation
-      if (isAuthenticated) {
-        if (path == '/auth') {
-          if (role == 'chef') return '/chef-hub';
-          if (role == 'driver') return '/driver-hub';
-          return '/customer-hub';
-        }
-
-        // Intercept if a Chef or Driver lands on the customer hub by default on app launch
-        if (path == '/customer-hub') {
-          if (role == 'chef') return '/chef-hub';
-          if (role == 'driver') return '/driver-hub';
-        }
-      }
-
-      return null;
+      return RouteAuthz.resolveRedirect(
+        isAuthenticated: session != null,
+        rawRole: session?.user.userMetadata?['role']?.toString(),
+        path: state.uri.path,
+      );
     },
     routes: [
       GoRoute(
