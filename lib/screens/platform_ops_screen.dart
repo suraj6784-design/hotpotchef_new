@@ -1161,22 +1161,28 @@ class _KycChecklist {
 
 _KycChecklist _kycChecklistFor(Map<String, dynamic> row) {
   final role = (row['role']?.toString() ?? '').toLowerCase();
+  final isDriver = role == 'driver';
   final checks = <String, String>{
     'Name': row['name']?.toString() ?? row['full_name']?.toString() ?? '',
     'Email': row['email']?.toString() ?? '',
-    'FSSAI number': row['fssai_number']?.toString() ?? '',
-    'FSSAI proof': row['fssai_proof_url']?.toString() ?? '',
-    'FSSAI verified': normalizeFssaiVerificationStatus(row['fssai_verification_status']?.toString()) == 'verified'
-        ? 'yes'
-        : '',
-    'GSTIN': row['gstin']?.toString() ?? '',
+    'Phone': row['phone']?.toString() ?? '',
     'Bank account': row['bank_account_number']?.toString() ?? '',
     'IFSC': row['ifsc_code']?.toString() ?? row['bank_ifsc']?.toString() ?? '',
     'PAN': row['pan_number']?.toString() ?? '',
     'Aadhaar': row['aadhaar_masked']?.toString() ?? '',
   };
-  if (role == 'chef') {
-    checks['Kitchen name'] = row['local_kitchen_name']?.toString() ?? '';
+  if (isDriver) {
+    checks['Vehicle type'] = row['vehicle_type']?.toString() ?? '';
+    checks['Vehicle number'] = row['vehicle_reg_no']?.toString() ?? row['vehicle_number']?.toString() ?? '';
+  } else {
+    checks['FSSAI number'] = row['fssai_number']?.toString() ?? '';
+    checks['FSSAI proof'] = row['fssai_proof_url']?.toString() ?? '';
+    checks['FSSAI verified'] =
+        normalizeFssaiVerificationStatus(row['fssai_verification_status']?.toString()) == 'verified' ? 'yes' : '';
+    checks['GSTIN'] = row['gstin']?.toString() ?? '';
+    if (role == 'chef') {
+      checks['Kitchen name'] = row['local_kitchen_name']?.toString() ?? '';
+    }
   }
   final missing = <String>[];
   var done = 0;
@@ -1199,9 +1205,9 @@ class _KycOpsList extends StatelessWidget {
       final rows = await client
           .from('users')
           .select(
-            'id, role, name, full_name, email, fssai_number, fssai_proof_url, '
+            'id, role, name, full_name, email, phone, fssai_number, fssai_proof_url, '
             'fssai_verification_status, gstin, bank_account_number, bank_ifsc, '
-            'pan_number, aadhaar_masked',
+            'pan_number, aadhaar_masked, vehicle_type, vehicle_reg_no, vehicle_number',
           )
           .inFilter('role', ['Chef', 'Driver'])
           .limit(120)
@@ -1212,7 +1218,7 @@ class _KycOpsList extends StatelessWidget {
       final rows = await client
           .from('users')
           .select(
-            'id, role, name, full_name, email, fssai_number, fssai_proof_url, '
+            'id, role, name, full_name, email, phone, fssai_number, fssai_proof_url, '
             'fssai_verification_status, gstin, pan_number, aadhaar_masked',
           )
           .inFilter('role', ['Chef', 'Driver'])
