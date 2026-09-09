@@ -13,11 +13,16 @@
     return total > 0 ? api.money(total) : '';
   }
 
-  function showAppHint(text) {
+  function showAppHint(text, showDownload) {
     var hint = document.getElementById('app-open-hint');
-    if (!hint) return;
-    hint.hidden = !text;
-    hint.textContent = text || '';
+    var download = document.getElementById('app-download');
+    var getApp = document.getElementById('get-app');
+    if (getApp && api.playStoreUrl) getApp.href = api.playStoreUrl();
+    if (hint) {
+      hint.hidden = !text;
+      hint.textContent = text || '';
+    }
+    if (download) download.hidden = !showDownload;
   }
 
   function isPhone() {
@@ -65,19 +70,27 @@
       var path = cart.appImportPath();
       ev.preventDefault();
       if (!path || path === '/cart') {
-        showAppHint('Add a plate first, then checkout.');
+        showAppHint('Add a plate first, then checkout.', false);
         return;
       }
       var url = appCheckoutUrl(path);
       open.href = url;
-      tryOpenApp(url);
-      if (isPhone()) {
-        showAppHint('Opening HotPotChef with your plates…');
+      if (!isPhone()) {
+        showAppHint(
+          'A computer cannot open the HotPotChef app. Download it on your phone, add these plates there, then checkout in the app. On this computer, use Pay on web.',
+          true
+        );
         return;
       }
-      showAppHint(
-        'Checkout in app opens HotPotChef on your phone — a computer cannot launch the app. Use Pay on web here, or open this cart on your phone.'
-      );
+      tryOpenApp(url);
+      showAppHint('Opening HotPotChef with your plates…', false);
+      setTimeout(function () {
+        if (document.hidden) return;
+        showAppHint(
+          'Install HotPotChef on this phone if the app did not open, then tap Checkout in app again.',
+          true
+        );
+      }, 1600);
     });
   }
 
