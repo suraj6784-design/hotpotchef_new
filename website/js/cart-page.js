@@ -24,10 +24,6 @@
     return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
   }
 
-  function goWebCheckout() {
-    window.location.href = '/checkout';
-  }
-
   function androidAppIntent(path) {
     return (
       'intent://app' +
@@ -36,40 +32,52 @@
     );
   }
 
+  function appCheckoutUrl(path) {
+    if (/Android/i.test(navigator.userAgent || '')) return androidAppIntent(path);
+    return 'hotpotchef://app' + path;
+  }
+
+  function tryOpenApp(url) {
+    var iframe = document.createElement('iframe');
+    iframe.setAttribute('aria-hidden', 'true');
+    iframe.style.display = 'none';
+    iframe.src = url;
+    document.body.appendChild(iframe);
+    setTimeout(function () {
+      if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+    }, 2500);
+    if (isPhone()) {
+      window.location.href = url;
+    }
+  }
+
   function wireOpenApp() {
     var open = document.getElementById('open-app');
     if (!open) return;
     var path = cart.appImportPath();
-    var custom = 'hotpotchef://app' + path;
-    open.href = '/checkout';
-    open.setAttribute('data-custom', custom);
+    var url = appCheckoutUrl(path);
+    open.href = url;
+    open.setAttribute('data-custom', 'hotpotchef://app' + path);
 
     if (open.getAttribute('data-wired') === '1') return;
     open.setAttribute('data-wired', '1');
     open.addEventListener('click', function (ev) {
       var path = cart.appImportPath();
+      ev.preventDefault();
       if (!path || path === '/cart') {
-        ev.preventDefault();
         showAppHint('Add a plate first, then checkout.');
         return;
       }
-      if (!isPhone()) {
+      var url = appCheckoutUrl(path);
+      open.href = url;
+      tryOpenApp(url);
+      if (isPhone()) {
+        showAppHint('Opening HotPotChef with your plates…');
         return;
       }
-      ev.preventDefault();
-      var custom = 'hotpotchef://app' + path;
-      var openedAway = false;
-      function onHide() {
-        if (document.hidden) openedAway = true;
-      }
-      document.addEventListener('visibilitychange', onHide);
-      window.location.href = /Android/i.test(navigator.userAgent || '')
-        ? androidAppIntent(path)
-        : custom;
-      setTimeout(function () {
-        document.removeEventListener('visibilitychange', onHide);
-        if (!openedAway) goWebCheckout();
-      }, 1400);
+      showAppHint(
+        'Checkout in app opens HotPotChef on your phone — a computer cannot launch the app. Use Pay on web here, or open this cart on your phone.'
+      );
     });
   }
 
