@@ -27,8 +27,8 @@ import '../widgets/support_replied_banner.dart';
 import '../widgets/live_offers_flash_banner.dart';
 import '../widgets/festival_hampers_banner.dart';
 import '../widgets/society_nights_banner.dart';
-import '../widgets/home_sponsored_shelf_row.dart';
 import '../widgets/ai_recommendations_section.dart';
+import '../widgets/sponsored_placement_banner.dart';
 import '../services/delivery_estimator_service.dart';
 import 'address_form_screen.dart';
 
@@ -1597,13 +1597,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         chefKitchenPins: _chefKitchenPins,
         onOfferTap: _onHomeOfferTap,
       ),
-      HomeSponsoredShelfRow(
-        excludedChefIds: _closedChefIds,
+      SponsoredPlacementBanner(
         destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
         destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
         cityHint: _selectedAddressMap?['city']?.toString(),
-        chefKitchenPins: _chefKitchenPins,
-        onItemTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
       ),
       if (isLoggedIn) const DailyStreakBanner(compact: true),
       const SizedBox(height: 4),
