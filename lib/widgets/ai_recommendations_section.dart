@@ -110,7 +110,7 @@ class _AiRecommendationsSectionState extends ConsumerState<AiRecommendationsSect
               Flexible(
                 child: Text(
                   'Because you like $_favoriteCategory',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppTheme.onSurfaceOf(context)),
+                  style: AppTheme.homeSectionLabelOf(context).copyWith(fontSize: 16),
                 ),
               ),
             ],

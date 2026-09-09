@@ -23,13 +23,11 @@ import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/daily_streak_banner.dart';
 import '../widgets/weekly_plan_banner.dart';
-import '../widgets/last_order_banner.dart';
 import '../widgets/support_replied_banner.dart';
 import '../widgets/live_offers_flash_banner.dart';
 import '../widgets/festival_hampers_banner.dart';
 import '../widgets/society_nights_banner.dart';
-import '../widgets/shelf_items_banner.dart';
-import '../widgets/sponsored_placement_banner.dart';
+import '../widgets/home_sponsored_shelf_row.dart';
 import '../widgets/ai_recommendations_section.dart';
 import '../services/delivery_estimator_service.dart';
 import 'address_form_screen.dart';
@@ -1139,10 +1137,51 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                         ),
                         ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 8),
                         Row(
                           children: [
                             if (isLoggedIn) ...[
+                              _homeHeaderToggle(
+                                tooltip: 'Following',
+                                icon: Icons.storefront_outlined,
+                                selectedIcon: Icons.storefront,
+                                selected: _showFollowingOnly,
+                                onSelected: (selected) {
+                                  setState(() {
+                                    _showFollowingOnly = selected;
+                                    if (selected) _showFavoritesOnly = false;
+                                  });
+                                  if (selected && followedKitchens.isEmpty) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Follow a kitchen from the chef card to see it here.'),
+                                        duration: Duration(seconds: 2),
+                                      ),
+                                    );
+                                  }
+                                },
+                              ),
+                              _homeHeaderToggle(
+                                tooltip: 'Favorites',
+                                icon: Icons.favorite_border,
+                                selectedIcon: Icons.favorite,
+                                selected: _showFavoritesOnly,
+                                onSelected: (selected) {
+                                  setState(() {
+                                    _showFavoritesOnly = selected;
+                                    if (selected) _showFollowingOnly = false;
+                                  });
+                                  if (selected && widget.favoriteMeals.isEmpty) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Save a meal with the heart icon to see it here.'),
+                                        duration: Duration(seconds: 2),
+                                      ),
+                                    );
+                                  }
+                                },
+                              ),
+                              const SizedBox(width: 4),
                               GestureDetector(
                                 onTap: widget.onProfileTap,
                                 child: Semantics(
@@ -1235,102 +1274,20 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                 radiusKm: DeliveryEstimatorService.maxDeliveryRadiusKm.toInt(),
                 placeLabel: _currentAddress,
               ),
-              style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+              style: AppTheme.metaOf(context).copyWith(fontSize: 12),
             ),
           ),
 
-          if (isLoggedIn) ...[
-            LastOrderReorderBanner(onAddedToCart: widget.onReorderToOrders ?? widget.onGoToCart),
-            const SupportRepliedBanner(),
-          ],
+          if (isLoggedIn) const SupportRepliedBanner(),
 
           if (!_hasActiveSearch) ...[
-            if (isLoggedIn) ...[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    FilterChip(
-                      label: const Text('Following'),
-                      selected: _showFollowingOnly,
-                      avatar: Icon(
-                        _showFollowingOnly ? Icons.storefront : Icons.storefront_outlined,
-                        size: 16,
-                        color: _showFollowingOnly ? Colors.white : AppTheme.primary,
-                      ),
-                      selectedColor: AppTheme.primary,
-                      checkmarkColor: Colors.white,
-                      labelStyle: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
-                        color: _showFollowingOnly ? Colors.white : AppTheme.onSurfaceOf(context),
-                      ),
-                      onSelected: (selected) {
-                        setState(() {
-                          _showFollowingOnly = selected;
-                          if (selected) _showFavoritesOnly = false;
-                        });
-                        if (selected && followedKitchens.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Follow a kitchen from the chef card to see it here.'),
-                              duration: Duration(seconds: 2),
-                            ),
-                          );
-                        }
-                      },
-                    ),
-                    FilterChip(
-                      label: const Text('Favorites'),
-                      selected: _showFavoritesOnly,
-                      avatar: Icon(
-                        _showFavoritesOnly ? Icons.favorite : Icons.favorite_border,
-                        size: 16,
-                        color: _showFavoritesOnly ? Colors.white : AppTheme.primary,
-                      ),
-                      selectedColor: AppTheme.primary,
-                      checkmarkColor: Colors.white,
-                      labelStyle: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
-                        color: _showFavoritesOnly ? Colors.white : AppTheme.onSurfaceOf(context),
-                      ),
-                      onSelected: (selected) {
-                        setState(() {
-                          _showFavoritesOnly = selected;
-                          if (selected) _showFollowingOnly = false;
-                        });
-                        if (selected && widget.favoriteMeals.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Save a meal with the heart icon to see it here.'),
-                              duration: Duration(seconds: 2),
-                            ),
-                          );
-                        }
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-            ],
             Theme(
               data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
               child: ExpansionTile(
                 tilePadding: const EdgeInsets.symmetric(horizontal: 20),
                 childrenPadding: const EdgeInsets.only(bottom: 4),
                 initiallyExpanded: false,
-                title: Text(
-                  'Diet & cuisine',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.onSurfaceOf(context),
-                  ),
-                ),
+                title: Text('Diet & cuisine', style: AppTheme.homeSectionLabelOf(context)),
                 children: [
                   _filterChipRow(
                     chips: _dietFilters,
@@ -1370,7 +1327,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                           : (showFollowing
                               ? 'Kitchens you follow'
                               : (showFavorites ? 'Your favorites' : 'Near you tonight')),
-                      style: AppTheme.sectionTitleOf(context),
+                      style: AppTheme.homeSectionLabelOf(context).copyWith(fontSize: 16),
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -1385,7 +1342,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                           : (showFollowing
                               ? 'Live dishes from kitchens you follow'
                               : (showFavorites ? 'Meals you loved' : 'Cooked to your slot')),
-                      style: const TextStyle(fontSize: 13, color: AppTheme.textMuted),
+                      style: AppTheme.metaOf(context),
                     ),
                   ],
                 ),
@@ -1609,6 +1566,28 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     );
   }
 
+  Widget _homeHeaderToggle({
+    required String tooltip,
+    required IconData icon,
+    required IconData selectedIcon,
+    required bool selected,
+    required ValueChanged<bool> onSelected,
+  }) {
+    return IconButton(
+      tooltip: tooltip,
+      visualDensity: VisualDensity.compact,
+      onPressed: () => onSelected(!selected),
+      style: IconButton.styleFrom(
+        foregroundColor: Colors.white,
+        backgroundColor: Colors.white.withValues(alpha: selected ? 0.28 : 0.12),
+        minimumSize: const Size(36, 36),
+        maximumSize: const Size(36, 36),
+        padding: EdgeInsets.zero,
+      ),
+      icon: Icon(selected ? selectedIcon : icon, size: 18),
+    );
+  }
+
   List<Widget> _homeTopHighlights({required bool isLoggedIn}) {
     return [
       LiveOffersFlashBanner(
@@ -1618,15 +1597,11 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         chefKitchenPins: _chefKitchenPins,
         onOfferTap: _onHomeOfferTap,
       ),
-      SponsoredPlacementBanner(
-        destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
-        destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
-        cityHint: _selectedAddressMap?['city']?.toString(),
-      ),
-      ShelfItemsBanner(
+      HomeSponsoredShelfRow(
         excludedChefIds: _closedChefIds,
         destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
         destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
+        cityHint: _selectedAddressMap?['city']?.toString(),
         chefKitchenPins: _chefKitchenPins,
         onItemTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
       ),
@@ -1640,14 +1615,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       const SizedBox(height: 8),
       Padding(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
-        child: Text(
-          'More for you',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-            color: AppTheme.onSurfaceOf(context),
-          ),
-        ),
+        child: Text('More for you', style: AppTheme.homeSectionLabelOf(context).copyWith(fontSize: 16)),
       ),
       FestivalHampersBanner(
         excludedChefIds: _closedChefIds,

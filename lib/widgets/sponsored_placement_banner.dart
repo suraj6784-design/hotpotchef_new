@@ -14,11 +14,13 @@ class SponsoredPlacementBanner extends StatefulWidget {
     this.destinationLat,
     this.destinationLng,
     this.cityHint,
+    this.dense = false,
   });
 
   final double? destinationLat;
   final double? destinationLng;
   final String? cityHint;
+  final bool dense;
 
   @override
   State<SponsoredPlacementBanner> createState() => _SponsoredPlacementBannerState();
@@ -83,8 +85,8 @@ class _SponsoredPlacementBannerState extends State<SponsoredPlacementBanner> {
     final video = (ad['video_url'] ?? '').toString().trim();
     final advertiser = (ad['advertiser_name'] ?? '').toString().trim();
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
+    final card = Padding(
+      padding: widget.dense ? EdgeInsets.zero : const EdgeInsets.fromLTRB(16, 2, 16, 6),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -102,74 +104,48 @@ class _SponsoredPlacementBannerState extends State<SponsoredPlacementBanner> {
               border: Border.all(color: AppTheme.primary.withValues(alpha: 0.22)),
             ),
             child: Padding(
-              padding: const EdgeInsets.all(14),
+              padding: EdgeInsets.all(widget.dense ? 10 : 14),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _SponsoredMedia(imageUrl: image, videoUrl: video),
-                  const SizedBox(width: 12),
+                  _SponsoredMedia(
+                    imageUrl: image,
+                    videoUrl: widget.dense ? '' : video,
+                    size: widget.dense ? 52 : 72,
+                  ),
+                  SizedBox(width: widget.dense ? 8 : 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: AppTheme.primary.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(99),
-                              ),
-                              child: const Text(
-                                'Sponsored · Brand',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppTheme.primary,
-                                  letterSpacing: 0.3,
-                                ),
-                              ),
-                            ),
-                            if (advertiser.isNotEmpty) ...[
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  advertiser,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                        const SizedBox(height: 6),
+                        Text('Sponsored', style: AppTheme.homeKickerOf(context)),
+                        if (advertiser.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            advertiser,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTheme.metaOf(context).copyWith(fontSize: 11),
+                          ),
+                        ],
+                        const SizedBox(height: 4),
                         Text(
                           title,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w900,
-                            color: AppTheme.onSurfaceOf(context),
-                          ),
+                          maxLines: widget.dense ? 2 : 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTheme.homeCardTitleOf(context),
                         ),
-                        if (body.isNotEmpty) ...[
+                        if (!widget.dense && body.isNotEmpty) ...[
                           const SizedBox(height: 4),
                           Text(
                             body,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 12, color: AppTheme.textMuted, height: 1.35),
+                            style: AppTheme.metaOf(context).copyWith(fontSize: 12, fontWeight: FontWeight.w500),
                           ),
                         ],
-                        const SizedBox(height: 8),
-                        Text(
-                          cta,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: AppTheme.primary,
-                          ),
-                        ),
+                        if (widget.dense) const Spacer() else const SizedBox(height: 8),
+                        Text(cta, style: AppTheme.homeKickerOf(context)),
                       ],
                     ),
                   ),
@@ -180,14 +156,21 @@ class _SponsoredPlacementBannerState extends State<SponsoredPlacementBanner> {
         ),
       ),
     );
+    if (widget.dense) return SizedBox.expand(child: card);
+    return card;
   }
 }
 
 class _SponsoredMedia extends StatefulWidget {
-  const _SponsoredMedia({required this.imageUrl, required this.videoUrl});
+  const _SponsoredMedia({
+    required this.imageUrl,
+    required this.videoUrl,
+    this.size = 72,
+  });
 
   final String imageUrl;
   final String videoUrl;
+  final double size;
 
   @override
   State<_SponsoredMedia> createState() => _SponsoredMediaState();
@@ -250,8 +233,8 @@ class _SponsoredMediaState extends State<_SponsoredMedia> {
       return ClipRRect(
         borderRadius: BorderRadius.circular(12),
         child: SizedBox(
-          width: 72,
-          height: 72,
+          width: widget.size,
+          height: widget.size,
           child: FittedBox(
             fit: BoxFit.cover,
             child: SizedBox(
@@ -268,21 +251,21 @@ class _SponsoredMediaState extends State<_SponsoredMedia> {
         borderRadius: BorderRadius.circular(12),
         child: Image.network(
           widget.imageUrl,
-          width: 72,
-          height: 72,
+          width: widget.size,
+          height: widget.size,
           fit: BoxFit.cover,
-          errorBuilder: (_, error, stack) => _placeholderThumb(),
+          errorBuilder: (_, error, stack) => _placeholderThumb(widget.size),
         ),
       );
     }
-    return _placeholderThumb();
+    return _placeholderThumb(widget.size);
   }
 }
 
-Widget _placeholderThumb() {
+Widget _placeholderThumb([double size = 72]) {
   return Container(
-    width: 72,
-    height: 72,
+    width: size,
+    height: size,
     decoration: BoxDecoration(
       color: AppTheme.primary.withValues(alpha: 0.12),
       borderRadius: BorderRadius.circular(12),

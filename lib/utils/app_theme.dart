@@ -179,6 +179,29 @@ class AppTheme {
         height: 1.35,
       );
 
+  /// Shared Home section label (offers, shelf, diet, meal grid).
+  static TextStyle homeSectionLabelOf(BuildContext context) => GoogleFonts.figtree(
+        fontSize: 14,
+        fontWeight: FontWeight.w800,
+        color: onSurfaceOf(context),
+        height: 1.2,
+      );
+
+  static TextStyle homeKickerOf(BuildContext context) => GoogleFonts.figtree(
+        fontSize: 11,
+        fontWeight: FontWeight.w800,
+        letterSpacing: 0.3,
+        color: primary,
+        height: 1.2,
+      );
+
+  static TextStyle homeCardTitleOf(BuildContext context) => GoogleFonts.figtree(
+        fontSize: 14,
+        fontWeight: FontWeight.w800,
+        color: onSurfaceOf(context),
+        height: 1.25,
+      );
+
   static TextStyle priceOf(BuildContext context) => GoogleFonts.figtree(
         fontSize: 16,
         fontWeight: FontWeight.w800,

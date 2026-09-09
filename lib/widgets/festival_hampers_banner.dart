@@ -62,15 +62,7 @@ class _FestivalHampersBannerState extends State<FestivalHampersBanner> {
                   children: [
                     Icon(Icons.card_giftcard_outlined, size: 16, color: AppTheme.primary),
                     const SizedBox(width: 8),
-                    Text(
-                      'FESTIVAL HAMPERS',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.1,
-                        color: AppTheme.onSurfaceOf(context),
-                      ),
-                    ),
+                    Text('Festival hampers', style: AppTheme.homeSectionLabelOf(context)),
                   ],
                 ),
               ),

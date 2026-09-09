@@ -79,15 +79,7 @@ class _SocietyNightsBannerState extends State<SocietyNightsBanner> {
                   children: [
                     Icon(Icons.apartment_outlined, size: 16, color: AppTheme.primary),
                     const SizedBox(width: 8),
-                    Text(
-                      'SOCIETY NIGHTS',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.1,
-                        color: AppTheme.onSurfaceOf(context),
-                      ),
-                    ),
+                    Text('Society nights', style: AppTheme.homeSectionLabelOf(context)),
                   ],
                 ),
               ),

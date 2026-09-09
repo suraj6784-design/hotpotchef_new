@@ -123,11 +123,7 @@ class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
                     const SizedBox(width: 8),
                     Text(
                       "Tonight's kitchen offers",
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: AppTheme.onSurfaceOf(context),
-                      ),
+                      style: AppTheme.homeSectionLabelOf(context),
                     ),
                     const SizedBox(width: 8),
                     const Icon(Icons.auto_awesome, size: 14, color: AppTheme.accent),
