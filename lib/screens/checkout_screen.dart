@@ -8,8 +8,7 @@ import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
-import '../utils/helpers.dart';
-import '../utils/app_theme.dart';
+import '../services/create_split_order_contract.dart';
 import 'address_form_screen.dart';
 
 class CheckoutScreen extends StatefulWidget {
@@ -239,16 +238,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (user == null) throw Exception('Authentication session expired');
       if (widget.cartItems.isEmpty) throw Exception('Your cart is empty');
 
-      // Edge function calculates canonical price server-side to prevent tampering
+      // create-split-order recomputes the Razorpay charge server-side from
+      // cart_items + meals prices + delivery_fee/tip/coins. Do not send
+      // total_amount — the function ignores a client grand total.
       final response = await _supabase.functions.invoke(
-        'create-split-order',
-        body: {
-          'cart_items': widget.cartItems,
-          'customer_email': user.email,
-          'delivery_fee': _deliveryFee,
-          'tip_amount': _selectedTip,
-          'apply_coins': _applyCoins,
-        },
+        CreateSplitOrderRequest.functionName,
+        body: CreateSplitOrderRequest.toBody(
+          cartItems: widget.cartItems,
+          customerEmail: user.email,
+          deliveryFee: _deliveryFee,
+          tipAmount: _selectedTip,
+          applyCoins: _applyCoins,
+        ),
       );
 
       if (response.status != 200 || response.data == null || response.data['success'] != true) {
