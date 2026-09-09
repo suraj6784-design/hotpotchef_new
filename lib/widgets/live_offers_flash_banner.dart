@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -30,13 +28,9 @@ class LiveOffersFlashBanner extends StatefulWidget {
 class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
     with TickerProviderStateMixin {
   late final Stream<List<Map<String, dynamic>>> _mealsStream;
-  late final PageController _pageController;
   late final AnimationController _shimmer;
   late final AnimationController _pulse;
   late final AnimationController _blink;
-  Timer? _rotate;
-  int _page = 0;
-  int _offerCount = 0;
 
   @override
   void initState() {
@@ -45,7 +39,6 @@ class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
         .from('meals')
         .stream(primaryKey: ['id'])
         .eq('status', 'Available');
-    _pageController = PageController(viewportFraction: 0.92);
     _shimmer = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800))
       ..repeat();
     _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400))
@@ -56,30 +49,10 @@ class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
 
   @override
   void dispose() {
-    _rotate?.cancel();
-    _pageController.dispose();
     _shimmer.dispose();
     _pulse.dispose();
     _blink.dispose();
     super.dispose();
-  }
-
-  void _syncRotation(int count) {
-    _offerCount = count;
-    if (count < 2) {
-      _rotate?.cancel();
-      _rotate = null;
-      return;
-    }
-    _rotate ??= Timer.periodic(const Duration(seconds: 4), (_) {
-      if (!mounted || !_pageController.hasClients || _offerCount < 2) return;
-      final next = (_page + 1) % _offerCount;
-      _pageController.animateToPage(
-        next,
-        duration: const Duration(milliseconds: 520),
-        curve: Curves.easeOutCubic,
-      );
-    });
   }
 
   @override
@@ -95,10 +68,7 @@ class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
           chefKitchenPins: widget.chefKitchenPins,
         );
         if (offers.isEmpty) return const SizedBox.shrink();
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _syncRotation(offers.length);
-        });
-        final current = _page % offers.length;
+        final cardWidth = (MediaQuery.sizeOf(context).width * 0.78).clamp(260.0, 340.0);
 
         return Padding(
           padding: const EdgeInsets.fromLTRB(0, 4, 0, 8),
@@ -132,46 +102,40 @@ class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
                     ),
                     const SizedBox(width: 8),
                     const Icon(Icons.auto_awesome, size: 14, color: AppTheme.accent),
+                    if (offers.length > 1) ...[
+                      const SizedBox(width: 8),
+                      Text(
+                        '${offers.length} live',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.textMuted,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
               SizedBox(
                 height: 118,
-                child: PageView.builder(
-                  controller: _pageController,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
                   itemCount: offers.length,
-                  onPageChanged: (index) => setState(() => _page = index),
                   itemBuilder: (context, index) {
                     final meal = offers[index];
-                    return _OfferFlashCard(
-                      meal: meal,
-                      shimmer: _shimmer,
-                      pulse: _pulse,
-                      onTap: () => widget.onOfferTap(meal),
-                    ).entrance(index: index.clamp(0, 4));
+                    return SizedBox(
+                      width: cardWidth,
+                      child: _OfferFlashCard(
+                        meal: meal,
+                        shimmer: _shimmer,
+                        pulse: _pulse,
+                        onTap: () => widget.onOfferTap(meal),
+                      ).entrance(index: index.clamp(0, 4)),
+                    );
                   },
                 ),
               ),
-              if (offers.length > 1)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      for (var i = 0; i < offers.length; i++)
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 220),
-                          margin: const EdgeInsets.symmetric(horizontal: 3),
-                            width: i == current ? 16 : 6,
-                            height: 6,
-                            decoration: BoxDecoration(
-                              color: i == current ? AppTheme.primary : AppTheme.hairlineOf(context),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
             ],
           ),
         );

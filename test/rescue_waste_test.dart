@@ -9,7 +9,7 @@ void main() {
       expect(orderIsPreOrderSlot({'time_slot': 'now'}), isFalse);
       expect(
         orderIsPreOrderSlot({'selected_date': '2026-09-07', 'time_slot': 'ASAP'}),
-        isTrue,
+        isFalse,
       );
       expect(orderLineIsRescuePlate({'offer_type': 'flashSale'}), isTrue);
 

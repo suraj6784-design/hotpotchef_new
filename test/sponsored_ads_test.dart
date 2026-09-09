@@ -52,6 +52,36 @@ void main() {
     expect(unknownCity.map((e) => e['id']), isNot(contains('4')));
   });
 
+  test('Learn more URLs without https still launch', () {
+    expect(sponsoredCtaUri(null), isNull);
+    expect(sponsoredCtaUri(''), isNull);
+    expect(sponsoredCtaUri('www.hotpotchef.com')?.toString(), 'https://www.hotpotchef.com');
+    expect(sponsoredCtaUri('https://tada.example/salt')?.host, 'tada.example');
+  });
+
+  test('day-parted campaigns hide outside the local window', () {
+    final now = DateTime(2026, 9, 9, 8, 0); // 8:00 AM
+    final rows = [
+      {
+        'id': 'day',
+        'status': 'live',
+        'reach_mode': 'overall',
+        'daily_start_minute': 9 * 60,
+        'daily_end_minute': 21 * 60,
+      },
+      {
+        'id': 'all',
+        'status': 'live',
+        'reach_mode': 'overall',
+      },
+    ];
+    expect(liveSponsoredCampaigns(rows, now: now).map((e) => e['id']), ['all']);
+    expect(
+      liveSponsoredCampaigns(rows, now: DateTime(2026, 9, 9, 10)).map((e) => e['id']),
+      ['day', 'all'],
+    );
+  });
+
   test('chef-facing labels never imply self-serve go-live', () {
     expect(adCampaignStatusLabel('pending_review'), contains('HotPotChef'));
     expect(adCampaignStatusLabel('live'), contains('platform'));

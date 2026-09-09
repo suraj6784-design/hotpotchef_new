@@ -117,4 +117,17 @@ void main() {
       );
     });
   });
+
+  test('checkout schedule uses chef hourly window, not a single clock datetime', () {
+    expect(chefSlotWindowLabel('9:00 AM to 10:00 AM'), '9:00 AM to 10:00 AM');
+    expect(chefSlotWindowLabel('09 Sep 2026, 09:00 AM'), '9:00 AM to 10:00 AM');
+    expect(
+      formatCheckoutDeliverySchedule(
+        slot: '9:00 AM to 10:00 AM',
+        scheduledDate: DateTime(2026, 9, 9),
+        now: DateTime(2026, 9, 9, 8),
+      ),
+      'Today · 9:00 AM to 10:00 AM',
+    );
+  });
 }

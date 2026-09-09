@@ -108,16 +108,22 @@ a {
 }
 
 .home-hero {
-  min-height: 100svh;
   display: grid;
-  align-content: end;
-  padding: 2rem 0 3.5rem;
+  align-content: start;
+  padding: 1.25rem 0 2.25rem;
+}
+
+@media (min-width: 720px) {
+  .home-hero {
+    padding: 2rem 0 3rem;
+  }
 }
 
 .catalog {
   padding: 2.5rem 0 3rem;
   border-top: 1px solid var(--hairline);
   background: linear-gradient(180deg, rgba(18, 14, 12, 0.35), transparent 40%);
+  scroll-margin-top: 1rem;
 }
 
 .catalog-wrap {

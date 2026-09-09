@@ -566,7 +566,7 @@ bool messageSolicitsOffAppPayment(String? text) {
 }
 
 const kPayInAppChatNotice =
-    'Pay only in the HotPotChef app. In-app checkout keeps refunds, HotPot Coins, delivery tracking, and Support. Do not move orders to WhatsApp or UPI.';
+    'Pay only in the HotPotChef app. In-app checkout keeps refunds, HotPot Coins, delivery tracking, and Support. Do not take this order off the app.';
 
 String offAppPaymentNudgeCopy() =>
     'This looks like an off-app payment request. HotPotChef may suspend accounts that move paid customers off the platform. Send anyway only if you are discussing something else.';
@@ -1434,12 +1434,20 @@ String smartTimeSlot(String? originalSlot, DateTime placedDate, {String? selecte
     if (dayOnly.isBefore(placedDay)) slotDay = placedDay;
   }
 
+  if (looksLikeChefServingWindow(slot)) {
+    if ((selectedDateStr ?? '').trim().isNotEmpty) return 'ASAP';
+    return slot;
+  }
+
   final clock = extractSlotTime(slot);
   final asap = isImmediateDeliverySlot(slot) && clock == null;
   if (asap && slotDay == null) return 'ASAP';
-  if (asap && slotDay != null) return '${formatAppDate(slotDay)}, ASAP';
+  if (asap && slotDay != null) return 'ASAP';
   if (slotDay != null && clock != null) {
-    final at = parseClockOnDate(clock, slotDay);
+    var at = parseClockOnDate(clock, slotDay);
+    if (at != null && !at.isAfter(placedDate)) {
+      at = at.add(const Duration(days: 1));
+    }
     return at != null ? formatAppDateTime(at) : '${formatAppDate(slotDay)}, $clock';
   }
   if (slotDay != null) return formatAppDate(slotDay);
@@ -1450,9 +1458,9 @@ String smartTimeSlot(String? originalSlot, DateTime placedDate, {String? selecte
   return slot;
 }
 
-String formatFriendlyDate(DateTime date) {
-  final now = DateTime.now();
-  final today = DateTime(now.year, now.month, now.day);
+String formatFriendlyDate(DateTime date, {DateTime? now}) {
+  final current = (now ?? DateTime.now()).toLocal();
+  final today = DateTime(current.year, current.month, current.day);
   final target = DateTime(date.year, date.month, date.day);
   
   final diffDays = target.difference(today).inDays;
@@ -1532,6 +1540,40 @@ List<String> chefHourlySubSlots(String rawChefSlot, {int intervalMinutes = 60}) 
     current = next;
   }
   return generated.isNotEmpty ? generated : [timeRangeStr];
+}
+
+/// Same template as chef cart slots: `9:00 AM to 10:00 AM`.
+String chefSlotWindowLabel(String? slot) {
+  final text = (slot ?? '').trim();
+  if (text.isEmpty || isImmediateDeliverySlot(text)) return 'ASAP';
+  final range = RegExp(
+    r'(\d{1,2}:\d{2}\s*(?:AM|PM))\s+to\s+(\d{1,2}:\d{2}\s*(?:AM|PM))',
+    caseSensitive: false,
+  ).firstMatch(text);
+  if (range != null) {
+    String norm(String raw) {
+      final mins = clockTextToMinutes(raw);
+      return mins == null ? raw.trim() : formatMinutesAsClock(mins);
+    }
+
+    return '${norm(range.group(1)!)} to ${norm(range.group(2)!)}';
+  }
+  final start = clockTextToMinutes(text);
+  if (start != null) {
+    return '${formatMinutesAsClock(start)} to ${formatMinutesAsClock(start + 60)}';
+  }
+  return text;
+}
+
+/// Checkout copy: friendly day + chef hourly window.
+String formatCheckoutDeliverySchedule({
+  required String? slot,
+  DateTime? scheduledDate,
+  DateTime? now,
+}) {
+  final window = chefSlotWindowLabel(slot);
+  if (scheduledDate == null) return window;
+  return '${formatFriendlyDate(scheduledDate, now: now)} · $window';
 }
 
 /// True when the selected slot's start is now or earlier on that calendar day.
@@ -1702,12 +1744,16 @@ DateTime? parseSlotStartTime(String timeSlot, {DateTime? baseDate}) {
   return parseClockOnDate(timeSlot, baseDate ?? DateTime.now());
 }
 
-bool isMealAvailableForCart(Map<String, dynamic> meal) {
+bool mealHasSellableStock(Map<String, dynamic> meal) {
   final qty = int.tryParse(meal['quantity']?.toString() ?? '0') ?? 0;
   final status = meal['status']?.toString().toLowerCase().trim() ?? '';
   if (qty <= 0) return false;
   if (status == 'sold out' || status == 'paused' || status == 'unavailable') return false;
-  return !isMealExpired(meal['time_slot']?.toString());
+  return true;
+}
+
+bool isMealAvailableForCart(Map<String, dynamic> meal) {
+  return mealHasSellableStock(meal) && !isMealExpired(meal['time_slot']?.toString());
 }
 
 bool isCatalogMeal(Map<String, dynamic> meal) {
@@ -1738,10 +1784,13 @@ String mealBoostUntilLabel(Map<String, dynamic>? meal, {DateTime? now}) {
 }
 
 bool mealHasFlashableOffer(Map<String, dynamic> meal, {DateTime? now}) {
-  if (!isCatalogMeal(meal) || !isMealAvailableForCart(meal)) return false;
+  if (!isCatalogMeal(meal) || !mealHasSellableStock(meal)) return false;
   if (isMealBoosted(meal, now: now)) return true;
-  if (PricingCalculator.mealPromoCode(meal) != null) return true;
-  return PricingCalculator.isOfferActive(meal, referenceTime: now);
+  final hasOffer = OfferType.fromString(meal['offer_type']?.toString()) != OfferType.none;
+  final hasPromo = PricingCalculator.mealPromoCode(meal) != null;
+  if (!hasOffer && !hasPromo) return false;
+  // Checkout still gates promo codes; Home lists every live family (BOGO, Flash, %, Flat).
+  return PricingCalculator.isWithinOfferWindow(meal, referenceTime: now);
 }
 
 List<Map<String, dynamic>> flashableOfferMeals(
@@ -1892,17 +1941,13 @@ String? offerFlashGroupKey(Map<String, dynamic> meal) {
 String offerFlashHeadline(Map<String, dynamic> meal, {DateTime? now}) {
   final group = offerFlashGroupKey(meal);
   if (group != null) {
-    final code = PricingCalculator.mealPromoCode(meal);
-    if (code != null && PricingCalculator.isOfferGated(meal)) {
-      return 'Use $code';
-    }
     switch (group) {
       case 'festive':
         return 'Festive offers';
       case 'flashSale':
         return 'Flash Sale';
       case 'bogo':
-        return 'Use BOGO';
+        return 'BOGO';
       case 'percentage':
         return '% Discount';
       case 'flat':
@@ -2191,9 +2236,11 @@ bool orderLineIsRescuePlate(Map<String, dynamic> item) {
 /// True when the line/order asks for a clock slot (not ASAP) — chef cooks to that demand.
 bool orderIsPreOrderSlot(Map<String, dynamic> orderOrItem) {
   final fields = orderSlotFields(orderOrItem);
+  final slot = fields['time_slot']?.toString() ?? '';
+  if (isImmediateDeliverySlot(slot) || looksLikeChefServingWindow(slot)) return false;
   final selectedDate = fields['selected_date']?.toString().trim() ?? '';
   if (selectedDate.isNotEmpty) return true;
-  return !isImmediateDeliverySlot(fields['time_slot']?.toString());
+  return slot.trim().isNotEmpty;
 }
 
 int preOrderedPlatesFromOrderItems(Iterable<dynamic> items) {
@@ -2697,7 +2744,6 @@ const double kDefaultDriverPayout = 40;
 double packagingFeeForLoyaltyTier(String? tier) {
   final name = (tier ?? '').toLowerCase();
   if (name.contains('gold')) return 0;
-  if (name.contains('silver')) return 10;
   return kDefaultPackagingFee;
 }
 
@@ -3313,6 +3359,17 @@ bool isImmediateDeliverySlot(String? slot) {
   return text.contains('asap') && !RegExp(r'\d{1,2}:\d{2}').hasMatch(text);
 }
 
+/// Chef serving hours (e.g. "Sat, Sun (9:00 AM to 11:00 PM)"), not a diner clock.
+bool looksLikeChefServingWindow(String? slot) {
+  final text = (slot ?? '').trim();
+  if (text.isEmpty || isImmediateDeliverySlot(text)) return false;
+  final clocks = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)', caseSensitive: false).allMatches(text).length;
+  if (clocks >= 2) return true;
+  final lower = text.toLowerCase();
+  return clocks == 1 &&
+      RegExp(r'\b(daily|weekdays|weekends|mon|tue|wed|thu|fri|sat|sun)\b').hasMatch(lower);
+}
+
 Map<String, dynamic> orderSlotFields(Map<String, dynamic> order) {
   final items = parseOrderItemsList(order['items'] ?? order['cart_items'] ?? order['order_items']);
   final first = items.isNotEmpty ? items.first : const <String, dynamic>{};
@@ -3336,7 +3393,7 @@ DateTime? orderSlotStart(Map<String, dynamic> order, {DateTime? now}) {
   final fields = orderSlotFields(order);
   final placed = DateTime.tryParse(fields['created_at']?.toString() ?? '')?.toLocal() ?? now;
   final rawSlot = fields['time_slot']?.toString() ?? '';
-  if (isImmediateDeliverySlot(rawSlot) && (fields['selected_date']?.toString() ?? '').isEmpty) {
+  if (isImmediateDeliverySlot(rawSlot) || looksLikeChefServingWindow(rawSlot)) {
     return null;
   }
   if (rawSlot.isEmpty && placed == null) return null;
@@ -3345,7 +3402,7 @@ DateTime? orderSlotStart(Map<String, dynamic> order, {DateTime? now}) {
     placed ?? DateTime.now(),
     selectedDateStr: fields['selected_date']?.toString(),
   );
-  if (isImmediateDeliverySlot(slot)) return null;
+  if (isImmediateDeliverySlot(slot) || looksLikeChefServingWindow(slot)) return null;
   final assumedYear = (placed ?? DateTime.now()).year;
   final date = parseSlotDate(slot, assumedYear) ??
       (placed != null ? DateTime(placed.year, placed.month, placed.day) : null);
@@ -3357,7 +3414,9 @@ String formatDeliverySlotLabel(Map<String, dynamic> order, {DateTime? now}) {
   final fields = orderSlotFields(order);
   final placed = DateTime.tryParse(fields['created_at']?.toString() ?? '')?.toLocal() ?? now ?? DateTime.now();
   final rawSlot = fields['time_slot']?.toString() ?? '';
-  if (isImmediateDeliverySlot(rawSlot) && (fields['selected_date']?.toString() ?? '').isEmpty) {
+  if (isImmediateDeliverySlot(rawSlot)) return 'ASAP';
+  if (looksLikeChefServingWindow(rawSlot)) {
+    if ((fields['selected_date']?.toString() ?? '').trim().isEmpty) return rawSlot;
     return 'ASAP';
   }
   return smartTimeSlot(

@@ -384,13 +384,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   double get _foodTotalBeforePromo {
     double sum = 0.0;
     for (final item in widget.cartItems) {
-      sum += PricingCalculator.lineFoodTotal(item);
+      sum += PricingCalculator.lineFoodGross(item);
     }
     return sum;
   }
 
   double get _promoSavings =>
       PricingCalculator.roundCurrency(max(0.0, _foodTotalBeforePromo - _foodTotal));
+
+  String get _checkoutPromoLabel => PricingCalculator.cartPromoLineLabel(
+        widget.cartItems,
+        appliedPromoCode: _appliedPromoCode,
+      );
 
   bool get _coinsAccepted => cartAcceptsHotpotCoins(widget.cartItems);
 
@@ -1347,11 +1352,23 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             item['selected_date'] ??
             item['selectedDate'];
                   final rawDetails = item['rawMealDetails'] as Map<String, dynamic>?;
-                  final timeSlot = item['timeSlot'] ?? item['time_slot'] ?? rawDetails?['exact_time'] ?? item['exact_time'] ?? 'ASAP';
-                  final scheduleLabel = smartTimeSlot(
-                    timeSlot?.toString(),
-                    DateTime.now(),
-                    selectedDateStr: rawDate?.toString(),
+                  final shared = (widget.sharedTimeSlot ?? '').trim();
+                  final timeSlot = shared.isNotEmpty
+                      ? shared
+                      : (item['timeSlot'] ??
+                          item['time_slot'] ??
+                          rawDetails?['exact_time'] ??
+                          item['exact_time'] ??
+                          'ASAP');
+                  DateTime? scheduled;
+                  if (rawDate is DateTime) {
+                    scheduled = rawDate;
+                  } else {
+                    scheduled = parseFlexibleDate(rawDate?.toString());
+                  }
+                  final scheduleLabel = formatCheckoutDeliverySchedule(
+                    slot: timeSlot?.toString(),
+                    scheduledDate: scheduled,
                   );
 
                   return Padding(
@@ -1521,12 +1538,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     Text('₹${_foodTotalBeforePromo.toStringAsFixed(2)}'),
                   ],
                 ),
-                if (_appliedPromoCode != null && _promoSavings > 0) ...[
+                if (_promoSavings > 0) ...[
                   const SizedBox(height: 6),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Promo ($_appliedPromoCode)',
+                      Text('Promo ($_checkoutPromoLabel)',
                           style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600)),
                       Text('-₹${_promoSavings.toStringAsFixed(2)}',
                           style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600)),

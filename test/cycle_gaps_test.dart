@@ -27,9 +27,9 @@ void main() {
   });
 
   group('packagingFeeForLoyaltyTier', () {
-    test('Gold is free, Silver is ₹10, Bronze is ₹20', () {
+    test('Gold is free; Silver and Bronze stay at ₹20 packaging', () {
       expect(packagingFeeForLoyaltyTier('Gold Foodie'), 0);
-      expect(packagingFeeForLoyaltyTier('Silver Foodie'), 10);
+      expect(packagingFeeForLoyaltyTier('Silver Foodie'), 20);
       expect(packagingFeeForLoyaltyTier('Bronze Foodie'), 20);
       expect(packagingFeeForLoyaltyTier(null), 20);
     });

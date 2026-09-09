@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:video_player/video_player.dart';
 
 import '../utils/app_theme.dart';
 
@@ -55,11 +56,20 @@ class _SponsoredPlacementBannerState extends State<SponsoredPlacementBanner> {
   }
 
   Future<void> _open(Map<String, dynamic> ad) async {
-    final url = (ad['cta_url'] ?? '').toString().trim();
-    if (url.isEmpty) return;
-    final uri = Uri.tryParse(url);
-    if (uri == null) return;
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    final uri = sponsoredCtaUri(ad['cta_url']?.toString());
+    if (uri == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This ad has no working link yet.')),
+      );
+      return;
+    }
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open ${uri.host}')),
+      );
+    }
   }
 
   @override
@@ -70,6 +80,7 @@ class _SponsoredPlacementBannerState extends State<SponsoredPlacementBanner> {
     final body = (ad['body'] ?? '').toString().trim();
     final cta = (ad['cta_label'] ?? 'Learn more').toString();
     final image = (ad['image_url'] ?? '').toString().trim();
+    final video = (ad['video_url'] ?? '').toString().trim();
     final advertiser = (ad['advertiser_name'] ?? '').toString().trim();
 
     return Padding(
@@ -95,19 +106,7 @@ class _SponsoredPlacementBannerState extends State<SponsoredPlacementBanner> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (image.isNotEmpty)
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Image.network(
-                        image,
-                        width: 72,
-                        height: 72,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, error, stack) => _placeholderThumb(),
-                      ),
-                    )
-                  else
-                    _placeholderThumb(),
+                  _SponsoredMedia(imageUrl: image, videoUrl: video),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -182,18 +181,141 @@ class _SponsoredPlacementBannerState extends State<SponsoredPlacementBanner> {
       ),
     );
   }
+}
 
-  Widget _placeholderThumb() {
-    return Container(
-      width: 72,
-      height: 72,
-      decoration: BoxDecoration(
-        color: AppTheme.primary.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: const Icon(Icons.campaign_outlined, color: AppTheme.primary),
-    );
+class _SponsoredMedia extends StatefulWidget {
+  const _SponsoredMedia({required this.imageUrl, required this.videoUrl});
+
+  final String imageUrl;
+  final String videoUrl;
+
+  @override
+  State<_SponsoredMedia> createState() => _SponsoredMediaState();
+}
+
+class _SponsoredMediaState extends State<_SponsoredMedia> {
+  VideoPlayerController? _clip;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_boot());
   }
+
+  @override
+  void didUpdateWidget(covariant _SponsoredMedia oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.videoUrl != widget.videoUrl) {
+      unawaited(_boot());
+    }
+  }
+
+  Future<void> _boot() async {
+    await _clip?.dispose();
+    _clip = null;
+    final url = widget.videoUrl.trim();
+    if (url.isEmpty) {
+      if (mounted) setState(() {});
+      return;
+    }
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    final controller = VideoPlayerController.networkUrl(uri);
+    try {
+      await controller.initialize();
+      await controller.setLooping(true);
+      await controller.setVolume(0);
+      await controller.play();
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+      setState(() => _clip = controller);
+    } catch (_) {
+      await controller.dispose();
+      if (mounted) setState(() => _clip = null);
+    }
+  }
+
+  @override
+  void dispose() {
+    _clip?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final clip = _clip;
+    if (clip != null && clip.value.isInitialized) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(
+          width: 72,
+          height: 72,
+          child: FittedBox(
+            fit: BoxFit.cover,
+            child: SizedBox(
+              width: clip.value.size.width,
+              height: clip.value.size.height,
+              child: IgnorePointer(child: VideoPlayer(clip)),
+            ),
+          ),
+        ),
+      );
+    }
+    if (widget.imageUrl.isNotEmpty) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.network(
+          widget.imageUrl,
+          width: 72,
+          height: 72,
+          fit: BoxFit.cover,
+          errorBuilder: (_, error, stack) => _placeholderThumb(),
+        ),
+      );
+    }
+    return _placeholderThumb();
+  }
+}
+
+Widget _placeholderThumb() {
+  return Container(
+    width: 72,
+    height: 72,
+    decoration: BoxDecoration(
+      color: AppTheme.primary.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: const Icon(Icons.campaign_outlined, color: AppTheme.primary),
+  );
+}
+
+/// Turns stored CTA text into a launchable https URL.
+Uri? sponsoredCtaUri(String? raw) {
+  var text = (raw ?? '').trim();
+  if (text.isEmpty) return null;
+  if (text.startsWith('//')) text = 'https:$text';
+  if (!RegExp(r'^[a-zA-Z][a-zA-Z0-9+.-]*:').hasMatch(text)) {
+    text = 'https://$text';
+  }
+  final uri = Uri.tryParse(text);
+  if (uri == null || uri.host.isEmpty) return null;
+  if (uri.scheme != 'http' && uri.scheme != 'https') return null;
+  return uri;
+}
+
+bool campaignShowsInDaypart(Map<String, dynamic> ad, DateTime now) {
+  final start = int.tryParse(ad['daily_start_minute']?.toString() ?? '');
+  final end = int.tryParse(ad['daily_end_minute']?.toString() ?? '');
+  if (start == null && end == null) return true;
+  final local = now.toLocal();
+  final mins = local.hour * 60 + local.minute;
+  final from = (start ?? 0).clamp(0, 1439);
+  final to = (end ?? 1440).clamp(0, 1440);
+  if (from == to) return true;
+  if (from < to) return mins >= from && mins < to;
+  return mins >= from || mins < to;
 }
 
 /// Filters live campaigns for overall vs targeted reach.
@@ -202,7 +324,8 @@ List<Map<String, dynamic>> liveSponsoredCampaigns(
   String? cityHint,
   DateTime? now,
 }) {
-  final clock = now ?? DateTime.now().toUtc();
+  final clock = now ?? DateTime.now();
+  final utc = clock.toUtc();
   final city = (cityHint ?? '').trim().toLowerCase();
   final out = <Map<String, dynamic>>[];
 
@@ -211,15 +334,15 @@ List<Map<String, dynamic>> liveSponsoredCampaigns(
     if ((ad['status']?.toString().toLowerCase() ?? '') != 'live') continue;
     final starts = DateTime.tryParse(ad['starts_at']?.toString() ?? '');
     final ends = DateTime.tryParse(ad['ends_at']?.toString() ?? '');
-    if (starts != null && starts.toUtc().isAfter(clock)) continue;
-    if (ends != null && ends.toUtc().isBefore(clock)) continue;
+    if (starts != null && starts.toUtc().isAfter(utc)) continue;
+    if (ends != null && !ends.toUtc().isAfter(utc)) continue;
+    if (!campaignShowsInDaypart(ad, clock)) continue;
 
     final mode = (ad['reach_mode']?.toString().toLowerCase() ?? 'overall').trim();
     if (mode == 'targeted') {
       final adCity = (ad['city']?.toString() ?? '').trim().toLowerCase();
       if (adCity.isEmpty) continue;
       if (city.isNotEmpty && adCity != city) continue;
-      // If diner city is unknown, still show city-targeted ads (soft match for v1).
     }
     out.add(ad);
   }

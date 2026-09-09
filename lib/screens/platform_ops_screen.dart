@@ -15,6 +15,7 @@ import '../utils/platform_ops_access.dart';
 import '../utils/support.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/customer_ui_components.dart';
+import 'brand_campaign_editor_sheet.dart';
 
 part 'platform_ops_desk_tabs.dart';
 
@@ -90,6 +91,7 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> with SingleTicker
         onEnd: (row) => _setBrandStatus(row, 'ended'),
         onReject: (row) => _setBrandStatus(row, 'draft', packageLabel: 'Returned to draft'),
         onPublish: _publishBrand,
+        onSchedule: _scheduleBrand,
       ),
     );
     add(
@@ -422,6 +424,11 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> with SingleTicker
     );
   }
 
+  Future<void> _scheduleBrand(Map<String, dynamic> row) async {
+    final saved = await showBrandCampaignEditorSheet(context, row: row);
+    if (saved && mounted) _bump();
+  }
+
   Future<void> _confirmLogout() async {
     final ok = await showDialog<bool>(
       context: context,
@@ -718,12 +725,14 @@ class _BrandOpsList extends StatelessWidget {
     required this.onPublish,
     required this.onReject,
     required this.onEnd,
+    required this.onSchedule,
   });
 
   final bool busy;
   final Future<void> Function(Map<String, dynamic> row) onPublish;
   final Future<void> Function(Map<String, dynamic> row) onReject;
   final Future<void> Function(Map<String, dynamic> row) onEnd;
+  final Future<void> Function(Map<String, dynamic> row) onSchedule;
 
   @override
   Widget build(BuildContext context) {
@@ -833,6 +842,10 @@ class _BrandOpsList extends StatelessWidget {
                           onPressed: busy ? null : () => onEnd(row),
                           child: const Text('End campaign'),
                         ),
+                      OutlinedButton(
+                        onPressed: busy ? null : () => onSchedule(row),
+                        child: const Text('Schedule & media'),
+                      ),
                     ],
                   ),
                 ],

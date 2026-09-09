@@ -11,7 +11,6 @@ function asNumber(value: unknown, fallback = 0) {
 function packagingFeeForLoyaltyTier(tier: unknown) {
   const name = String(tier ?? '').toLowerCase()
   if (name.includes('gold')) return 0
-  if (name.includes('silver')) return 10
   return 20
 }
 

@@ -185,3 +185,43 @@ Future<String?> uploadKitchenImage({
     return Supabase.instance.client.storage.from('avatars').getPublicUrl(path.replaceAll('/', '_'));
   }
 }
+
+const int kAdCampaignMaxAssetBytes = 15 * 1024 * 1024;
+
+/// Ops upload for brand stills / short clips. Prefers the `ad_campaigns` bucket.
+Future<String> uploadAdCampaignAsset({
+  required String campaignId,
+  required String filePath,
+  required String contentType,
+}) async {
+  final file = File(filePath);
+  final size = await file.length();
+  if (size > kAdCampaignMaxAssetBytes) {
+    throw Exception('Keep photos and clips under 15 MB (about 15–30 seconds of video).');
+  }
+  final user = Supabase.instance.client.auth.currentUser;
+  if (user == null) throw Exception('Sign in as platform ops to upload ads.');
+
+  final ext = filePath.split('.').last.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+  final safeExt = ext.isEmpty ? 'bin' : ext;
+  final name = DateTime.now().millisecondsSinceEpoch.toString();
+  final path = '$campaignId/$name.$safeExt';
+
+  try {
+    await Supabase.instance.client.storage.from('ad_campaigns').upload(
+          path,
+          file,
+          fileOptions: FileOptions(contentType: contentType, upsert: true),
+        );
+    return Supabase.instance.client.storage.from('ad_campaigns').getPublicUrl(path);
+  } catch (e, stack) {
+    FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Ad campaign upload failed on ad_campaigns');
+    final fallback = 'ads/${user.id}/$path';
+    await Supabase.instance.client.storage.from('meal_images').upload(
+          fallback,
+          file,
+          fileOptions: FileOptions(contentType: contentType, upsert: true),
+        );
+    return Supabase.instance.client.storage.from('meal_images').getPublicUrl(fallback);
+  }
+}

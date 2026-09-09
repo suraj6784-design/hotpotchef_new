@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../utils/helpers.dart';
 import '../widgets/customer_ui_components.dart';
+import '../widgets/sponsored_placement_banner.dart';
 
 /// Chef brand-referral intake. Pricing and go-live stay with the platform.
 class ChefAdvertiseScreen extends StatefulWidget {
@@ -103,7 +104,7 @@ class _ChefAdvertiseScreenState extends State<ChefAdvertiseScreen> {
         'advertiser_name': brand,
         'title': title,
         'body': _body.text.trim().isEmpty ? null : _body.text.trim(),
-        'cta_url': _ctaUrl.text.trim().isEmpty ? null : _ctaUrl.text.trim(),
+        'cta_url': sponsoredCtaUri(_ctaUrl.text.trim())?.toString(),
         'cta_label': 'Learn more',
         'reach_mode': _reach,
         'city': _reach == 'targeted' ? _city.text.trim() : null,

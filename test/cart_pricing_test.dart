@@ -405,4 +405,22 @@ void main() {
       isFalse,
     );
   });
+
+  test('checkout bill shows automatic flat off without typing a promo code', () {
+    final item = _buildItem(
+      quantity: 1,
+      mealDetails: {
+        'price': 221,
+        'offer_type': 'flat',
+        'discount_value': 40,
+      },
+    );
+    final line = item.toCheckoutPayload();
+    expect(PricingCalculator.lineFoodGross(line), 221.0);
+    expect(PricingCalculator.lineFoodTotal(line), 181.0);
+    expect(
+      PricingCalculator.cartPromoLineLabel([line]),
+      'Flat ₹40 OFF',
+    );
+  });
 }

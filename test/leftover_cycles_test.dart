@@ -196,6 +196,31 @@ void main() {
         '06 Sep 2026, 09:00 AM',
       );
     });
+
+    test('web checkout does not treat chef hours as a same-day 9:00 AM promise', () {
+      final placed = DateTime(2026, 9, 7, 20, 56);
+      final order = {
+        'created_at': placed.toIso8601String(),
+        'items': [
+          {
+            'time_slot': 'Sat, Sun (9:00 AM to 11:00 PM)',
+            'selected_date': '2026-09-07',
+          },
+        ],
+      };
+      expect(formatDeliverySlotLabel(order, now: placed), 'ASAP');
+      expect(orderSlotStart(order, now: placed), isNull);
+      expect(dinerSlotIsLate(order, now: placed), isFalse);
+      expect(orderIsPreOrderSlot(order), isFalse);
+      expect(
+        smartTimeSlot(
+          'Sat, Sun (9:00 AM to 11:00 PM)',
+          placed,
+          selectedDateStr: '2026-09-07',
+        ),
+        'ASAP',
+      );
+    });
   });
 
   group('lineItemUnitPrice', () {

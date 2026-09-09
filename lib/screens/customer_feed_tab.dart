@@ -30,7 +30,6 @@ import '../widgets/live_offers_flash_banner.dart';
 import '../widgets/festival_hampers_banner.dart';
 import '../widgets/society_nights_banner.dart';
 import '../widgets/shelf_items_banner.dart';
-import '../widgets/rescue_waste_banner.dart';
 import '../widgets/sponsored_placement_banner.dart';
 import '../widgets/ai_recommendations_section.dart';
 import '../services/delivery_estimator_service.dart';
@@ -89,6 +88,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   final Set<String> _chefOpenResolved = {};
   bool _hydratingKitchenHours = false;
   StreamSubscription<AuthState>? _authSub;
+  bool _addressPickerOpen = false;
 
   final List<Map<String, dynamic>> _dietFilters = const [
     {'name': 'All', 'icon': Icons.tune},
@@ -567,7 +567,8 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       final meals = <Map<String, dynamic>>[];
       for (final raw in List<Map<String, dynamic>>.from(rows as List)) {
         if (offerFlashGroupKeyForMeal(raw) != groupKey) continue;
-        if (!isCatalogMeal(raw) || !isMealAvailableForCart(raw)) continue;
+        if (!isCatalogMeal(raw) || !mealHasSellableStock(raw)) continue;
+        if (!PricingCalculator.isWithinOfferWindow(raw)) continue;
         final chefId = raw['chef_id']?.toString() ?? '';
         if (chefId.isNotEmpty && _closedChefIds.contains(chefId)) continue;
         final pinned = mealWithKitchenPin(raw, chefPin: _chefKitchenPins[chefId]);
@@ -973,9 +974,12 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                         Expanded(
                           child: Semantics(
                             button: true,
-                            label: 'Delivering to $_currentAddress. Double tap to change delivery location.',
+                            label: 'Delivering to $_currentAddress. Tap to change delivery location.',
                             child: GestureDetector(
                           onTap: () async {
+                            if (_addressPickerOpen) return;
+                            _addressPickerOpen = true;
+                            try {
                             if (!isLoggedIn) {
                               await _showGuestLocationSheet(context);
                               return;
@@ -984,7 +988,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                             await _fetchUserAddresses(preserveActivePin: true);
                             if (!context.mounted) return;
 
-                            showModalBottomSheet(
+                            await showModalBottomSheet(
                               context: context,
                               isScrollControlled: true,
                               backgroundColor: Colors.transparent,
@@ -1100,6 +1104,9 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                 ),
                               ),
                             );
+                            } finally {
+                              _addressPickerOpen = false;
+                            }
                           },
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1509,7 +1516,6 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
               chefKitchenPins: _chefKitchenPins,
               onItemTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
             ),
-            const RescueWasteBanner(),
             if (isLoggedIn) const WeeklyPlanDueBanner(),
             if (isLoggedIn) const DailyStreakBanner(),
             if (isLoggedIn) const AiRecommendationsSection(),

@@ -458,6 +458,37 @@ class PricingCalculator {
     );
   }
 
+  /// Pre-discount food total (list price + add-ons).
+  static double lineFoodGross(Map<String, dynamic> item) {
+    final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+    final meal = pricingSourceFromLine(item);
+    final addOnUnit = addOnsTotal(item['selectedAddOns'] ?? item['selected_add_ons']);
+    return roundCurrency(basePrice(meal) * qty + addOnUnit * qty);
+  }
+
+  /// Bill-summary label for the automatic or typed offer on a cart.
+  static String cartPromoLineLabel(
+    Iterable<Map<String, dynamic>> items, {
+    String? appliedPromoCode,
+    DateTime? referenceTime,
+  }) {
+    final typed = normalizedPromoCode(appliedPromoCode);
+    if (typed != null) return typed;
+    for (final item in items) {
+      final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+      final meal = pricingSourceFromLine(item);
+      final summary = calculateItemSummary(
+        meal,
+        qty,
+        referenceTime: referenceTime,
+        appliedPromoCode: appliedPromoCode,
+      );
+      final desc = summary.offerDescription?.trim() ?? '';
+      if (summary.isOfferApplied && desc.isNotEmpty) return desc;
+    }
+    return 'Offer';
+  }
+
   static bool cartHasPromoCode(Iterable<Map<String, dynamic>> items) {
     return items.any((item) => mealPromoCode(pricingSourceFromLine(item)) != null);
   }

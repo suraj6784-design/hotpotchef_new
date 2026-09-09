@@ -37,8 +37,55 @@ void main() {
 
       expect(offers, hasLength(1));
       expect(offers.single['id'], '1');
-      expect(offerFlashHeadline(offers.single), 'Use FESTIVE50');
-      expect(offerFlashSubhead(offers.single), 'FESTIVE50');
+      expect(offerFlashHeadline(offers.single), 'Flash Sale');
+      expect(offerFlashSubhead(offers.single), 'Flash Sale · tap to browse');
+    });
+
+    test('shows gated BOGO and Flash families beside Flat, hides expired %', () {
+      final now = DateTime(2026, 9, 9, 6, 30);
+      final offers = flashableOfferMeals([
+        {
+          'id': 'bogo',
+          'title': 'PromoSales',
+          'quantity': 2,
+          'status': 'Available',
+          'offer_type': 'BOGO (Buy 1 Get 1)',
+          'promo_code': 'BOGO',
+          'time_slot': 'Daily (6:30 PM to 9:30 PM)',
+        },
+        {
+          'id': 'flash',
+          'title': 'FESTIVE50',
+          'quantity': 8,
+          'status': 'Available',
+          'offer_type': 'flashSale',
+          'promo_code': 'FESTIVE50',
+        },
+        {
+          'id': 'flat',
+          'title': 'Veg Jumbo Thali',
+          'quantity': 8,
+          'status': 'Available',
+          'offer_type': 'flat',
+          'offer_valid_until': DateTime(2026, 9, 10).toIso8601String(),
+        },
+        {
+          'id': 'pct',
+          'title': 'DiscountTest',
+          'quantity': 18,
+          'status': 'Available',
+          'offer_type': 'Percentage Discount (%)',
+          'offer_valid_until': DateTime(2026, 8, 16).toIso8601String(),
+        },
+      ], now: now);
+
+      expect(
+        offers.map((meal) => meal['_offer_group']),
+        ['flashSale', 'bogo', 'flat'],
+      );
+      expect(offerFlashHeadline(offers[0]), 'Flash Sale');
+      expect(offerFlashHeadline(offers[1]), 'BOGO');
+      expect(offerFlashHeadline(offers[2]), 'Flat Discount');
     });
 
     test('hides a closed kitchen and labels an automatic flash sale', () {
@@ -59,7 +106,7 @@ void main() {
       expect(offerFlashHeadline(meal), 'FLASH 30%');
     });
 
-    test('boosted dishes lead the strip even without a promo', () {
+    test('boosted dishes still appear beside offer families', () {
       final now = DateTime(2026, 9, 6, 15);
       final boosted = {
         'id': 'boosted',
@@ -85,7 +132,7 @@ void main() {
         'boosted_until': DateTime(2026, 9, 6).toIso8601String(),
       };
       final offers = flashableOfferMeals([promo, expiredBoost, boosted], now: now);
-      expect(offers.map((meal) => meal['id']), ['boosted', 'promo']);
+      expect(offers.map((meal) => meal['id']), ['promo', 'boosted']);
       expect(offerFlashHeadline(boosted, now: now), 'Boosted today');
       expect(isMealBoosted(expiredBoost, now: now), isFalse);
       expect(kChefBoostRupees, 99);

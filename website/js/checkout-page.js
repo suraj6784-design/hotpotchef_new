@@ -92,10 +92,6 @@
         throw new Error((meal.title || meal.name || 'A plate') + ' is not Available');
       }
       var qty = Math.max(1, Number(row.qty) || 1);
-      var today = new Date();
-      var yyyy = today.getFullYear();
-      var mm = String(today.getMonth() + 1).padStart(2, '0');
-      var dd = String(today.getDate()).padStart(2, '0');
       out.push({
         id: meal.id,
         meal_id: meal.id,
@@ -105,8 +101,8 @@
         name: meal.name || meal.title,
         price: meal.price,
         quantity: qty,
-        time_slot: (meal.time_slot || '').toString().trim() || 'ASAP',
-        selected_date: yyyy + '-' + mm + '-' + dd,
+        // Kitchen windows like "Sat, Sun (9:00 AM to 11:00 PM)" are not a diner drop-off.
+        time_slot: 'ASAP',
         service_type: (meal.service_type || 'Delivery Partner').toString().split(',')[0].trim(),
       });
     }
