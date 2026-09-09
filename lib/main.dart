@@ -12,6 +12,7 @@ import 'firebase_bootstrap.dart';
 import 'utils/helpers.dart';
 import 'utils/app_theme.dart';
 import 'utils/app_router.dart';
+import 'utils/google_maps_js_loader.dart';
 import 'services/push_notification_service.dart';
 
 // Global Messenger Key to show Push Notifications across all screens
@@ -22,6 +23,7 @@ void main() async {
 
   // 1. Load environment variables first
   await dotenv.load(fileName: ".env");
+  await loadGoogleMapsJsIfNeeded(dotenv.env['GOOGLE_MAPS_API_KEY'] ?? '');
 
   final firebaseReady = await FirebaseBootstrap.initializeApp();
   _attachCrashlyticsIfSupported(firebaseReady);

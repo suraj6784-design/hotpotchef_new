@@ -310,13 +310,12 @@ class CartNotifier extends Notifier<CartState> {
     }
   }
 
-  void updateItemServiceType(String cartItemId, String serviceTypeStr) {
+  void updateItemServiceType(String cartItemId, ServiceType serviceType) {
     final index = state.items.indexWhere((i) => i.id == cartItemId);
     if (index == -1) return;
 
     final updated = List<CartItemModel>.from(state.items);
     final item = updated[index];
-    final serviceType = ServiceType.fromString(serviceTypeStr);
 
     updated[index] = item.copyWith(serviceType: serviceType);
     state = state.copyWith(items: updated);

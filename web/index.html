@@ -18,8 +18,13 @@
   <title>HotPotChef</title>
   <link rel="manifest" href="manifest.json">
 
-  <!-- 👇 ADD THIS GOOGLE MAPS SCRIPT TAG BELOW 👇 -->
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAdvPW1g41KAaWBdjEmlz6aCfL9_-mdoI8"></script>
+  <!--
+    Google Maps JavaScript API is NOT loaded with a committed key.
+    Flutter injects the script at startup from GOOGLE_MAPS_API_KEY in `.env`
+    (see README). Do not paste a live unrestricted key here.
+    If you must load Maps before Flutter boots, use a key restricted to your
+    HTTP referrers — and rotate any key that was previously committed.
+  -->
 
   <style id="splash-screen-style">
     html {
