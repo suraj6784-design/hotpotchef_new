@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cart · HotPotChef</title>
+    <meta name="description" content="Your HotPotChef web cart. Finish checkout in the app." />
+    <meta name="theme-color" content="#1a1410" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Figtree:wght@500;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/css/site.css?v=20260909e" />
+  </head>
+  <body>
+    <div class="wrap site-top">
+      <a href="/">HotPot<strong>Chef</strong></a>
+      <a class="cart-link" href="/cart">Cart <span data-cart-count hidden></span></a>
+    </div>
+
+    <main class="meal-page">
+      <div class="wrap">
+        <article class="meal-card">
+          <p class="meal-kicker">Web cart</p>
+          <h1 class="meal-title">Your plates</h1>
+          <p class="meal-meta">
+            Add plates here, then pay on the web or finish in the HotPotChef app.
+          </p>
+          <div id="cart-list" class="web-cart-list"></div>
+          <p class="status" id="cart-empty" hidden>Your cart is empty. Browse the live menu and add a plate.</p>
+          <p class="meal-price" id="cart-total" hidden></p>
+          <p class="status" id="app-open-hint" hidden></p>
+          <div class="cta-row">
+            <a class="btn btn-primary" id="pay-web" href="/checkout" hidden>Pay on web</a>
+            <a class="btn btn-primary btn-secondary-cta" id="open-app" href="/checkout" hidden>Checkout in app</a>
+            <a class="btn btn-ghost" href="/#live-menu">Keep browsing</a>
+          </div>
+        </article>
+      </div>
+    </main>
+
+    <nav class="site-footer-links" aria-label="Policies">
+      <a href="/terms">Terms</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/faq">FAQs</a>
+      <a href="/cancellation">Cancellation</a>
+    </nav>
+
+    <script src="/js/config.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/cart.js"></script>
+    <script src="/js/cart-page.js?v=20260909e"></script>
+  </body>
+</html>
