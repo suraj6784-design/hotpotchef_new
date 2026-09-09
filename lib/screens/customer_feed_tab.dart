@@ -150,6 +150,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     _showFollowingOnly = false;
     _allergies = '';
     _selectedDiet = 'All';
+    _selectedCategory = 'All';
     _savedAddresses = [];
     _deviceLocationPin = null;
     _currentAddress = 'Locating...';
@@ -1267,34 +1268,25 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           if (isLoggedIn) const SupportRepliedBanner(),
 
           if (!_hasActiveSearch) ...[
-            Theme(
-              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-              child: ExpansionTile(
-                tilePadding: const EdgeInsets.symmetric(horizontal: 20),
-                childrenPadding: const EdgeInsets.only(bottom: 4),
-                initiallyExpanded: false,
-                title: Text('Diet & cuisine', style: AppTheme.homeSectionLabelOf(context)),
-                children: [
-                  _filterChipRow(
-                    chips: _dietFilters,
-                    selected: _selectedDiet,
-                    onSelected: (name) => setState(() => _selectedDiet = name),
-                  ),
-                  const SizedBox(height: 8),
-                  _filterChipRow(
-                    chips: _categories,
-                    selected: _selectedCategory,
-                    onSelected: (name) => setState(() => _selectedCategory = name),
-                  ),
-                ],
-              ),
-            ),
             const SizedBox(height: 4),
+            _filterChipRow(
+              chips: _dietFilters,
+              selected: _selectedDiet,
+              onSelected: (name) => setState(() => _selectedDiet = name),
+            ),
+            const SizedBox(height: 8),
+            _filterChipRow(
+              chips: _categories,
+              selected: _selectedCategory,
+              onSelected: (name) => setState(() => _selectedCategory = name),
+            ),
+            const SizedBox(height: 8),
           ],
 
           if (!_hasActiveSearch) ..._homeTopHighlights(isLoggedIn: isLoggedIn),
 
-          Padding(
+          if (_hasActiveSearch || showFollowing || showFavorites)
+            Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1310,9 +1302,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                               : (_offerBrowseLabel != null
                                   ? '$_offerBrowseLabel offers'
                                   : 'Search results'))
-                          : (showFollowing
-                              ? 'Kitchens you follow'
-                              : (showFavorites ? 'Your favorites' : 'Near you tonight')),
+                          : (showFollowing ? 'Kitchens you follow' : 'Your favorites'),
                       style: AppTheme.homeSectionLabelOf(context).copyWith(fontSize: 16),
                     ),
                     const SizedBox(height: 4),
@@ -1327,7 +1317,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                       : '${_chefSearchResults.length} chef${_chefSearchResults.length == 1 ? '' : 's'} · "${_searchController.text}"')))
                           : (showFollowing
                               ? 'Live dishes from kitchens you follow'
-                              : (showFavorites ? 'Meals you loved' : 'Cooked to your slot')),
+                              : 'Meals you loved'),
                       style: AppTheme.metaOf(context),
                     ),
                   ],
