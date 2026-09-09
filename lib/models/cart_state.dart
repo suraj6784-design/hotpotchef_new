@@ -79,7 +79,7 @@ class CartItemModel {
         'discountedPrice': discountedPrice,
         'quantity': quantity,
         'selectedDate': scheduledDate.toIso8601String(),
-        'selectedServiceType': serviceType.toDisplayString(),
+        'selectedServiceType': serviceType.toWireValue(),
         'timeSlot': timeSlot,
         'selectedAddOns': selectedAddOns.map((a) => a.toJson()).toList(growable: false),
         'specialInstructions': specialInstructions,

@@ -1,8 +1,44 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
     id("com.google.gms.google-services")
+}
+
+fun loadGoogleMapsApiKey(): String {
+    val fromEnv = System.getenv("GOOGLE_MAPS_API_KEY")?.trim().orEmpty()
+    if (fromEnv.isNotEmpty()) return fromEnv
+
+    val localProperties = Properties()
+    val localFile = rootProject.file("local.properties")
+    if (localFile.exists()) {
+        localFile.inputStream().use { localProperties.load(it) }
+        val fromLocal = localProperties.getProperty("GOOGLE_MAPS_API_KEY")?.trim().orEmpty()
+        if (fromLocal.isNotEmpty()) return fromLocal
+    }
+
+    val dotenvFile = rootProject.file("../.env")
+    if (dotenvFile.exists()) {
+        for (raw in dotenvFile.readLines()) {
+            val line = raw.trim()
+            if (line.isEmpty() || line.startsWith("#")) continue
+            val eq = line.indexOf('=')
+            if (eq <= 0) continue
+            val key = line.substring(0, eq).trim()
+            if (key != "GOOGLE_MAPS_API_KEY") continue
+            var value = line.substring(eq + 1).trim()
+            if ((value.startsWith("\"") && value.endsWith("\"")) ||
+                (value.startsWith("'") && value.endsWith("'"))
+            ) {
+                value = value.substring(1, value.length - 1)
+            }
+            if (value.isNotEmpty()) return value
+        }
+    }
+
+    return "YOUR_GOOGLE_MAPS_API_KEY"
 }
 
 android {
@@ -26,6 +62,7 @@ android {
         
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = loadGoogleMapsApiKey()
     }
 
     buildTypes {

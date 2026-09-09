@@ -385,7 +385,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                         }).toList(),
                         onChanged: (val) {
                           if (val != null) {
-                            ref.read(cartProvider.notifier).updateItemServiceType(cartItemId, val.toString());
+                            ref.read(cartProvider.notifier).updateItemServiceType(cartItemId, val);
                           }
                         },
                       ),

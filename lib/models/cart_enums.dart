@@ -6,24 +6,32 @@ enum ServiceType {
   pickup,
   dineIn;
 
+  /// Parses display strings, snake_case, aliases, [name], and [toString] forms
+  /// (e.g. `ServiceType.pickup`). Unknown / empty values default to
+  /// [ServiceType.deliveryPlatform] to match historical cart behavior.
   static ServiceType fromString(String? value) {
-    switch (value?.toLowerCase().trim()) {
-      case 'delivery (platform)':
-      case 'delivery_platform':
+    final normalized = _normalize(value);
+    if (normalized.isEmpty) {
+      return ServiceType.deliveryPlatform;
+    }
+
+    switch (normalized) {
+      case 'deliveryplatform':
       case 'delivery':
         return ServiceType.deliveryPlatform;
-      case 'delivery (self)':
-      case 'delivery_self':
+      case 'deliveryself':
         return ServiceType.deliverySelf;
       case 'pickup':
         return ServiceType.pickup;
       case 'dinein':
-      case 'dine_in':
         return ServiceType.dineIn;
       default:
         return ServiceType.deliveryPlatform;
     }
   }
+
+  /// Stable wire / persistence value (`deliveryPlatform`), not `toString()`.
+  String toWireValue() => name;
 
   String toDisplayString() {
     switch (this) {
@@ -40,6 +48,17 @@ enum ServiceType {
 
   bool get isDelivery =>
       this == ServiceType.deliveryPlatform || this == ServiceType.deliverySelf;
+
+  /// Lowercases, strips a `ServiceType.` prefix, and drops non-alphanumerics
+  /// so `ServiceType.dineIn`, `dine_in`, `Dine-In`, and `dinein` all match.
+  static String _normalize(String? value) {
+    var s = value?.toLowerCase().trim() ?? '';
+    const prefix = 'servicetype.';
+    if (s.startsWith(prefix)) {
+      s = s.substring(prefix.length);
+    }
+    return s.replaceAll(RegExp(r'[^a-z0-9]'), '');
+  }
 }
 
 /// Strongly typed add-ons/customizations for production scalability
