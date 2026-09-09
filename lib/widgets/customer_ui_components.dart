@@ -1115,6 +1115,10 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
     final meal = widget.meal;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final maxStock = int.tryParse(meal['quantity']?.toString() ?? '10') ?? 10;
+    final canAddToCart = isMealAvailableForCart(meal);
+    final cartCta = !mealHasSellableStock(meal)
+        ? 'Sold out'
+        : (isMealExpired(meal['time_slot']?.toString()) ? 'Slot passed' : 'Add to Cart • ₹${_lineFoodTotal.toInt()}');
     final offerSummary = PricingCalculator.calculateItemSummary(meal, _quantity);
     final price = offerSummary.effectiveUnitPrice;
     final chefName = chefDisplayName(meal);
@@ -1561,10 +1565,10 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                   Expanded(
                     child: Semantics(
                       button: true,
-                      enabled: isMealAvailableForCart(meal),
-                      label: isMealAvailableForCart(meal)
+                      enabled: canAddToCart,
+                      label: canAddToCart
                           ? 'Add $_quantity portions to cart'
-                          : 'Meal sold out',
+                          : cartCta,
                       child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppTheme.primary,
@@ -1575,7 +1579,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                         shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusLg),
                         elevation: 0,
                       ),
-                      onPressed: !isMealAvailableForCart(meal)
+                      onPressed: !canAddToCart
                           ? null
                           : () async {
                               final added = await addMealToCartWithConflict(
@@ -1594,9 +1598,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                               );
                             },
                       child: Text(
-                        isMealAvailableForCart(meal)
-                            ? 'Add to Cart • ₹${_lineFoodTotal.toInt()}'
-                            : 'Sold out',
+                        cartCta,
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                       ),
                     ).successPulse(),

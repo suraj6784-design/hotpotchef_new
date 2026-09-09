@@ -21,19 +21,22 @@ void main() {
         '7:30 PM to 8:30 PM',
         now: DateTime(2026, 9, 6, 12),
       );
-      expect(before, {'date': 'Today', 'time': '7:30 PM to 8:30 PM'});
+      expect(before['date'], 'Today');
+      expect(before['time'], '7:30 PM to 8:30 PM');
 
       final insidePastStart = chefSlotDefaultSchedule(
         '7:30 PM to 8:30 PM',
         now: DateTime(2026, 9, 6, 19, 45),
       );
-      expect(insidePastStart, {'date': 'Tomorrow', 'time': '7:30 PM to 8:30 PM'});
+      expect(insidePastStart['date'], 'Tomorrow');
+      expect(insidePastStart['time'], '7:30 PM to 8:30 PM');
 
       final after = chefSlotDefaultSchedule(
         '7:30 PM to 8:30 PM',
         now: DateTime(2026, 9, 6, 21),
       );
-      expect(after, {'date': 'Tomorrow', 'time': '7:30 PM to 8:30 PM'});
+      expect(after['date'], 'Tomorrow');
+      expect(after['time'], '7:30 PM to 8:30 PM');
 
       final lateMorning = chefSlotDefaultSchedule(
         'Today (9:00 AM to 5:00 PM)',
@@ -92,6 +95,30 @@ void main() {
         ),
         isTrue,
       );
+    });
+
+    test('Sat/Sun kitchen windows stay preorderable on a weekday', () {
+      final thursdayNight = DateTime(2026, 9, 10, 20);
+      expect(isStandingWeeklyServingWindow('Sat, Sun (11:00 AM to 6:00 PM)'), isTrue);
+      expect(
+        isMealExpired('Sat, Sun (11:00 AM to 6:00 PM)', now: thursdayNight),
+        isFalse,
+      );
+      expect(
+        isMealAvailableForCart({
+          'quantity': 5,
+          'status': 'Available',
+          'time_slot': 'Sat, Sun (11:00 AM to 6:00 PM)',
+        }),
+        isTrue,
+      );
+      final booked = chefSlotDefaultSchedule(
+        'Sat, Sun (11:00 AM to 6:00 PM)',
+        now: DateTime(2026, 9, 10, 14),
+      );
+      expect(booked['date'], 'Sep 12th 2026');
+      expect(booked['time'], '11:00 AM to 12:00 PM');
+      expect(chefSlotDefaultDate(booked, now: DateTime(2026, 9, 10, 14)).day, 12);
     });
 
     test('dated slot labels leave Active Menu after that calendar day', () {

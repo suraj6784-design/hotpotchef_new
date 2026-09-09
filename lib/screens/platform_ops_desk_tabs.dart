@@ -372,6 +372,10 @@ class _OpsAccountsListState extends State<_OpsAccountsList> {
   final _search = TextEditingController();
   String _roleFilter = 'All';
   Future<List<Map<String, dynamic>>>? _future;
+  final Set<String> _selected = <String>{};
+  String? _editingId;
+  String? _draftRole;
+  String? _draftStatus;
 
   @override
   void initState() {
@@ -393,22 +397,91 @@ class _OpsAccountsListState extends State<_OpsAccountsList> {
     return const [];
   }
 
-  Future<void> _setRole(Map<String, dynamic> row, String role) async {
-    await Supabase.instance.client.rpc(
-      'ops_set_user_role',
-      params: {'p_user_id': row['id'], 'p_role': role},
-    ).withTimeout(NetworkTimeouts.standard);
+  String _rowId(Map<String, dynamic> row) => row['id']?.toString() ?? '';
+
+  bool _isLocked(Map<String, dynamic> row) {
+    final role = row['role']?.toString() ?? '';
+    final email = row['email']?.toString() ?? '';
+    return role.toLowerCase() == 'admin' || isPlatformOwnerEmail(email);
+  }
+
+  void _startEdit(Map<String, dynamic> row) {
+    final id = _rowId(row);
+    if (id.isEmpty || _isLocked(row)) return;
+    setState(() {
+      _editingId = id;
+      _draftRole = row['role']?.toString() ?? 'Customer';
+      _draftStatus = (row['account_status']?.toString() ?? 'active').toLowerCase();
+    });
+  }
+
+  void _cancelEdit() {
+    setState(() {
+      _editingId = null;
+      _draftRole = null;
+      _draftStatus = null;
+    });
+  }
+
+  Future<void> _reload() async {
     widget.onChanged();
+    if (!mounted) return;
     setState(() => _future = _load());
   }
 
-  Future<void> _setStatus(Map<String, dynamic> row, String status) async {
+  Future<bool> _applyRole(String userId, String role) async {
+    await Supabase.instance.client.rpc(
+      'ops_set_user_role',
+      params: {'p_user_id': userId, 'p_role': role},
+    ).withTimeout(NetworkTimeouts.standard);
+    return true;
+  }
+
+  Future<bool> _applyStatus(String userId, String status) async {
     await Supabase.instance.client.rpc(
       'ops_set_account_status',
-      params: {'p_user_id': row['id'], 'p_status': status},
+      params: {'p_user_id': userId, 'p_status': status},
     ).withTimeout(NetworkTimeouts.standard);
-    widget.onChanged();
-    setState(() => _future = _load());
+    return true;
+  }
+
+  Future<void> _saveEdit(Map<String, dynamic> row) async {
+    if (widget.busy) return;
+    final id = _rowId(row);
+    final currentRole = row['role']?.toString() ?? '';
+    final currentStatus = (row['account_status']?.toString() ?? 'active').toLowerCase();
+    try {
+      if (_draftRole != null && _draftRole!.trim().isNotEmpty && _draftRole != currentRole) {
+        await _applyRole(id, _draftRole!);
+      }
+      if (_draftStatus != null && _draftStatus != currentStatus) {
+        await _applyStatus(id, _draftStatus!);
+      }
+      _cancelEdit();
+      await _reload();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(opsFriendlyError(e)), backgroundColor: Colors.redAccent),
+      );
+    }
+  }
+
+  Future<void> _applyToSelected({String? role, String? status}) async {
+    if (widget.busy || _selected.isEmpty) return;
+    try {
+      for (final id in _selected.toList()) {
+        if (role != null) await _applyRole(id, role);
+        if (status != null) await _applyStatus(id, status);
+      }
+      setState(() => _selected.clear());
+      await _reload();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(opsFriendlyError(e)), backgroundColor: Colors.redAccent),
+      );
+    }
   }
 
   @override
@@ -469,57 +542,188 @@ class _OpsAccountsListState extends State<_OpsAccountsList> {
               if (rows.isEmpty) {
                 return const EmptyState(icon: Icons.people_outline, title: 'No matching accounts', message: 'Try another filter or search.');
               }
-              return ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: rows.length,
-                itemBuilder: (context, index) {
-                  final row = rows[index];
-                  final name = row['name']?.toString() ?? row['full_name']?.toString() ?? 'User';
-                  final status = (row['account_status']?.toString() ?? 'active').toLowerCase();
-                  final role = row['role']?.toString() ?? '';
-                  final email = row['email']?.toString() ?? '';
-                  final isAdmin = role.toLowerCase() == 'admin' || isPlatformOwnerEmail(email);
-                  return AppCard(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+              final selectable = rows.where((row) => !_isLocked(row) && _rowId(row).isNotEmpty).toList();
+              final allSelected = selectable.isNotEmpty && selectable.every((row) => _selected.contains(_rowId(row)));
+              return Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 8, 16, 0),
+                    child: Row(
                       children: [
-                        Text(name, style: const TextStyle(fontWeight: FontWeight.w800)),
+                        Checkbox(
+                          value: allSelected,
+                          visualDensity: VisualDensity.compact,
+                          onChanged: selectable.isEmpty
+                              ? null
+                              : (on) {
+                                  setState(() {
+                                    if (on == true) {
+                                      _selected.addAll(selectable.map(_rowId));
+                                    } else {
+                                      for (final row in selectable) {
+                                        _selected.remove(_rowId(row));
+                                      }
+                                    }
+                                  });
+                                },
+                        ),
                         Text(
-                          '${isAdmin ? 'Admin' : role} · $email · $status',
-                          style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                          allSelected ? 'Clear all' : 'Select all',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                         ),
-                        const SizedBox(height: 8),
-                        if (isAdmin)
-                          const Text(
-                            'Owner account — role locked',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primary),
-                          )
-                        else
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            for (final nextRole in const ['Customer', 'Chef', 'Driver'])
-                              OutlinedButton(
-                                onPressed: widget.busy ? null : () => _setRole(row, nextRole),
-                                child: Text(nextRole, style: const TextStyle(fontSize: 12)),
-                              ),
-                            OutlinedButton(
-                              onPressed: widget.busy
-                                  ? null
-                                  : () => _setStatus(row, status == 'suspended' ? 'active' : 'suspended'),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: status == 'suspended' ? AppTheme.success : Colors.red.shade700,
-                              ),
-                              child: Text(status == 'suspended' ? 'Reinstate' : 'Suspend', style: const TextStyle(fontSize: 12)),
-                            ),
-                          ],
-                        ),
+                        const Spacer(),
+                        if (_selected.isNotEmpty)
+                          Text(
+                            '${_selected.length} selected',
+                            style: const TextStyle(fontSize: 12, color: AppTheme.textMuted, fontWeight: FontWeight.w700),
+                          ),
                       ],
                     ),
-                  );
-                },
+                  ),
+                  if (_selected.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final role in const ['Customer', 'Chef', 'Driver'])
+                            OutlinedButton(
+                              onPressed: widget.busy ? null : () => _applyToSelected(role: role),
+                              child: Text('Save as $role', style: const TextStyle(fontSize: 12)),
+                            ),
+                          OutlinedButton(
+                            onPressed: widget.busy ? null : () => _applyToSelected(status: 'suspended'),
+                            style: OutlinedButton.styleFrom(foregroundColor: Colors.red.shade700),
+                            child: const Text('Suspend', style: TextStyle(fontSize: 12)),
+                          ),
+                          OutlinedButton(
+                            onPressed: widget.busy ? null : () => _applyToSelected(status: 'active'),
+                            style: OutlinedButton.styleFrom(foregroundColor: AppTheme.success),
+                            child: const Text('Reinstate', style: TextStyle(fontSize: 12)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  Expanded(
+                    child: ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: rows.length,
+                      itemBuilder: (context, index) {
+                        final row = rows[index];
+                        final id = _rowId(row);
+                        final name = row['name']?.toString() ?? row['full_name']?.toString() ?? 'User';
+                        final status = (row['account_status']?.toString() ?? 'active').toLowerCase();
+                        final role = row['role']?.toString() ?? '';
+                        final email = row['email']?.toString() ?? '';
+                        final locked = _isLocked(row);
+                        final editing = !locked && _editingId == id;
+                        final shownRole = editing ? (_draftRole ?? role) : role;
+                        final shownStatus = editing ? (_draftStatus ?? status) : status;
+                        return AppCard(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Checkbox(
+                                    value: !locked && id.isNotEmpty && _selected.contains(id),
+                                    visualDensity: VisualDensity.compact,
+                                    onChanged: locked || id.isEmpty
+                                        ? null
+                                        : (on) {
+                                            setState(() {
+                                              if (on == true) {
+                                                _selected.add(id);
+                                              } else {
+                                                _selected.remove(id);
+                                              }
+                                            });
+                                          },
+                                  ),
+                                  Expanded(
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(top: 10),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(name, style: const TextStyle(fontWeight: FontWeight.w800)),
+                                          Text(
+                                            '${locked ? 'Admin' : shownRole} · $email · $shownStatus',
+                                            style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  if (locked)
+                                    const Padding(
+                                      padding: EdgeInsets.only(top: 8),
+                                      child: Text(
+                                        'Locked',
+                                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primary),
+                                      ),
+                                    )
+                                  else if (editing) ...[
+                                    IconButton(
+                                      tooltip: 'Cancel',
+                                      onPressed: widget.busy ? null : _cancelEdit,
+                                      icon: const Icon(Icons.close, size: 20),
+                                    ),
+                                    IconButton(
+                                      tooltip: 'Save',
+                                      onPressed: widget.busy ? null : () => _saveEdit(row),
+                                      icon: const Icon(Icons.check, size: 20, color: AppTheme.primary),
+                                    ),
+                                  ] else
+                                    IconButton(
+                                      tooltip: 'Edit',
+                                      onPressed: widget.busy ? null : () => _startEdit(row),
+                                      icon: const Icon(Icons.edit_outlined, size: 20, color: AppTheme.primary),
+                                    ),
+                                ],
+                              ),
+                              if (editing) ...[
+                                const SizedBox(height: 4),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    for (final nextRole in const ['Customer', 'Chef', 'Driver'])
+                                      ChoiceChip(
+                                        label: Text(nextRole, style: const TextStyle(fontSize: 12)),
+                                        selected: shownRole.toLowerCase() == nextRole.toLowerCase(),
+                                        onSelected: widget.busy
+                                            ? null
+                                            : (_) => setState(() => _draftRole = nextRole),
+                                      ),
+                                    ChoiceChip(
+                                      label: const Text('Active', style: TextStyle(fontSize: 12)),
+                                      selected: shownStatus != 'suspended',
+                                      onSelected: widget.busy ? null : (_) => setState(() => _draftStatus = 'active'),
+                                    ),
+                                    ChoiceChip(
+                                      label: const Text('Suspended', style: TextStyle(fontSize: 12)),
+                                      selected: shownStatus == 'suspended',
+                                      onSelected: widget.busy ? null : (_) => setState(() => _draftStatus = 'suspended'),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                const Text(
+                                  'Tap Save to apply role or suspend changes.',
+                                  style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                                ),
+                              ],
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               );
             },
           ),
@@ -540,7 +744,7 @@ class _OpsHelpersList extends StatefulWidget {
 }
 
 class _OpsHelpersListState extends State<_OpsHelpersList> {
-  Future<_HelpersBundle>? _future;
+  Future<List<Map<String, dynamic>>>? _future;
 
   @override
   void initState() {
@@ -548,27 +752,64 @@ class _OpsHelpersListState extends State<_OpsHelpersList> {
     _future = _load();
   }
 
-  Future<_HelpersBundle> _load() async {
+  Future<List<Map<String, dynamic>>> _load() async {
+    try {
+      final raw = await Supabase.instance.client.rpc('ops_list_helpers').withTimeout(NetworkTimeouts.standard);
+      if (raw is List) {
+        return raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      }
+    } catch (_) {}
+
     final client = Supabase.instance.client;
     final seats = await client
         .from('platform_ops')
         .select('user_id, seat_role, permissions, note, revoked_at, created_at')
+        .eq('seat_role', 'helper')
         .order('created_at', ascending: false)
         .withTimeout(NetworkTimeouts.standard);
-    final invites = await client
-        .from('platform_ops_invites')
-        .select('id, code, permissions, label, expires_at, max_uses, use_count, revoked_at, created_at')
-        .order('created_at', ascending: false)
-        .limit(40)
-        .withTimeout(NetworkTimeouts.standard);
-    return _HelpersBundle(
-      seats: List<Map<String, dynamic>>.from(seats as List),
-      invites: List<Map<String, dynamic>>.from(invites as List),
-    );
+    Map<String, Map<String, dynamic>> byId = {};
+    try {
+      final accounts = await client.rpc('ops_list_accounts').withTimeout(NetworkTimeouts.standard);
+      if (accounts is List) {
+        for (final row in accounts.whereType<Map>()) {
+          final map = Map<String, dynamic>.from(row);
+          final id = map['id']?.toString() ?? '';
+          if (id.isNotEmpty) byId[id] = map;
+        }
+      }
+    } catch (_) {}
+    return List<Map<String, dynamic>>.from(seats as List).map((seat) {
+      final id = seat['user_id']?.toString() ?? '';
+      final profile = byId[id] ?? const <String, dynamic>{};
+      return {
+        ...seat,
+        'email': profile['email'],
+        'name': profile['name'] ?? profile['full_name'] ?? seat['note'],
+        'full_name': profile['full_name'],
+        'account_status': profile['account_status'] ?? 'active',
+      };
+    }).toList();
   }
 
-  Future<void> _createInvite() async {
+  Future<Map<String, dynamic>> _manage({
+    required String action,
+    Map<String, dynamic> extra = const {},
+  }) async {
+    final response = await Supabase.instance.client.functions.invoke(
+      'manage-helper-account',
+      body: {'action': action, ...extra},
+    ).withTimeout(NetworkTimeouts.standard);
+    final data = response.data is Map ? Map<String, dynamic>.from(response.data as Map) : <String, dynamic>{};
+    if (response.status != 200 || data['ok'] != true) {
+      throw Exception(data['error']?.toString() ?? 'Could not update helper');
+    }
+    return data;
+  }
+
+  Future<void> _createHelper() async {
     final selected = <String>{kOpsPermissionFssai};
+    final username = TextEditingController();
+    final password = TextEditingController(text: generateOpsHelperPassword());
     final label = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
@@ -577,33 +818,54 @@ class _OpsHelpersListState extends State<_OpsHelpersList> {
           builder: (ctx, setLocal) {
             return AlertDialog(
               shape: AppTheme.dialogShape,
-              title: const Text('Create helper invite'),
+              title: const Text('Create helper account'),
               content: SizedBox(
                 width: 360,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(
-                      controller: label,
-                      decoration: const InputDecoration(labelText: 'Label (optional)'),
-                    ),
-                    const SizedBox(height: 8),
-                    ...kOpsInviteablePermissions.map(
-                      (key) => CheckboxListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(opsPermissionLabel(key)),
-                        value: selected.contains(key),
-                        onChanged: (v) => setLocal(() {
-                          if (v == true) {
-                            selected.add(key);
-                          } else {
-                            selected.remove(key);
-                          }
-                        }),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'This creates a login. Share the username and password with the helper. They sign in on the same app and open only the tabs you grant.',
+                        style: TextStyle(fontSize: 13, height: 1.35, color: AppTheme.textMuted),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: username,
+                        textCapitalization: TextCapitalization.none,
+                        decoration: const InputDecoration(
+                          labelText: 'Username or email',
+                          hintText: 'fssai.reviewer',
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: password,
+                        decoration: const InputDecoration(labelText: 'Password'),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: label,
+                        decoration: const InputDecoration(labelText: 'Display name (optional)'),
+                      ),
+                      const SizedBox(height: 8),
+                      ...kOpsInviteablePermissions.map(
+                        (key) => CheckboxListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(opsPermissionLabel(key)),
+                          value: selected.contains(key),
+                          onChanged: (v) => setLocal(() {
+                            if (v == true) {
+                              selected.add(key);
+                            } else {
+                              selected.remove(key);
+                            }
+                          }),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               actions: [
@@ -615,40 +877,48 @@ class _OpsHelpersListState extends State<_OpsHelpersList> {
         );
       },
     );
+    final login = username.text.trim();
+    final pass = password.text.trim();
+    final name = label.text.trim();
+    username.dispose();
+    password.dispose();
+    label.dispose();
     if (ok != true || !mounted) return;
     try {
-      final raw = await Supabase.instance.client.rpc(
-        'ops_create_helper_invite',
-        params: {
-          'p_permissions': selected.toList(),
-          'p_label': label.text.trim().isEmpty ? null : label.text.trim(),
-          'p_expires_hours': 72,
-          'p_max_uses': 1,
+      final data = await _manage(
+        action: 'create',
+        extra: {
+          'username': login,
+          'password': pass,
+          'label': name,
+          'permissions': selected.toList(),
         },
-      ).withTimeout(NetworkTimeouts.standard);
-      final map = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
-      final code = map['code']?.toString() ?? '';
-      final path = map['deep_link_path']?.toString() ?? '/ops-invite?code=$code';
+      );
       if (!mounted) return;
+      final shownUser = data['username']?.toString() ?? login;
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
           shape: AppTheme.dialogShape,
-          title: const Text('Invite ready'),
+          title: const Text('Helper login ready'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SelectableText('Code: $code', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
-              const SizedBox(height: 8),
-              SelectableText(path),
+              const Text(
+                'Send this once. They sign in with Email or helper username, then land on Platform ops.',
+                style: TextStyle(fontSize: 13, height: 1.35),
+              ),
+              const SizedBox(height: 12),
+              SelectableText('Username: $shownUser', style: const TextStyle(fontWeight: FontWeight.w800)),
+              SelectableText('Password: $pass', style: const TextStyle(fontWeight: FontWeight.w800)),
             ],
           ),
           actions: [
             IconButton(
               tooltip: 'Copy',
               onPressed: () {
-                Clipboard.setData(ClipboardData(text: '$code\n$path'));
+                Clipboard.setData(ClipboardData(text: 'Username: $shownUser\nPassword: $pass'));
                 Navigator.pop(ctx);
               },
               icon: const Icon(Icons.copy),
@@ -662,16 +932,45 @@ class _OpsHelpersListState extends State<_OpsHelpersList> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$e'), backgroundColor: Colors.redAccent),
+        SnackBar(content: Text(opsFriendlyError(e)), backgroundColor: Colors.redAccent),
       );
-    } finally {
-      label.dispose();
+    }
+  }
+
+  Future<void> _runAction(String action, Map<String, dynamic> seat) async {
+    final id = seat['user_id']?.toString() ?? '';
+    if (id.isEmpty) return;
+    if (action == 'delete') {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: AppTheme.dialogShape,
+          title: const Text('Delete helper?'),
+          content: const Text('This removes the login. They will not be able to sign in again.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+          ],
+        ),
+      );
+      if (ok != true || !mounted) return;
+    }
+    try {
+      await _manage(action: action, extra: {'user_id': id});
+      if (!mounted) return;
+      setState(() => _future = _load());
+      widget.onChanged();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(opsFriendlyError(e)), backgroundColor: Colors.redAccent),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<_HelpersBundle>(
+    return FutureBuilder<List<Map<String, dynamic>>>(
       future: _future,
       builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) {
@@ -680,105 +979,92 @@ class _OpsHelpersListState extends State<_OpsHelpersList> {
         if (snap.hasError) {
           return EmptyState(icon: Icons.error_outline, title: 'Could not load helpers', message: opsFriendlyError(snap.error ?? 'unknown'));
         }
-        final data = snap.data!;
-        final helpers = data.seats.where((s) => (s['seat_role']?.toString() ?? '') == 'helper' && s['revoked_at'] == null).toList();
-        final openInvites = data.invites.where((i) => i['revoked_at'] == null).toList();
+        final seats = snap.data ?? const [];
+        final helpers = seats.where((s) => s['revoked_at'] == null).toList();
+        final revoked = seats.where((s) => s['revoked_at'] != null).toList();
+        Widget helperCard(Map<String, dynamic> seat, {required bool active}) {
+          final perms = normalizeOpsPermissions(seat['permissions']);
+          final email = seat['email']?.toString() ?? '';
+          final login = opsHelperUsernameFromEmail(email);
+          final name = (seat['name'] ?? seat['full_name'] ?? seat['note'] ?? '').toString();
+          final status = (seat['account_status']?.toString() ?? 'active').toLowerCase();
+          return AppCard(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name.isEmpty ? login : name, style: const TextStyle(fontWeight: FontWeight.w800)),
+                Text(
+                  [
+                    login,
+                    if (perms.isNotEmpty) perms.map(opsPermissionLabel).join(', '),
+                    if (!active) 'revoked',
+                    if (status == 'suspended') 'suspended',
+                  ].join(' · '),
+                  style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: active
+                      ? [
+                          TextButton(
+                            onPressed: widget.busy ? null : () => _runAction('revoke', seat),
+                            child: const Text('Revoke'),
+                          ),
+                          TextButton(
+                            onPressed: widget.busy
+                                ? null
+                                : () => _runAction(status == 'suspended' ? 'unsuspend' : 'suspend', seat),
+                            child: Text(status == 'suspended' ? 'Unsuspend' : 'Suspend'),
+                          ),
+                          TextButton(
+                            onPressed: widget.busy ? null : () => _runAction('delete', seat),
+                            child: const Text('Delete', style: TextStyle(color: AppTheme.error)),
+                          ),
+                        ]
+                      : [
+                          TextButton(
+                            onPressed: widget.busy ? null : () => _runAction('restore', seat),
+                            child: const Text('Restore'),
+                          ),
+                          TextButton(
+                            onPressed: widget.busy ? null : () => _runAction('delete', seat),
+                            child: const Text('Delete', style: TextStyle(color: AppTheme.error)),
+                          ),
+                        ],
+                ),
+              ],
+            ),
+          );
+        }
+
         return ListView(
           padding: const EdgeInsets.all(16),
           children: [
             GradientButton(
-              label: 'Create helper invite',
+              label: 'Create helper account',
               icon: Icons.person_add_alt_1_outlined,
-              onPressed: widget.busy ? null : _createInvite,
+              onPressed: widget.busy ? null : _createHelper,
             ),
-            const SizedBox(height: 16),
-            Text('Open invites', style: AppTheme.sectionTitleOf(context)),
-            const SizedBox(height: 8),
-            if (openInvites.isEmpty)
-              const Text('No open invites.', style: TextStyle(color: AppTheme.textMuted))
-            else
-              ...openInvites.map((inv) {
-                final perms = normalizeOpsPermissions(inv['permissions']);
-                return AppCard(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(inv['code']?.toString() ?? '', style: const TextStyle(fontWeight: FontWeight.w800)),
-                            Text(
-                              '${perms.map(opsPermissionLabel).join(', ')} · uses ${inv['use_count']}/${inv['max_uses']}',
-                              style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
-                            ),
-                          ],
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: widget.busy
-                            ? null
-                            : () async {
-                                await Supabase.instance.client.rpc(
-                                  'ops_revoke_invite',
-                                  params: {'p_invite_id': inv['id']},
-                                );
-                                setState(() => _future = _load());
-                              },
-                        child: const Text('Revoke'),
-                      ),
-                    ],
-                  ),
-                );
-              }),
             const SizedBox(height: 16),
             Text('Active helpers', style: AppTheme.sectionTitleOf(context)),
             const SizedBox(height: 8),
             if (helpers.isEmpty)
               const Text('No active helpers yet.', style: TextStyle(color: AppTheme.textMuted))
             else
-              ...helpers.map((seat) {
-                final perms = normalizeOpsPermissions(seat['permissions']);
-                return AppCard(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(seat['user_id']?.toString() ?? '', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
-                            Text(perms.map(opsPermissionLabel).join(', '), style: const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
-                          ],
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: widget.busy
-                            ? null
-                            : () async {
-                                await Supabase.instance.client.rpc(
-                                  'ops_revoke_helper',
-                                  params: {'p_user_id': seat['user_id']},
-                                );
-                                setState(() => _future = _load());
-                              },
-                        child: const Text('Revoke'),
-                      ),
-                    ],
-                  ),
-                );
-              }),
+              ...helpers.map((seat) => helperCard(seat, active: true)),
+            if (revoked.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Text('Revoked', style: AppTheme.sectionTitleOf(context)),
+              const SizedBox(height: 8),
+              ...revoked.map((seat) => helperCard(seat, active: false)),
+            ],
           ],
         );
       },
     );
   }
-}
-
-class _HelpersBundle {
-  const _HelpersBundle({required this.seats, required this.invites});
-  final List<Map<String, dynamic>> seats;
-  final List<Map<String, dynamic>> invites;
 }
 
 class _CatalogOpsList extends StatelessWidget {

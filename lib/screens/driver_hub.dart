@@ -898,21 +898,21 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                         ? null
                         : () => _callCustomer(delivery.customerId),
                   ),
+                  const SizedBox(width: 8),
+                  AppIconAction(
+                    icon: Icons.navigation,
+                    tooltip: delivery.navigateButtonLabel,
+                    onPressed: () => _openNavigation(delivery),
+                  ),
+                  const SizedBox(width: 8),
+                  AppIconAction(
+                    icon: Icons.map_outlined,
+                    tooltip: delivery.navigateToCustomer
+                        ? 'Open customer in Google Maps'
+                        : 'Open kitchen in Google Maps',
+                    onPressed: () => _openExternalMaps(delivery),
+                  ),
                 ],
-              ),
-              const SizedBox(height: 12),
-              AppIconAction(
-                icon: Icons.navigation,
-                tooltip: delivery.navigateButtonLabel,
-                onPressed: () => _openNavigation(delivery),
-              ),
-              const SizedBox(height: 8),
-              AppIconAction(
-                icon: Icons.map_outlined,
-                tooltip: delivery.navigateToCustomer
-                    ? 'Open customer in Google Maps'
-                    : 'Open kitchen in Google Maps',
-                onPressed: () => _openExternalMaps(delivery),
               ),
               const SizedBox(height: 10),
               if (isOut || canStart)

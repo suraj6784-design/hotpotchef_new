@@ -109,6 +109,18 @@ class _AuthScreenState extends State<AuthScreen> {
       }
     }
 
+    try {
+      if (await AuthSession.isPlatformOps()) {
+        if (openedAsSheet || Navigator.of(context).canPop()) {
+          Navigator.of(context).pop(true);
+        }
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          router.go('/platform-ops');
+        });
+        return;
+      }
+    } catch (_) {}
+
     if (!mounted) {
       goHub();
       return;
@@ -128,7 +140,8 @@ class _AuthScreenState extends State<AuthScreen> {
     });
 
     try {
-      final email = _emailController.text.trim();
+      final typedEmail = _emailController.text.trim();
+      final email = _isLogin ? resolveAuthLoginEmail(typedEmail) : typedEmail;
       final password = _passwordController.text.trim();
 
       if (_isLogin) {
@@ -639,12 +652,25 @@ class _AuthScreenState extends State<AuthScreen> {
             controller: _emailController,
             keyboardType: TextInputType.emailAddress,
             autofillHints: const [AutofillHints.email, AutofillHints.username],
-            decoration: const InputDecoration(
-              labelText: 'Email Address',
-              prefixIcon: Icon(Icons.email_outlined),
+            decoration: InputDecoration(
+              labelText: _isLogin ? 'Email or helper username' : 'Email Address',
+              prefixIcon: const Icon(Icons.email_outlined),
             ),
             validator: (v) {
-              if (v == null || v.trim().isEmpty || !v.contains('@')) {
+              final t = (v ?? '').trim();
+              if (t.isEmpty) {
+                return _isLogin ? 'Enter your email or helper username' : 'Please enter a valid email address';
+              }
+              if (_isLogin) {
+                if (t.contains('@') && !t.contains('.')) {
+                  return 'Please enter a valid email address';
+                }
+                if (!t.contains('@') && t.length < 3) {
+                  return 'Enter a valid helper username';
+                }
+                return null;
+              }
+              if (!t.contains('@')) {
                 return 'Please enter a valid email address';
               }
               return null;

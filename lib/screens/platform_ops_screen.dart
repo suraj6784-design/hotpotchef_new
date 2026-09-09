@@ -529,7 +529,7 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> {
           ? const EmptyState(
               icon: Icons.lock_outline,
               title: 'No ops permissions',
-              message: 'Ask the platform owner for a helper invite code.',
+              message: 'This login has no helper access. Ask the platform owner to restore it.',
             )
           : wide
               ? Row(

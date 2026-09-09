@@ -1827,33 +1827,77 @@ String? preferredChefSlotClock(String? schedule) {
   return null;
 }
 
+String _chefSlotDateLabel(DateTime day, DateTime today) {
+  final d = calendarDay(day);
+  final t = calendarDay(today);
+  if (d == t) return 'Today';
+  if (d == t.add(const Duration(days: 1))) return 'Tomorrow';
+  return formatPromisedSlotDate(d);
+}
+
+Map<String, String> _chefSlotScheduleForDay({
+  required String text,
+  required DateTime day,
+  required DateTime now,
+  required String time,
+}) {
+  return {
+    'date': _chefSlotDateLabel(day, now),
+    'date_iso': calendarDay(day).toIso8601String(),
+    'time': time,
+  };
+}
+
 /// Default cart day/time: next future sub-slot inside the chef window (never a past clock).
 Map<String, String> chefSlotDefaultSchedule(String chefScheduleStr, {DateTime? now}) {
   final current = (now ?? DateTime.now()).toLocal();
   final today = calendarDay(current);
   final tomorrow = tomorrowCalendarDay(now: current);
   final text = chefScheduleStr.trim();
+  final servingDays = chefServingWeekdays(text);
+
+  if (servingDays != null && servingDays.isNotEmpty) {
+    for (var i = 0; i < 14; i++) {
+      final day = today.add(Duration(days: i));
+      if (!servingDays.contains(day.weekday)) continue;
+      final future = futureChefSubSlots(text, scheduledDate: day, now: current);
+      if (future.isNotEmpty) {
+        return _chefSlotScheduleForDay(text: text, day: day, now: current, time: future.first);
+      }
+    }
+  }
 
   final todayFuture = futureChefSubSlots(text, scheduledDate: today, now: current);
   if (todayFuture.isNotEmpty) {
-    return {'date': 'Today', 'time': todayFuture.first};
+    return _chefSlotScheduleForDay(text: text, day: today, now: current, time: todayFuture.first);
   }
 
   final tomorrowSlots = chefHourlySubSlots(text);
   if (tomorrowSlots.isNotEmpty) {
-    return {'date': 'Tomorrow', 'time': tomorrowSlots.first};
+    return _chefSlotScheduleForDay(text: text, day: tomorrow, now: current, time: tomorrowSlots.first);
   }
 
   final clock = preferredChefSlotClock(text);
   if (clock == null || clock.isEmpty) {
-    return {'date': 'Today', 'time': text.isEmpty ? '' : text};
+    return _chefSlotScheduleForDay(text: text, day: today, now: current, time: text.isEmpty ? '' : text);
   }
   final startMins = clockTextToMinutes(clock);
   final nowMins = current.hour * 60 + current.minute;
   if (startMins != null && nowMins >= startMins) {
-    return {'date': 'Tomorrow', 'time': clock};
+    return _chefSlotScheduleForDay(text: text, day: tomorrow, now: current, time: clock);
   }
-  return {'date': 'Today', 'time': clock};
+  return _chefSlotScheduleForDay(text: text, day: today, now: current, time: clock);
+}
+
+DateTime chefSlotDefaultDate(Map<String, String> schedule, {DateTime? now}) {
+  final iso = schedule['date_iso']?.trim() ?? '';
+  if (iso.isNotEmpty) {
+    final parsed = DateTime.tryParse(iso);
+    if (parsed != null) return calendarDay(parsed.toLocal());
+  }
+  final current = (now ?? DateTime.now()).toLocal();
+  if (schedule['date'] == 'Tomorrow') return tomorrowCalendarDay(now: current);
+  return calendarDay(current);
 }
 
 DateTime? parseClockOnDate(String timeText, DateTime date) {
@@ -2441,6 +2485,8 @@ String rescuedMealsSubhead({required int rescuedPlates, required int onOfferPlat
 
 bool isMealExpired(String? timeSlot, {DateTime? orderDate, DateTime? now}) {
   if (timeSlot == null || timeSlot.isEmpty) return false;
+  // Standing weekly kitchens stay preorderable until the chef pauses or archives.
+  if (isStandingWeeklyServingWindow(timeSlot)) return false;
   final n = (now ?? DateTime.now()).toLocal();
   final day = calendarDay(orderDate ?? n);
   final clocks = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)', caseSensitive: false).allMatches(timeSlot).toList();
@@ -2502,8 +2548,9 @@ bool isChefMealArchived(Map<String, dynamic> meal) {
 bool isPublishedMealExpired(Map<String, dynamic> meal, {DateTime? now}) {
   if (isChefMealArchived(meal)) return true;
   final n = now ?? DateTime.now();
-  final selected = DateTime.tryParse(meal['selected_date']?.toString() ?? '');
   final slot = meal['time_slot']?.toString();
+  if (isStandingWeeklyServingWindow(slot)) return false;
+  final selected = DateTime.tryParse(meal['selected_date']?.toString() ?? '');
   final labeledDay = parseSlotCalendarDay(slot, now: n);
   final day = selected ?? labeledDay;
   if (day != null && calendarDay(day).isBefore(calendarDay(n))) {
@@ -3570,6 +3617,42 @@ bool looksLikeChefServingWindow(String? slot) {
   // Bookable cart slots are typically one hour ("11:00 AM to 12:00 PM").
   // Kitchen open hours span several hours.
   return span != null && span > 120;
+}
+
+/// Weekdays a standing kitchen window repeats on. Null when the slot is one-off.
+Set<int>? chefServingWeekdays(String? slot) {
+  final text = (slot ?? '').trim().toLowerCase();
+  if (text.isEmpty) return null;
+  if (RegExp(r'\bdaily\b').hasMatch(text)) {
+    return {1, 2, 3, 4, 5, 6, 7};
+  }
+  if (RegExp(r'\bweekends?\b').hasMatch(text)) {
+    return {DateTime.saturday, DateTime.sunday};
+  }
+  if (RegExp(r'\bweekdays?\b').hasMatch(text)) {
+    return {DateTime.monday, DateTime.tuesday, DateTime.wednesday, DateTime.thursday, DateTime.friday};
+  }
+  final days = <int>{};
+  const tokens = <String, int>{
+    r'mon(?:day)?': DateTime.monday,
+    r'tue(?:s(?:day)?)?': DateTime.tuesday,
+    r'wed(?:nesday)?': DateTime.wednesday,
+    r'thu(?:rs(?:day)?)?': DateTime.thursday,
+    r'fri(?:day)?': DateTime.friday,
+    r'sat(?:urday)?': DateTime.saturday,
+    r'sun(?:day)?': DateTime.sunday,
+  };
+  for (final entry in tokens.entries) {
+    if (RegExp('\\b${entry.key}\\b').hasMatch(text)) days.add(entry.value);
+  }
+  return days.isEmpty ? null : days;
+}
+
+/// Repeating Sat/Sun (or Daily) windows stay on the menu for the next matching day.
+bool isStandingWeeklyServingWindow(String? slot) {
+  if (parseSlotCalendarDay(slot) != null) return false;
+  if (chefServingWeekdays(slot) == null) return false;
+  return looksLikeChefServingWindow(slot);
 }
 
 Map<String, dynamic> orderSlotFields(Map<String, dynamic> order) {

@@ -181,6 +181,11 @@ class AuthSession {
 
   static Future<void> goToHub(BuildContext context, {AppRole? role}) async {
     if (!await ensureAccountActive(context)) return;
+    if (await isPlatformOps()) {
+      if (!context.mounted) return;
+      context.go('/platform-ops');
+      return;
+    }
     final resolved = role ?? await resolveRole();
     if (!context.mounted) return;
     context.go(resolved.hubPath);

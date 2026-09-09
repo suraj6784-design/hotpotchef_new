@@ -12,6 +12,12 @@ void main() {
       expect(normalizeOpsPermissions([], owner: true), kOpsAllPermissions);
     });
 
+    test('helper username maps to a reserved login email', () {
+      expect(resolveAuthLoginEmail('Fssai.Reviewer'), 'fssai.reviewer@$kOpsHelperEmailDomain');
+      expect(resolveAuthLoginEmail('helper@kitchen.com'), 'helper@kitchen.com');
+      expect(opsHelperUsernameFromEmail('fssai.reviewer@$kOpsHelperEmailDomain'), 'fssai.reviewer');
+    });
+
     test('inviteable set excludes accounts, helpers, and catalog', () {
       expect(kOpsInviteablePermissions.contains(kOpsPermissionAccounts), isFalse);
       expect(kOpsInviteablePermissions.contains(kOpsPermissionHelpers), isFalse);

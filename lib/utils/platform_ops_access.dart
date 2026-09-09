@@ -109,6 +109,43 @@ String? opsNavGroupTitleFor(String key) {
   return null;
 }
 
+const kOpsHelperEmailDomain = 'helpers.hotpotchef.app';
+
+/// Login field: real email, or a helper username mapped to the reserved domain.
+String resolveAuthLoginEmail(String raw) {
+  final value = raw.trim().toLowerCase();
+  if (value.isEmpty) return value;
+  if (value.contains('@')) return value;
+  final user = value.replaceAll(RegExp(r'[^a-z0-9._-]'), '');
+  if (user.length < 3) return value;
+  return '$user@$kOpsHelperEmailDomain';
+}
+
+String opsHelperUsernameFromEmail(String? email) {
+  final value = (email ?? '').trim().toLowerCase();
+  const suffix = '@$kOpsHelperEmailDomain';
+  if (value.endsWith(suffix)) {
+    return value.substring(0, value.length - suffix.length);
+  }
+  return value;
+}
+
+String opsHelperEmailFromUsername(String raw) {
+  return resolveAuthLoginEmail(raw);
+}
+
+String generateOpsHelperPassword() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  final rnd = DateTime.now().microsecondsSinceEpoch;
+  final buf = StringBuffer();
+  var seed = rnd;
+  for (var i = 0; i < 10; i++) {
+    seed = 1103515245 * seed + 12345;
+    buf.write(chars[(seed.abs()) % chars.length]);
+  }
+  return buf.toString();
+}
+
 bool isPlatformOwnerEmail(String? email) {
   final value = (email ?? '').trim().toLowerCase();
   if (value.isEmpty) return false;
@@ -127,6 +164,9 @@ String opsFriendlyError(Object error) {
   }
   if (text.contains('group cart') || text.contains('already checked out')) {
     return 'This group cart is no longer open.';
+  }
+  if (text.contains('already in use') || text.contains('already registered')) {
+    return 'That username or email is already in use.';
   }
   return 'Could not complete that action. Try again.';
 }

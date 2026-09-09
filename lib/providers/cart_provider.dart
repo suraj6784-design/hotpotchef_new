@@ -269,9 +269,7 @@ class CartNotifier extends Notifier<CartState> {
     final resolvedSlot = (smartSchedule['time'] ?? '').trim().isNotEmpty
         ? smartSchedule['time']!.trim()
         : (preferredChefSlotClock(rawSlot) ?? rawSlot);
-    final resolvedDate = smartSchedule['date'] == 'Tomorrow'
-        ? tomorrowCalendarDay()
-        : calendarDay(DateTime.now());
+    final resolvedDate = chefSlotDefaultDate(smartSchedule);
 
     final existingIndex = state.items.indexWhere(
       (i) => i.mealId == mealId && listEquals(i.selectedAddOns, addOns),
