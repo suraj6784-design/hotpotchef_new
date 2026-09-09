@@ -1264,20 +1264,6 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           ),
           const SizedBox(height: 48),
 
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-            child: Text(
-              kitchensNearCopy(
-                hasPin: _hasDeliveryPin,
-                usingDevicePin: _isUsingDevicePin,
-                isLoggedIn: isLoggedIn,
-                radiusKm: DeliveryEstimatorService.maxDeliveryRadiusKm.toInt(),
-                placeLabel: _currentAddress,
-              ),
-              style: AppTheme.metaOf(context).copyWith(fontSize: 12),
-            ),
-          ),
-
           if (isLoggedIn) const SupportRepliedBanner(),
 
           if (!_hasActiveSearch) ...[

@@ -1659,33 +1659,6 @@ String feedKitchenSlotLabel(String? timeSlot) {
   return window.replaceAll(' to ', '–');
 }
 
-String shortPlaceLabel(String? address) {
-  final parts = (address ?? '')
-      .split(',')
-      .map((part) => part.trim())
-      .where((part) => part.isNotEmpty)
-      .toList();
-  if (parts.isEmpty) return 'your pin';
-  if (parts.length == 1) return parts.first;
-  return '${parts[0]}, ${parts[1]}';
-}
-
-String kitchensNearCopy({
-  required bool hasPin,
-  required bool usingDevicePin,
-  required bool isLoggedIn,
-  required int radiusKm,
-  required String placeLabel,
-}) {
-  if (hasPin) {
-    final place = usingDevicePin ? 'your current location' : shortPlaceLabel(placeLabel);
-    return 'Kitchens within $radiusKm km of $place';
-  }
-  return isLoggedIn
-      ? 'Drop a map pin to hide kitchens outside $radiusKm km.'
-      : 'Allow location to see kitchens near you — the same list stays after Sign In.';
-}
-
 String digitsOnlyPhone(String? raw) => (raw ?? '').replaceAll(RegExp(r'\D'), '');
 
 /// Dummy / repeated digits that should never be used as a diner contact.
