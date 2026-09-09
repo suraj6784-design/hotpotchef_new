@@ -13,31 +13,64 @@
     return total > 0 ? api.money(total) : '';
   }
 
+  function showAppHint(text) {
+    var hint = document.getElementById('app-open-hint');
+    if (!hint) return;
+    hint.hidden = !text;
+    hint.textContent = text || '';
+  }
+
+  function isPhone() {
+    return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+  }
+
+  function goWebCheckout() {
+    window.location.href = '/checkout';
+  }
+
+  function androidAppIntent(path) {
+    return (
+      'intent://app' +
+      path +
+      '#Intent;scheme=hotpotchef;package=com.hotpotchef.app;end'
+    );
+  }
+
   function wireOpenApp() {
     var open = document.getElementById('open-app');
     if (!open) return;
     var path = cart.appImportPath();
-    var isAndroid = /Android/i.test(navigator.userAgent || '');
-    var host = 'hotpotchef.com';
-    var play = api.playStoreUrl();
-    var httpsUrl = 'https://' + host + path;
-    var intent =
-      'intent://' +
-      host +
-      path +
-      '#Intent;scheme=https;package=com.hotpotchef.app;S.browser_fallback_url=' +
-      encodeURIComponent(play) +
-      ';end';
     var custom = 'hotpotchef://app' + path;
-    open.href = isAndroid ? intent : custom;
-    open.addEventListener('click', function () {
-      if (!isAndroid) return;
+    open.href = '/checkout';
+    open.setAttribute('data-custom', custom);
+
+    if (open.getAttribute('data-wired') === '1') return;
+    open.setAttribute('data-wired', '1');
+    open.addEventListener('click', function (ev) {
+      var path = cart.appImportPath();
+      if (!path || path === '/cart') {
+        ev.preventDefault();
+        showAppHint('Add a plate first, then checkout.');
+        return;
+      }
+      if (!isPhone()) {
+        return;
+      }
+      ev.preventDefault();
+      var custom = 'hotpotchef://app' + path;
+      var openedAway = false;
+      function onHide() {
+        if (document.hidden) openedAway = true;
+      }
+      document.addEventListener('visibilitychange', onHide);
+      window.location.href = /Android/i.test(navigator.userAgent || '')
+        ? androidAppIntent(path)
+        : custom;
       setTimeout(function () {
-        window.location.href = custom;
-      }, 250);
+        document.removeEventListener('visibilitychange', onHide);
+        if (!openedAway) goWebCheckout();
+      }, 1400);
     });
-    // Also expose https for copy/share.
-    open.setAttribute('data-https', httpsUrl);
   }
 
   function render() {
@@ -56,6 +89,7 @@
       var open = document.getElementById('open-app');
       if (pay) pay.hidden = true;
       if (open) open.hidden = true;
+      showAppHint('');
       return;
     }
 

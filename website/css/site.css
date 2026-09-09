@@ -834,8 +834,9 @@ a {
   box-shadow: none;
 }
 
-.meal-card .btn-primary:not(.btn-secondary-cta) {
-  /* keep primary gradient */
+.meal-card .btn-ghost {
+  color: var(--ink);
+  border-color: rgba(36, 31, 28, 0.16);
 }
 
 button.btn {
