@@ -914,9 +914,9 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text('Saved Addresses', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : AppTheme.textMain)),
-                  TextButton.icon(
-                    icon: const Icon(Icons.add, size: 16, color: AppTheme.primary),
-                    label: const Text('Add New', style: TextStyle(color: AppTheme.primary)),
+                  IconButton(
+                    tooltip: 'Add address',
+                    icon: const Icon(Icons.add, color: AppTheme.primary),
                     onPressed: () async {
                       Navigator.pop(ctx);
                       await Navigator.push(context, MaterialPageRoute(builder: (_) => const AddressFormScreen()));

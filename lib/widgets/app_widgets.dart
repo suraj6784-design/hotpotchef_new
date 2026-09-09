@@ -624,6 +624,41 @@ class HubProfileActions extends StatelessWidget {
   }
 }
 
+/// Compact toolbar action. Use for Share, Copy, Call, Track, Edit — keep labeled
+/// buttons for primary CTAs (Pay, Add to cart, Save).
+class AppIconAction extends StatelessWidget {
+  const AppIconAction({
+    super.key,
+    required this.icon,
+    required this.tooltip,
+    this.onPressed,
+    this.color,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    final fg = enabled ? (color ?? AppTheme.primary) : AppTheme.textMuted;
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      style: IconButton.styleFrom(
+        foregroundColor: fg,
+        backgroundColor: fg.withValues(alpha: enabled ? 0.10 : 0.06),
+        side: BorderSide(color: fg.withValues(alpha: 0.32)),
+        minimumSize: const Size(44, 44),
+        maximumSize: const Size(48, 48),
+      ),
+      icon: Icon(icon, size: 20),
+    );
+  }
+}
+
 class HubDockDestination {
   final IconData icon;
   final IconData selectedIcon;

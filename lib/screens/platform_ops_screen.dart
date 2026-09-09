@@ -1134,7 +1134,8 @@ class _RefundsOpsList extends StatelessWidget {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      OutlinedButton.icon(
+                      IconButton(
+                        tooltip: 'Copy order id',
                         onPressed: displayId.isEmpty
                             ? null
                             : () async {
@@ -1144,8 +1145,7 @@ class _RefundsOpsList extends StatelessWidget {
                                   const SnackBar(content: Text('Order id copied')),
                                 );
                               },
-                        icon: const Icon(Icons.copy, size: 16),
-                        label: const Text('Copy order id', style: TextStyle(fontSize: 12)),
+                        icon: const Icon(Icons.copy, size: 18),
                       ),
                       if (dispute == null)
                         ElevatedButton(

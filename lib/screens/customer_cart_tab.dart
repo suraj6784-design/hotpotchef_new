@@ -122,10 +122,10 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
             children: [
               Text('Items in cart (${cartState.itemCount})',
                   style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppTheme.onSurfaceOf(context))),
-              TextButton.icon(
-                style: TextButton.styleFrom(foregroundColor: Colors.red),
-                icon: const Icon(Icons.delete_sweep, size: 16),
-                label: const Text('Clear Cart'),
+              IconButton(
+                tooltip: 'Clear cart',
+                color: Colors.red,
+                icon: const Icon(Icons.delete_sweep, size: 20),
                 onPressed: () => ref.read(cartProvider.notifier).clearCart(),
               ),
             ],

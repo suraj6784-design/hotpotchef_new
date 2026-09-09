@@ -870,55 +870,49 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.chat_bubble_outline, size: 16),
-                      label: Text(orderAllowsPartyChat(rawStatus) ? 'Chat' : 'Chat closed'),
-                      onPressed: !orderAllowsPartyChat(rawStatus)
-                          ? null
-                          : () {
-                              final roomId = delivery.chatRoomId.isNotEmpty ? delivery.chatRoomId : delivery.orderId;
-                              context.push(chatPath(
-                                roomId,
-                                roomName: 'Order ${formatOrderId(null, delivery.orderId)}',
-                                otherUserId: delivery.customerId,
-                                memberIds: [
-                                  delivery.customerId,
-                                  delivery.chefId,
-                                  Supabase.instance.client.auth.currentUser?.id ?? '',
-                                ],
-                                isGroup: true,
-                              ));
-                            },
-                    ),
+                  AppIconAction(
+                    icon: Icons.chat_bubble_outline,
+                    tooltip: orderAllowsPartyChat(rawStatus) ? 'Chat' : 'Chat closed',
+                    onPressed: !orderAllowsPartyChat(rawStatus)
+                        ? null
+                        : () {
+                            final roomId = delivery.chatRoomId.isNotEmpty ? delivery.chatRoomId : delivery.orderId;
+                            context.push(chatPath(
+                              roomId,
+                              roomName: 'Order ${formatOrderId(null, delivery.orderId)}',
+                              otherUserId: delivery.customerId,
+                              memberIds: [
+                                delivery.customerId,
+                                delivery.chefId,
+                                Supabase.instance.client.auth.currentUser?.id ?? '',
+                              ],
+                              isGroup: true,
+                            ));
+                          },
                   ),
                   const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.phone_outlined, size: 16),
-                      label: Text(orderAllowsPhoneCall(rawStatus) ? 'Call' : 'Chat preferred'),
-                      onPressed: !orderAllowsPhoneCall(rawStatus)
-                          ? null
-                          : () => _callCustomer(delivery.customerId),
-                    ),
+                  AppIconAction(
+                    icon: Icons.phone_outlined,
+                    tooltip: orderAllowsPhoneCall(rawStatus) ? 'Call' : 'Chat preferred',
+                    onPressed: !orderAllowsPhoneCall(rawStatus)
+                        ? null
+                        : () => _callCustomer(delivery.customerId),
                   ),
                 ],
               ),
               const SizedBox(height: 12),
-              OutlinedButton.icon(
-                icon: const Icon(Icons.navigation, size: 16),
-                label: Text(delivery.navigateButtonLabel),
+              AppIconAction(
+                icon: Icons.navigation,
+                tooltip: delivery.navigateButtonLabel,
                 onPressed: () => _openNavigation(delivery),
               ),
               const SizedBox(height: 8),
-              TextButton.icon(
+              AppIconAction(
+                icon: Icons.map_outlined,
+                tooltip: delivery.navigateToCustomer
+                    ? 'Open customer in Google Maps'
+                    : 'Open kitchen in Google Maps',
                 onPressed: () => _openExternalMaps(delivery),
-                icon: const Icon(Icons.map_outlined, size: 16),
-                label: Text(
-                  delivery.navigateToCustomer
-                      ? 'Open customer in Google Maps'
-                      : 'Open kitchen in Google Maps',
-                ),
               ),
               const SizedBox(height: 10),
               if (isOut || canStart)

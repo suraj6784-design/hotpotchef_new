@@ -1129,10 +1129,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     );
                   }),
                   const SizedBox(height: 8),
-                  TextButton.icon(
+                  IconButton(
+                    tooltip: 'Add new address',
                     icon: const Icon(Icons.add_location_alt, color: Colors.deepOrange),
-                    label: const Text('Add New Address',
-                        style: TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold)),
                     onPressed: () {
                       Navigator.pop(context);
                       _openAddressForm();

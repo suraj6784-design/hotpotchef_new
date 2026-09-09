@@ -231,29 +231,25 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     final callOpen = orderAllowsPhoneCall(status);
     return Row(
       children: [
-        Expanded(
-          child: OutlinedButton.icon(
-            icon: const Icon(Icons.chat_bubble_outline, size: 16),
-            label: Text(chatOpen ? 'Chat' : 'Chat closed'),
-            onPressed: chatOpen ? () => _openOrderChat(order) : null,
-          ),
+        AppIconAction(
+          icon: Icons.chat_bubble_outline,
+          tooltip: chatOpen ? 'Chat' : 'Chat closed',
+          onPressed: chatOpen ? () => _openOrderChat(order) : null,
         ),
         const SizedBox(width: 8),
-        Expanded(
-          child: OutlinedButton.icon(
-            icon: const Icon(Icons.phone_outlined, size: 16),
-            label: Text(callOpen ? 'Call' : 'Chat preferred'),
-            onPressed: callOpen
-                ? () => _callCustomer(customerId)
-                : () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Phone is for active prep/delivery. Prefer Chat for coordination.'),
-                        backgroundColor: Colors.orange,
-                      ),
-                    );
-                  },
-          ),
+        AppIconAction(
+          icon: Icons.phone_outlined,
+          tooltip: callOpen ? 'Call' : 'Chat preferred',
+          onPressed: callOpen
+              ? () => _callCustomer(customerId)
+              : () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Phone is for active prep/delivery. Prefer Chat for coordination.'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                },
         ),
       ],
     );
@@ -1131,9 +1127,9 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 DispatchPackedPhoto(url: orderDispatchPhotoUrl(order)!, height: 120),
               ] else ...[
                 const SizedBox(height: 10),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.photo_camera_outlined, size: 16),
-                  label: const Text('Add packed-box photo'),
+                AppIconAction(
+                  icon: Icons.photo_camera_outlined,
+                  tooltip: 'Add packed-box photo',
                   onPressed: () => _attachDispatchPhoto(order),
                 ),
               ],
@@ -1537,69 +1533,39 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
           Row(
             children: [
               if (!historyMode) ...[
-                Expanded(
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppTheme.primary,
-                      side: const BorderSide(color: AppTheme.primary),
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusSm),
-                    ),
-                    icon: const Icon(Icons.edit_outlined, size: 18),
-                    label: const Text('Edit', style: TextStyle(fontWeight: FontWeight.w700)),
-                    onPressed: () => _openMealEditor(meal),
-                  ),
+                AppIconAction(
+                  icon: Icons.edit_outlined,
+                  tooltip: 'Edit',
+                  onPressed: () => _openMealEditor(meal),
                 ),
                 const SizedBox(width: 8),
               ],
-              Expanded(
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusSm),
-                  ),
-                  icon: const Icon(Icons.copy_outlined, size: 18),
-                  label: const Text('Duplicate', style: TextStyle(fontWeight: FontWeight.w700)),
-                  onPressed: () => _duplicateMeal(meal),
-                ),
+              AppIconAction(
+                icon: Icons.copy_outlined,
+                tooltip: 'Duplicate',
+                onPressed: () => _duplicateMeal(meal),
               ),
               const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.red.shade700,
-                    side: BorderSide(color: Colors.red.shade300),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusSm),
-                  ),
-                  icon: const Icon(Icons.delete_outline, size: 18),
-                  label: Text(historyMode ? 'Remove' : 'Delete', style: const TextStyle(fontWeight: FontWeight.w700)),
-                  onPressed: historyMode && archived
-                      ? null
-                      : () => _confirmDeleteMeal(meal),
-                ),
+              AppIconAction(
+                icon: Icons.delete_outline,
+                tooltip: historyMode ? 'Remove' : 'Delete',
+                color: Colors.red.shade700,
+                onPressed: historyMode && archived ? null : () => _confirmDeleteMeal(meal),
               ),
+              if (!historyMode) ...[
+                const SizedBox(width: 8),
+                AppIconAction(
+                  icon: Icons.share_outlined,
+                  tooltip: 'Share dish',
+                  onPressed: () => showMealShareSheet(context, {
+                    ...meal,
+                    'chef_name': _chefDisplayName,
+                  }),
+                ),
+              ],
             ],
           ),
           if (!historyMode) ...[
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF25D366),
-                  side: const BorderSide(color: Color(0xFF25D366)),
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusSm),
-                ),
-                icon: const Icon(Icons.chat, size: 18),
-                label: const Text('WhatsApp card', style: TextStyle(fontWeight: FontWeight.w700)),
-                onPressed: () => showMealShareSheet(context, {
-                  ...meal,
-                  'chef_name': _chefDisplayName,
-                }),
-              ),
-            ),
             const SizedBox(height: 8),
             if (isMealBoosted(meal))
               Text(
@@ -1953,33 +1919,29 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               if (hasMyQuote || awaitingPay || paid)
                 Row(
                   children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.chat_bubble_outline, size: 18),
-                        label: const Text('Message'),
-                        onPressed: () => context.push(chatPath(
-                          req['id'].toString(),
-                          roomName: req['title']?.toString() ?? 'Catering lead',
-                          otherUserId: req['customer_id']?.toString(),
-                        )),
-                      ),
+                    AppIconAction(
+                      icon: Icons.chat_bubble_outline,
+                      tooltip: 'Message',
+                      onPressed: () => context.push(chatPath(
+                        req['id'].toString(),
+                        roomName: req['title']?.toString() ?? 'Catering lead',
+                        otherUserId: req['customer_id']?.toString(),
+                      )),
                     ),
                     const SizedBox(width: 8),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.phone_outlined, size: 18),
-                        label: Text(paid ? 'Call' : 'Call after pay'),
-                        onPressed: paid
-                            ? () => _callCustomer(req['customer_id']?.toString() ?? '')
-                            : () {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Call unlocks after in-app payment. Use Message to discuss the quote.'),
-                                    backgroundColor: Colors.orange,
-                                  ),
-                                );
-                              },
-                      ),
+                    AppIconAction(
+                      icon: Icons.phone_outlined,
+                      tooltip: paid ? 'Call' : 'Call after pay',
+                      onPressed: paid
+                          ? () => _callCustomer(req['customer_id']?.toString() ?? '')
+                          : () {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Call unlocks after in-app payment. Use Message to discuss the quote.'),
+                                  backgroundColor: Colors.orange,
+                                ),
+                              );
+                            },
                     ),
                   ],
                 )

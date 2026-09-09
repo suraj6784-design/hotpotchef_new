@@ -645,12 +645,13 @@ class _OpsHelpersListState extends State<_OpsHelpersList> {
             ],
           ),
           actions: [
-            TextButton(
+            IconButton(
+              tooltip: 'Copy',
               onPressed: () {
                 Clipboard.setData(ClipboardData(text: '$code\n$path'));
                 Navigator.pop(ctx);
               },
-              child: const Text('Copy'),
+              icon: const Icon(Icons.copy),
             ),
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Done')),
           ],

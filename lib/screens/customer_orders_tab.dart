@@ -696,11 +696,11 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                           ],
                           if (isTrackable) ...[
                             const SizedBox(height: 16),
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton.icon(
-                                icon: const Icon(Icons.map, size: 20),
-                                label: const Text('Track Live Location'),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: AppIconAction(
+                                icon: Icons.map_outlined,
+                                tooltip: 'Track live location',
                                 onPressed: () {
                                   Navigator.pop(ctx);
                                   _openTracking(trackableItem, items);
@@ -935,18 +935,16 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                     if (isDelivered)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                        child: FilledButton.icon(
-                          style: FilledButton.styleFrom(
-                            backgroundColor: AppTheme.primary,
-                            foregroundColor: Colors.white,
-                            minimumSize: const Size.fromHeight(46),
-                          ),
-                          icon: const Icon(Icons.ios_share, size: 18),
-                          label: const Text('Share your plate', style: TextStyle(fontWeight: FontWeight.w800)),
-                          onPressed: () => showPlateShareSheet(
-                            ctx,
-                            items: items,
-                            chefId: chefId,
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: AppIconAction(
+                            icon: Icons.ios_share,
+                            tooltip: 'Share your plate',
+                            onPressed: () => showPlateShareSheet(
+                              ctx,
+                              items: items,
+                              chefId: chefId,
+                            ),
                           ),
                         ),
                       ),
@@ -1670,23 +1668,19 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                             const SizedBox(height: 12),
                             Row(
                               children: [
-                                Expanded(
-                                  child: OutlinedButton.icon(
-                                    onPressed: () => _openTracking(trackableItem!, items),
-                                    icon: const Icon(Icons.map_outlined, size: 16),
-                                    label: const Text('Track'),
-                                  ),
+                                AppIconAction(
+                                  icon: Icons.map_outlined,
+                                  tooltip: 'Track',
+                                  onPressed: () => _openTracking(trackableItem!, items),
                                 ),
                                 if (_driverIdOf(items.first) != null) ...[
                                   const SizedBox(width: 8),
-                                  Expanded(
-                                    child: OutlinedButton.icon(
-                                      onPressed: orderAllowsPhoneCall(groupStatus)
-                                          ? () => _initiateCall(_driverIdOf(items.first)!)
-                                          : null,
-                                      icon: const Icon(Icons.phone_outlined, size: 16),
-                                      label: Text(orderAllowsPhoneCall(groupStatus) ? 'Call driver' : 'Chat preferred'),
-                                    ),
+                                  AppIconAction(
+                                    icon: Icons.phone_outlined,
+                                    tooltip: orderAllowsPhoneCall(groupStatus) ? 'Call driver' : 'Chat preferred',
+                                    onPressed: orderAllowsPhoneCall(groupStatus)
+                                        ? () => _initiateCall(_driverIdOf(items.first)!)
+                                        : null,
                                   ),
                                 ],
                               ],

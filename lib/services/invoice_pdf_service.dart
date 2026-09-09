@@ -124,9 +124,9 @@ class InvoicePdfService {
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Dismiss', style: TextStyle(color: Colors.grey))),
-            TextButton.icon(
-              icon: const Icon(Icons.share_outlined, size: 16),
-              label: const Text('Share'),
+            IconButton(
+              tooltip: 'Share invoice',
+              icon: const Icon(Icons.share_outlined),
               onPressed: () {
                 SharePlus.instance.share(
                   ShareParams(

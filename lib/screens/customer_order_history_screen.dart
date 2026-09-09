@@ -417,18 +417,16 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                     if (isDelivered && items.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                        child: FilledButton.icon(
-                          style: FilledButton.styleFrom(
-                            backgroundColor: AppTheme.primary,
-                            foregroundColor: Colors.white,
-                            minimumSize: const Size.fromHeight(46),
-                          ),
-                          icon: const Icon(Icons.ios_share, size: 18),
-                          label: const Text('Share your plate', style: TextStyle(fontWeight: FontWeight.w800)),
-                          onPressed: () => showPlateShareSheet(
-                            ctx,
-                            items: items,
-                            chefId: chefId,
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: AppIconAction(
+                            icon: Icons.ios_share,
+                            tooltip: 'Share your plate',
+                            onPressed: () => showPlateShareSheet(
+                              ctx,
+                              items: items,
+                              chefId: chefId,
+                            ),
                           ),
                         ),
                       ),

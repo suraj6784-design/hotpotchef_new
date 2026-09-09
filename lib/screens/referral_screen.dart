@@ -219,18 +219,13 @@ class _ReferralScreenState extends State<ReferralScreen> {
                       const SizedBox(height: 20),
                       SizedBox(
                         width: double.infinity,
-                        child: ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF25D366),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            elevation: 0,
+                        child: Center(
+                          child: AppIconAction(
+                            icon: Icons.share,
+                            tooltip: 'Share referral invite',
+                            onPressed: _shareCode,
+                            color: const Color(0xFF25D366),
                           ),
-                          icon: const Icon(Icons.share, size: 18),
-                          label: const Text('Share Referral Invite',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                          onPressed: _shareCode,
                         ),
                       ),
                     ],

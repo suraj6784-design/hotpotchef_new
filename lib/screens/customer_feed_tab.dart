@@ -1087,10 +1087,9 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                       ),
                                     ),
                                     const SizedBox(height: 8),
-                                    TextButton.icon(
+                                    IconButton(
+                                      tooltip: 'Add new address',
                                       icon: const Icon(Icons.add_location_alt, color: brandPrimary),
-                                      label: const Text('Add New Address',
-                                          style: TextStyle(color: brandPrimary, fontWeight: FontWeight.bold)),
                                       onPressed: () {
                                         Navigator.pop(ctx);
                                         Navigator.push(
@@ -1391,10 +1390,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                   ],
                 ),
                 if (_hasActiveSearch)
-                  TextButton.icon(
+                  IconButton(
+                    tooltip: 'Clear search',
                     onPressed: _clearHomeSearch,
-                    icon: const Icon(Icons.close, size: 16, color: Colors.red),
-                    label: const Text('Clear', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w700)),
+                    icon: const Icon(Icons.close, size: 20, color: Colors.red),
                   ),
               ],
             ),

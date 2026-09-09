@@ -48,6 +48,31 @@ Future<void> shareTextWithApps(String text) {
   return SharePlus.instance.share(ShareParams(text: text));
 }
 
+Widget shareSheetIconActions(BuildContext ctx, String text) {
+  return Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      AppIconAction(
+        icon: Icons.ios_share_rounded,
+        tooltip: 'Share',
+        onPressed: () {
+          Navigator.pop(ctx);
+          shareTextWithApps(text);
+        },
+      ),
+      const SizedBox(width: 12),
+      AppIconAction(
+        icon: Icons.copy_outlined,
+        tooltip: 'Copy',
+        onPressed: () async {
+          await Clipboard.setData(ClipboardData(text: text));
+          if (ctx.mounted) Navigator.pop(ctx);
+        },
+      ),
+    ],
+  );
+}
+
 /// Preview with a tappable HTTPS meal link (opens in-app meal screen).
 Widget shareCardPreview(BuildContext context, String text) {
   final match = RegExp(r'https://[^\s]+').firstMatch(text);
@@ -110,27 +135,7 @@ Future<void> showMealShareSheet(BuildContext context, Map<String, dynamic> meal)
               const SizedBox(height: 8),
               shareCardPreview(ctx, text),
               const SizedBox(height: 16),
-              FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppTheme.primary,
-                  foregroundColor: Colors.white,
-                ),
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  shareTextWithApps(text);
-                },
-                icon: const Icon(Icons.ios_share_rounded),
-                label: const Text('Share · WhatsApp, Instagram…', style: TextStyle(fontWeight: FontWeight.w800)),
-              ),
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: () async {
-                  await Clipboard.setData(ClipboardData(text: text));
-                  if (ctx.mounted) Navigator.pop(ctx);
-                },
-                icon: const Icon(Icons.copy_outlined),
-                label: const Text('Copy card', style: TextStyle(fontWeight: FontWeight.w700)),
-              ),
+              shareSheetIconActions(ctx, text),
             ],
           ),
         ),
@@ -181,27 +186,7 @@ Future<void> showPlateShareSheet(
               const SizedBox(height: 10),
               shareCardPreview(ctx, text),
               const SizedBox(height: 16),
-              FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppTheme.primary,
-                  foregroundColor: Colors.white,
-                ),
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  shareTextWithApps(text);
-                },
-                icon: const Icon(Icons.ios_share_rounded),
-                label: const Text('Share · WhatsApp, Instagram…', style: TextStyle(fontWeight: FontWeight.w800)),
-              ),
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: () async {
-                  await Clipboard.setData(ClipboardData(text: text));
-                  if (ctx.mounted) Navigator.pop(ctx);
-                },
-                icon: const Icon(Icons.copy_outlined),
-                label: const Text('Copy card', style: TextStyle(fontWeight: FontWeight.w700)),
-              ),
+              shareSheetIconActions(ctx, text),
             ],
           ),
         ),
@@ -861,9 +846,10 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
           chefName: _name.isEmpty ? widget.chefName : _name,
           locale: _cardLocale,
         ),
-        TextButton(
+        IconButton(
+          tooltip: 'Close',
           onPressed: () => Navigator.pop(context),
-          child: const Text('Close', style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold)),
+          icon: const Icon(Icons.close_rounded, color: AppTheme.primary),
         ),
       ],
     );
@@ -1192,6 +1178,12 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                               ),
                             ),
                           ),
+                          AppIconAction(
+                            icon: Icons.share_outlined,
+                            tooltip: 'Share dish',
+                            onPressed: () => showMealShareSheet(context, meal),
+                          ),
+                          const SizedBox(width: 4),
                           Container(
                             padding: const EdgeInsets.all(4),
                             decoration: BoxDecoration(
@@ -1616,21 +1608,6 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
-                  onPressed: () => showMealShareSheet(context, meal),
-                  icon: const Icon(Icons.chat, size: 18),
-                  label: const Text('WhatsApp card', style: TextStyle(fontWeight: FontWeight.w800)),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF25D366),
-                    side: const BorderSide(color: Color(0xFF25D366)),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusLg),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
                   onPressed: () => showWeeklyPlanSheet(
                     context: context,
                     ref: widget.ref,
@@ -1714,14 +1691,10 @@ class KitchenFollowButton extends ConsumerWidget {
       );
     }
 
-    return TextButton.icon(
+    return AppIconAction(
+      icon: following ? Icons.notifications_active : Icons.notifications_outlined,
+      tooltip: following ? copy.following : copy.followKitchen,
       onPressed: toggle,
-      icon: Icon(following ? Icons.notifications_active : Icons.notifications_outlined, size: 18),
-      label: Text(following ? copy.following : copy.followKitchen),
-      style: TextButton.styleFrom(
-        foregroundColor: AppTheme.primary,
-        textStyle: const TextStyle(fontWeight: FontWeight.w800),
-      ),
     );
   }
 }

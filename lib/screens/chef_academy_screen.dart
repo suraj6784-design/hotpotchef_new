@@ -8,6 +8,7 @@ import '../data/chef_academy_curriculum.dart';
 import '../data/chef_academy_quizzes.dart';
 import '../services/chef_academy_progress.dart';
 import '../utils/app_theme.dart';
+import '../widgets/app_widgets.dart';
 
 EdgeInsets _academyListPadding(BuildContext context) {
   final bottomInset = MediaQuery.paddingOf(context).bottom;
@@ -862,35 +863,27 @@ class _AcademyCertificateScreen extends StatelessWidget {
             style: TextStyle(fontSize: 12, color: AppTheme.textMuted, height: 1.4),
           ),
           const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () => _share(context),
-              style: _academyPrimaryButtonStyle(context),
-              icon: const Icon(Icons.share_outlined),
-              label: const Text('Share certificate', style: TextStyle(fontWeight: FontWeight.w800)),
-            ),
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () async {
-                final code = snapshot.certificateCode ?? '';
-                await Clipboard.setData(ClipboardData(text: code));
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Certificate code copied')),
-                );
-              },
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 52),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          Row(
+            children: [
+              AppIconAction(
+                icon: Icons.share_outlined,
+                tooltip: 'Share certificate',
+                onPressed: () => _share(context),
               ),
-              icon: const Icon(Icons.copy_outlined, size: 18),
-              label: const Text('Copy code', style: TextStyle(fontWeight: FontWeight.w700)),
-            ),
+              const SizedBox(width: 8),
+              AppIconAction(
+                icon: Icons.copy_outlined,
+                tooltip: 'Copy code',
+                onPressed: () async {
+                  final code = snapshot.certificateCode ?? '';
+                  await Clipboard.setData(ClipboardData(text: code));
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Certificate code copied')),
+                  );
+                },
+              ),
+            ],
           ),
         ],
       ),

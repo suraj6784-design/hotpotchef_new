@@ -579,7 +579,11 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(_chefsError!, style: const TextStyle(color: AppTheme.textMuted, fontSize: 13)),
-                    TextButton(onPressed: _loadChefs, child: const Text('Retry')),
+                    IconButton(
+                      tooltip: 'Retry',
+                      onPressed: _loadChefs,
+                      icon: const Icon(Icons.refresh, color: AppTheme.primary),
+                    ),
                   ],
                 )
               else if (_filteredChefs.isEmpty)
