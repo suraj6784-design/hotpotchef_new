@@ -197,28 +197,70 @@ void main() {
       );
     });
 
-    test('web checkout does not treat chef hours as a same-day 9:00 AM promise', () {
-      final placed = DateTime(2026, 9, 7, 20, 56);
+    test('diner hourly cart slots stay promised, not ASAP', () {
+      final placed = DateTime(2026, 9, 9, 10, 44);
+      expect(looksLikeChefServingWindow('10:00 AM to 11:00 AM'), isFalse);
+      expect(looksLikeChefServingWindow('Sat, Sun (9:00 AM to 11:00 PM)'), isTrue);
+      expect(looksLikeChefServingWindow('Today (9:00 AM to 11:00 PM)'), isTrue);
+      expect(
+        formatDeliverySlotLabel({
+          'created_at': placed.toIso8601String(),
+          'time_slot': '10:00 AM to 11:00 AM',
+          'selected_date': '2026-09-09',
+        }, now: placed),
+        '(10:00 AM to 11:00 AM)',
+      );
+    });
+
+    test('nested mealDetails kitchen window is used only when no diner hour exists', () {
+      final placed = DateTime(2026, 9, 7, 11, 32);
+      expect(
+        formatDeliverySlotLabel({
+          'created_at': placed.toIso8601String(),
+          'time_slot': 'ASAP',
+          'items': [
+            {
+              'title': 'New Gulab Jamun',
+              'time_slot': 'ASAP',
+              'mealDetails': {'time_slot': 'Today (9:00 AM to 9:00 PM)'},
+            },
+          ],
+        }, now: placed),
+        '(9:00 AM to 9:00 PM)',
+      );
+    });
+
+    test('customer selected hour beats chef serving window', () {
+      final placed = DateTime(2026, 9, 9, 9, 15);
       final order = {
         'created_at': placed.toIso8601String(),
+        'time_slot': 'ASAP',
         'items': [
           {
-            'time_slot': 'Sat, Sun (9:00 AM to 11:00 PM)',
-            'selected_date': '2026-09-07',
+            'exact_time': '10:00 AM to 11:00 AM',
+            'timeSlot': '10:00 AM to 11:00 AM',
+            'time_slot': 'Today (9:00 AM to 11:00 PM)',
+            'selected_date': '2026-09-09',
+            'mealDetails': {'time_slot': 'Today (9:00 AM to 11:00 PM)'},
           },
         ],
       };
-      expect(formatDeliverySlotLabel(order, now: placed), 'ASAP');
-      expect(orderSlotStart(order, now: placed), isNull);
-      expect(dinerSlotIsLate(order, now: placed), isFalse);
-      expect(orderIsPreOrderSlot(order), isFalse);
+      expect(formatDeliverySlotLabel(order, now: placed), '(10:00 AM to 11:00 AM)');
+    });
+
+    test('kitchen serving hours show only when no hourly slot was booked', () {
+      final placed = DateTime(2026, 9, 7, 20, 56);
       expect(
-        smartTimeSlot(
-          'Sat, Sun (9:00 AM to 11:00 PM)',
-          placed,
-          selectedDateStr: '2026-09-07',
-        ),
-        'ASAP',
+        formatDeliverySlotLabel({
+          'created_at': placed.toIso8601String(),
+          'items': [
+            {
+              'time_slot': 'Sat, Sun (9:00 AM to 11:00 PM)',
+              'selected_date': '2026-09-07',
+            },
+          ],
+        }, now: placed),
+        '(9:00 AM to 11:00 PM)',
       );
     });
   });

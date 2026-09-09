@@ -7,7 +7,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'dart:convert';
 import '../utils/app_page.dart';
 import '../utils/helpers.dart';
 import '../utils/network.dart';
@@ -318,7 +317,12 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
   // Delegates to the shared helper so slot resolution (including the
   // "delivery date is never before the order date" guard) stays consistent
   // across every screen.
-  String _slotLabel(Map<String, dynamic> item) => formatDeliverySlotLabel(item);
+  String _slotLabel(Map<String, dynamic> item, {List<Map<String, dynamic>>? orderItems}) {
+    return formatDeliverySlotLabel({
+      ...item,
+      if (orderItems != null) 'items': orderItems,
+    });
+  }
 
   bool _canCancelOrder(Map<String, dynamic> order) {
     return OrderLifecycle.canCustomerCancelOrder(order);
@@ -474,6 +478,10 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
     deliveryFee = bill.deliveryFee;
     finalGrandTotal = bill.grandTotal;
     final orderType = items.first['service_type']?.toString() ?? 'Delivery';
+    final slotLabel = formatDeliverySlotLabel({
+      ...items.first,
+      'items': items,
+    });
 
     IconData statusIcon = Icons.hourglass_empty;
     Color statusColor = Colors.orange;
@@ -621,13 +629,13 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                               const SizedBox(width: 6),
                               const Text('Promised slot: ', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
                               Expanded(
-                                child: Text(deliveryTimeStr, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
+                                child: Text(slotLabel, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
                               ),
                             ],
                           ),
                           if (dinerSlotCountdownActive(status)) ...[
                             const SizedBox(height: 10),
-                            OrderSlotBanner(order: items.first, diner: true),
+                            OrderSlotBanner(order: {...items.first, 'items': items}, diner: true),
                           ],
                           if (!isDelivered) ...[
                             Builder(
@@ -831,7 +839,8 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                             double parsedPrice = lineItemListPrice(item);
                             int parsedQty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
 
-                            final smartSlot = _slotLabel(item);
+                            final smartSlot = _slotLabel(item, orderItems: items);
+                            final shownSlot = smartSlot == 'ASAP' ? slotLabel : smartSlot;
 
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 12),
@@ -857,7 +866,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                       children: [
                                         Text('${item['quantity']} x ${item['title']}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                                         const SizedBox(height: 2),
-                                        Text('Slot: $smartSlot', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+                                        Text('Slot: $shownSlot', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
                                       ],
                                     ),
                                   ),
@@ -1363,15 +1372,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
     Map<String, List<Map<String, dynamic>>> groupedOrders = {};
     for (var order in _activeOrders) {
       final rawId = order['id'].toString();
-      List<dynamic> parsedItems = [];
-      try {
-        parsedItems = jsonDecode(order['items']?.toString() ?? '[]');
-      } catch (_) {}
-
-      List<Map<String, dynamic>> parsedMaps = [];
-      for (var item in parsedItems) {
-        if (item is Map) parsedMaps.add(Map<String, dynamic>.from(item));
-      }
+      final parsedMaps = parseOrderItemsList(order['items']);
       final resolvedDropoff = orderDropoffAddress(
         order,
         items: parsedMaps,
@@ -1393,7 +1394,8 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
           'created_at': order['created_at'] ?? DateTime.now().toIso8601String(),
           'updated_at': order['updated_at'],
           'delivered_at': order['delivered_at'],
-          'time_slot': order['time_slot'] ?? item['time_slot'],
+          'time_slot': orderSlotFields(item)['time_slot'],
+          'exact_time': item['exact_time'] ?? item['timeSlot'] ?? item['time_slot'],
           'total_price': order['total_price'],
           'delivery_fee': order['delivery_fee'],
           'packaging_fee': order['packaging_fee'],
@@ -1490,7 +1492,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                 final finalGrandTotal = bill.grandTotal;
 
                 String dateTimeString = formatOrderDate(items.first['created_at']?.toString());
-                final String smartTimeSlot = _slotLabel(items.first);
+                final String smartTimeSlot = _slotLabel(items.first, orderItems: items);
 
                 final groupStatus = items.first['status']?.toString() ?? 'Pending';
                 Color statusColor = Colors.green;
@@ -1605,8 +1607,6 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                             ],
                           ),
                           const SizedBox(height: 4),
-
-                          // 🌟 3. Order Delivery Time (Selected Slot)
                           Row(
                             children: [
                               const Icon(Icons.event_available, size: 14, color: Colors.green),

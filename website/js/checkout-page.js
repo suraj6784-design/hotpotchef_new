@@ -101,8 +101,8 @@
         name: meal.name || meal.title,
         price: meal.price,
         quantity: qty,
-        // Kitchen windows like "Sat, Sun (9:00 AM to 11:00 PM)" are not a diner drop-off.
-        time_slot: 'ASAP',
+        time_slot: (row.time_slot || meal.time_slot || '').toString().trim(),
+        selected_date: new Date().toISOString().slice(0, 10),
         service_type: (meal.service_type || 'Delivery Partner').toString().split(',')[0].trim(),
       });
     }

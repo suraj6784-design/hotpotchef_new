@@ -108,6 +108,8 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
     final orderType = orderRecord['order_type']?.toString() ?? (items.isNotEmpty ? (items.first['service_type']?.toString() ?? 'Delivery') : 'Delivery');
     final addressValue = orderDropoffAddress(orderRecord, items: items);
     final displayAddress = addressValue.isEmpty ? 'Unknown Address' : addressValue;
+    final resolvedSlot = formatDeliverySlotLabel(orderRecord);
+    final slotLabel = resolvedSlot.isEmpty ? deliveryTimeStr : resolvedSlot;
 
     IconData statusIcon = isDelivered ? Icons.check_circle : Icons.cancel;
     Color statusColor = isDelivered ? Colors.green : Colors.red;
@@ -222,7 +224,7 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                               const Icon(Icons.event_available, size: 14, color: Colors.green),
                               const SizedBox(width: 6),
                               const Text('Delivery Slot: ', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
-                              Text(deliveryTimeStr, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
+                              Text(slotLabel, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
                             ],
                           ),
                           const SizedBox(height: 8),
@@ -316,7 +318,9 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                             final itemSlot = formatDeliverySlotLabel({
                               ...item,
                               'created_at': orderRecord['created_at'] ?? item['created_at'],
+                              'items': [item],
                             });
+                            final shownSlot = itemSlot == 'ASAP' ? slotLabel : itemSlot;
 
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 12),
@@ -341,9 +345,9 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text('${item['quantity']} x ${item['title']}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
-                                        if (item['time_slot'] != null) ...[
+                                        if (shownSlot.isNotEmpty) ...[
                                           const SizedBox(height: 2),
-                                          Text('Slot: $itemSlot', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+                                          Text('Slot: $shownSlot', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
                                         ]
                                       ],
                                     ),
@@ -627,11 +631,7 @@ class _HistoryOrdersListState extends ConsumerState<_HistoryOrdersList> {
               final deliveryFee = bill.deliveryFee;
               final finalGrandTotal = bill.grandTotal;
 
-              final deliveryTimeStr = formatDeliverySlotLabel({
-                ...order,
-                if (items.isNotEmpty) ...items.first,
-                'created_at': order['created_at'],
-              });
+              final deliveryTimeStr = formatDeliverySlotLabel(order);
 
               widget.host._showOrderDetailsBottomSheet(
                 context,

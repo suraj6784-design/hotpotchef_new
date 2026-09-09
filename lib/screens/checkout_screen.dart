@@ -578,19 +578,22 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         selectedDateStr = dt != null ? formatAppDateKey(dt) : rawDate.toString();
       }
 
-      final rawDetails = item['rawMealDetails'] as Map<String, dynamic>?;
-      final finalTimeSlot = item['timeSlot'] ??
-          item['time_slot'] ??
-          rawDetails?['exact_time'] ??
-          item['exact_time'] ??
-          'ASAP';
+      final rawDetails = item['rawMealDetails'] as Map<String, dynamic>? ??
+          (item['mealDetails'] is Map ? Map<String, dynamic>.from(item['mealDetails'] as Map) : null);
+      final finalTimeSlot = preferredDinerTimeSlot([
+        widget.sharedTimeSlot,
+        item['timeSlot'],
+        item['exact_time'],
+        rawDetails?['exact_time'],
+        item['time_slot'],
+        rawDetails?['time_slot'],
+      ]);
 
       return {
         ...item,
         'selected_date': selectedDateStr,
-        'time_slot': (widget.sharedTimeSlot ?? '').trim().isNotEmpty
-            ? widget.sharedTimeSlot!.trim()
-            : finalTimeSlot,
+        'exact_time': finalTimeSlot,
+        'time_slot': finalTimeSlot,
       };
     }).toList();
     return checkoutCartPayload(dated, appliedPromoCode: _appliedPromoCode);
@@ -1357,13 +1360,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       item['selectedDate'];
                   final rawDetails = item['rawMealDetails'] as Map<String, dynamic>?;
                   final shared = (widget.sharedTimeSlot ?? '').trim();
-                  final timeSlot = shared.isNotEmpty
-                      ? shared
-                      : (item['timeSlot'] ??
-                          item['time_slot'] ??
-                          rawDetails?['exact_time'] ??
-                          item['exact_time'] ??
-                          'ASAP');
+                  final timeSlot = preferredDinerTimeSlot([
+                    shared,
+                    item['timeSlot'],
+                    item['exact_time'],
+                    rawDetails?['exact_time'],
+                    item['time_slot'],
+                    rawDetails?['time_slot'],
+                  ]);
                   DateTime? scheduled;
                   if (rawDate is DateTime) {
                     scheduled = rawDate;

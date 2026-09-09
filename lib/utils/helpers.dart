@@ -1434,15 +1434,10 @@ String smartTimeSlot(String? originalSlot, DateTime placedDate, {String? selecte
     if (dayOnly.isBefore(placedDay)) slotDay = placedDay;
   }
 
-  if (looksLikeChefServingWindow(slot)) {
-    if ((selectedDateStr ?? '').trim().isNotEmpty) return 'ASAP';
-    return slot;
-  }
-
   final clock = extractSlotTime(slot);
   final asap = isImmediateDeliverySlot(slot) && clock == null;
   if (asap && slotDay == null) return 'ASAP';
-  if (asap && slotDay != null) return 'ASAP';
+  if (asap && slotDay != null) return '${formatAppDate(slotDay)}, ASAP';
   if (slotDay != null && clock != null) {
     var at = parseClockOnDate(clock, slotDay);
     if (at != null && !at.isAfter(placedDate)) {
@@ -1542,14 +1537,23 @@ List<String> chefHourlySubSlots(String rawChefSlot, {int intervalMinutes = 60}) 
   return generated.isNotEmpty ? generated : [timeRangeStr];
 }
 
+final _clockRangePattern = RegExp(
+  r'(\d{1,2}:\d{2}\s*(?:AM|PM))\s+to\s+(\d{1,2}:\d{2}\s*(?:AM|PM))',
+  caseSensitive: false,
+);
+
+/// True when the slot is a kitchen/diner window (`9:00 AM to 11:00 PM`), not a single clock.
+bool slotHasClockRange(String? slot) {
+  final text = (slot ?? '').trim();
+  if (text.isEmpty || isImmediateDeliverySlot(text)) return false;
+  return looksLikeChefServingWindow(text) || _clockRangePattern.hasMatch(text);
+}
+
 /// Same template as chef cart slots: `9:00 AM to 10:00 AM`.
 String chefSlotWindowLabel(String? slot) {
   final text = (slot ?? '').trim();
   if (text.isEmpty || isImmediateDeliverySlot(text)) return 'ASAP';
-  final range = RegExp(
-    r'(\d{1,2}:\d{2}\s*(?:AM|PM))\s+to\s+(\d{1,2}:\d{2}\s*(?:AM|PM))',
-    caseSensitive: false,
-  ).firstMatch(text);
+  final range = _clockRangePattern.firstMatch(text);
   if (range != null) {
     String norm(String raw) {
       final mins = clockTextToMinutes(raw);
@@ -1565,13 +1569,38 @@ String chefSlotWindowLabel(String? slot) {
   return text;
 }
 
+/// Promised slot copy for a booked diner hour: `(10:00 AM to 11:00 AM)`.
+String formatPromisedSlotWindow(String? slot) {
+  final window = chefSlotWindowLabel(slot);
+  if (window == 'ASAP') return 'ASAP';
+  if (window.startsWith('(') && window.endsWith(')')) return window;
+  return '($window)';
+}
+
+/// Customer-chosen hour beats the chef's published serving window.
+String preferredDinerTimeSlot(Iterable<dynamic> candidates, {String fallback = 'ASAP'}) {
+  String? booked;
+  String? serving;
+  for (final raw in candidates) {
+    final text = raw?.toString().trim() ?? '';
+    if (text.isEmpty) continue;
+    if (isImmediateDeliverySlot(text)) continue;
+    if (looksLikeChefServingWindow(text)) {
+      serving ??= text;
+    } else {
+      booked ??= text;
+    }
+  }
+  return booked ?? serving ?? fallback;
+}
+
 /// Checkout copy: friendly day + chef hourly window.
 String formatCheckoutDeliverySchedule({
   required String? slot,
   DateTime? scheduledDate,
   DateTime? now,
 }) {
-  final window = chefSlotWindowLabel(slot);
+  final window = slotHasClockRange(slot) ? formatPromisedSlotWindow(slot) : chefSlotWindowLabel(slot);
   if (scheduledDate == null) return window;
   return '${formatFriendlyDate(scheduledDate, now: now)} · $window';
 }
@@ -2288,11 +2317,10 @@ bool orderLineIsRescuePlate(Map<String, dynamic> item) {
 /// True when the line/order asks for a clock slot (not ASAP) — chef cooks to that demand.
 bool orderIsPreOrderSlot(Map<String, dynamic> orderOrItem) {
   final fields = orderSlotFields(orderOrItem);
-  final slot = fields['time_slot']?.toString() ?? '';
-  if (isImmediateDeliverySlot(slot) || looksLikeChefServingWindow(slot)) return false;
+  if (isImmediateDeliverySlot(fields['time_slot']?.toString())) return false;
   final selectedDate = fields['selected_date']?.toString().trim() ?? '';
   if (selectedDate.isNotEmpty) return true;
-  return slot.trim().isNotEmpty;
+  return (fields['time_slot']?.toString().trim() ?? '').isNotEmpty;
 }
 
 int preOrderedPlatesFromOrderItems(Iterable<dynamic> items) {
@@ -2603,6 +2631,26 @@ dynamic _jsonSafeValue(dynamic value) {
   return value.toString();
 }
 
+String? _dinerTimeSlotForCheckoutLine(Map<String, dynamic> item, Map<String, dynamic> nestedMap) {
+  final candidates = [
+    nestedMap['exact_time'],
+    item['timeSlot'],
+    item['time_slot'],
+    nestedMap['time_slot'],
+  ];
+  String? asap;
+  for (final raw in candidates) {
+    final text = raw?.toString().trim() ?? '';
+    if (text.isEmpty) continue;
+    if (isImmediateDeliverySlot(text)) {
+      asap ??= 'ASAP';
+      continue;
+    }
+    return text;
+  }
+  return asap;
+}
+
 /// Keeps only JSON-safe checkout fields so paid-order recording cannot fail on meal blobs.
 List<Map<String, dynamic>> checkoutCartPayload(
   List<Map<String, dynamic>> items, {
@@ -2660,7 +2708,9 @@ List<Map<String, dynamic>> checkoutCartPayload(
       'addons_unit': snapshot['addons_unit'],
       'selected_service_type': item['selected_service_type'] ?? item['service_type'] ?? item['serviceType'],
       'service_type': item['service_type'] ?? item['selected_service_type'] ?? item['serviceType'],
-      'time_slot': item['time_slot'] ?? item['timeSlot'] ?? nestedMap['exact_time'] ?? nestedMap['time_slot'],
+      'exact_time': _dinerTimeSlotForCheckoutLine(item, nestedMap),
+      'time_slot': _dinerTimeSlotForCheckoutLine(item, nestedMap),
+      'chef_schedule': nestedMap['time_slot'] ?? nestedMap['chef_schedule'],
       'selected_date': item['selected_date'] ?? item['selectedDate'] ?? item['scheduled_date'],
       'selectedAddOns': _jsonSafeValue(item['selectedAddOns'] ?? item['selected_add_ons'] ?? const []),
       'accepts_hotpot_coins': item['accepts_hotpot_coins'] ?? nestedMap['accepts_hotpot_coins'],
@@ -2673,20 +2723,26 @@ List<Map<String, dynamic>> checkoutCartPayload(
       'society_label': nestedMap['society_label'] ?? item['society_label'] ?? item['societyLabel'],
       'is_shelf_item': nestedMap['is_shelf_item'] ?? item['is_shelf_item'] ?? item['isShelfItem'],
       'shelf_kind': nestedMap['shelf_kind'] ?? item['shelf_kind'] ?? item['shelfKind'],
-      'rawMealDetails': {
-        ...nestedMap,
-        if (nestedMap['is_hamper'] != null || item['is_hamper'] != null)
-          'is_hamper': nestedMap['is_hamper'] ?? item['is_hamper'] ?? item['isHamper'],
-        if (nestedMap['is_society_night'] != null || item['is_society_night'] != null)
-          'is_society_night':
-              nestedMap['is_society_night'] ?? item['is_society_night'] ?? item['isSocietyNight'],
-        if ((nestedMap['society_label'] ?? item['society_label']) != null)
-          'society_label': nestedMap['society_label'] ?? item['society_label'] ?? item['societyLabel'],
-        if (nestedMap['is_shelf_item'] != null || item['is_shelf_item'] != null)
-          'is_shelf_item': nestedMap['is_shelf_item'] ?? item['is_shelf_item'] ?? item['isShelfItem'],
-        if ((nestedMap['shelf_kind'] ?? item['shelf_kind']) != null)
-          'shelf_kind': nestedMap['shelf_kind'] ?? item['shelf_kind'] ?? item['shelfKind'],
-      },
+      if (nestedMap.isNotEmpty ||
+          item['is_hamper'] != null ||
+          item['is_society_night'] != null ||
+          item['society_label'] != null ||
+          item['is_shelf_item'] != null ||
+          item['shelf_kind'] != null)
+        'rawMealDetails': {
+          ...nestedMap,
+          if (nestedMap['is_hamper'] != null || item['is_hamper'] != null)
+            'is_hamper': nestedMap['is_hamper'] ?? item['is_hamper'] ?? item['isHamper'],
+          if (nestedMap['is_society_night'] != null || item['is_society_night'] != null)
+            'is_society_night':
+                nestedMap['is_society_night'] ?? item['is_society_night'] ?? item['isSocietyNight'],
+          if ((nestedMap['society_label'] ?? item['society_label']) != null)
+            'society_label': nestedMap['society_label'] ?? item['society_label'] ?? item['societyLabel'],
+          if (nestedMap['is_shelf_item'] != null || item['is_shelf_item'] != null)
+            'is_shelf_item': nestedMap['is_shelf_item'] ?? item['is_shelf_item'] ?? item['isShelfItem'],
+          if ((nestedMap['shelf_kind'] ?? item['shelf_kind']) != null)
+            'shelf_kind': nestedMap['shelf_kind'] ?? item['shelf_kind'] ?? item['shelfKind'],
+        },
     };
   }).toList();
 }
@@ -3411,31 +3467,74 @@ bool isImmediateDeliverySlot(String? slot) {
   return text.contains('asap') && !RegExp(r'\d{1,2}:\d{2}').hasMatch(text);
 }
 
-/// Chef serving hours (e.g. "Sat, Sun (9:00 AM to 11:00 PM)"), not a diner clock.
+int? _slotClockSpanMinutes(String text) {
+  final matches = RegExp(r'(\d{1,2}:\d{2}\s*(?:AM|PM))', caseSensitive: false).allMatches(text).toList();
+  if (matches.length < 2) return null;
+  final start = clockTextToMinutes(matches.first.group(1)!);
+  final end = clockTextToMinutes(matches.last.group(1)!);
+  if (start == null || end == null) return null;
+  var span = end - start;
+  if (span <= 0) span += 24 * 60;
+  return span;
+}
+
+/// Chef serving hours (e.g. "Sat, Sun (9:00 AM to 11:00 PM)"), not a diner hourly clock.
 bool looksLikeChefServingWindow(String? slot) {
   final text = (slot ?? '').trim();
   if (text.isEmpty || isImmediateDeliverySlot(text)) return false;
-  final clocks = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)', caseSensitive: false).allMatches(text).length;
-  if (clocks >= 2) return true;
   final lower = text.toLowerCase();
-  return clocks == 1 &&
-      RegExp(r'\b(daily|weekdays|weekends|mon|tue|wed|thu|fri|sat|sun)\b').hasMatch(lower);
+  final namedDays = RegExp(r'\b(daily|weekdays|weekends|mon|tue|wed|thu|fri|sat|sun)\b').hasMatch(lower);
+  final clocks = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)', caseSensitive: false).allMatches(text).length;
+  if (namedDays && clocks >= 1) return true;
+  final span = _slotClockSpanMinutes(text);
+  // Bookable cart slots are typically one hour ("11:00 AM to 12:00 PM").
+  // Kitchen open hours span several hours.
+  return span != null && span > 120;
 }
 
 Map<String, dynamic> orderSlotFields(Map<String, dynamic> order) {
   final items = parseOrderItemsList(order['items'] ?? order['cart_items'] ?? order['order_items']);
   final first = items.isNotEmpty ? items.first : const <String, dynamic>{};
-  String pick(List<String> keys) {
-    for (final key in keys) {
-      final value = order[key] ?? first[key];
-      if (value != null && value.toString().trim().isNotEmpty) return value.toString();
+  final nestedRaw = first['rawMealDetails'] ??
+      first['mealDetails'] ??
+      first['meal_details'] ??
+      order['rawMealDetails'] ??
+      order['mealDetails'] ??
+      order['meal_details'];
+  final nested = nestedRaw is Map ? Map<String, dynamic>.from(nestedRaw) : const <String, dynamic>{};
+  final maps = [order, first, nested];
+
+  String pick(List<String> keys, {bool skipAsap = false}) {
+    String? asap;
+    for (final map in maps) {
+      for (final key in keys) {
+        final value = map[key];
+        if (value == null || value.toString().trim().isEmpty) continue;
+        final text = value.toString();
+        if (skipAsap && isImmediateDeliverySlot(text)) {
+          asap ??= 'ASAP';
+          continue;
+        }
+        return text;
+      }
     }
-    return '';
+    return asap ?? '';
+  }
+
+  String pickTimeSlot() {
+    const keys = ['exact_time', 'timeSlot', 'selected_slot', 'delivery_slot', 'time_slot'];
+    final candidates = <dynamic>[];
+    for (final map in maps) {
+      for (final key in keys) {
+        candidates.add(map[key]);
+      }
+    }
+    return preferredDinerTimeSlot(candidates, fallback: '');
   }
 
   return {
     ...order,
-    'time_slot': pick(const ['time_slot', 'timeSlot', 'delivery_slot', 'selected_slot', 'exact_time']),
+    'time_slot': pickTimeSlot(),
     'selected_date': pick(const ['selected_date', 'selectedDate', 'scheduled_date', 'scheduledDate']),
   };
 }
@@ -3445,7 +3544,7 @@ DateTime? orderSlotStart(Map<String, dynamic> order, {DateTime? now}) {
   final fields = orderSlotFields(order);
   final placed = DateTime.tryParse(fields['created_at']?.toString() ?? '')?.toLocal() ?? now;
   final rawSlot = fields['time_slot']?.toString() ?? '';
-  if (isImmediateDeliverySlot(rawSlot) || looksLikeChefServingWindow(rawSlot)) {
+  if (isImmediateDeliverySlot(rawSlot) && (fields['selected_date']?.toString() ?? '').isEmpty) {
     return null;
   }
   if (rawSlot.isEmpty && placed == null) return null;
@@ -3454,7 +3553,7 @@ DateTime? orderSlotStart(Map<String, dynamic> order, {DateTime? now}) {
     placed ?? DateTime.now(),
     selectedDateStr: fields['selected_date']?.toString(),
   );
-  if (isImmediateDeliverySlot(slot) || looksLikeChefServingWindow(slot)) return null;
+  if (isImmediateDeliverySlot(slot)) return null;
   final assumedYear = (placed ?? DateTime.now()).year;
   final date = parseSlotDate(slot, assumedYear) ??
       (placed != null ? DateTime(placed.year, placed.month, placed.day) : null);
@@ -3466,10 +3565,11 @@ String formatDeliverySlotLabel(Map<String, dynamic> order, {DateTime? now}) {
   final fields = orderSlotFields(order);
   final placed = DateTime.tryParse(fields['created_at']?.toString() ?? '')?.toLocal() ?? now ?? DateTime.now();
   final rawSlot = fields['time_slot']?.toString() ?? '';
-  if (isImmediateDeliverySlot(rawSlot)) return 'ASAP';
-  if (looksLikeChefServingWindow(rawSlot)) {
-    if ((fields['selected_date']?.toString() ?? '').trim().isEmpty) return rawSlot;
+  if (isImmediateDeliverySlot(rawSlot) && (fields['selected_date']?.toString() ?? '').trim().isEmpty) {
     return 'ASAP';
+  }
+  if (slotHasClockRange(rawSlot)) {
+    return formatPromisedSlotWindow(rawSlot);
   }
   return smartTimeSlot(
     rawSlot.isEmpty ? 'ASAP' : rawSlot,
