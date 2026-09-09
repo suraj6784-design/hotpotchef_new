@@ -1350,6 +1350,8 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             const SizedBox(height: 4),
           ],
 
+          if (!_hasActiveSearch) ..._homeTopHighlights(isLoggedIn: isLoggedIn),
+
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(
@@ -1474,13 +1476,6 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    LiveOffersFlashBanner(
-                      excludedChefIds: _closedChefIds,
-                      destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
-                      destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
-                      chefKitchenPins: _chefKitchenPins,
-                      onOfferTap: _onHomeOfferTap,
-                    ),
                     _buildMealGrid(
                       meals,
                       isLoggedIn: isLoggedIn,
@@ -1615,14 +1610,35 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     );
   }
 
-  List<Widget> _homeDiscoveryExtras({required bool isLoggedIn}) {
+  List<Widget> _homeTopHighlights({required bool isLoggedIn}) {
     return [
-      const SizedBox(height: 8),
+      LiveOffersFlashBanner(
+        excludedChefIds: _closedChefIds,
+        destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
+        destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
+        chefKitchenPins: _chefKitchenPins,
+        onOfferTap: _onHomeOfferTap,
+      ),
       SponsoredPlacementBanner(
         destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
         destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
         cityHint: _selectedAddressMap?['city']?.toString(),
       ),
+      ShelfItemsBanner(
+        excludedChefIds: _closedChefIds,
+        destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
+        destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
+        chefKitchenPins: _chefKitchenPins,
+        onItemTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
+      ),
+      if (isLoggedIn) const DailyStreakBanner(compact: true),
+      const SizedBox(height: 4),
+    ];
+  }
+
+  List<Widget> _homeDiscoveryExtras({required bool isLoggedIn}) {
+    return [
+      const SizedBox(height: 8),
       Padding(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
         child: Text(
@@ -1649,15 +1665,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         chefKitchenPins: _chefKitchenPins,
         onNightTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
       ),
-      ShelfItemsBanner(
-        excludedChefIds: _closedChefIds,
-        destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
-        destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
-        chefKitchenPins: _chefKitchenPins,
-        onItemTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
-      ),
       if (isLoggedIn) const WeeklyPlanDueBanner(),
-      if (isLoggedIn) const DailyStreakBanner(),
       if (isLoggedIn) const AiRecommendationsSection(),
       const DynamicUIEngine(screenName: 'customer_feed'),
     ];

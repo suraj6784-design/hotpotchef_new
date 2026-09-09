@@ -9,7 +9,9 @@ import '../utils/helpers.dart';
 import 'app_widgets.dart';
 
 class DailyStreakBanner extends StatefulWidget {
-  const DailyStreakBanner({super.key});
+  const DailyStreakBanner({super.key, this.compact = false});
+
+  final bool compact;
 
   @override
   State<DailyStreakBanner> createState() => _DailyStreakBannerState();
@@ -107,8 +109,8 @@ class _DailyStreakBannerState extends State<DailyStreakBanner> {
     if (_isLoading) return const SizedBox.shrink();
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      padding: const EdgeInsets.all(20),
+      margin: EdgeInsets.fromLTRB(20, widget.compact ? 2 : 12, 20, widget.compact ? 8 : 12),
+      padding: EdgeInsets.all(widget.compact ? 16 : 20),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [Color(0xFFFF5722), Color(0xFFFF9800)],

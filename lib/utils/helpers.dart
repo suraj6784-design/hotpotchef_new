@@ -4209,6 +4209,35 @@ bool isCateringLeadInRange(
   return distance <= radiusKm;
 }
 
+/// Empty list means the diner broadcast to all nearby kitchens.
+List<String> cateringLeadTargetChefIds(Map<String, dynamic>? request) {
+  final raw = request?['target_chef_ids'];
+  if (raw == null) return const [];
+  if (raw is List) {
+    return raw
+        .map((id) => id.toString().trim())
+        .where((id) => id.isNotEmpty)
+        .toList(growable: false);
+  }
+  return const [];
+}
+
+bool isCateringLeadTargeted(Map<String, dynamic>? request) =>
+    cateringLeadTargetChefIds(request).isNotEmpty;
+
+/// Targeted invites skip the 25 km radius so a chosen kitchen always sees the lead.
+bool isCateringLeadVisibleToChef(
+  Map<String, dynamic> request, {
+  required String chefId,
+  Map<String, dynamic>? chefPin,
+  double radiusKm = kCateringLeadRadiusKm,
+}) {
+  if (chefId.trim().isEmpty) return false;
+  final targets = cateringLeadTargetChefIds(request);
+  if (targets.isNotEmpty) return targets.contains(chefId);
+  return isCateringLeadInRange(request, chefPin, radiusKm);
+}
+
 bool canPaySharedCart({
   String? roomCode,
   String? hostId,

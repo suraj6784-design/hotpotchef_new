@@ -223,7 +223,9 @@ class AlertService {
 
     final isCustomer = row['customer_id']?.toString() == uid;
     final isClaimedChef = row['accepted_chef_id']?.toString() == uid;
-    final shouldShow = (copy.notifyAllChefs && _role == AppRole.chef && !isCustomer) ||
+    final invited = cateringLeadTargetChefIds(row);
+    final chefInvited = invited.isEmpty || invited.contains(uid);
+    final shouldShow = (copy.notifyAllChefs && _role == AppRole.chef && !isCustomer && chefInvited) ||
         (copy.notifyClaimedChef && isClaimedChef) ||
         (copy.notifyCustomer && isCustomer);
     if (!shouldShow) return;

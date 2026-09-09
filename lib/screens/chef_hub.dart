@@ -684,7 +684,11 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               final visibleLeads = (reqSnapshot.data ?? []).where((req) {
                 if (!_isVisibleLead(req)) return false;
                 if (_leadStatus(req) != 'open') return true;
-                return isCateringLeadInRange(req, _chefPin);
+                return isCateringLeadVisibleToChef(
+                  req,
+                  chefId: _currentUserId,
+                  chefPin: _chefPin,
+                );
               }).toList()
                 ..sort((a, b) {
                   final da = cateringLeadDistanceKm(a, _chefPin) ?? 9999;

@@ -52,7 +52,7 @@ class _ShelfItemsBannerState extends State<ShelfItemsBanner> {
         if (items.isEmpty) return const SizedBox.shrink();
 
         return Padding(
-          padding: const EdgeInsets.fromLTRB(0, 4, 0, 10),
+          padding: const EdgeInsets.fromLTRB(0, 2, 0, 6),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

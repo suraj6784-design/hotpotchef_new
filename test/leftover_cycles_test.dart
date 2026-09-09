@@ -21,6 +21,38 @@ void main() {
         isFalse,
       );
     });
+
+    test('targeted invites only the selected kitchen, even out of range', () {
+      const far = {
+        'latitude': 19.07,
+        'longitude': 72.87,
+        'target_chef_ids': ['chef-a'],
+      };
+      expect(
+        isCateringLeadVisibleToChef(
+          far,
+          chefId: 'chef-a',
+          chefPin: {'lat': 18.52, 'lng': 73.85},
+        ),
+        isTrue,
+      );
+      expect(
+        isCateringLeadVisibleToChef(
+          far,
+          chefId: 'chef-b',
+          chefPin: {'lat': 18.52, 'lng': 73.85},
+        ),
+        isFalse,
+      );
+      expect(
+        isCateringLeadVisibleToChef(
+          {'latitude': 19.07, 'longitude': 72.87},
+          chefId: 'chef-b',
+          chefPin: {'lat': 18.52, 'lng': 73.85},
+        ),
+        isFalse,
+      );
+    });
   });
 
   group('canPaySharedCart', () {

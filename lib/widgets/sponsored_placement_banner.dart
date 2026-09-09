@@ -84,7 +84,7 @@ class _SponsoredPlacementBannerState extends State<SponsoredPlacementBanner> {
     final advertiser = (ad['advertiser_name'] ?? '').toString().trim();
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+      padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
