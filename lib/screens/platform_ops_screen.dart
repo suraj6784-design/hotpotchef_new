@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/auth_session.dart';
 import '../utils/helpers.dart';
+import '../utils/kyc_checklist.dart';
 import '../utils/network.dart';
 import '../utils/platform_ops_access.dart';
 import '../utils/support.dart';
@@ -1149,47 +1150,6 @@ class _TicketsOpsList extends StatelessWidget {
   }
 }
 
-class _KycChecklist {
-  const _KycChecklist({required this.done, required this.total, required this.missing});
-
-  final int done;
-  final int total;
-  final List<String> missing;
-
-  bool get incomplete => done < total;
-}
-
-_KycChecklist _kycChecklistFor(Map<String, dynamic> row) {
-  final role = (row['role']?.toString() ?? '').toLowerCase();
-  final checks = <String, String>{
-    'Name': row['name']?.toString() ?? row['full_name']?.toString() ?? '',
-    'Email': row['email']?.toString() ?? '',
-    'FSSAI number': row['fssai_number']?.toString() ?? '',
-    'FSSAI proof': row['fssai_proof_url']?.toString() ?? '',
-    'FSSAI verified': normalizeFssaiVerificationStatus(row['fssai_verification_status']?.toString()) == 'verified'
-        ? 'yes'
-        : '',
-    'GSTIN': row['gstin']?.toString() ?? '',
-    'Bank account': row['bank_account_number']?.toString() ?? '',
-    'IFSC': row['ifsc_code']?.toString() ?? row['bank_ifsc']?.toString() ?? '',
-    'PAN': row['pan_number']?.toString() ?? '',
-    'Aadhaar': row['aadhaar_masked']?.toString() ?? '',
-  };
-  if (role == 'chef') {
-    checks['Kitchen name'] = row['local_kitchen_name']?.toString() ?? '';
-  }
-  final missing = <String>[];
-  var done = 0;
-  for (final entry in checks.entries) {
-    if (entry.value.trim().isEmpty) {
-      missing.add(entry.key);
-    } else {
-      done++;
-    }
-  }
-  return _KycChecklist(done: done, total: checks.length, missing: missing);
-}
-
 class _KycOpsList extends StatelessWidget {
   const _KycOpsList({super.key});
 
@@ -1251,8 +1211,8 @@ class _KycOpsList extends StatelessWidget {
     }
 
     list.sort((a, b) {
-      final ca = _kycChecklistFor(a);
-      final cb = _kycChecklistFor(b);
+      final ca = kycChecklistFor(a);
+      final cb = kycChecklistFor(b);
       if (ca.incomplete != cb.incomplete) return ca.incomplete ? -1 : 1;
       return ca.done.compareTo(cb.done);
     });
@@ -1288,7 +1248,7 @@ class _KycOpsList extends StatelessWidget {
           itemCount: rows.length,
           itemBuilder: (context, index) {
             final row = rows[index];
-            final checklist = _kycChecklistFor(row);
+            final checklist = kycChecklistFor(row);
             final name = row['name']?.toString() ?? row['full_name']?.toString() ?? 'Partner';
             final role = row['role']?.toString() ?? '';
             final kitchen = row['local_kitchen_name']?.toString() ?? '';
