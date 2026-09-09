@@ -262,10 +262,10 @@ class _OpsDashListState extends State<_OpsDashList> {
       ('Cancelled', '${snap.cancelledCount}'),
       ('Avg ticket', '₹${snap.avgTicket.toStringAsFixed(0)}'),
       ('Delivery fees', '₹${snap.deliveryFeeSum.toStringAsFixed(0)}'),
+      ('Margin earned', '₹${snap.platformMarginSum.toStringAsFixed(0)}'),
       ('Open tickets', '$_openTickets'),
       ('Live plates', '$_liveMeals'),
       ('Accounts', '$_userCount'),
-      ('Margin earned', '₹${snap.platformMarginSum.toStringAsFixed(0)}'),
     ];
     final maxGmv = snap.series.fold<double>(0, (m, b) => b.gmv > m ? b.gmv : m);
     return ListView(

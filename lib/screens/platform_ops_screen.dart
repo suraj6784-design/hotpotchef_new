@@ -34,10 +34,10 @@ class _OpsTabSpec {
   final Widget Function() builder;
 }
 
-class _PlatformOpsScreenState extends State<PlatformOpsScreen> with SingleTickerProviderStateMixin {
+class _PlatformOpsScreenState extends State<PlatformOpsScreen> {
   final _supabase = Supabase.instance.client;
-  TabController? _tabs;
   List<_OpsTabSpec> _tabSpecs = const [];
+  String _selectedKey = kOpsPermissionDashboard;
   bool _checking = true;
   bool _allowed = false;
   bool _isOwner = false;
@@ -49,12 +49,6 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> with SingleTicker
   void initState() {
     super.initState();
     _gate();
-  }
-
-  @override
-  void dispose() {
-    _tabs?.dispose();
-    super.dispose();
   }
 
   Future<void> _gate() async {
@@ -130,10 +124,7 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> with SingleTicker
           () => _AdminProfileList(
             key: ValueKey('profile-$_reloadToken'),
             email: _supabase.auth.currentUser?.email ?? '',
-            onOpenTab: (key) {
-              final index = specs.indexWhere((t) => t.key == key);
-              if (index >= 0) _tabs?.animateTo(index);
-            },
+            onOpenTab: _openTab,
           ),
         ),
       );
@@ -164,15 +155,28 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> with SingleTicker
       );
     }
 
-    _tabs?.dispose();
-    _tabs = specs.isEmpty ? null : TabController(length: specs.length, vsync: this);
     setState(() {
       _tabSpecs = specs;
       _allowed = ok;
       _isOwner = owner;
       _opsEmail = _supabase.auth.currentUser?.email ?? '';
       _checking = false;
+      if (!specs.any((t) => t.key == _selectedKey)) {
+        _selectedKey = specs.isEmpty ? kOpsPermissionDashboard : specs.first.key;
+      }
     });
+  }
+
+  void _openTab(String key) {
+    if (!_tabSpecs.any((t) => t.key == key)) return;
+    setState(() => _selectedKey = key);
+  }
+
+  _OpsTabSpec? get _currentSpec {
+    for (final spec in _tabSpecs) {
+      if (spec.key == _selectedKey) return spec;
+    }
+    return _tabSpecs.isEmpty ? null : _tabSpecs.first;
   }
 
   void _bump() {
@@ -484,16 +488,29 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> with SingleTicker
       );
     }
 
+    final wide = MediaQuery.sizeOf(context).width >= 900;
+    final nav = _OpsDeskNav(
+      isOwner: _isOwner,
+      email: _opsEmail,
+      selectedKey: _selectedKey,
+      groups: opsNavGroupsFor(_tabSpecs.map((t) => t.key)),
+      popOnSelect: !wide,
+      onSelect: _openTab,
+    );
+
     return Scaffold(
       backgroundColor: AppTheme.canvasOf(context),
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(_isOwner ? 'Admin desk' : 'Platform ops'),
-            if (_opsEmail.isNotEmpty)
+            Text(_currentSpec?.label ?? (_isOwner ? 'Admin desk' : 'Platform ops')),
+            if (opsNavGroupTitleFor(_selectedKey) != null || _opsEmail.isNotEmpty)
               Text(
-                _isOwner ? 'Owner · $_opsEmail' : _opsEmail,
+                [
+                  if (opsNavGroupTitleFor(_selectedKey) != null) opsNavGroupTitleFor(_selectedKey)!,
+                  if (_opsEmail.isNotEmpty) (_isOwner ? 'Owner · $_opsEmail' : _opsEmail),
+                ].join(' · '),
                 style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppTheme.textMuted),
               ),
           ],
@@ -505,24 +522,142 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> with SingleTicker
             onPressed: _confirmLogout,
           ),
         ],
-        bottom: _tabs == null || _tabSpecs.isEmpty
-            ? null
-            : TabBar(
-                controller: _tabs,
-                isScrollable: true,
-                tabs: [for (final t in _tabSpecs) Tab(text: t.label)],
-              ),
       ),
-      body: _tabs == null || _tabSpecs.isEmpty
+      drawer: wide ? null : Drawer(child: nav),
+      body: _tabSpecs.isEmpty
           ? const EmptyState(
               icon: Icons.lock_outline,
               title: 'No ops permissions',
               message: 'Ask the platform owner for a helper invite code.',
             )
-          : TabBarView(
-              controller: _tabs,
-              children: [for (final t in _tabSpecs) t.builder()],
+          : wide
+              ? Row(
+                  children: [
+                    SizedBox(width: 268, child: nav),
+                    VerticalDivider(width: 1, color: AppTheme.surfaceMutedLight.withValues(alpha: 0.9)),
+                    Expanded(child: _currentSpec!.builder()),
+                  ],
+                )
+              : _currentSpec!.builder(),
+    );
+  }
+}
+
+IconData _opsNavIcon(String key) {
+  switch (key) {
+    case kOpsPermissionDashboard:
+      return Icons.insights_outlined;
+    case kOpsPermissionProfile:
+      return Icons.person_outline;
+    case kOpsPermissionCatalog:
+      return Icons.storefront_outlined;
+    case kOpsPermissionPackaging:
+      return Icons.inventory_2_outlined;
+    case kOpsPermissionKyc:
+      return Icons.badge_outlined;
+    case kOpsPermissionFssai:
+      return Icons.verified_outlined;
+    case kOpsPermissionBrands:
+      return Icons.campaign_outlined;
+    case kOpsPermissionTickets:
+      return Icons.confirmation_number_outlined;
+    case kOpsPermissionRefunds:
+      return Icons.currency_rupee;
+    case kOpsPermissionAccounts:
+      return Icons.people_outline;
+    case kOpsPermissionHelpers:
+      return Icons.support_agent_outlined;
+    default:
+      return Icons.tune;
+  }
+}
+
+class _OpsDeskNav extends StatelessWidget {
+  const _OpsDeskNav({
+    required this.isOwner,
+    required this.email,
+    required this.selectedKey,
+    required this.groups,
+    required this.popOnSelect,
+    required this.onSelect,
+  });
+
+  final bool isOwner;
+  final String email;
+  final String selectedKey;
+  final List<OpsNavGroup> groups;
+  final bool popOnSelect;
+  final void Function(String key) onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: AppTheme.surfaceOf(context),
+      child: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isOwner ? 'Admin desk' : 'Platform ops',
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+                  ),
+                  if (email.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      email,
+                      style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                    ),
+                  ],
+                ],
+              ),
             ),
+            for (final group in groups) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 12, 8, 4),
+                child: Text(
+                  group.title.toUpperCase(),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.6,
+                    color: AppTheme.textMuted,
+                  ),
+                ),
+              ),
+              for (final key in group.keys)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: ListTile(
+                    selected: key == selectedKey,
+                    selectedTileColor: AppTheme.primary.withValues(alpha: 0.12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    leading: Icon(_opsNavIcon(key), size: 22),
+                    title: Text(
+                      opsPermissionLabel(key),
+                      style: TextStyle(
+                        fontWeight: key == selectedKey ? FontWeight.w800 : FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                    dense: true,
+                    visualDensity: VisualDensity.compact,
+                    onTap: () {
+                      onSelect(key);
+                      if (popOnSelect && Navigator.of(context).canPop()) {
+                        Navigator.of(context).pop();
+                      }
+                    },
+                  ),
+                ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1254,6 +1389,9 @@ _KycChecklist _kycChecklistFor(Map<String, dynamic> row) {
 class _KycOpsList extends StatelessWidget {
   const _KycOpsList({super.key});
 
+  bool _isRole(Map<String, dynamic> row, String role) =>
+      (row['role']?.toString() ?? '').trim().toLowerCase() == role;
+
   Future<List<Map<String, dynamic>>> _loadRows(SupabaseClient client) async {
     List<Map<String, dynamic>> list;
     try {
@@ -1337,88 +1475,146 @@ class _KycOpsList extends StatelessWidget {
           );
         }
         final rows = snap.data ?? const [];
-        if (rows.isEmpty) {
-          return const EmptyState(
-            icon: Icons.badge_outlined,
-            title: 'No chef/driver KYC rows',
-            message: 'Partner profiles with KYC fields appear here for completeness review.',
-          );
-        }
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: rows.length,
-          itemBuilder: (context, index) {
-            final row = rows[index];
-            final checklist = _kycChecklistFor(row);
-            final name = row['name']?.toString() ?? row['full_name']?.toString() ?? 'Partner';
-            final role = row['role']?.toString() ?? '';
-            final kitchen = row['local_kitchen_name']?.toString() ?? '';
-            return AppCard(
-              margin: const EdgeInsets.only(bottom: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(name, style: const TextStyle(fontWeight: FontWeight.w800)),
-                      ),
-                      Text(
-                        '${checklist.done}/${checklist.total}',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                          color: checklist.incomplete ? AppTheme.warning : AppTheme.success,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    [
-                      role,
-                      if (kitchen.isNotEmpty) kitchen,
-                      row['email']?.toString() ?? '',
-                    ].where((s) => s.trim().isNotEmpty).join(' · '),
-                    style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
-                  ),
-                  Builder(
-                    builder: (_) {
-                      final bankMasked = maskBankAccount(row['bank_account_number']?.toString());
-                      final panMasked = maskPan(row['pan_number']?.toString());
-                      final bits = <String>[
-                        if (bankMasked.isNotEmpty) 'Bank $bankMasked',
-                        if (panMasked.isNotEmpty) 'PAN $panMasked',
-                      ];
-                      if (bits.isEmpty) return const SizedBox.shrink();
-                      return Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Text(
-                          bits.join(' · '),
-                          style: const TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w600),
-                        ),
-                      );
-                    },
-                  ),
-                  if (checklist.missing.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      'Missing: ${checklist.missing.join(', ')}',
-                      style: const TextStyle(fontSize: 12, color: AppTheme.error),
+        final chefs = rows.where((row) => _isRole(row, 'chef')).toList();
+        final drivers = rows.where((row) => _isRole(row, 'driver')).toList();
+        return DefaultTabController(
+          length: 2,
+          child: Column(
+            children: [
+              Material(
+                color: AppTheme.surfaceOf(context),
+                child: const TabBar(
+                  tabs: [
+                    Tab(text: 'Chef Profile'),
+                    Tab(text: 'Driver Profile'),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    _KycRoleQueue(
+                      rows: chefs,
+                      emptyTitle: 'No chef profiles',
+                      emptyMessage: 'Chef KYC rows appear here for completeness review.',
                     ),
-                  ] else ...[
-                    const SizedBox(height: 8),
-                    const Text(
-                      'KYC checklist complete',
-                      style: TextStyle(fontSize: 12, color: AppTheme.success, fontWeight: FontWeight.w700),
+                    _KycRoleQueue(
+                      rows: drivers,
+                      emptyTitle: 'No driver profiles',
+                      emptyMessage: 'Driver KYC rows appear here for completeness review.',
                     ),
                   ],
-                ],
+                ),
               ),
-            );
-          },
+            ],
+          ),
         );
       },
+    );
+  }
+}
+
+class _KycRoleQueue extends StatelessWidget {
+  const _KycRoleQueue({
+    required this.rows,
+    required this.emptyTitle,
+    required this.emptyMessage,
+  });
+
+  final List<Map<String, dynamic>> rows;
+  final String emptyTitle;
+  final String emptyMessage;
+
+  @override
+  Widget build(BuildContext context) {
+    if (rows.isEmpty) {
+      return EmptyState(
+        icon: Icons.badge_outlined,
+        title: emptyTitle,
+        message: emptyMessage,
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: rows.length,
+      itemBuilder: (context, index) => _KycPartnerTile(row: rows[index]),
+    );
+  }
+}
+
+class _KycPartnerTile extends StatelessWidget {
+  const _KycPartnerTile({required this.row});
+
+  final Map<String, dynamic> row;
+
+  @override
+  Widget build(BuildContext context) {
+    final checklist = _kycChecklistFor(row);
+    final name = row['name']?.toString() ?? row['full_name']?.toString() ?? 'Partner';
+    final role = row['role']?.toString() ?? '';
+    final kitchen = row['local_kitchen_name']?.toString() ?? '';
+    return AppCard(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(name, style: const TextStyle(fontWeight: FontWeight.w800)),
+              ),
+              Text(
+                '${checklist.done}/${checklist.total}',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                  color: checklist.incomplete ? AppTheme.warning : AppTheme.success,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            [
+              role,
+              if (kitchen.isNotEmpty) kitchen,
+              row['email']?.toString() ?? '',
+            ].where((s) => s.trim().isNotEmpty).join(' · '),
+            style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+          ),
+          Builder(
+            builder: (_) {
+              final bankMasked = maskBankAccount(row['bank_account_number']?.toString());
+              final panMasked = maskPan(row['pan_number']?.toString());
+              final bits = <String>[
+                if (bankMasked.isNotEmpty) 'Bank $bankMasked',
+                if (panMasked.isNotEmpty) 'PAN $panMasked',
+              ];
+              if (bits.isEmpty) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  bits.join(' · '),
+                  style: const TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+              );
+            },
+          ),
+          if (checklist.missing.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Missing: ${checklist.missing.join(', ')}',
+              style: const TextStyle(fontSize: 12, color: AppTheme.error),
+            ),
+          ] else ...[
+            const SizedBox(height: 8),
+            const Text(
+              'KYC checklist complete',
+              style: TextStyle(fontSize: 12, color: AppTheme.success, fontWeight: FontWeight.w700),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

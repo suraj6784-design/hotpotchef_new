@@ -1,4 +1,4 @@
--- Admin dashboard: platform margin earned (15% of food + packaging on delivered paid orders).
+-- Admin dashboard: platform margin (15% of food + packaging on paid, non-cancelled orders).
 
 CREATE OR REPLACE FUNCTION public.ops_transaction_snapshot(p_period text DEFAULT 'day')
 RETURNS jsonb
@@ -58,11 +58,10 @@ BEGIN
     coalesce(sum(
       CASE
         WHEN lower(coalesce(o.status::text, '')) ~ '(cancel|refund|reject)' THEN 0
-        WHEN lower(coalesce(o.status::text, '')) !~ '(delivered|complet)'
-          OR lower(coalesce(o.status::text, '')) ~ 'undeliver' THEN 0
-        ELSE coalesce(
-          NULLIF(to_jsonb(o)->>'platform_margin', '')::numeric,
-          round(
+        ELSE CASE
+          WHEN coalesce(NULLIF(to_jsonb(o)->>'platform_margin', '')::numeric, 0) > 0
+            THEN (to_jsonb(o)->>'platform_margin')::numeric
+          ELSE round(
             0.15 * greatest(
               0,
               coalesce(
@@ -76,7 +75,7 @@ BEGIN
             ),
             2
           )
-        )
+        END
       END
     ), 0)
   INTO v_gmv, v_count, v_delivered, v_cancelled, v_delivery, v_margin

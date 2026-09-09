@@ -65,6 +65,45 @@ String opsPermissionLabel(String key) {
   }
 }
 
+class OpsNavGroup {
+  const OpsNavGroup(this.title, this.keys);
+  final String title;
+  final List<String> keys;
+}
+
+const kOpsNavGroups = <OpsNavGroup>[
+  OpsNavGroup('Overview', [kOpsPermissionDashboard, kOpsPermissionProfile]),
+  OpsNavGroup('Kitchen', [
+    kOpsPermissionCatalog,
+    kOpsPermissionPackaging,
+    kOpsPermissionKyc,
+    kOpsPermissionFssai,
+  ]),
+  OpsNavGroup('Growth', [kOpsPermissionBrands]),
+  OpsNavGroup('Support', [kOpsPermissionTickets, kOpsPermissionRefunds]),
+  OpsNavGroup('Team', [kOpsPermissionAccounts, kOpsPermissionHelpers]),
+];
+
+List<OpsNavGroup> opsNavGroupsFor(Iterable<String> availableKeys) {
+  final allowed = availableKeys.map((k) => k.trim().toLowerCase()).toSet();
+  return [
+    for (final group in kOpsNavGroups)
+      if (group.keys.any(allowed.contains))
+        OpsNavGroup(
+          group.title,
+          group.keys.where(allowed.contains).toList(growable: false),
+        ),
+  ];
+}
+
+String? opsNavGroupTitleFor(String key) {
+  final needle = key.trim().toLowerCase();
+  for (final group in kOpsNavGroups) {
+    if (group.keys.contains(needle)) return group.title;
+  }
+  return null;
+}
+
 bool isPlatformOwnerEmail(String? email) {
   final value = (email ?? '').trim().toLowerCase();
   return value.isNotEmpty && value == kPlatformOwnerEmail.toLowerCase();
@@ -120,6 +159,7 @@ class OpsTransactionSnapshot {
     final gmv = double.tryParse(raw['gmv']?.toString() ?? '') ?? 0;
     final deliveryFeeSum = double.tryParse(raw['delivery_fee_sum']?.toString() ?? '') ?? 0;
     final parsedMargin = double.tryParse(raw['platform_margin_sum']?.toString() ?? '');
+    final estimated = estimatedPlatformMargin(gmv: gmv, deliveryFeeSum: deliveryFeeSum);
     return OpsTransactionSnapshot(
       period: raw['period']?.toString() ?? 'day',
       gmv: gmv,
@@ -127,8 +167,7 @@ class OpsTransactionSnapshot {
       deliveredCount: int.tryParse(raw['delivered_count']?.toString() ?? '') ?? 0,
       cancelledCount: int.tryParse(raw['cancelled_count']?.toString() ?? '') ?? 0,
       deliveryFeeSum: deliveryFeeSum,
-      platformMarginSum: parsedMargin ??
-          estimatedPlatformMargin(gmv: gmv, deliveryFeeSum: deliveryFeeSum),
+      platformMarginSum: (parsedMargin != null && parsedMargin > 0) ? parsedMargin : estimated,
       avgTicket: double.tryParse(raw['avg_ticket']?.toString() ?? '') ?? 0,
       series: seriesRaw is List
           ? seriesRaw

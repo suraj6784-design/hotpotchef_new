@@ -19,6 +19,13 @@ void main() {
       expect(kOpsInviteablePermissions.contains(kOpsPermissionFssai), isTrue);
     });
 
+    test('nav groups keep only permissions the seat can open', () {
+      final groups = opsNavGroupsFor(['dashboard', 'kyc', 'tickets']);
+      expect(groups.map((g) => g.title), ['Overview', 'Kitchen', 'Support']);
+      expect(groups[1].keys, ['kyc']);
+      expect(opsNavGroupTitleFor(kOpsPermissionKyc), 'Kitchen');
+    });
+
     test('permission containment', () {
       expect(opsPermissionsContain(['fssai', 'tickets'], 'FSSAI'), isTrue);
       expect(opsPermissionsContain(['fssai'], 'accounts'), isFalse);
@@ -47,6 +54,19 @@ void main() {
       expect(snap.platformMarginSum, 168);
       expect(snap.series.single.orderCount, 2);
       expect(snap.recent.single['status'], 'Delivered');
+    });
+
+    test('snapshot treats a zero platform_margin_sum as unset and estimates 15%', () {
+      final snap = OpsTransactionSnapshot.fromJson({
+        'gmv': 1000,
+        'delivery_fee_sum': 200,
+        'platform_margin_sum': 0,
+        'order_count': 2,
+        'delivered_count': 1,
+        'cancelled_count': 0,
+        'avg_ticket': 500,
+      });
+      expect(snap.platformMarginSum, 120);
     });
   });
 }
