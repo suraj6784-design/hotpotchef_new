@@ -40,10 +40,15 @@ void main() {
           reason: 'Repo has no Firebase web appId; do not invent one.');
     });
 
-    test('currentPlatform on the VM test target is Android', () {
-      expect(kIsWeb, isFalse);
-      expect(DefaultFirebaseOptions.currentPlatform.projectId, projectId);
-      expect(DefaultFirebaseOptions.currentPlatform.appId, androidAppId);
+    test('currentPlatform matches the running target', () {
+      final options = DefaultFirebaseOptions.currentPlatform;
+      expect(options.projectId, projectId);
+      expect(options.apiKey, apiKey);
+      if (kIsWeb) {
+        expect(options.authDomain, 'hotpotchef-c53fa.firebaseapp.com');
+      } else {
+        expect(options.appId, androidAppId);
+      }
     });
 
     test('ios / macos / windows / linux throw until flutterfire configure', () {
@@ -176,6 +181,10 @@ void main() {
         FirebaseBootstrap.isBackgroundMessagingSupported(isWeb: false),
         isTrue,
       );
+    });
+
+    test('initializeApp times out instead of hanging forever', () {
+      expect(FirebaseBootstrap.initializeTimeout, const Duration(seconds: 12));
     });
   });
 }

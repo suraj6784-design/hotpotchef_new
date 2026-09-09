@@ -18,6 +18,10 @@ enum FirebaseInitStrategy {
 /// Safe Firebase boot: explicit options when we have them, native config on
 /// mobile when we do not, and a logged skip on web instead of a hard crash.
 class FirebaseBootstrap {
+  /// JS SDK script injection can hang (blocked gstatic, flutter test chrome).
+  /// Fail open so the rest of the app can still boot.
+  static const Duration initializeTimeout = Duration(seconds: 12);
+
   static bool hasOptionsFor({
     required bool isWeb,
     required TargetPlatform platform,
@@ -76,10 +80,10 @@ class FirebaseBootstrap {
         case FirebaseInitStrategy.useDartOptions:
           await Firebase.initializeApp(
             options: DefaultFirebaseOptions.currentPlatform,
-          );
+          ).timeout(initializeTimeout);
           return true;
         case FirebaseInitStrategy.useNativeConfig:
-          await Firebase.initializeApp();
+          await Firebase.initializeApp().timeout(initializeTimeout);
           return true;
         case FirebaseInitStrategy.skip:
           debugPrint(
