@@ -1471,6 +1471,31 @@ DateTime calendarDay(DateTime date) {
   return DateTime(local.year, local.month, local.day);
 }
 
+/// Always persist a calendar day with year (`yyyy-MM-dd`) plus `selected_year`.
+Map<String, dynamic> storedSlotDateFields(
+  Map<String, dynamic> item, {
+  DateTime? now,
+}) {
+  final current = now ?? DateTime.now();
+  final yearHint = int.tryParse(item['selected_year']?.toString() ?? '');
+  final raw = item['selected_date'] ??
+      item['selectedDate'] ??
+      item['scheduled_date'] ??
+      item['scheduledDate'];
+  final parsed = parseFlexibleDate(
+        raw?.toString(),
+        assumedYear: yearHint ?? current.year,
+        placedDate: current,
+      ) ??
+      current;
+  final day = calendarDay(parsed);
+  return {
+    'selected_date': formatAppDateKey(day),
+    'scheduled_date': formatAppDateKey(day),
+    'selected_year': day.year,
+  };
+}
+
 DateTime tomorrowCalendarDay({DateTime? now}) {
   return calendarDay(now ?? DateTime.now()).add(const Duration(days: 1));
 }
@@ -1569,12 +1594,36 @@ String chefSlotWindowLabel(String? slot) {
   return text;
 }
 
-/// Promised slot copy for a booked diner hour: `(10:00 AM to 11:00 AM)`.
-String formatPromisedSlotWindow(String? slot) {
+String dayOrdinalSuffix(int day) {
+  if (day >= 11 && day <= 13) return 'th';
+  switch (day % 10) {
+    case 1:
+      return 'st';
+    case 2:
+      return 'nd';
+    case 3:
+      return 'rd';
+    default:
+      return 'th';
+  }
+}
+
+/// Calendar day on promised slots, e.g. `Sep 9th 2026`.
+String formatPromisedSlotDate(DateTime date) {
+  final local = date.toLocal();
+  return '${DateFormat('MMM').format(local)} ${local.day}${dayOrdinalSuffix(local.day)} ${local.year}';
+}
+
+/// Promised slot copy: `Sep 9th 2026, 10:00 AM to 11:00 AM`.
+String formatPromisedSlotWindow(String? slot, {DateTime? onDate}) {
   final window = chefSlotWindowLabel(slot);
-  if (window == 'ASAP') return 'ASAP';
-  if (window.startsWith('(') && window.endsWith(')')) return window;
-  return '($window)';
+  if (window == 'ASAP') {
+    return onDate == null ? 'ASAP' : '${formatPromisedSlotDate(onDate)}, ASAP';
+  }
+  if (onDate == null) {
+    return window.startsWith('(') ? window : '($window)';
+  }
+  return '${formatPromisedSlotDate(onDate)}, $window';
 }
 
 /// Customer-chosen hour beats the chef's published serving window.
@@ -1600,9 +1649,7 @@ String formatCheckoutDeliverySchedule({
   DateTime? scheduledDate,
   DateTime? now,
 }) {
-  final window = slotHasClockRange(slot) ? formatPromisedSlotWindow(slot) : chefSlotWindowLabel(slot);
-  if (scheduledDate == null) return window;
-  return '${formatFriendlyDate(scheduledDate, now: now)} · $window';
+  return formatPromisedSlotWindow(slot, onDate: scheduledDate ?? now);
 }
 
 /// Compact kitchen window for meal cards (`9:00 AM–10:00 AM`).
@@ -2631,24 +2678,47 @@ dynamic _jsonSafeValue(dynamic value) {
   return value.toString();
 }
 
-String? _dinerTimeSlotForCheckoutLine(Map<String, dynamic> item, Map<String, dynamic> nestedMap) {
-  final candidates = [
-    nestedMap['exact_time'],
-    item['timeSlot'],
-    item['time_slot'],
+String? _chefScheduleFromLine(Map<String, dynamic> item, Map<String, dynamic> nestedMap) {
+  for (final raw in [
+    item['chef_schedule'],
+    nestedMap['chef_schedule'],
     nestedMap['time_slot'],
-  ];
-  String? asap;
-  for (final raw in candidates) {
+  ]) {
     final text = raw?.toString().trim() ?? '';
-    if (text.isEmpty) continue;
-    if (isImmediateDeliverySlot(text)) {
-      asap ??= 'ASAP';
-      continue;
-    }
+    if (text.isEmpty || isImmediateDeliverySlot(text)) continue;
     return text;
   }
-  return asap;
+  return null;
+}
+
+String? _nextBookableChefHour(String? chefSchedule, Map<String, dynamic> item) {
+  final chef = (chefSchedule ?? '').trim();
+  if (chef.isEmpty || isImmediateDeliverySlot(chef)) return null;
+  final dateRaw = item['selected_date'] ?? item['selectedDate'] ?? item['scheduled_date'] ?? item['scheduledDate'];
+  final scheduled = dateRaw is DateTime
+      ? dateRaw
+      : (parseFlexibleDate(dateRaw?.toString()) ?? DateTime.now());
+  final future = futureChefSubSlots(chef, scheduledDate: scheduled);
+  if (future.isNotEmpty) return future.first;
+  final hours = chefHourlySubSlots(chef);
+  return hours.isEmpty ? null : hours.first;
+}
+
+String? _dinerTimeSlotForCheckoutLine(Map<String, dynamic> item, Map<String, dynamic> nestedMap) {
+  final chef = _chefScheduleFromLine(item, nestedMap);
+  final picked = preferredDinerTimeSlot([
+    item['exact_time'],
+    item['timeSlot'],
+    item['time_slot'],
+    nestedMap['exact_time'],
+    nestedMap['time_slot'],
+    chef,
+  ], fallback: '');
+  if (!isImmediateDeliverySlot(picked) && picked.isNotEmpty && !looksLikeChefServingWindow(picked)) {
+    return picked;
+  }
+  return _nextBookableChefHour(chef, item) ??
+      (picked.isEmpty || isImmediateDeliverySlot(picked) ? null : picked);
 }
 
 /// Keeps only JSON-safe checkout fields so paid-order recording cannot fail on meal blobs.
@@ -2711,7 +2781,7 @@ List<Map<String, dynamic>> checkoutCartPayload(
       'exact_time': _dinerTimeSlotForCheckoutLine(item, nestedMap),
       'time_slot': _dinerTimeSlotForCheckoutLine(item, nestedMap),
       'chef_schedule': nestedMap['time_slot'] ?? nestedMap['chef_schedule'],
-      'selected_date': item['selected_date'] ?? item['selectedDate'] ?? item['scheduled_date'],
+      ...storedSlotDateFields(item),
       'selectedAddOns': _jsonSafeValue(item['selectedAddOns'] ?? item['selected_add_ons'] ?? const []),
       'accepts_hotpot_coins': item['accepts_hotpot_coins'] ?? nestedMap['accepts_hotpot_coins'],
       'specialInstructions': item['specialInstructions'] ?? item['special_instructions'],
@@ -3439,6 +3509,16 @@ class ChefPayoutBreakdown {
   final double chefPayout;
 }
 
+double estimatedPlatformMargin({
+  required double gmv,
+  required double deliveryFeeSum,
+  double tipSum = 0,
+  double marginRate = kPlatformMarginRate,
+}) {
+  final base = (gmv - deliveryFeeSum - tipSum).clamp(0, double.infinity).toDouble();
+  return roundMoney(base * marginRate);
+}
+
 /// Chef earns food + packaging after platform margin. Delivery fee is not included.
 ChefPayoutBreakdown chefPayoutBreakdown({
   required double itemsTotal,
@@ -3522,7 +3602,7 @@ Map<String, dynamic> orderSlotFields(Map<String, dynamic> order) {
   }
 
   String pickTimeSlot() {
-    const keys = ['exact_time', 'timeSlot', 'selected_slot', 'delivery_slot', 'time_slot'];
+    const keys = ['exact_time', 'timeSlot', 'selected_slot', 'delivery_slot', 'time_slot', 'chef_schedule'];
     final candidates = <dynamic>[];
     for (final map in maps) {
       for (final key in keys) {
@@ -3536,6 +3616,7 @@ Map<String, dynamic> orderSlotFields(Map<String, dynamic> order) {
     ...order,
     'time_slot': pickTimeSlot(),
     'selected_date': pick(const ['selected_date', 'selectedDate', 'scheduled_date', 'scheduledDate']),
+    'selected_year': pick(const ['selected_year']),
   };
 }
 
@@ -3565,16 +3646,27 @@ String formatDeliverySlotLabel(Map<String, dynamic> order, {DateTime? now}) {
   final fields = orderSlotFields(order);
   final placed = DateTime.tryParse(fields['created_at']?.toString() ?? '')?.toLocal() ?? now ?? DateTime.now();
   final rawSlot = fields['time_slot']?.toString() ?? '';
-  if (isImmediateDeliverySlot(rawSlot) && (fields['selected_date']?.toString() ?? '').trim().isEmpty) {
+  final selectedDateStr = fields['selected_date']?.toString().trim() ?? '';
+  final yearHint = int.tryParse(fields['selected_year']?.toString() ?? '');
+  if (isImmediateDeliverySlot(rawSlot) && selectedDateStr.isEmpty && yearHint == null) {
     return 'ASAP';
   }
+  var slotDay = parseFlexibleDate(
+        selectedDateStr.isEmpty ? null : selectedDateStr,
+        assumedYear: yearHint ?? placed.year,
+        placedDate: placed,
+      ) ??
+      DateTime(placed.year, placed.month, placed.day);
+  if (yearHint != null && yearHint > 2000) {
+    slotDay = DateTime(yearHint, slotDay.month, slotDay.day);
+  }
   if (slotHasClockRange(rawSlot)) {
-    return formatPromisedSlotWindow(rawSlot);
+    return formatPromisedSlotWindow(rawSlot, onDate: slotDay);
   }
   return smartTimeSlot(
     rawSlot.isEmpty ? 'ASAP' : rawSlot,
     placed,
-    selectedDateStr: fields['selected_date']?.toString(),
+    selectedDateStr: selectedDateStr.isEmpty ? null : selectedDateStr,
   );
 }
 
@@ -4141,13 +4233,16 @@ String? favoriteCategoryFromPastItems(Iterable<Map<String, dynamic>> items) {
 
 List<Map<String, dynamic>> parseOrderItemsList(dynamic raw) {
   dynamic parsed = raw;
-  if (raw is String && raw.trim().isNotEmpty) {
-    try {
-      parsed = jsonDecode(raw);
-    } catch (_) {
-      return const [];
+  for (var i = 0; i < 2; i++) {
+    if (parsed is String && parsed.trim().isNotEmpty) {
+      try {
+        parsed = jsonDecode(parsed);
+      } catch (_) {
+        return const [];
+      }
     }
   }
+  if (parsed is Map) return [Map<String, dynamic>.from(parsed)];
   if (parsed is! List) return const [];
   return parsed.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
 }

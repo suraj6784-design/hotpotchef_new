@@ -436,7 +436,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final user = _supabase.auth.currentUser;
       if (user == null) throw Exception('Authentication session expired');
       if (widget.cartItems.isEmpty) throw Exception('Your cart is empty');
-      final slotIssue = cartItemsSlotValidationError(widget.cartItems);
+      final slotIssue = cartItemsSlotValidationError(_checkoutCartItems());
       if (slotIssue != null) throw Exception(slotIssue);
       if (!canPaySharedCart(
         roomCode: widget.sharedRoomCode,
@@ -591,7 +591,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
       return {
         ...item,
-        'selected_date': selectedDateStr,
+        ...storedSlotDateFields({
+          ...item,
+          'selected_date': selectedDateStr,
+        }),
         'exact_time': finalTimeSlot,
         'time_slot': finalTimeSlot,
       };

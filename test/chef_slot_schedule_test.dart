@@ -127,7 +127,7 @@ void main() {
         scheduledDate: DateTime(2026, 9, 9),
         now: DateTime(2026, 9, 9, 8),
       ),
-      'Today · (9:00 AM to 10:00 AM)',
+      'Sep 9th 2026, 9:00 AM to 10:00 AM',
     );
     expect(feedKitchenSlotLabel('Daily (9:00 AM to 10:00 AM)'), '9:00 AM–10:00 AM');
     expect(feedKitchenSlotLabel('ASAP'), 'On your slot');

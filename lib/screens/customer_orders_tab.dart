@@ -1394,8 +1394,6 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
           'created_at': order['created_at'] ?? DateTime.now().toIso8601String(),
           'updated_at': order['updated_at'],
           'delivered_at': order['delivered_at'],
-          'time_slot': orderSlotFields(item)['time_slot'],
-          'exact_time': item['exact_time'] ?? item['timeSlot'] ?? item['time_slot'],
           'total_price': order['total_price'],
           'delivery_fee': order['delivery_fee'],
           'packaging_fee': order['packaging_fee'],

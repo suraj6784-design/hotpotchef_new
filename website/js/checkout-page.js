@@ -103,6 +103,7 @@
         quantity: qty,
         time_slot: (row.time_slot || meal.time_slot || '').toString().trim(),
         selected_date: new Date().toISOString().slice(0, 10),
+        selected_year: new Date().getFullYear(),
         service_type: (meal.service_type || 'Delivery Partner').toString().split(',')[0].trim(),
       });
     }

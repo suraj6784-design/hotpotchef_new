@@ -1,6 +1,8 @@
 /// Platform Ops permission keys and helpers (owner + scoped seats).
 library;
 
+import 'helpers.dart';
+
 const kPlatformOwnerEmail = 'suraj6784@gmail.com';
 
 const kOpsPermissionDashboard = 'dashboard';
@@ -94,6 +96,7 @@ class OpsTransactionSnapshot {
     required this.deliveredCount,
     required this.cancelledCount,
     required this.deliveryFeeSum,
+    required this.platformMarginSum,
     required this.avgTicket,
     required this.series,
     required this.recent,
@@ -105,6 +108,7 @@ class OpsTransactionSnapshot {
   final int deliveredCount;
   final int cancelledCount;
   final double deliveryFeeSum;
+  final double platformMarginSum;
   final double avgTicket;
   final List<OpsSnapshotBucket> series;
   final List<Map<String, dynamic>> recent;
@@ -113,13 +117,18 @@ class OpsTransactionSnapshot {
     final raw = json ?? const <String, dynamic>{};
     final seriesRaw = raw['series'];
     final recentRaw = raw['recent'];
+    final gmv = double.tryParse(raw['gmv']?.toString() ?? '') ?? 0;
+    final deliveryFeeSum = double.tryParse(raw['delivery_fee_sum']?.toString() ?? '') ?? 0;
+    final parsedMargin = double.tryParse(raw['platform_margin_sum']?.toString() ?? '');
     return OpsTransactionSnapshot(
       period: raw['period']?.toString() ?? 'day',
-      gmv: double.tryParse(raw['gmv']?.toString() ?? '') ?? 0,
+      gmv: gmv,
       orderCount: int.tryParse(raw['order_count']?.toString() ?? '') ?? 0,
       deliveredCount: int.tryParse(raw['delivered_count']?.toString() ?? '') ?? 0,
       cancelledCount: int.tryParse(raw['cancelled_count']?.toString() ?? '') ?? 0,
-      deliveryFeeSum: double.tryParse(raw['delivery_fee_sum']?.toString() ?? '') ?? 0,
+      deliveryFeeSum: deliveryFeeSum,
+      platformMarginSum: parsedMargin ??
+          estimatedPlatformMargin(gmv: gmv, deliveryFeeSum: deliveryFeeSum),
       avgTicket: double.tryParse(raw['avg_ticket']?.toString() ?? '') ?? 0,
       series: seriesRaw is List
           ? seriesRaw

@@ -847,9 +847,8 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
     final canProceed = await _verifySingleVendorOrPrompt(cartState);
     if (!canProceed || !mounted) return;
 
-    final slotIssue = cartItemsSlotValidationError([
-      for (final item in cartState.items) item.toCheckoutPayload(),
-    ]);
+    final checkoutItems = cartState.items.map((i) => i.toCheckoutPayload()).toList();
+    final slotIssue = cartItemsSlotValidationError(checkoutCartPayload(checkoutItems));
     if (slotIssue != null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -857,8 +856,6 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
       );
       return;
     }
-
-    final checkoutItems = cartState.items.map((i) => i.toCheckoutPayload()).toList();
 
     dismissAppSnackBars(context);
     Navigator.push(

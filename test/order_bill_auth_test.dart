@@ -232,6 +232,13 @@ void main() {
       expect(payout.margin, 25.65);
       expect(payout.chefPayout, 145.35);
     });
+
+    test('estimates platform margin from GMV minus delivery fees', () {
+      expect(
+        estimatedPlatformMargin(gmv: 9174, deliveryFeeSum: 710),
+        1269.6,
+      );
+    });
   });
 
   group('friendlyAuthError', () {

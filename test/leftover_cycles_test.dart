@@ -208,7 +208,7 @@ void main() {
           'time_slot': '10:00 AM to 11:00 AM',
           'selected_date': '2026-09-09',
         }, now: placed),
-        '(10:00 AM to 11:00 AM)',
+        'Sep 9th 2026, 10:00 AM to 11:00 AM',
       );
     });
 
@@ -226,7 +226,7 @@ void main() {
             },
           ],
         }, now: placed),
-        '(9:00 AM to 9:00 PM)',
+        'Sep 7th 2026, 9:00 AM to 9:00 PM',
       );
     });
 
@@ -245,7 +245,70 @@ void main() {
           },
         ],
       };
-      expect(formatDeliverySlotLabel(order, now: placed), '(10:00 AM to 11:00 AM)');
+      expect(formatDeliverySlotLabel(order, now: placed), 'Sep 9th 2026, 10:00 AM to 11:00 AM');
+    });
+
+    test('stored slot date always includes the year', () {
+      final fields = storedSlotDateFields(
+        {'selected_date': '9 Sep'},
+        now: DateTime(2026, 9, 9),
+      );
+      expect(fields['selected_date'], '2026-09-09');
+      expect(fields['selected_year'], 2026);
+      expect(
+        formatDeliverySlotLabel({
+          'created_at': DateTime(2027, 1, 1).toIso8601String(),
+          'time_slot': '10:00 AM to 11:00 AM',
+          'selected_date': '9 Sep',
+          'selected_year': 2026,
+        }),
+        'Sep 9th 2026, 10:00 AM to 11:00 AM',
+      );
+    });
+
+    test('checkout payload stores the diner hour, not ASAP', () {
+      final lines = checkoutCartPayload([
+        {
+          'title': 'Veg Thali',
+          'quantity': 1,
+          'price': 70,
+          'timeSlot': '10:00 AM to 11:00 AM',
+          'time_slot': '10:00 AM to 11:00 AM',
+          'exact_time': '10:00 AM to 11:00 AM',
+          'selected_date': '2026-09-09',
+          'rawMealDetails': {
+            'time_slot': 'Today (9:00 AM to 11:00 PM)',
+            'exact_time': '10:00 AM to 11:00 AM',
+          },
+        },
+      ]);
+      expect(lines.first['selected_date'], '2026-09-09');
+      expect(lines.first['selected_year'], 2026);
+      expect(lines.first['time_slot'], '10:00 AM to 11:00 AM');
+      expect(lines.first['exact_time'], '10:00 AM to 11:00 AM');
+      expect(
+        formatDeliverySlotLabel({
+          'created_at': DateTime(2026, 9, 9, 11, 25).toIso8601String(),
+          'items': lines,
+        }),
+        'Sep 9th 2026, 10:00 AM to 11:00 AM',
+      );
+    });
+
+    test('ASAP line with chef_schedule still shows the kitchen window', () {
+      expect(
+        formatDeliverySlotLabel({
+          'created_at': DateTime(2026, 9, 9, 11, 25).toIso8601String(),
+          'items': [
+            {
+              'title': 'Veg Thali',
+              'time_slot': 'ASAP',
+              'chef_schedule': 'Today (9:00 AM to 11:00 PM)',
+            },
+          ],
+        }),
+        'Sep 9th 2026, 9:00 AM to 11:00 PM',
+      );
     });
 
     test('kitchen serving hours show only when no hourly slot was booked', () {
@@ -260,7 +323,7 @@ void main() {
             },
           ],
         }, now: placed),
-        '(9:00 AM to 11:00 PM)',
+        'Sep 7th 2026, 9:00 AM to 11:00 PM',
       );
     });
   });

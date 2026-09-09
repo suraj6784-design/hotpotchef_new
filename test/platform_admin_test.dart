@@ -33,6 +33,7 @@ void main() {
         'delivered_count': 3,
         'cancelled_count': 1,
         'delivery_fee_sum': 80,
+        'platform_margin_sum': 168,
         'avg_ticket': 300,
         'series': [
           {'bucket_date': '2026-09-01', 'gmv': 500, 'order_count': 2},
@@ -43,6 +44,7 @@ void main() {
       });
       expect(snap.period, 'week');
       expect(snap.gmv, 1200);
+      expect(snap.platformMarginSum, 168);
       expect(snap.series.single.orderCount, 2);
       expect(snap.recent.single['status'], 'Delivered');
     });
