@@ -1,16 +1,14 @@
 // lib/main.dart
 
-import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
+import 'firebase_bootstrap.dart';
 import 'utils/helpers.dart';
 import 'utils/app_theme.dart';
 import 'utils/app_router.dart';
@@ -19,27 +17,14 @@ import 'services/push_notification_service.dart';
 // Global Messenger Key to show Push Notifications across all screens
 final GlobalKey<ScaffoldMessengerState> globalMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
-@pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  if (!kIsWeb) {
-    debugPrint("Handling a background message: ${message.messageId}");
-  }
-}
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // 1. Load environment variables first
   await dotenv.load(fileName: ".env");
 
-  await Firebase.initializeApp();
-
-  // Pass all uncaught asynchronous errors to Crashlytics
-  FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
-  PlatformDispatcher.instance.onError = (error, stack) {
-    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-    return true;
-  };
+  final firebaseReady = await FirebaseBootstrap.initializeApp();
+  _attachCrashlyticsIfSupported(firebaseReady);
 
   // 2. Validate environment credentials
   final supabaseUrl = dotenv.env['SUPABASE_URL'];
@@ -59,9 +44,34 @@ void main() async {
   );
 
   // 4. Initialize Push Notifications cleanly via centralized service
-  await PushNotificationService.initialize();
+  if (firebaseReady) {
+    await PushNotificationService.initialize();
+  } else {
+    debugPrint('⚠️ Skipping push notifications because Firebase is not initialized.');
+  }
 
   runApp(const ProviderScope(child: HotPotChefApp()));
+}
+
+void _attachCrashlyticsIfSupported(bool firebaseReady) {
+  if (!firebaseReady ||
+      !FirebaseBootstrap.isCrashlyticsSupported(
+        isWeb: kIsWeb,
+        platform: defaultTargetPlatform,
+      )) {
+    return;
+  }
+
+  try {
+    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+    PlatformDispatcher.instance.onError = (error, stack) {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      return true;
+    };
+  } catch (error, stack) {
+    debugPrint('⚠️ Crashlytics handlers were not attached: $error');
+    debugPrint('$stack');
+  }
 }
 
 class HotPotChefApp extends StatelessWidget {
