@@ -230,9 +230,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       } else {
         _selectedAddressData ??= checkoutAddressFromUserProfile(userData);
       }
-      _phoneController.text = userData?['phone']?.toString() ??
-          user.userMetadata?['phone']?.toString() ??
-          '';
+      _phoneController.text = usableCustomerPhone(
+            userData?['phone']?.toString() ?? user.userMetadata?['phone']?.toString(),
+          );
       _userCoinBalance =
           double.tryParse(userData?['hotpot_coins']?.toString() ?? '0') ?? 0.0;
       if (!_coinsAccepted && _applyCoins) _applyCoins = false;
@@ -418,12 +418,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   // --- Razorpay Payment Pipeline ---
 
   Future<void> _startRazorpayPayment() async {
-    final phone = _phoneController.text.trim();
+    final phone = usableCustomerPhone(_phoneController.text);
 
-    if (phone.length < 10) {
-      _showSnackBar('Please enter a valid 10-digit contact number', isError: true);
+    if (phone.length != 10) {
+      _showSnackBar('Enter the mobile number we can reach you on', isError: true);
       return;
     }
+    _phoneController.text = phone;
     if (_hasDelivery && _selectedAddressData == null) {
       _showSnackBar('Please select a delivery address', isError: true);
       return;
@@ -1322,35 +1323,38 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          // Delivery Schedule Details
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(18),
             margin: const EdgeInsets.only(bottom: 16),
             decoration: BoxDecoration(
               color: AppTheme.surfaceOf(context),
               borderRadius: AppTheme.radiusLg,
-              border: Border.all(color: AppTheme.hairlineOf(context)),
+              border: Border.all(color: AppTheme.primary.withValues(alpha: 0.28), width: 1.5),
               boxShadow: AppTheme.softShadow,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    const Icon(Icons.schedule, color: Colors.deepOrange, size: 20),
-                    const SizedBox(width: 8),
-                    Text('Selected Delivery Schedule',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.onSurfaceOf(context))),
-                  ],
+                Text(
+                  'Your kitchen slot',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 17,
+                    color: AppTheme.onSurfaceOf(context),
+                  ),
                 ),
-                Divider(height: 16, color: AppTheme.hairlineOf(context)),
+                const SizedBox(height: 4),
+                const Text(
+                  'Chefs cook to this window — not a restaurant ETA.',
+                  style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                ),
+                const SizedBox(height: 14),
                 ...widget.cartItems.map((item) {
                   final title = item['title'] ?? 'Meal';
-                  
                   final rawDate = item['scheduledDate'] ??
-            item['scheduled_date'] ??
-            item['selected_date'] ??
-            item['selectedDate'];
+                      item['scheduled_date'] ??
+                      item['selected_date'] ??
+                      item['selectedDate'];
                   final rawDetails = item['rawMealDetails'] as Map<String, dynamic>?;
                   final shared = (widget.sharedTimeSlot ?? '').trim();
                   final timeSlot = shared.isNotEmpty
@@ -1370,12 +1374,62 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     slot: timeSlot?.toString(),
                     scheduledDate: scheduled,
                   );
+                  final image = (item['image_url'] ?? rawDetails?['image_url'])?.toString() ?? '';
 
                   return Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Text(
-                      '• $title\n  $scheduleLabel',
-                      style: const TextStyle(fontSize: 13, color: AppTheme.textMuted, height: 1.3),
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: image.isNotEmpty
+                              ? Image.network(
+                                  image,
+                                  width: 52,
+                                  height: 52,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, _, _) => const ColoredBox(
+                                    color: Color(0xFFF6EDE4),
+                                    child: SizedBox(width: 52, height: 52),
+                                  ),
+                                )
+                              : const ColoredBox(
+                                  color: Color(0xFFF6EDE4),
+                                  child: SizedBox(
+                                    width: 52,
+                                    height: 52,
+                                    child: Icon(Icons.soup_kitchen_outlined, color: Color(0xFFC4A484)),
+                                  ),
+                                ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                title.toString(),
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                  color: AppTheme.onSurfaceOf(context),
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                scheduleLabel,
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w800,
+                                  height: 1.25,
+                                  color: AppTheme.primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   );
                 }),
@@ -1448,7 +1502,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   controller: _phoneController,
                   keyboardType: TextInputType.phone,
                   decoration: const InputDecoration(
-                    labelText: 'Contact Number',
+                    labelText: 'Mobile number',
+                    hintText: '10-digit number we can call',
                     prefixIcon: Icon(Icons.phone, size: 18),
                   ),
                 ),
@@ -1470,9 +1525,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: AppTheme.success.withValues(alpha: Theme.of(context).brightness == Brightness.dark ? 0.12 : 0.08),
+                color: AppTheme.surfaceOf(context),
                 borderRadius: AppTheme.radiusLg,
-                border: Border.all(color: AppTheme.success.withValues(alpha: 0.35)),
+                border: Border.all(color: AppTheme.hairlineOf(context)),
                 boxShadow: AppTheme.softShadow,
               ),
               child: Column(
@@ -1484,18 +1539,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Reward your delivery hero',
-                              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: AppTheme.onSurfaceOf(context))),
+                          Text('Optional rider tip',
+                              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppTheme.onSurfaceOf(context))),
                           const SizedBox(height: 2),
                           const Text('100% of the tip amount goes directly to them',
                               style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
                         ],
                       ),
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(color: Colors.green.shade100, shape: BoxShape.circle),
-                        child: const Icon(Icons.delivery_dining, color: Colors.green, size: 22),
-                      ),
+                      const Icon(Icons.delivery_dining_outlined, color: AppTheme.textMuted, size: 22),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -1677,7 +1728,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               const SizedBox(width: 16),
               Expanded(
                 child: GradientButton(
-                  label: (_applyCoins && _grandTotal < 1) ? 'Place order with coins' : 'Pay & Place Order',
+                  label: (_applyCoins && _grandTotal < 1) ? 'Place order with coins' : 'Confirm this slot',
                   icon: Icons.lock_rounded,
                   loading: _isCheckingOut,
                   onPressed: _isCheckingOut ? null : _startRazorpayPayment,

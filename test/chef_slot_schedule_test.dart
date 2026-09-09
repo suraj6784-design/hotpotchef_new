@@ -129,5 +129,17 @@ void main() {
       ),
       'Today · 9:00 AM to 10:00 AM',
     );
+    expect(feedKitchenSlotLabel('Daily (9:00 AM to 10:00 AM)'), '9:00 AM–10:00 AM');
+    expect(feedKitchenSlotLabel('ASAP'), 'On your slot');
+    expect(kitchensNearCopy(
+      hasPin: true,
+      usingDevicePin: false,
+      isLoggedIn: true,
+      radiusKm: 15,
+      placeLabel: 'Koramangala, Bengaluru, Karnataka',
+    ), 'Kitchens within 15 km of Koramangala, Bengaluru');
+    expect(usableCustomerPhone('1234567890'), '');
+    expect(usableCustomerPhone('+91 98765 43210'), '9876543210');
+    expect(isPlaceholderPhone('0000000000'), isTrue);
   });
 }

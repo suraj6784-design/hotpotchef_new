@@ -1576,6 +1576,58 @@ String formatCheckoutDeliverySchedule({
   return '${formatFriendlyDate(scheduledDate, now: now)} · $window';
 }
 
+/// Compact kitchen window for meal cards (`9:00 AM–10:00 AM`).
+String feedKitchenSlotLabel(String? timeSlot) {
+  final window = chefSlotWindowLabel(timeSlot);
+  if (window == 'ASAP') return 'On your slot';
+  return window.replaceAll(' to ', '–');
+}
+
+String shortPlaceLabel(String? address) {
+  final parts = (address ?? '')
+      .split(',')
+      .map((part) => part.trim())
+      .where((part) => part.isNotEmpty)
+      .toList();
+  if (parts.isEmpty) return 'your pin';
+  if (parts.length == 1) return parts.first;
+  return '${parts[0]}, ${parts[1]}';
+}
+
+String kitchensNearCopy({
+  required bool hasPin,
+  required bool usingDevicePin,
+  required bool isLoggedIn,
+  required int radiusKm,
+  required String placeLabel,
+}) {
+  if (hasPin) {
+    final place = usingDevicePin ? 'your current location' : shortPlaceLabel(placeLabel);
+    return 'Kitchens within $radiusKm km of $place';
+  }
+  return isLoggedIn
+      ? 'Drop a map pin to hide kitchens outside $radiusKm km.'
+      : 'Allow location to see kitchens near you — the same list stays after Sign In.';
+}
+
+String digitsOnlyPhone(String? raw) => (raw ?? '').replaceAll(RegExp(r'\D'), '');
+
+/// Dummy / repeated digits that should never be used as a diner contact.
+bool isPlaceholderPhone(String? raw) {
+  final digits = digitsOnlyPhone(raw);
+  if (digits.isEmpty) return true;
+  if (digits == '1234567890' || digits == '0123456789') return true;
+  if (digits.length >= 10 && RegExp(r'^(\d)\1+$').hasMatch(digits)) return true;
+  return false;
+}
+
+String usableCustomerPhone(String? raw) {
+  var digits = digitsOnlyPhone(raw);
+  if (digits.length > 10) digits = digits.substring(digits.length - 10);
+  if (isPlaceholderPhone(digits) || digits.length != 10) return '';
+  return digits;
+}
+
 /// True when the selected slot's start is now or earlier on that calendar day.
 bool isCartSlotPassed(
   String selectedSlot,

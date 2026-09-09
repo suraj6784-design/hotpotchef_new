@@ -3,7 +3,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../utils/helpers.dart';
 import '../utils/pricing_calculator.dart';
-import 'app_widgets.dart';
 
 class LiveOffersFlashBanner extends StatefulWidget {
   const LiveOffersFlashBanner({
@@ -25,12 +24,8 @@ class LiveOffersFlashBanner extends StatefulWidget {
   State<LiveOffersFlashBanner> createState() => _LiveOffersFlashBannerState();
 }
 
-class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
-    with TickerProviderStateMixin {
+class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner> {
   late final Stream<List<Map<String, dynamic>>> _mealsStream;
-  late final AnimationController _shimmer;
-  late final AnimationController _pulse;
-  late final AnimationController _blink;
 
   @override
   void initState() {
@@ -39,20 +34,6 @@ class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
         .from('meals')
         .stream(primaryKey: ['id'])
         .eq('status', 'Available');
-    _shimmer = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800))
-      ..repeat();
-    _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400))
-      ..repeat(reverse: true);
-    _blink = AnimationController(vsync: this, duration: const Duration(milliseconds: 700))
-      ..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _shimmer.dispose();
-    _pulse.dispose();
-    _blink.dispose();
-    super.dispose();
   }
 
   @override
@@ -79,36 +60,21 @@ class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
                 child: Row(
                   children: [
-                    FadeTransition(
-                      opacity: Tween(begin: 0.35, end: 1.0).animate(_blink),
-                      child: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFFF3D00),
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
                     Text(
-                      'HOME OFFERS',
+                      "Tonight's kitchen offers",
                       style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.2,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
                         color: AppTheme.onSurfaceOf(context),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    const Icon(Icons.auto_awesome, size: 14, color: AppTheme.accent),
                     if (offers.length > 1) ...[
                       const SizedBox(width: 8),
                       Text(
-                        '${offers.length} live',
+                        '${offers.length}',
                         style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
                           color: AppTheme.textMuted,
                         ),
                       ),
@@ -117,7 +83,7 @@ class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
                 ),
               ),
               SizedBox(
-                height: 118,
+                height: 108,
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -128,10 +94,8 @@ class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
                       width: cardWidth,
                       child: _OfferFlashCard(
                         meal: meal,
-                        shimmer: _shimmer,
-                        pulse: _pulse,
                         onTap: () => widget.onOfferTap(meal),
-                      ).entrance(index: index.clamp(0, 4)),
+                      ),
                     );
                   },
                 ),
@@ -147,14 +111,10 @@ class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
 class _OfferFlashCard extends StatelessWidget {
   const _OfferFlashCard({
     required this.meal,
-    required this.shimmer,
-    required this.pulse,
     required this.onTap,
   });
 
   final Map<String, dynamic> meal;
-  final Animation<double> shimmer;
-  final Animation<double> pulse;
   final VoidCallback onTap;
 
   @override
@@ -165,163 +125,94 @@ class _OfferFlashCard extends StatelessWidget {
     final code = PricingCalculator.mealPromoCode(meal);
     final boosted = isMealBoosted(meal);
 
-    return AnimatedBuilder(
-      animation: Listenable.merge([shimmer, pulse]),
-      builder: (context, child) {
-        final glow = 0.18 + (pulse.value * 0.22);
-        return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 6),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: AppTheme.primary.withValues(alpha: glow),
-                blurRadius: 18 + (pulse.value * 10),
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          child: child,
-        );
-      },
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: AppTheme.softShadow,
+      ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(16),
           child: Ink(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              gradient: const LinearGradient(
-                colors: [Color(0xFFD84315), Color(0xFFFF7043), Color(0xFFFFB300)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+              borderRadius: BorderRadius.circular(16),
+              color: AppTheme.surfaceOf(context),
+              border: Border.all(color: AppTheme.hairlineOf(context)),
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: Stack(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+              child: Row(
                 children: [
-                  Positioned.fill(
-                    child: AnimatedBuilder(
-                      animation: shimmer,
-                      builder: (context, _) {
-                        final t = shimmer.value;
-                        return IgnorePointer(
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment(-1.4 + (t * 2.8), -0.2),
-                                end: Alignment(-0.4 + (t * 2.8), 0.4),
-                                colors: [
-                                  Colors.white.withValues(alpha: 0),
-                                  Colors.white.withValues(alpha: 0.28),
-                                  Colors.white.withValues(alpha: 0),
-                                ],
-                              ),
-                            ),
-                          ),
-                        );
-                      },
+                  Container(
+                    width: 4,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary,
+                      borderRadius: BorderRadius.circular(4),
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-                    child: Row(
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const AppLogo(size: 28, onDark: true),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                headline,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 18,
-                                  letterSpacing: 0.2,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                subhead,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.9),
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              if (boosted || code != null) ...[
-                                const SizedBox(height: 8),
-                                Wrap(
-                                  spacing: 6,
-                                  runSpacing: 6,
-                                  children: [
-                                    if (boosted)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white.withValues(alpha: 0.22),
-                                          borderRadius: BorderRadius.circular(8),
-                                          border: Border.all(color: Colors.white.withValues(alpha: 0.4)),
-                                        ),
-                                        child: const Text(
-                                          'PAID PROMO',
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w800,
-                                            letterSpacing: 0.8,
-                                          ),
-                                        ),
-                                      ),
-                                    if (code != null)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white.withValues(alpha: 0.2),
-                                          borderRadius: BorderRadius.circular(8),
-                                          border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
-                                        ),
-                                        child: Text(
-                                          'CODE $code',
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w800,
-                                            letterSpacing: 0.8,
-                                          ),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ],
-                            ],
+                        Text(
+                          headline,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: AppTheme.onSurfaceOf(context),
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
                           ),
                         ),
-                        if (image.isNotEmpty)
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: Image.network(
-                              image,
-                              width: 64,
-                              height: 64,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                        const SizedBox(height: 4),
+                        Text(
+                          subhead,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppTheme.textMuted,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        if (boosted || code != null) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            [
+                              if (boosted) 'Featured',
+                              if (code != null) code,
+                            ].join(' · '),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppTheme.textMuted,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
                             ),
-                          )
-                        else
-                          const Icon(Icons.local_offer_rounded, color: Colors.white, size: 28),
+                          ),
+                        ],
                       ],
                     ),
                   ),
+                  if (image.isNotEmpty)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.network(
+                        image,
+                        width: 56,
+                        height: 56,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => const Icon(Icons.local_offer_outlined, color: AppTheme.textMuted),
+                      ),
+                    )
+                  else
+                    const Icon(Icons.local_offer_outlined, color: AppTheme.textMuted, size: 24),
                 ],
               ),
             ),

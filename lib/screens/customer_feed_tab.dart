@@ -17,7 +17,6 @@ import '../utils/dynamic_ui_engine.dart';
 import '../utils/network.dart';
 import '../utils/pinned_address.dart';
 import '../utils/pricing_calculator.dart';
-import '../models/pricing_models.dart';
 import '../providers/cart_provider.dart';
 import '../providers/delivery_preference.dart';
 import '../providers/kitchen_follows_provider.dart';
@@ -954,15 +953,15 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             clipBehavior: Clip.none,
             children: [
               Container(
-                height: 180,
+                height: 160,
                 width: double.infinity,
                 decoration: BoxDecoration(
                   gradient: AppTheme.primaryGradient,
                   borderRadius: const BorderRadius.only(
-                    bottomLeft: Radius.circular(32),
-                    bottomRight: Radius.circular(32),
+                    bottomLeft: Radius.circular(24),
+                    bottomRight: Radius.circular(24),
                   ),
-                  boxShadow: AppTheme.brandGlow(opacity: 0.28),
+                  boxShadow: AppTheme.brandGlow(opacity: 0.12),
                 ),
                 child: SafeArea(
                   bottom: false,
@@ -1116,7 +1115,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                   const AppLogo(size: 22, onDark: true),
                                   const SizedBox(width: 8),
                                   const Text('Delivering to',
-                                      style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500)),
+                                      style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500)),
                                 ],
                               ),
                               const SizedBox(height: 4),
@@ -1127,7 +1126,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                   Expanded(
                                     child: Text(
                                       _currentAddress,
-                                      style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                                      style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -1227,43 +1226,24 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           ),
           const SizedBox(height: 48),
 
-          if (_hasDeliveryPin)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Text(
-                _isUsingDevicePin
-                    ? 'Showing kitchens within ${DeliveryEstimatorService.maxDeliveryRadiusKm.toInt()} km of your current location. Sign In keeps this same area.'
-                    : 'Showing kitchens within ${DeliveryEstimatorService.maxDeliveryRadiusKm.toInt()} km of your pin. Offline kitchens are hidden.',
-                style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Text(
+              kitchensNearCopy(
+                hasPin: _hasDeliveryPin,
+                usingDevicePin: _isUsingDevicePin,
+                isLoggedIn: isLoggedIn,
+                radiusKm: DeliveryEstimatorService.maxDeliveryRadiusKm.toInt(),
+                placeLabel: _currentAddress,
               ),
-            )
-          else
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Text(
-                isLoggedIn
-                    ? 'Drop a map pin on your delivery address to hide kitchens outside ${DeliveryEstimatorService.maxDeliveryRadiusKm.toInt()} km.'
-                    : 'Allow location access to see kitchens near you — the same list stays after Sign In.',
-                style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
-              ),
+              style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
             ),
+          ),
 
           if (isLoggedIn)
             LastOrderReorderBanner(onAddedToCart: widget.onReorderToOrders ?? widget.onGoToCart),
 
           if (!_hasActiveSearch) ...[
-            LiveOffersFlashBanner(
-              excludedChefIds: _closedChefIds,
-              destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
-              destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
-              chefKitchenPins: _chefKitchenPins,
-              onOfferTap: _onHomeOfferTap,
-            ),
-            SponsoredPlacementBanner(
-              destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
-              destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
-              cityHint: _selectedAddressMap?['city']?.toString(),
-            ),
             if (isLoggedIn) ...[
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
@@ -1336,18 +1316,36 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
               ),
               const SizedBox(height: 8),
             ],
-            _filterChipRow(
-              chips: _dietFilters,
-              selected: _selectedDiet,
-              onSelected: (name) => setState(() => _selectedDiet = name),
+            Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: const EdgeInsets.symmetric(horizontal: 20),
+                childrenPadding: const EdgeInsets.only(bottom: 4),
+                initiallyExpanded: false,
+                title: Text(
+                  'Diet & cuisine',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.onSurfaceOf(context),
+                  ),
+                ),
+                children: [
+                  _filterChipRow(
+                    chips: _dietFilters,
+                    selected: _selectedDiet,
+                    onSelected: (name) => setState(() => _selectedDiet = name),
+                  ),
+                  const SizedBox(height: 8),
+                  _filterChipRow(
+                    chips: _categories,
+                    selected: _selectedCategory,
+                    onSelected: (name) => setState(() => _selectedCategory = name),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 8),
-            _filterChipRow(
-              chips: _categories,
-              selected: _selectedCategory,
-              onSelected: (name) => setState(() => _selectedCategory = name),
-            ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 4),
           ],
 
           Padding(
@@ -1368,7 +1366,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                   : 'Search results'))
                           : (showFollowing
                               ? 'Kitchens you follow'
-                              : (showFavorites ? 'Your favorites' : 'Fresh from the kitchen')),
+                              : (showFavorites ? 'Your favorites' : 'Near you tonight')),
                       style: AppTheme.sectionTitleOf(context),
                     ),
                     const SizedBox(height: 4),
@@ -1383,7 +1381,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                       : '${_chefSearchResults.length} chef${_chefSearchResults.length == 1 ? '' : 's'} · "${_searchController.text}"')))
                           : (showFollowing
                               ? 'Live dishes from kitchens you follow'
-                              : (showFavorites ? 'Meals you loved' : 'Support your local home chefs')),
+                              : (showFavorites ? 'Meals you loved' : 'Cooked to your slot')),
                       style: const TextStyle(fontSize: 13, color: AppTheme.textMuted),
                     ),
                   ],
@@ -1471,70 +1469,28 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                 meals = _filterFollowedMeals(meals, followedKitchens, showFollowing);
 
                 meals = _applyFeedChips(_mealsForSelectedAddress(meals));
-                return _buildMealGrid(
-                  meals,
-                  isLoggedIn: isLoggedIn,
-                  showFavorites: showFavorites,
-                  showFollowing: showFollowing,
-                  hasFollows: followedKitchens.isNotEmpty,
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    LiveOffersFlashBanner(
+                      excludedChefIds: _closedChefIds,
+                      destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
+                      destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
+                      chefKitchenPins: _chefKitchenPins,
+                      onOfferTap: _onHomeOfferTap,
+                    ),
+                    _buildMealGrid(
+                      meals,
+                      isLoggedIn: isLoggedIn,
+                      showFavorites: showFavorites,
+                      showFollowing: showFollowing,
+                      hasFollows: followedKitchens.isNotEmpty,
+                    ),
+                    ..._homeDiscoveryExtras(isLoggedIn: isLoggedIn),
+                  ],
                 );
               },
             ),
-
-          if (!_hasActiveSearch) ...[
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
-              child: Text(
-                'More for you',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                  color: AppTheme.onSurfaceOf(context),
-                ),
-              ),
-            ),
-            FestivalHampersBanner(
-              excludedChefIds: _closedChefIds,
-              destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
-              destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
-              chefKitchenPins: _chefKitchenPins,
-              onHamperTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
-            ),
-            SocietyNightsBanner(
-              excludedChefIds: _closedChefIds,
-              destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
-              destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
-              destinationAddress: _selectedAddressMap,
-              chefKitchenPins: _chefKitchenPins,
-              onNightTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
-            ),
-            ShelfItemsBanner(
-              excludedChefIds: _closedChefIds,
-              destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
-              destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
-              chefKitchenPins: _chefKitchenPins,
-              onItemTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
-            ),
-            if (isLoggedIn) const WeeklyPlanDueBanner(),
-            if (isLoggedIn) const DailyStreakBanner(),
-            if (isLoggedIn) const AiRecommendationsSection(),
-            const DynamicUIEngine(screenName: 'customer_feed'),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-              child: TextButton.icon(
-                onPressed: () {
-                  if (!isLoggedIn) {
-                    showAuthBottomSheet(context, () => setState(() {}));
-                    return;
-                  }
-                  context.push('/bulk-request');
-                },
-                icon: const Icon(Icons.campaign_outlined, size: 18),
-                label: const Text('Bulk / catering request'),
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -1657,6 +1613,68 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     );
   }
 
+  List<Widget> _homeDiscoveryExtras({required bool isLoggedIn}) {
+    return [
+      const SizedBox(height: 8),
+      SponsoredPlacementBanner(
+        destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
+        destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
+        cityHint: _selectedAddressMap?['city']?.toString(),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+        child: Text(
+          'More for you',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            color: AppTheme.onSurfaceOf(context),
+          ),
+        ),
+      ),
+      FestivalHampersBanner(
+        excludedChefIds: _closedChefIds,
+        destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
+        destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
+        chefKitchenPins: _chefKitchenPins,
+        onHamperTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
+      ),
+      SocietyNightsBanner(
+        excludedChefIds: _closedChefIds,
+        destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
+        destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
+        destinationAddress: _selectedAddressMap,
+        chefKitchenPins: _chefKitchenPins,
+        onNightTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
+      ),
+      ShelfItemsBanner(
+        excludedChefIds: _closedChefIds,
+        destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
+        destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
+        chefKitchenPins: _chefKitchenPins,
+        onItemTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
+      ),
+      if (isLoggedIn) const WeeklyPlanDueBanner(),
+      if (isLoggedIn) const DailyStreakBanner(),
+      if (isLoggedIn) const AiRecommendationsSection(),
+      const DynamicUIEngine(screenName: 'customer_feed'),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+        child: TextButton.icon(
+          onPressed: () {
+            if (!isLoggedIn) {
+              showAuthBottomSheet(context, () => setState(() {}));
+              return;
+            }
+            context.push('/bulk-request');
+          },
+          icon: const Icon(Icons.campaign_outlined, size: 18),
+          label: const Text('Bulk / catering request'),
+        ),
+      ),
+    ];
+  }
+
   Widget _filterChipRow({
     required List<Map<String, dynamic>> chips,
     required String selected,
@@ -1768,7 +1786,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             crossAxisCount: columns,
             crossAxisSpacing: 16,
             mainAxisSpacing: 16,
-            mainAxisExtent: 342,
+            mainAxisExtent: 368,
           ),
           itemCount: meals.length,
           itemBuilder: (context, index) {
@@ -1816,9 +1834,9 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                               ClipRRect(
                                 borderRadius: const BorderRadius.vertical(top: Radius.circular(AppTheme.rLg)),
                                 child: Container(
-                                  height: 130,
+                                  height: 148,
                                   width: double.infinity,
-                                  color: Colors.grey.shade200,
+                                  color: const Color(0xFFF6EDE4),
                                   child: meal['image_url'] != null
                                       ? Hero(
                                           tag: 'meal-image-${meal['id']}',
@@ -1830,15 +1848,22 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                             placeholder: (_, _) => const AppShimmer(
                                               child: ShimmerBox(
                                                 width: double.infinity,
-                                                height: 130,
+                                                height: 148,
                                                 borderRadius: BorderRadius.zero,
                                               ),
                                             ),
-                                            errorWidget: (_, _, _) =>
-                                                const Icon(Icons.restaurant, color: Colors.grey, size: 40),
+                                            errorWidget: (_, _, _) => const Icon(
+                                              Icons.soup_kitchen_outlined,
+                                              color: Color(0xFFC4A484),
+                                              size: 40,
+                                            ),
                                           ),
                                         )
-                                      : const Icon(Icons.restaurant, color: Colors.grey, size: 40),
+                                      : const Icon(
+                                          Icons.soup_kitchen_outlined,
+                                          color: Color(0xFFC4A484),
+                                          size: 40,
+                                        ),
                                 ),
                               ),
                               // Subtle gradient scrim for legibility of top badges
@@ -1955,16 +1980,15 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                   },
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.person, size: 12, color: textMuted),
+                                      const Icon(Icons.storefront_outlined, size: 13, color: textMuted),
                                       const SizedBox(width: 4),
                                       Expanded(
                                         child: Text(
                                           chefDisplayName(meal),
-                                          style: const TextStyle(
-                                            color: brandPrimary,
+                                          style: TextStyle(
+                                            color: AppTheme.onSurfaceOf(context),
                                             fontSize: 12,
-                                            fontWeight: FontWeight.bold,
-                                            decoration: TextDecoration.underline,
+                                            fontWeight: FontWeight.w600,
                                           ),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
@@ -1974,44 +1998,55 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                     ],
                                   ),
                                 ),
-                                const SizedBox(height: 4),
+                                const SizedBox(height: 8),
                                 Row(
                                   children: [
-                                    const Icon(Icons.access_time, size: 12, color: textMuted),
-                                    const SizedBox(width: 4),
                                     Expanded(
-                                      child: Text(
-                                        meal['time_slot'] ?? 'ASAP',
-                                        style: TextStyle(color: isExpired ? Colors.red : textMuted, fontSize: 12),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.canvasOf(context),
+                                          borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(color: AppTheme.hairlineOf(context)),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              Icons.schedule,
+                                              size: 12,
+                                              color: isExpired ? Colors.red : AppTheme.primary,
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Expanded(
+                                              child: Text(
+                                                feedKitchenSlotLabel(meal['time_slot']?.toString()),
+                                                style: TextStyle(
+                                                  color: isExpired ? Colors.red : AppTheme.onSurfaceOf(context),
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ),
                                     if (etaLabel != null) ...[
-                                      const SizedBox(width: 4),
+                                      const SizedBox(width: 6),
                                       Text(
                                         etaLabel,
-                                        style: const TextStyle(color: AppTheme.primary, fontSize: 11, fontWeight: FontWeight.w700),
+                                        style: const TextStyle(
+                                          color: AppTheme.primary,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                        ),
                                       ),
                                     ],
                                   ],
                                 ),
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    const Icon(Icons.delivery_dining, size: 12, color: textMuted),
-                                    const SizedBox(width: 4),
-                                    Expanded(
-                                      child: Text(
-                                        meal['service_type']?.toString() ?? 'Delivery',
-                                        style: const TextStyle(color: textMuted, fontSize: 12),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
+                                const SizedBox(height: 10),
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
@@ -2032,9 +2067,9 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                           Text(
                                             '₹${offerSummary.effectiveUnitPrice.toInt()}',
                                             style: TextStyle(
-                                                fontWeight: FontWeight.w900,
+                                                fontWeight: FontWeight.w800,
                                                 fontSize: 16,
-                                                color: showOfferPrice ? Colors.green.shade700 : AppTheme.onSurfaceOf(context)),
+                                                color: AppTheme.onSurfaceOf(context)),
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                           ),
