@@ -445,3 +445,10 @@ entrypoint = "./functions/send-push-notification/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/send-push-notification/*.html" ]
+
+# JWT at the gateway is not sufficient by itself (the anon key is a valid JWT).
+# The function still verifies the user with auth.getUser and authorizes chef self-service.
+[functions.create-chef-account]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/create-chef-account/index.ts"
