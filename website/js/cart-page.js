@@ -13,19 +13,20 @@
     return total > 0 ? api.money(total) : '';
   }
 
-  function showAppHint(text) {
+  function showAppHint(text, showDownload) {
     var hint = document.getElementById('app-open-hint');
-    if (!hint) return;
-    hint.hidden = !text;
-    hint.textContent = text || '';
+    var download = document.getElementById('app-download');
+    var getApp = document.getElementById('get-app');
+    if (getApp && api.playStoreUrl) getApp.href = api.playStoreUrl();
+    if (hint) {
+      hint.hidden = !text;
+      hint.textContent = text || '';
+    }
+    if (download) download.hidden = !showDownload;
   }
 
   function isPhone() {
     return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
-  }
-
-  function goWebCheckout() {
-    window.location.href = '/checkout';
   }
 
   function androidAppIntent(path) {
@@ -36,40 +37,60 @@
     );
   }
 
+  function appCheckoutUrl(path) {
+    if (/Android/i.test(navigator.userAgent || '')) return androidAppIntent(path);
+    return 'hotpotchef://app' + path;
+  }
+
+  function tryOpenApp(url) {
+    var iframe = document.createElement('iframe');
+    iframe.setAttribute('aria-hidden', 'true');
+    iframe.style.display = 'none';
+    iframe.src = url;
+    document.body.appendChild(iframe);
+    setTimeout(function () {
+      if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+    }, 2500);
+    if (isPhone()) {
+      window.location.href = url;
+    }
+  }
+
   function wireOpenApp() {
     var open = document.getElementById('open-app');
     if (!open) return;
     var path = cart.appImportPath();
-    var custom = 'hotpotchef://app' + path;
-    open.href = '/checkout';
-    open.setAttribute('data-custom', custom);
+    var url = appCheckoutUrl(path);
+    open.href = url;
+    open.setAttribute('data-custom', 'hotpotchef://app' + path);
 
     if (open.getAttribute('data-wired') === '1') return;
     open.setAttribute('data-wired', '1');
     open.addEventListener('click', function (ev) {
       var path = cart.appImportPath();
-      if (!path || path === '/cart') {
-        ev.preventDefault();
-        showAppHint('Add a plate first, then checkout.');
-        return;
-      }
-      if (!isPhone()) {
-        return;
-      }
       ev.preventDefault();
-      var custom = 'hotpotchef://app' + path;
-      var openedAway = false;
-      function onHide() {
-        if (document.hidden) openedAway = true;
+      if (!path || path === '/cart') {
+        showAppHint('Add a plate first, then checkout.', false);
+        return;
       }
-      document.addEventListener('visibilitychange', onHide);
-      window.location.href = /Android/i.test(navigator.userAgent || '')
-        ? androidAppIntent(path)
-        : custom;
+      var url = appCheckoutUrl(path);
+      open.href = url;
+      if (!isPhone()) {
+        showAppHint(
+          'A computer cannot open the HotPotChef app. Download it on your phone, add these plates there, then checkout in the app. On this computer, use Pay on web.',
+          true
+        );
+        return;
+      }
+      tryOpenApp(url);
+      showAppHint('Opening HotPotChef with your plates…', false);
       setTimeout(function () {
-        document.removeEventListener('visibilitychange', onHide);
-        if (!openedAway) goWebCheckout();
-      }, 1400);
+        if (document.hidden) return;
+        showAppHint(
+          'Install HotPotChef on this phone if the app did not open, then tap Checkout in app again.',
+          true
+        );
+      }, 1600);
     });
   }
 
@@ -97,13 +118,8 @@
     var payWeb = document.getElementById('pay-web');
     var openApp = document.getElementById('open-app');
     var mixed = cart.kitchenIds().length > 1;
-    if (payWeb) payWeb.hidden = mixed;
+    if (payWeb) payWeb.hidden = false;
     if (openApp) openApp.hidden = false;
-    if (mixed && empty) {
-      empty.hidden = false;
-      empty.textContent =
-        'Web checkout is one kitchen at a time. Remove plates from extra kitchens, or checkout in the app.';
-    }
     list.innerHTML = items
       .map(function (item) {
         var price = api.money(item.price);

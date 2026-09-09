@@ -15,7 +15,7 @@ void main() {
     expect(isKitchenLivePhotoFresh(null, now: now), isFalse);
     expect(
       kitchenLivePhotoLabel(now.subtract(const Duration(minutes: 12)), now: now),
-      'Live from the kitchen · 12m ago',
+      'Fresh kitchen photo · 12m ago',
     );
   });
 

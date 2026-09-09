@@ -1,6 +1,7 @@
 /// Platform Ops permission keys and helpers (owner + scoped seats).
 library;
 
+import 'app_env.dart';
 import 'helpers.dart';
 
 const kPlatformOwnerEmail = 'suraj6784@gmail.com';
@@ -16,6 +17,7 @@ const kOpsPermissionAccounts = 'accounts';
 const kOpsPermissionHelpers = 'helpers';
 const kOpsPermissionCatalog = 'catalog';
 const kOpsPermissionProfile = 'profile';
+const kOpsPermissionAudit = 'audit';
 
 /// Scopes that can be granted via helper invite codes.
 const kOpsInviteablePermissions = <String>[
@@ -34,6 +36,7 @@ const kOpsAllPermissions = <String>[
   kOpsPermissionHelpers,
   kOpsPermissionCatalog,
   kOpsPermissionProfile,
+  kOpsPermissionAudit,
 ];
 
 String opsPermissionLabel(String key) {
@@ -60,6 +63,8 @@ String opsPermissionLabel(String key) {
       return 'Catalog';
     case kOpsPermissionProfile:
       return 'Profile';
+    case kOpsPermissionAudit:
+      return 'Audit';
     default:
       return key;
   }
@@ -81,7 +86,7 @@ const kOpsNavGroups = <OpsNavGroup>[
   ]),
   OpsNavGroup('Growth', [kOpsPermissionBrands]),
   OpsNavGroup('Support', [kOpsPermissionTickets, kOpsPermissionRefunds]),
-  OpsNavGroup('Team', [kOpsPermissionAccounts, kOpsPermissionHelpers]),
+  OpsNavGroup('Team', [kOpsPermissionAccounts, kOpsPermissionHelpers, kOpsPermissionAudit]),
 ];
 
 List<OpsNavGroup> opsNavGroupsFor(Iterable<String> availableKeys) {
@@ -106,7 +111,24 @@ String? opsNavGroupTitleFor(String key) {
 
 bool isPlatformOwnerEmail(String? email) {
   final value = (email ?? '').trim().toLowerCase();
-  return value.isNotEmpty && value == kPlatformOwnerEmail.toLowerCase();
+  if (value.isEmpty) return false;
+  final configured = appEnv('PLATFORM_OWNER_EMAIL').trim().toLowerCase();
+  final expected = configured.contains('@') ? configured : kPlatformOwnerEmail.toLowerCase();
+  return value == expected;
+}
+
+String opsFriendlyError(Object error) {
+  final text = error.toString().toLowerCase();
+  if (text.contains('permission') || text.contains('not authorized') || text.contains('jwt')) {
+    return 'You do not have permission for this action.';
+  }
+  if (text.contains('network') || text.contains('timeout') || text.contains('socket') || text.contains('offline')) {
+    return 'Network issue. Try again.';
+  }
+  if (text.contains('group cart') || text.contains('already checked out')) {
+    return 'This group cart is no longer open.';
+  }
+  return 'Could not complete that action. Try again.';
 }
 
 List<String> normalizeOpsPermissions(dynamic raw, {bool owner = false}) {

@@ -2,13 +2,13 @@
 
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/helpers.dart';
+import '../utils/app_env.dart';
 import '../utils/network.dart';
 import '../utils/payment_preferences.dart';
 import '../utils/pricing_calculator.dart';
@@ -506,7 +506,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _heldRazorpayOrderId = razorpayOrderId;
       _orderRecorded = false;
 
-      final razorpayKey = dotenv.env['RAZORPAY_KEY_ID'] ?? '';
+      final razorpayKey = appEnv('RAZORPAY_KEY_ID');
       if (razorpayKey.isEmpty) {
         _releaseInventoryHold();
         throw Exception('Payment gateway configuration missing.');

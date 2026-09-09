@@ -4,7 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../utils/app_env.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -144,7 +144,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
   }
 
   Future<List<PlacePrediction>> _executePlaceAutocomplete(String query) async {
-    final apiKey = dotenv.env['GOOGLE_MAPS_API_KEY'] ?? '';
+    final apiKey = appEnv('GOOGLE_MAPS_API_KEY');
     final trimmed = query.trim();
     if (trimmed.length < 3 || apiKey.isEmpty) return [];
 
@@ -178,7 +178,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
 
   Future<void> _fetchAndFillPlaceDetails(String placeId) async {
     setState(() => _isLoading = true);
-    final apiKey = dotenv.env['GOOGLE_MAPS_API_KEY'] ?? '';
+    final apiKey = appEnv('GOOGLE_MAPS_API_KEY');
 
     final url = Uri.parse(
       'https://maps.googleapis.com/maps/api/place/details/json'

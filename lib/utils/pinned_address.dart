@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'app_env.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:http/http.dart' as http;
 
@@ -244,7 +244,7 @@ Future<PinnedAddressParts> reverseGeocodeLatLng(double latitude, double longitud
 Future<PinnedAddressParts?> _reverseGeocodeGoogle(double latitude, double longitude) async {
   String apiKey = '';
   try {
-    apiKey = dotenv.env['GOOGLE_MAPS_API_KEY']?.trim() ?? '';
+    apiKey = appEnv('GOOGLE_MAPS_API_KEY');
   } catch (_) {}
   if (apiKey.isEmpty) return null;
 

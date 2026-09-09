@@ -120,12 +120,9 @@
       addBtn.hidden = false;
       addBtn.onclick = function () {
         var result = window.HotPotCart.add(meal, 1);
-        if (result && result.reason === 'kitchen') {
+        if (result && result.ok === false) {
           show('status', true);
-          setText(
-            'status',
-            'Web checkout is one kitchen at a time. Empty the cart first, or finish the current kitchen.'
-          );
+          setText('status', 'Could not add that plate. Try again.');
           return;
         }
         addBtn.textContent = 'Added · view cart';

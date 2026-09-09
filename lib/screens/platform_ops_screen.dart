@@ -116,6 +116,7 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> {
       ),
     );
     add(kOpsPermissionKyc, 'KYC', () => _KycOpsList(key: ValueKey('kyc-$_reloadToken')));
+    add(kOpsPermissionAudit, 'Audit', () => _OpsAuditList(key: ValueKey('audit-$_reloadToken')));
     if (owner) {
       specs.add(
         _OpsTabSpec(
@@ -205,7 +206,7 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Ops packaging status failed');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not update: $e'), backgroundColor: Colors.redAccent),
+        SnackBar(content: Text(opsFriendlyError(e)), backgroundColor: Colors.redAccent),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -234,7 +235,7 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Ops FSSAI status failed');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not update: $e'), backgroundColor: Colors.redAccent),
+        SnackBar(content: Text(opsFriendlyError(e)), backgroundColor: Colors.redAccent),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -272,7 +273,7 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Ops brand campaign status failed');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not update: $e'), backgroundColor: Colors.redAccent),
+        SnackBar(content: Text(opsFriendlyError(e)), backgroundColor: Colors.redAccent),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -301,7 +302,7 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Ops ticket status failed');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not update: $e'), backgroundColor: Colors.redAccent),
+        SnackBar(content: Text(opsFriendlyError(e)), backgroundColor: Colors.redAccent),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -330,7 +331,7 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Ops dispute status failed');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not update: $e'), backgroundColor: Colors.redAccent),
+        SnackBar(content: Text(opsFriendlyError(e)), backgroundColor: Colors.redAccent),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -355,7 +356,7 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Ops meal status failed');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not update: $e'), backgroundColor: Colors.redAccent),
+        SnackBar(content: Text(opsFriendlyError(e)), backgroundColor: Colors.redAccent),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -391,7 +392,7 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Ops open refund dispute failed');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not open dispute: $e'), backgroundColor: Colors.redAccent),
+        SnackBar(content: Text(opsFriendlyError(e)), backgroundColor: Colors.redAccent),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -567,6 +568,8 @@ IconData _opsNavIcon(String key) {
       return Icons.people_outline;
     case kOpsPermissionHelpers:
       return Icons.support_agent_outlined;
+    case kOpsPermissionAudit:
+      return Icons.policy_outlined;
     default:
       return Icons.tune;
   }
@@ -787,7 +790,7 @@ class _FssaiOpsList extends StatelessWidget {
           return EmptyState(
             icon: Icons.error_outline,
             title: 'Could not load FSSAI queue',
-            message: '${snap.error}',
+            message: opsFriendlyError(snap.error ?? 'unknown'),
           );
         }
         final rows = snap.data ?? const [];
@@ -901,7 +904,7 @@ class _BrandOpsList extends StatelessWidget {
           return EmptyState(
             icon: Icons.error_outline,
             title: 'Could not load brand referrals',
-            message: '${snap.error}',
+            message: opsFriendlyError(snap.error ?? 'unknown'),
           );
         }
         final rows = snap.data ?? const [];
@@ -1055,7 +1058,7 @@ class _RefundsOpsList extends StatelessWidget {
           return EmptyState(
             icon: Icons.error_outline,
             title: 'Could not load refunds',
-            message: '${snap.error}',
+            message: opsFriendlyError(snap.error ?? 'unknown'),
           );
         }
         final data = snap.data;
@@ -1223,7 +1226,7 @@ class _TicketsOpsList extends StatelessWidget {
           return EmptyState(
             icon: Icons.error_outline,
             title: 'Could not load tickets',
-            message: '${snap.error}',
+            message: opsFriendlyError(snap.error ?? 'unknown'),
           );
         }
         final rows = snap.data ?? const [];
@@ -1393,62 +1396,10 @@ class _KycOpsList extends StatelessWidget {
       (row['role']?.toString() ?? '').trim().toLowerCase() == role;
 
   Future<List<Map<String, dynamic>>> _loadRows(SupabaseClient client) async {
-    List<Map<String, dynamic>> list;
-    try {
-      final rows = await client
-          .from('users')
-          .select(
-            'id, role, name, full_name, email, phone, fssai_number, fssai_proof_url, '
-            'fssai_verification_status, gstin, bank_account_number, bank_ifsc, '
-            'pan_number, aadhaar_masked, vehicle_type, vehicle_reg_no, vehicle_number',
-          )
-          .inFilter('role', ['Chef', 'Driver'])
-          .limit(120)
-          .withTimeout(NetworkTimeouts.standard);
-      list = List<Map<String, dynamic>>.from(rows as List);
-    } catch (_) {
-      // Older DBs may lack bank_* columns — still load KYC identity / FSSAI fields.
-      final rows = await client
-          .from('users')
-          .select(
-            'id, role, name, full_name, email, phone, fssai_number, fssai_proof_url, '
-            'fssai_verification_status, gstin, pan_number, aadhaar_masked',
-          )
-          .inFilter('role', ['Chef', 'Driver'])
-          .limit(120)
-          .withTimeout(NetworkTimeouts.standard);
-      list = List<Map<String, dynamic>>.from(rows as List);
-    }
-
-    final chefIds = list
-        .where((row) => (row['role']?.toString() ?? '').toLowerCase() == 'chef')
-        .map((row) => row['id']?.toString() ?? '')
-        .where((id) => id.isNotEmpty)
-        .toList();
-    if (chefIds.isNotEmpty) {
-      try {
-        final profiles = await client
-            .from('chef_profiles')
-            .select('user_id, local_kitchen_name')
-            .inFilter('user_id', chefIds)
-            .withTimeout(NetworkTimeouts.standard);
-        final byUser = <String, String>{};
-        for (final profile in List<Map<String, dynamic>>.from(profiles as List)) {
-          final id = profile['user_id']?.toString() ?? '';
-          if (id.isEmpty) continue;
-          byUser[id] = profile['local_kitchen_name']?.toString() ?? '';
-        }
-        for (final row in list) {
-          final id = row['id']?.toString() ?? '';
-          if (byUser.containsKey(id)) {
-            row['local_kitchen_name'] = byUser[id];
-          }
-        }
-      } catch (_) {
-        // KYC still loads bank/FSSAI fields if chef_profiles is unavailable.
-      }
-    }
-
+    final raw = await client.rpc('ops_list_kyc_queue').withTimeout(NetworkTimeouts.standard);
+    final list = raw is List
+        ? [for (final row in raw) Map<String, dynamic>.from(row as Map)]
+        : <Map<String, dynamic>>[];
     list.sort((a, b) {
       final ca = _kycChecklistFor(a);
       final cb = _kycChecklistFor(b);
@@ -1471,7 +1422,7 @@ class _KycOpsList extends StatelessWidget {
           return EmptyState(
             icon: Icons.error_outline,
             title: 'Could not load KYC queue',
-            message: '${snap.error}',
+            message: opsFriendlyError(snap.error ?? 'unknown'),
           );
         }
         final rows = snap.data ?? const [];
@@ -1728,7 +1679,7 @@ class _OpsTicketThreadScreenState extends State<_OpsTicketThreadScreen> {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Ops ticket reply failed');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not send: $e'), backgroundColor: Colors.redAccent),
+        SnackBar(content: Text(opsFriendlyError(e)), backgroundColor: Colors.redAccent),
       );
     } finally {
       if (mounted) setState(() => _sending = false);

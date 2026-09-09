@@ -839,6 +839,14 @@ a {
   border-color: rgba(36, 31, 28, 0.16);
 }
 
+.app-download-note {
+  margin: 0.85rem 0 0;
+}
+
+.app-download-note .btn {
+  width: 100%;
+}
+
 button.btn {
   font: inherit;
 }

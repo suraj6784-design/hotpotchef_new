@@ -52,10 +52,6 @@
     var amount = Math.max(1, Number(qty) || 1);
     var items = read();
     var chefId = (meal.chef_id || '').toString();
-    var kitchens = kitchenIds();
-    if (chefId && kitchens.length && kitchens.indexOf(chefId) === -1) {
-      return { ok: false, reason: 'kitchen' };
-    }
     var existing = items.find(function (i) {
       return i.id === id;
     });
@@ -66,6 +62,7 @@
       existing.chef_id = meal.chef_id || existing.chef_id;
       existing.chef_name = meal.local_kitchen_name || meal.chef_name || existing.chef_name;
       existing.image_url = meal.image_url || existing.image_url;
+      if (meal.time_slot) existing.time_slot = meal.time_slot;
     } else {
       items.push({
         id: id,
@@ -75,6 +72,7 @@
         chef_id: meal.chef_id,
         chef_name: meal.local_kitchen_name || meal.chef_name || '',
         image_url: meal.image_url || '',
+        time_slot: meal.time_slot || '',
       });
     }
     write(items);

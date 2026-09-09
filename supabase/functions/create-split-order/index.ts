@@ -89,21 +89,23 @@ serve(async (req) => {
       .eq('user_id', user.id)
       .maybeSingle()
     let packagingAlreadyIncluded = packagingFeeForLoyaltyTier(gam?.loyalty_tier)
-    try {
-      const { data: pricing } = await admin.rpc('calculate_cart_total', {
-        p_items: cartItems,
-        p_user_id: user.id,
-      })
-      if (pricing?.packaging_fee != null) {
-        packagingAlreadyIncluded = asNumber(pricing.packaging_fee, packagingAlreadyIncluded)
-      }
-    } catch {
-      // Keep the loyalty lookup. Service-role RPC has no auth.uid().
+    const { data: pricing, error: quoteError } = await admin.rpc('calculate_cart_total', {
+      p_items: cartItems,
+      p_user_id: user.id,
+    })
+    if (quoteError) {
+      return jsonResponse({
+        success: false,
+        error: quoteError.message || 'Could not price this cart from the live menu',
+      }, 400)
     }
-
-    const foodOnly = cartItems.reduce((sum, row) => {
-      return sum + Math.max(0, asNumber(row.price, 0)) * Math.max(1, asNumber(row.quantity, 1))
-    }, 0)
+    const foodOnly = asNumber(pricing?.items_total ?? pricing?.item_total, 0)
+    if (foodOnly <= 0) {
+      return jsonResponse({ success: false, error: 'Cart prices could not be verified' }, 400)
+    }
+    if (pricing?.packaging_fee != null) {
+      packagingAlreadyIncluded = asNumber(pricing.packaging_fee, packagingAlreadyIncluded)
+    }
     const billBeforeCoins = foodOnly + packagingAlreadyIncluded + deliveryFee + tipAmount
 
     const coinsAllowed = cartItems.every((row) => {

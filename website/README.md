@@ -38,7 +38,7 @@ Deploy the `website/` folder as the site root (Vercel/Netlify rewrites included)
 
 1. **Catalog** — search + veg filter + matching kitchens on `/`
 2. **Hybrid** — add plates to web cart → **Checkout in app** opens `/cart?items=id:qty,…` → `CartImportScreen` → customer cart tab
-3. **Web pay** — sign in → `/checkout` → Razorpay → same Edge Functions as Android
+3. **Web pay** — sign in → `/checkout` → Razorpay → same Edge Functions as Android. Multi-kitchen carts and optional HotPot Coins are supported; line prices are taken from the live `meals` table, not the browser.
 
 ## App Links note
 

@@ -10,7 +10,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../utils/app_env.dart';
 import 'package:go_router/go_router.dart';
 
 import '../utils/helpers.dart';
@@ -369,7 +369,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
 
   Future<void> _fetchPolylineRoute(LatLng origin, LatLng destination) async {
     try {
-      final apiKey = dotenv.env['GOOGLE_MAPS_API_KEY'] ?? '';
+      final apiKey = appEnv('GOOGLE_MAPS_API_KEY');
       if (apiKey.isEmpty) return;
 
       PolylinePoints polylinePoints = PolylinePoints(apiKey: apiKey);

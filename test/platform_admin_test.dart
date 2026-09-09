@@ -16,6 +16,7 @@ void main() {
       expect(kOpsInviteablePermissions.contains(kOpsPermissionAccounts), isFalse);
       expect(kOpsInviteablePermissions.contains(kOpsPermissionHelpers), isFalse);
       expect(kOpsInviteablePermissions.contains(kOpsPermissionCatalog), isFalse);
+      expect(kOpsInviteablePermissions.contains(kOpsPermissionAudit), isFalse);
       expect(kOpsInviteablePermissions.contains(kOpsPermissionFssai), isTrue);
     });
 
@@ -24,6 +25,12 @@ void main() {
       expect(groups.map((g) => g.title), ['Overview', 'Kitchen', 'Support']);
       expect(groups[1].keys, ['kyc']);
       expect(opsNavGroupTitleFor(kOpsPermissionKyc), 'Kitchen');
+    });
+
+    test('ops snackbars do not echo raw exceptions', () {
+      expect(opsFriendlyError(Exception('JWT expired permission denied')), contains('permission'));
+      expect(opsFriendlyError('SocketException: Failed host lookup'), contains('Network'));
+      expect(opsFriendlyError('weird postgrest 500'), 'Could not complete that action. Try again.');
     });
 
     test('permission containment', () {

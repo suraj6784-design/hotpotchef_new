@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'app_env.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -20,11 +20,8 @@ String? parseOrderUuid(String? raw) {
 
 class SupportConfig {
   static String? _env(String key) {
-    try {
-      return dotenv.env[key]?.trim();
-    } catch (_) {
-      return null;
-    }
+    final value = appEnv(key);
+    return value.isEmpty ? null : value;
   }
 
   static String get email {

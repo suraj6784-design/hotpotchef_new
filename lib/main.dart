@@ -9,8 +9,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-
+import 'utils/app_env.dart';
 import 'utils/helpers.dart';
 import 'utils/app_theme.dart';
 import 'utils/app_router.dart';
@@ -23,8 +22,7 @@ final GlobalKey<ScaffoldMessengerState> globalMessengerKey = GlobalKey<ScaffoldM
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. Load environment variables first
-  await dotenv.load(fileName: ".env");
+  await loadAppEnv();
 
   await Firebase.initializeApp();
 
@@ -36,14 +34,14 @@ void main() async {
   };
 
   // 2. Validate environment credentials
-  final supabaseUrl = dotenv.env['SUPABASE_URL'];
-  final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'];
+  final supabaseUrl = appEnv('SUPABASE_URL');
+  final supabaseAnonKey = appEnv('SUPABASE_ANON_KEY');
 
-  if (supabaseUrl == null || supabaseUrl.isEmpty) {
-    throw Exception("FATAL: SUPABASE_URL is missing or empty in your .env file!");
+  if (supabaseUrl.isEmpty) {
+    throw Exception('FATAL: SUPABASE_URL is missing. Pass --dart-define=SUPABASE_URL=... or a local .env file.');
   }
-  if (supabaseAnonKey == null || supabaseAnonKey.isEmpty) {
-    throw Exception("FATAL: SUPABASE_ANON_KEY is missing or empty in your .env file!");
+  if (supabaseAnonKey.isEmpty) {
+    throw Exception('FATAL: SUPABASE_ANON_KEY is missing. Pass --dart-define=SUPABASE_ANON_KEY=... or a local .env file.');
   }
 
   // 3. Initialize Supabase

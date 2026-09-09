@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
+import '../utils/app_env.dart';
 import '../utils/helpers.dart';
 import '../utils/network.dart';
 
@@ -67,7 +67,7 @@ class _ChefBoostSheetState extends State<ChefBoostSheet> {
         throw Exception(data['error']?.toString() ?? 'Could not start the boost payment.');
       }
 
-      final key = dotenv.env['RAZORPAY_KEY_ID'] ?? '';
+      final key = appEnv('RAZORPAY_KEY_ID');
       if (key.isEmpty) throw Exception('Payment gateway configuration missing.');
 
       _boostId = data['boost_id']?.toString();

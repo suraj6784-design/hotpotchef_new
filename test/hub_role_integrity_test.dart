@@ -29,9 +29,10 @@ void main() {
       expect(roleCanOpenAuthenticatedPath(AppRole.chef, '/platform-ops'), isTrue);
     });
 
-    test('admin is not a marketplace chef/customer/driver hub', () {
+    test('admin home is ops; diner feed is allowed, chef and driver hubs are not', () {
+      expect(roleCanOpenAuthenticatedPath(AppRole.admin, '/platform-ops'), isTrue);
+      expect(roleCanOpenAuthenticatedPath(AppRole.admin, '/customer-hub'), isTrue);
       expect(roleCanOpenAuthenticatedPath(AppRole.admin, '/chef-hub'), isFalse);
-      expect(roleCanOpenAuthenticatedPath(AppRole.admin, '/customer-hub'), isFalse);
       expect(roleCanOpenAuthenticatedPath(AppRole.admin, '/driver-hub'), isFalse);
       expect(AppRole.admin.canUsePackagingStore, isFalse);
       expect(AppRole.admin.usesReferral, isFalse);

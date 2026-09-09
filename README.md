@@ -20,4 +20,10 @@ Delivery options: Chef-Self, Delivery Partner, Customer Pickup, Dine In.
 
 ## Run
 
-Configure `.env` with `SUPABASE_URL` and `SUPABASE_ANON_KEY`, then `flutter run`.
+Configure `.env` with `SUPABASE_URL` and `SUPABASE_ANON_KEY`, then:
+
+```bash
+flutter run --dart-define-from-file=.env
+```
+
+Local `.env` is also read at startup if present. Do not list `.env` as a Flutter asset — that would ship secrets in the APK.

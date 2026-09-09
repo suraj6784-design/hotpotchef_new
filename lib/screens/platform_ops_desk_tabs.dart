@@ -188,14 +188,11 @@ class _OpsDashListState extends State<_OpsDashList> {
       var meals = 0;
       var users = 0;
       try {
-        final extras = await Future.wait([
-          client.from('support_tickets').select('id').inFilter('status', ['open', 'pending_customer', 'pending_ops']).limit(200),
-          client.from('meals').select('id').eq('status', 'Available').limit(200),
-          client.from('users').select('id').limit(200),
-        ]);
-        tickets = (extras[0] as List).length;
-        meals = (extras[1] as List).length;
-        users = (extras[2] as List).length;
+        final countsRaw = await client.rpc('ops_desk_counts').withTimeout(NetworkTimeouts.standard);
+        final counts = countsRaw is Map ? Map<String, dynamic>.from(countsRaw) : <String, dynamic>{};
+        tickets = int.tryParse(counts['open_tickets']?.toString() ?? '') ?? 0;
+        meals = int.tryParse(counts['live_meals']?.toString() ?? '') ?? 0;
+        users = int.tryParse(counts['user_count']?.toString() ?? '') ?? 0;
       } catch (_) {}
       if (!mounted) return;
       setState(() {
@@ -208,7 +205,7 @@ class _OpsDashListState extends State<_OpsDashList> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = '$e';
+        _error = opsFriendlyError(e);
         _loading = false;
       });
     }
@@ -389,12 +386,11 @@ class _OpsAccountsListState extends State<_OpsAccountsList> {
   }
 
   Future<List<Map<String, dynamic>>> _load() async {
-    final rows = await Supabase.instance.client
-        .from('users')
-        .select('id, role, name, full_name, email, phone, account_status')
-        .limit(200)
-        .withTimeout(NetworkTimeouts.standard);
-    return List<Map<String, dynamic>>.from(rows as List);
+    final raw = await Supabase.instance.client.rpc('ops_list_accounts').withTimeout(NetworkTimeouts.standard);
+    if (raw is List) {
+      return [for (final row in raw) Map<String, dynamic>.from(row as Map)];
+    }
+    return const [];
   }
 
   Future<void> _setRole(Map<String, dynamic> row, String role) async {
@@ -457,7 +453,7 @@ class _OpsAccountsListState extends State<_OpsAccountsList> {
                 return const Center(child: CircularProgressIndicator());
               }
               if (snap.hasError) {
-                return EmptyState(icon: Icons.error_outline, title: 'Could not load accounts', message: '${snap.error}');
+                return EmptyState(icon: Icons.error_outline, title: 'Could not load accounts', message: opsFriendlyError(snap.error ?? 'unknown'));
               }
               final q = _search.text.trim().toLowerCase();
               var rows = snap.data ?? const <Map<String, dynamic>>[];
@@ -681,7 +677,7 @@ class _OpsHelpersListState extends State<_OpsHelpersList> {
           return const Center(child: CircularProgressIndicator());
         }
         if (snap.hasError) {
-          return EmptyState(icon: Icons.error_outline, title: 'Could not load helpers', message: '${snap.error}');
+          return EmptyState(icon: Icons.error_outline, title: 'Could not load helpers', message: opsFriendlyError(snap.error ?? 'unknown'));
         }
         final data = snap.data!;
         final helpers = data.seats.where((s) => (s['seat_role']?.toString() ?? '') == 'helper' && s['revoked_at'] == null).toList();
@@ -808,7 +804,7 @@ class _CatalogOpsList extends StatelessWidget {
           return const Center(child: CircularProgressIndicator());
         }
         if (snap.hasError) {
-          return EmptyState(icon: Icons.error_outline, title: 'Could not load catalog', message: '${snap.error}');
+          return EmptyState(icon: Icons.error_outline, title: 'Could not load catalog', message: opsFriendlyError(snap.error ?? 'unknown'));
         }
         final rows = snap.data ?? const [];
         if (rows.isEmpty) {
@@ -844,6 +840,70 @@ class _CatalogOpsList extends StatelessWidget {
                   TextButton(
                     onPressed: busy ? null : () => onStatus(row, available ? 'Paused' : 'Available'),
                     child: Text(available ? 'Pause' : 'Make live'),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _OpsAuditList extends StatelessWidget {
+  const _OpsAuditList({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<dynamic>(
+      future: Supabase.instance.client
+          .rpc('ops_list_audit', params: {'p_limit': 80})
+          .withTimeout(NetworkTimeouts.standard),
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snap.hasError) {
+          return EmptyState(
+            icon: Icons.policy_outlined,
+            title: 'Could not load audit log',
+            message: opsFriendlyError(snap.error ?? 'unknown'),
+          );
+        }
+        final raw = snap.data;
+        final rows = raw is List
+            ? [for (final row in raw) Map<String, dynamic>.from(row as Map)]
+            : const <Map<String, dynamic>>[];
+        if (rows.isEmpty) {
+          return const EmptyState(
+            icon: Icons.policy_outlined,
+            title: 'No audit rows yet',
+            message: 'Role, FSSAI, ticket, and catalog changes by ops appear here.',
+          );
+        }
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: rows.length,
+          itemBuilder: (context, index) {
+            final row = rows[index];
+            return AppCard(
+              margin: const EdgeInsets.only(bottom: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    row['action']?.toString() ?? 'update',
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    [
+                      row['target_table']?.toString() ?? '',
+                      row['target_id']?.toString() ?? '',
+                      row['created_at']?.toString() ?? '',
+                    ].where((s) => s.trim().isNotEmpty).join(' · '),
+                    style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
                   ),
                 ],
               ),

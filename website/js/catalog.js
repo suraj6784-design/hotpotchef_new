@@ -369,8 +369,8 @@
         });
         if (!meal) return;
         var result = window.HotPotCart.add(meal, 1);
-        if (!result.ok && result.reason === 'kitchen') {
-          setStatus('Web cart is one kitchen at a time. Clear extra kitchens in the cart, or finish in the app.', true);
+        if (!result.ok) {
+          setStatus('Could not add that plate. Try again.', true);
           return;
         }
         btn.textContent = 'Added';

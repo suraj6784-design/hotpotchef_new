@@ -107,13 +107,6 @@
         service_type: (meal.service_type || 'Delivery Partner').toString().split(',')[0].trim(),
       });
     }
-    var chefs = {};
-    out.forEach(function (m) {
-      chefs[(m.chef_id || '').toString()] = true;
-    });
-    if (Object.keys(chefs).filter(Boolean).length > 1) {
-      throw new Error('Web checkout supports one kitchen at a time. Remove other kitchens from the cart.');
-    }
     return out;
   }
 
@@ -124,6 +117,7 @@
     var address = (document.getElementById('co-address').value || '').trim();
     var notes = (document.getElementById('co-notes').value || '').trim();
     var deliveryFee = document.getElementById('co-delivery-fee').checked ? 40 : 0;
+    var applyCoins = !!(document.getElementById('co-apply-coins') && document.getElementById('co-apply-coins').checked);
     var btn = document.getElementById('co-pay');
 
     if (phone.length < 10) {
@@ -156,7 +150,7 @@
         instructions: notes,
         delivery_fee: deliveryFee,
         tip_amount: 0,
-        apply_coins: false,
+        apply_coins: applyCoins,
       });
       if (!created || created.success !== true) {
         throw new Error((created && created.error) || 'Could not start payment');
@@ -185,7 +179,7 @@
               delivery_address: address,
               instructions: notes,
               cart_items: cartItems,
-              apply_coins: false,
+              apply_coins: applyCoins,
               tip_amount: 0,
               delivery_fee: deliveryFee,
             });

@@ -115,6 +115,10 @@ class SharedCartService {
         throw Exception('Group ordering room not found.');
       }
 
+      try {
+        await _supabase.rpc('join_shared_cart', params: {'p_room_code': code});
+      } catch (_) {}
+
       final items = <CartItemModel>[];
       if (response['items'] is List) {
         for (final e in response['items'] as List) {
