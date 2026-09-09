@@ -16,6 +16,7 @@ import '../providers/kitchen_follows_provider.dart';
 import '../providers/last_order_provider.dart';
 import '../providers/meal_plans_provider.dart';
 import '../services/auth_session.dart';
+import '../services/ticket_reply_seen_store.dart';
 import '../utils/helpers.dart';
 import '../utils/legal_content.dart';
 import '../utils/payment_preferences.dart';
@@ -51,6 +52,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
   int _orderCount = 0;
   String _email = '';
   String _preferredPayMethod = 'upi';
+  String _supportTicketsSubtitle = 'Track replies and open conversations';
 
   bool _isLoading = true;
   bool _isSaving = false;
@@ -137,6 +139,34 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
 
       final preferredPay = await loadPreferredPaymentMethod();
       final ops = await AuthSession.isPlatformOps();
+      var ticketsSubtitle = 'Track replies and open conversations';
+      try {
+        final ticketRows = await _supabase
+            .from('support_tickets')
+            .select('id, public_id, status, last_message_at')
+            .eq('created_by', user.id)
+            .eq('status', 'pending_customer')
+            .order('last_message_at', ascending: false)
+            .limit(8);
+        final tickets = List<Map<String, dynamic>>.from(ticketRows as List);
+        final seen = await TicketReplySeenStore.lastSeenByTicket(
+          tickets.map((row) => row['id']?.toString() ?? ''),
+        );
+        final waiting = tickets.where((row) {
+          final id = row['id']?.toString() ?? '';
+          return dinerHasSupportReplyWaiting(
+            status: row['status']?.toString(),
+            lastMessageAt: row['last_message_at']?.toString(),
+            lastSeenMessageAt: seen[id],
+          );
+        }).toList();
+        if (waiting.isNotEmpty) {
+          ticketsSubtitle = supportRepliedNoticeCopy(
+            publicId: waiting.first['public_id']?.toString(),
+            extraCount: waiting.length - 1,
+          );
+        }
+      } catch (_) {}
 
       if (mounted) {
         setState(() {
@@ -144,6 +174,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
           _orderCount = pastOrdersCount;
           _preferredPayMethod = preferredPay;
           _isPlatformOps = ops;
+          _supportTicketsSubtitle = ticketsSubtitle;
           _isLoading = false;
         });
       }
@@ -1148,7 +1179,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                     _buildListTile(
                       icon: Icons.confirmation_number_outlined,
                       title: 'My support tickets',
-                      subtitle: 'Track replies and open conversations',
+                      subtitle: _supportTicketsSubtitle,
                       isDark: isDark,
                       onTap: () => context.push('/support-tickets'),
                     ),

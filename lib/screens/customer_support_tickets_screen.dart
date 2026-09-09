@@ -4,6 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../utils/helpers.dart';
 import '../utils/network.dart';
+import '../utils/support.dart';
+import '../services/ticket_reply_seen_store.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/customer_ui_components.dart';
 
@@ -19,6 +21,7 @@ class _CustomerSupportTicketsScreenState extends State<CustomerSupportTicketsScr
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _tickets = const [];
+  Map<String, String> _seenByTicket = const {};
 
   @override
   void initState() {
@@ -45,13 +48,19 @@ class _CustomerSupportTicketsScreenState extends State<CustomerSupportTicketsScr
     try {
       final rows = await _supabase
           .from('support_tickets')
-          .select('id, public_id, subject, status, sla_due_at, order_number, created_at')
+          .select('id, public_id, subject, status, sla_due_at, last_message_at, order_number, created_at')
           .eq('created_by', user.id)
           .order('created_at', ascending: false)
           .withTimeout(NetworkTimeouts.standard);
       if (!mounted) return;
+      final tickets = List<Map<String, dynamic>>.from(rows as List);
+      final seen = await TicketReplySeenStore.lastSeenByTicket(
+        tickets.map((row) => row['id']?.toString() ?? ''),
+      );
+      if (!mounted) return;
       setState(() {
-        _tickets = List<Map<String, dynamic>>.from(rows as List);
+        _tickets = tickets;
+        _seenByTicket = seen;
         _loading = false;
       });
     } catch (e) {
@@ -63,12 +72,7 @@ class _CustomerSupportTicketsScreenState extends State<CustomerSupportTicketsScr
     }
   }
 
-  String _formatSla(String? raw) {
-    if (raw == null || raw.isEmpty) return '—';
-    final dt = DateTime.tryParse(raw);
-    if (dt == null) return raw;
-    return DateFormat('dd MMM, hh:mm a').format(dt.toLocal());
-  }
+  String _formatSla(String? raw) => formatTicketSlaDue(raw);
 
   @override
   Widget build(BuildContext context) {
@@ -126,10 +130,21 @@ class _CustomerSupportTicketsScreenState extends State<CustomerSupportTicketsScr
                           final status = (row['status']?.toString() ?? 'open').replaceAll('_', ' ');
                           final orderNumber = row['order_number']?.toString() ?? '';
                           final sla = _formatSla(row['sla_due_at']?.toString());
+                          final ticketId = row['id']?.toString() ?? '';
+                          final waiting = dinerHasSupportReplyWaiting(
+                            status: row['status']?.toString(),
+                            lastMessageAt: row['last_message_at']?.toString(),
+                            lastSeenMessageAt: _seenByTicket[ticketId],
+                          );
 
                           return AppCard(
                             margin: const EdgeInsets.only(bottom: 12),
                             onTap: () async {
+                              await TicketReplySeenStore.markSeen(
+                                ticketId,
+                                row['last_message_at']?.toString(),
+                              );
+                              if (!context.mounted) return;
                               await Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) => _SupportTicketDetailScreen(ticket: row),
@@ -152,7 +167,7 @@ class _CustomerSupportTicketsScreenState extends State<CustomerSupportTicketsScr
                                       ),
                                     ),
                                     Text(
-                                      status,
+                                      waiting ? 'Support replied' : status,
                                       style: const TextStyle(
                                         fontWeight: FontWeight.w700,
                                         fontSize: 12,
@@ -172,9 +187,10 @@ class _CustomerSupportTicketsScreenState extends State<CustomerSupportTicketsScr
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  orderNumber.isEmpty
-                                      ? 'SLA due $sla'
-                                      : 'Order $orderNumber · SLA due $sla',
+                                  [
+                                    if (orderNumber.isNotEmpty) 'Order $orderNumber',
+                                    if (sla.isNotEmpty) 'SLA $sla',
+                                  ].join(' · '),
                                   style: TextStyle(color: muted, fontSize: 12),
                                 ),
                               ],
@@ -209,6 +225,10 @@ class _SupportTicketDetailScreenState extends State<_SupportTicketDetailScreen> 
   @override
   void initState() {
     super.initState();
+    TicketReplySeenStore.markSeen(
+      widget.ticket['id']?.toString() ?? '',
+      widget.ticket['last_message_at']?.toString(),
+    );
     _loadMessages();
   }
 

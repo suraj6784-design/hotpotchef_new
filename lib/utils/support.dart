@@ -159,6 +159,39 @@ String supportLinkedOrderCopy({String? orderNumber}) {
   return 'This conversation is linked to order $number. We typically reply within one business day.';
 }
 
+/// Public ops replies wait on the diner unless the ticket is already in that state.
+bool shouldMarkPendingCustomerAfterOpsPublicReply(String? status) {
+  return (status ?? '').toLowerCase() != 'pending_customer';
+}
+
+String formatTicketSlaDue(String? raw) {
+  final text = (raw ?? '').trim();
+  if (text.isEmpty) return '';
+  final dt = DateTime.tryParse(text);
+  if (dt == null) return text;
+  return '${formatFriendlyDate(dt)} · ${formatAppTime(dt)}';
+}
+
+bool dinerHasSupportReplyWaiting({
+  required String? status,
+  String? lastMessageAt,
+  String? lastSeenMessageAt,
+}) {
+  if ((status ?? '').toLowerCase() != 'pending_customer') return false;
+  final latest = (lastMessageAt ?? '').trim();
+  if (latest.isEmpty) return true;
+  return latest != (lastSeenMessageAt ?? '').trim();
+}
+
+String supportRepliedNoticeCopy({required String? publicId, int extraCount = 0}) {
+  final id = (publicId ?? '').trim();
+  if (id.isEmpty) {
+    return extraCount > 0 ? 'Support replied to your tickets.' : 'Support replied to your ticket.';
+  }
+  if (extraCount > 0) return 'Support replied on $id and $extraCount more.';
+  return 'Support replied on $id.';
+}
+
 String _mailtoQuery(Map<String, String> params) {
   return params.entries
       .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')

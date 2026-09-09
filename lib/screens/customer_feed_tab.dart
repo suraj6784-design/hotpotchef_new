@@ -25,6 +25,7 @@ import '../widgets/app_widgets.dart';
 import '../widgets/daily_streak_banner.dart';
 import '../widgets/weekly_plan_banner.dart';
 import '../widgets/last_order_banner.dart';
+import '../widgets/support_replied_banner.dart';
 import '../widgets/live_offers_flash_banner.dart';
 import '../widgets/festival_hampers_banner.dart';
 import '../widgets/society_nights_banner.dart';
@@ -1240,8 +1241,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             ),
           ),
 
-          if (isLoggedIn)
+          if (isLoggedIn) ...[
             LastOrderReorderBanner(onAddedToCart: widget.onReorderToOrders ?? widget.onGoToCart),
+            const SupportRepliedBanner(),
+          ],
 
           if (!_hasActiveSearch) ...[
             if (isLoggedIn) ...[

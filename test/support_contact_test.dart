@@ -2,6 +2,36 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hotpotchef_new/utils/support.dart';
 
 void main() {
+  test('ops public reply moves the ticket to pending customer unless already there', () {
+    expect(shouldMarkPendingCustomerAfterOpsPublicReply('open'), isTrue);
+    expect(shouldMarkPendingCustomerAfterOpsPublicReply('resolved'), isTrue);
+    expect(shouldMarkPendingCustomerAfterOpsPublicReply('pending_customer'), isFalse);
+  });
+
+  test('ticket SLA copy uses a local clock, not an ISO timestamp', () {
+    expect(
+      formatTicketSlaDue('2026-06-09T20:10:47.565553+00:00'),
+      isNot(contains('T20:10')),
+    );
+    expect(formatTicketSlaDue('2026-06-09T20:10:47.565553+00:00'), isNot(contains('+00:00')));
+  });
+
+  test('diner notice waits on pending_customer until the last message is seen', () {
+    expect(
+      dinerHasSupportReplyWaiting(status: 'pending_customer', lastMessageAt: 'a', lastSeenMessageAt: null),
+      isTrue,
+    );
+    expect(
+      dinerHasSupportReplyWaiting(status: 'pending_customer', lastMessageAt: 'a', lastSeenMessageAt: 'a'),
+      isFalse,
+    );
+    expect(dinerHasSupportReplyWaiting(status: 'open', lastMessageAt: 'a'), isFalse);
+    expect(
+      supportRepliedNoticeCopy(publicId: 'TKT-AF743674'),
+      'Support replied on TKT-AF743674.',
+    );
+  });
+
   test('email subject includes the visible order number', () {
     expect(
       supportContactSubject(orderNumber: 'OCB30688'),

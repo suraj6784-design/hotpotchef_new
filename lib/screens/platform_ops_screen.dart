@@ -107,7 +107,19 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> with SingleTicker
     add(
       kOpsPermissionTickets,
       'Tickets',
-      () => _TicketsOpsList(key: ValueKey('ticket-$_reloadToken'), busy: _busy, onStatus: _setTicketStatus),
+      () => _TicketsOpsList(
+        key: ValueKey('ticket-$_reloadToken'),
+        busy: _busy,
+        onStatus: _setTicketStatus,
+        onOpenThread: (row) async {
+          await Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => _OpsTicketThreadScreen(ticket: row),
+            ),
+          );
+          if (mounted) _bump();
+        },
+      ),
     );
     add(kOpsPermissionKyc, 'KYC', () => _KycOpsList(key: ValueKey('kyc-$_reloadToken')));
     if (owner) {
@@ -1033,10 +1045,16 @@ class _RefundsOpsList extends StatelessWidget {
 }
 
 class _TicketsOpsList extends StatelessWidget {
-  const _TicketsOpsList({super.key, required this.busy, required this.onStatus});
+  const _TicketsOpsList({
+    super.key,
+    required this.busy,
+    required this.onStatus,
+    required this.onOpenThread,
+  });
 
   final bool busy;
   final Future<void> Function(Map<String, dynamic> row, String status) onStatus;
+  final void Function(Map<String, dynamic> row) onOpenThread;
 
   bool _isOverdue(Map<String, dynamic> row) {
     final status = (row['status']?.toString() ?? '').toLowerCase();
@@ -1091,7 +1109,7 @@ class _TicketsOpsList extends StatelessWidget {
             final publicId = row['public_id']?.toString() ?? 'Ticket';
             final subject = row['subject']?.toString() ?? '';
             final orderNumber = row['order_number']?.toString() ?? '';
-            final sla = row['sla_due_at']?.toString() ?? '';
+            final sla = formatTicketSlaDue(row['sla_due_at']?.toString());
             return AppCard(
               margin: const EdgeInsets.only(bottom: 12),
               child: Container(
@@ -1105,37 +1123,61 @@ class _TicketsOpsList extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(publicId, style: const TextStyle(fontWeight: FontWeight.w800)),
-                        ),
-                        Text(
-                          overdue ? 'SLA overdue · $status' : status,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 12,
-                            color: overdue ? AppTheme.error : AppTheme.primary,
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () => onOpenThread(row),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(publicId, style: const TextStyle(fontWeight: FontWeight.w800)),
+                                  ),
+                                  Text(
+                                    overdue ? 'SLA overdue · $status' : status,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 12,
+                                      color: overdue ? AppTheme.error : AppTheme.primary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(subject, style: const TextStyle(fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 4),
+                              Text(
+                                [
+                                  if (orderNumber.isNotEmpty) 'Order $orderNumber',
+                                  if (sla.isNotEmpty) 'SLA $sla',
+                                  row['category']?.toString() ?? '',
+                                ].where((s) => s.trim().isNotEmpty).join(' · '),
+                                style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(subject, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 4),
-                    Text(
-                      [
-                        if (orderNumber.isNotEmpty) 'Order $orderNumber',
-                        if (sla.isNotEmpty) 'SLA $sla',
-                        row['category']?.toString() ?? '',
-                      ].where((s) => s.trim().isNotEmpty).join(' · '),
-                      style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                      ),
                     ),
                     const SizedBox(height: 10),
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
                       children: [
+                        FilledButton(
+                          onPressed: () => onOpenThread(row),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: AppTheme.primary,
+                            foregroundColor: Colors.white,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          child: const Text('Reply', style: TextStyle(fontSize: 12)),
+                        ),
                         OutlinedButton(
                           onPressed: busy || status == 'resolved' ? null : () => onStatus(row, 'resolved'),
                           child: const Text('Resolve', style: TextStyle(fontSize: 12)),
@@ -1377,6 +1419,305 @@ class _KycOpsList extends StatelessWidget {
           },
         );
       },
+    );
+  }
+}
+
+class _OpsTicketThreadScreen extends StatefulWidget {
+  const _OpsTicketThreadScreen({required this.ticket});
+
+  final Map<String, dynamic> ticket;
+
+  @override
+  State<_OpsTicketThreadScreen> createState() => _OpsTicketThreadScreenState();
+}
+
+class _OpsTicketThreadScreenState extends State<_OpsTicketThreadScreen> {
+  final _supabase = Supabase.instance.client;
+  final _replyController = TextEditingController();
+  bool _loading = true;
+  bool _sending = false;
+  bool _internalNote = false;
+  String? _error;
+  List<Map<String, dynamic>> _messages = const [];
+  late String _status;
+
+  String get _ticketId => widget.ticket['id']?.toString() ?? '';
+
+  @override
+  void initState() {
+    super.initState();
+    _status = (widget.ticket['status']?.toString() ?? 'open').toLowerCase();
+    _loadMessages();
+  }
+
+  @override
+  void dispose() {
+    _replyController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadMessages({bool silent = false}) async {
+    if (_ticketId.isEmpty) {
+      setState(() {
+        _loading = false;
+        _error = 'Invalid ticket.';
+      });
+      return;
+    }
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+    try {
+      final rows = await _supabase
+          .from('support_ticket_messages')
+          .select('id, author_id, body, is_internal, created_at')
+          .eq('ticket_id', _ticketId)
+          .order('created_at', ascending: true)
+          .withTimeout(NetworkTimeouts.standard);
+      if (!mounted) return;
+      setState(() {
+        _messages = List<Map<String, dynamic>>.from(rows as List);
+        _loading = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _send() async {
+    final body = _replyController.text.trim();
+    final user = _supabase.auth.currentUser;
+    if (body.isEmpty || user == null || _sending || _ticketId.isEmpty) return;
+
+    setState(() => _sending = true);
+    try {
+      await _supabase.from('support_ticket_messages').insert({
+        'ticket_id': _ticketId,
+        'author_id': user.id,
+        'body': body,
+        'is_internal': _internalNote,
+      }).withTimeout(NetworkTimeouts.standard);
+
+      if (!_internalNote && shouldMarkPendingCustomerAfterOpsPublicReply(_status)) {
+        await _supabase.rpc(
+          'ops_set_ticket_status',
+          params: {
+            'p_ticket_id': _ticketId,
+            'p_status': 'pending_customer',
+            'p_note': null,
+          },
+        ).withTimeout(NetworkTimeouts.standard);
+        _status = 'pending_customer';
+      }
+
+      _replyController.clear();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_internalNote ? 'Internal note saved' : 'Reply sent to diner'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      await _loadMessages(silent: true);
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Ops ticket reply failed');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not send: $e'), backgroundColor: Colors.redAccent),
+      );
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final publicId = widget.ticket['public_id']?.toString() ?? 'Ticket';
+    final subject = widget.ticket['subject']?.toString() ?? '';
+    final me = _supabase.auth.currentUser?.id;
+    final onSurface = AppTheme.onSurfaceOf(context);
+
+    return Scaffold(
+      backgroundColor: AppTheme.canvasOf(context),
+      appBar: HubAppBar(title: publicId),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: AppCard(
+              margin: EdgeInsets.zero,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(subject, style: TextStyle(fontWeight: FontWeight.w800, color: onSurface)),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Status: ${_status.replaceAll('_', ' ')}',
+                    style: const TextStyle(color: AppTheme.textMuted, fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Public replies are visible on My support tickets. Internal notes stay on this desk.',
+                    style: TextStyle(color: AppTheme.textMuted, fontSize: 12, height: 1.35),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
+                : _error != null
+                    ? Center(child: Text(_error!, style: const TextStyle(color: AppTheme.textMuted)))
+                    : _messages.isEmpty
+                        ? const Center(
+                            child: Text('No messages yet.', style: TextStyle(color: AppTheme.textMuted)),
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                            itemCount: _messages.length,
+                            itemBuilder: (context, index) {
+                              final msg = _messages[index];
+                              final isMe = msg['author_id']?.toString() == me;
+                              final internal = msg['is_internal'] == true;
+                              final body = msg['body']?.toString() ?? '';
+                              String timeStr = '';
+                              final raw = msg['created_at']?.toString();
+                              if (raw != null) {
+                                final dt = DateTime.tryParse(raw);
+                                if (dt != null) {
+                                  timeStr = '${formatFriendlyDate(dt)} · ${formatAppTime(dt)}';
+                                }
+                              }
+                              return Align(
+                                alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                                child: Container(
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  constraints: BoxConstraints(
+                                    maxWidth: MediaQuery.sizeOf(context).width * 0.82,
+                                  ),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: internal
+                                        ? AppTheme.primary.withValues(alpha: 0.08)
+                                        : (isMe ? AppTheme.primary : AppTheme.surfaceOf(context)),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: internal
+                                        ? Border.all(color: AppTheme.primary.withValues(alpha: 0.35))
+                                        : Border.all(color: AppTheme.hairlineOf(context)),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        internal ? 'Internal note' : (isMe ? 'You · diner can see this' : 'Requester'),
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w800,
+                                          color: internal
+                                              ? AppTheme.primary
+                                              : (isMe ? Colors.white70 : AppTheme.textMuted),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        body,
+                                        style: TextStyle(
+                                          color: internal || !isMe ? onSurface : Colors.white,
+                                          fontSize: 14,
+                                          height: 1.35,
+                                        ),
+                                      ),
+                                      if (timeStr.isNotEmpty) ...[
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          timeStr,
+                                          style: TextStyle(
+                                            color: internal || !isMe ? AppTheme.textMuted : Colors.white70,
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+          ),
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            decoration: BoxDecoration(
+              color: AppTheme.surfaceOf(context),
+              border: Border(top: BorderSide(color: AppTheme.hairlineOf(context))),
+            ),
+            child: SafeArea(
+              top: false,
+              child: Column(
+                children: [
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    value: _internalNote,
+                    onChanged: _sending ? null : (v) => setState(() => _internalNote = v),
+                    title: const Text(
+                      'Internal note',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                    ),
+                    subtitle: const Text(
+                      'Not shown to the diner',
+                      style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                    ),
+                  ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _replyController,
+                          minLines: 1,
+                          maxLines: 4,
+                          enabled: !_sending,
+                          textCapitalization: TextCapitalization.sentences,
+                          decoration: InputDecoration(
+                            hintText: _internalNote ? 'Note for ops only…' : 'Write a public reply…',
+                          ),
+                          onSubmitted: (_) => _send(),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: _sending ? null : _send,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppTheme.primary,
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size(88, 44),
+                        ),
+                        child: _sending
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : Text(_internalNote ? 'Save' : 'Send'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
