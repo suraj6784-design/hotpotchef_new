@@ -2,6 +2,7 @@
 
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,6 +17,7 @@ import '../providers/meal_plans_provider.dart';
 import '../services/auth_session.dart';
 import '../utils/app_haptics.dart';
 import '../utils/app_theme.dart';
+import '../utils/helpers.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/customer_ui_components.dart';
 import 'customer_feed_tab.dart';
@@ -130,37 +132,45 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
                   _onNavigationItemTapped(1);
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  padding: const EdgeInsets.fromLTRB(12, 10, 16, 10),
                   decoration: BoxDecoration(
                     gradient: AppTheme.primaryGradient,
-                    borderRadius: BorderRadius.circular(28),
-                    boxShadow: AppTheme.brandGlow(opacity: 0.32),
+                    borderRadius: BorderRadius.circular(22),
+                    boxShadow: AppTheme.brandGlow(opacity: 0.16),
                   ),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          const AppLogo(size: 28, onDark: true),
-                          const SizedBox(width: 12),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text('${cartState.itemCount} items in bag', style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                              Text('₹${cartState.foodTotal.toStringAsFixed(0)}',
-                                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
-                            ],
-                          ),
-                        ],
+                      _CartThumbStack(
+                        urls: cartState.items
+                            .map((item) => item.rawMealDetails['image_url']?.toString() ?? '')
+                            .where((url) => url.isNotEmpty)
+                            .take(3)
+                            .toList(),
                       ),
-                      const Row(
-                        children: [
-                          Text('View cart', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
-                          SizedBox(width: 8),
-                          Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 18),
-                        ],
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              cartState.items.map((item) => item.chefId).toSet().length > 1
+                                  ? '${cartState.itemCount} plates · ${cartState.items.map((item) => item.chefId).toSet().length} kitchens'
+                                  : chefDisplayName(cartState.items.first.rawMealDetails),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600),
+                            ),
+                            Text(
+                              '₹${cartState.foodTotal.toStringAsFixed(0)} · ${cartState.itemCount} item${cartState.itemCount == 1 ? '' : 's'}',
+                              style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800),
+                            ),
+                          ],
+                        ),
                       ),
+                      const Text('Checkout', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 18),
                     ],
                   ),
                 ).popIn(),
@@ -186,6 +196,86 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CartThumbStack extends StatelessWidget {
+  const _CartThumbStack({required this.urls});
+
+  final List<String> urls;
+
+  @override
+  Widget build(BuildContext context) {
+    if (urls.isEmpty) {
+      return const AppLogo(size: 36, onDark: true);
+    }
+    final show = urls.take(3).toList();
+    return SizedBox(
+      width: 28.0 + (show.length - 1) * 18,
+      height: 36,
+      child: Stack(
+        children: [
+          for (var i = 0; i < show.length; i++)
+            Positioned(
+              left: i * 18.0,
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 1.5),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: CachedNetworkImage(
+                  imageUrl: show[i],
+                  fit: BoxFit.cover,
+                  errorWidget: (_, _, _) => const ColoredBox(color: AppTheme.photoFallback),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CartThumbStack extends StatelessWidget {
+  const _CartThumbStack({required this.urls});
+
+  final List<String> urls;
+
+  @override
+  Widget build(BuildContext context) {
+    if (urls.isEmpty) {
+      return const AppLogo(size: 36, onDark: true);
+    }
+    final show = urls.take(3).toList();
+    return SizedBox(
+      width: 28.0 + (show.length - 1) * 18,
+      height: 36,
+      child: Stack(
+        children: [
+          for (var i = 0; i < show.length; i++)
+            Positioned(
+              left: i * 18,
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 1.5),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: CachedNetworkImage(
+                  imageUrl: show[i],
+                  fit: BoxFit.cover,
+                  errorWidget: (_, _, _) => const ColoredBox(color: AppTheme.photoFallback),
+                ),
+              ),
+            ),
         ],
       ),
     );

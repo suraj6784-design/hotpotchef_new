@@ -1,46 +1,52 @@
 // lib/utils/app_theme.dart
 
+import 'dart:ui';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 /// Central design system for HotPotChef.
 ///
-/// Warm & premium direction: deep-orange brand, soft depth, rounded surfaces,
-/// and a cohesive Poppins type scale. Legacy color/shadow tokens are preserved
-/// so existing screens keep working while we roll out the revamp.
+/// Matches the marketing site: terracotta flame, cream canvas, Fraunces titles,
+/// Figtree UI. Semantic tokens keep veg / price / surfaces consistent.
 class AppTheme {
   AppTheme._();
 
   // ---------------------------------------------------------------------------
-  // 1. Brand & semantic colors
+  // 1. Brand & semantic colors (aligned with website/css/site.css)
   // ---------------------------------------------------------------------------
-  static const Color primary = Color(0xFFF4511E); // deep, warm orange
+  static const Color primary = Color(0xFFF4511E);
   static const Color primaryGradientEnd = Color(0xFFFF7043);
-  static const Color primaryDark = Color(0xFFD84315);
-  static const Color accent = Color(0xFFFFB300); // amber highlight
+  static const Color primaryDark = Color(0xFFBF360C);
+  static const Color accent = Color(0xFFFFB300);
 
   static const Color success = Color(0xFF2E9E5B);
   static const Color warning = Color(0xFFF6A609);
   static const Color error = Color(0xFFE53935);
   static const Color info = Color(0xFF2E7CF6);
 
+  static const Color veg = Color(0xFF6B8F71);
+  static const Color nonVeg = Color(0xFFC45C4A);
+  static const Color price = Color(0xFF241F1C);
+  static const Color photoFallback = Color(0xFFF6EDE4);
+
   // Backgrounds
-  /// CSS snow — a soft white used for every light canvas.
-  static const Color snow = Color(0xFFFFFAFA);
+  static const Color snow = Color(0xFFF7F3EE);
   static const Color background = snow;
   static const Color backgroundLight = snow;
-  static const Color backgroundDark = Color(0xFF121212);
+  static const Color backgroundDark = Color(0xFF1A1410);
 
   // Surfaces (cards, sheets)
-  static const Color surfaceLight = snow;
-  static const Color surfaceDark = Color(0xFF1E1E1E);
-  static const Color surfaceMutedLight = Color(0xFFF3EEEA);
-  static const Color surfaceMutedDark = Color(0xFF2A2A2A);
+  static const Color surfaceLight = Color(0xFFFFFCF8);
+  static const Color surfaceDark = Color(0xFF2A1F18);
+  static const Color surfaceElevated = Color(0xFFFFFCF8);
+  static const Color surfaceMutedLight = Color(0xFFF0E8E0);
+  static const Color surfaceMutedDark = Color(0xFF3A2E26);
 
   // Text
   static const Color textMain = Color(0xFF241F1C);
-  static const Color textMuted = Color(0xFF6F675F);
+  static const Color textMuted = Color(0xFF8C8279);
   static const Color textMainLight = Colors.black87;
   static const Color textMainDark = Colors.white;
 
@@ -145,32 +151,40 @@ class AppTheme {
   // ---------------------------------------------------------------------------
   // Typography + chip helpers (premium uniformity)
   // ---------------------------------------------------------------------------
-  static TextStyle sectionTitleOf(BuildContext context) => GoogleFonts.poppins(
-        fontSize: 20,
-        fontWeight: FontWeight.w900,
+  static TextStyle sectionTitleOf(BuildContext context) => GoogleFonts.fraunces(
+        fontSize: 24,
+        fontWeight: FontWeight.w700,
+        color: onSurfaceOf(context),
+        height: 1.15,
+      );
+
+  static TextStyle cardTitleOf(BuildContext context) => GoogleFonts.fraunces(
+        fontSize: 16,
+        fontWeight: FontWeight.w600,
         color: onSurfaceOf(context),
         height: 1.2,
       );
 
-  static TextStyle cardTitleOf(BuildContext context) => GoogleFonts.poppins(
-        fontSize: 15,
-        fontWeight: FontWeight.w700,
-        color: onSurfaceOf(context),
-        height: 1.25,
-      );
-
-  static TextStyle bodyOf(BuildContext context) => GoogleFonts.poppins(
+  static TextStyle bodyOf(BuildContext context) => GoogleFonts.figtree(
         fontSize: 14,
         fontWeight: FontWeight.w500,
         color: onSurfaceOf(context),
         height: 1.4,
       );
 
-  static TextStyle metaOf(BuildContext context) => GoogleFonts.poppins(
-        fontSize: 12,
+  static TextStyle metaOf(BuildContext context) => GoogleFonts.figtree(
+        fontSize: 13,
         fontWeight: FontWeight.w600,
-        color: textMuted,
+        color: textMuted.withValues(alpha: 0.92),
         height: 1.35,
+      );
+
+  static TextStyle priceOf(BuildContext context) => GoogleFonts.figtree(
+        fontSize: 16,
+        fontWeight: FontWeight.w800,
+        color: Theme.of(context).brightness == Brightness.dark ? textMainDark : price,
+        fontFeatures: const [FontFeature.tabularFigures()],
+        height: 1.2,
       );
 
   static BoxDecoration filterChipDecoration(
@@ -191,7 +205,7 @@ class AppTheme {
       minimumSize: const Size(0, 48),
       side: const BorderSide(color: primary, width: 1.4),
       shape: const RoundedRectangleBorder(borderRadius: radiusMd),
-      textStyle: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700),
+      textStyle: GoogleFonts.figtree(fontSize: 14, fontWeight: FontWeight.w700),
     );
   }
 
@@ -217,13 +231,13 @@ class AppTheme {
 
     final baseTypography =
         isDark ? Typography.material2021().white : Typography.material2021().black;
-    final textTheme = GoogleFonts.poppinsTextTheme(baseTypography).copyWith(
-      displaySmall: GoogleFonts.poppins(fontWeight: FontWeight.w800, color: onSurface),
-      headlineMedium: GoogleFonts.poppins(fontWeight: FontWeight.w800, color: onSurface),
-      headlineSmall: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: onSurface),
-      titleLarge: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: onSurface),
-      titleMedium: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: onSurface),
-      labelLarge: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+    final textTheme = GoogleFonts.figtreeTextTheme(baseTypography).copyWith(
+      displaySmall: GoogleFonts.fraunces(fontWeight: FontWeight.w700, color: onSurface, fontSize: 28),
+      headlineMedium: GoogleFonts.fraunces(fontWeight: FontWeight.w700, color: onSurface, fontSize: 24),
+      headlineSmall: GoogleFonts.fraunces(fontWeight: FontWeight.w600, color: onSurface, fontSize: 20),
+      titleLarge: GoogleFonts.fraunces(fontWeight: FontWeight.w600, color: onSurface, fontSize: 18),
+      titleMedium: GoogleFonts.figtree(fontWeight: FontWeight.w600, color: onSurface),
+      labelLarge: GoogleFonts.figtree(fontWeight: FontWeight.w600),
     ).apply(
       bodyColor: onSurface,
       displayColor: onSurface,
@@ -248,7 +262,7 @@ class AppTheme {
         scrolledUnderElevation: 0,
         centerTitle: false,
         iconTheme: IconThemeData(color: onSurface),
-        titleTextStyle: GoogleFonts.poppins(
+        titleTextStyle: GoogleFonts.figtree(
           color: onSurface,
           fontSize: 19,
           fontWeight: FontWeight.w700,
@@ -268,7 +282,7 @@ class AppTheme {
           elevation: 0,
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
           shape: RoundedRectangleBorder(borderRadius: radiusMd),
-          textStyle: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w700),
+          textStyle: GoogleFonts.figtree(fontSize: 16, fontWeight: FontWeight.w700),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -277,13 +291,13 @@ class AppTheme {
           side: const BorderSide(color: primary, width: 1.5),
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
           shape: RoundedRectangleBorder(borderRadius: radiusMd),
-          textStyle: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700),
+          textStyle: GoogleFonts.figtree(fontSize: 15, fontWeight: FontWeight.w700),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: primary,
-          textStyle: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600),
+          textStyle: GoogleFonts.figtree(fontSize: 14, fontWeight: FontWeight.w600),
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
@@ -292,15 +306,15 @@ class AppTheme {
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
           shape: RoundedRectangleBorder(borderRadius: radiusMd),
-          textStyle: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w700),
+          textStyle: GoogleFonts.figtree(fontSize: 16, fontWeight: FontWeight.w700),
         ),
       ),
       chipTheme: ChipThemeData(
         backgroundColor: isDark ? surfaceMutedDark : surfaceMutedLight,
         selectedColor: primary,
         secondarySelectedColor: primary,
-        labelStyle: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: onSurface),
-        secondaryLabelStyle: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white),
+        labelStyle: GoogleFonts.figtree(fontSize: 12, fontWeight: FontWeight.w600, color: onSurface),
+        secondaryLabelStyle: GoogleFonts.figtree(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white),
         side: BorderSide.none,
         shape: RoundedRectangleBorder(borderRadius: radiusMd),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -312,7 +326,7 @@ class AppTheme {
         indicatorColor: primary.withValues(alpha: 0.14),
         labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
         labelTextStyle: WidgetStateProperty.resolveWith(
-          (states) => GoogleFonts.poppins(
+          (states) => GoogleFonts.figtree(
             fontSize: 11,
             fontWeight: states.contains(WidgetState.selected) ? FontWeight.w700 : FontWeight.w500,
             color: states.contains(WidgetState.selected) ? primary : textMuted,
@@ -327,7 +341,7 @@ class AppTheme {
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         backgroundColor: isDark ? const Color(0xFF2C2C2C) : const Color(0xFF2B2320),
-        contentTextStyle: GoogleFonts.poppins(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w500),
+        contentTextStyle: GoogleFonts.figtree(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w500),
         actionTextColor: accent,
         shape: RoundedRectangleBorder(borderRadius: radiusMd),
         insetPadding: const EdgeInsets.all(16),
@@ -337,8 +351,8 @@ class AppTheme {
         backgroundColor: surface,
         elevation: 12,
         shape: RoundedRectangleBorder(borderRadius: radiusLg),
-        titleTextStyle: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: onSurface),
-        contentTextStyle: GoogleFonts.poppins(fontSize: 14, color: isDark ? Colors.white70 : textMain),
+        titleTextStyle: GoogleFonts.figtree(fontSize: 18, fontWeight: FontWeight.w700, color: onSurface),
+        contentTextStyle: GoogleFonts.figtree(fontSize: 14, color: isDark ? Colors.white70 : textMain),
       ),
       bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: surface,
@@ -359,8 +373,8 @@ class AppTheme {
       ),
       listTileTheme: ListTileThemeData(
         iconColor: primary,
-        titleTextStyle: GoogleFonts.poppins(fontSize: 14.5, fontWeight: FontWeight.w600, color: onSurface),
-        subtitleTextStyle: GoogleFonts.poppins(fontSize: 12.5, color: textMuted),
+        titleTextStyle: GoogleFonts.figtree(fontSize: 14.5, fontWeight: FontWeight.w600, color: onSurface),
+        subtitleTextStyle: GoogleFonts.figtree(fontSize: 12.5, color: textMuted),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
@@ -375,8 +389,8 @@ class AppTheme {
           borderRadius: radiusMd,
           borderSide: const BorderSide(color: primary, width: 1.6),
         ),
-        labelStyle: GoogleFonts.poppins(color: textMuted, fontSize: 13),
-        hintStyle: GoogleFonts.poppins(color: textMuted, fontSize: 13),
+        labelStyle: GoogleFonts.figtree(color: textMuted, fontSize: 13),
+        hintStyle: GoogleFonts.figtree(color: textMuted, fontSize: 13),
         prefixIconColor: textMuted,
       ),
     );

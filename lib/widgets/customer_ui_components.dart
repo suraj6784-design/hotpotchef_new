@@ -285,7 +285,7 @@ class WatermarkedMealImage extends StatelessWidget {
       child: Container(
         width: width,
         height: height,
-        color: isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade200,
+        color: isDark ? const Color(0xFF3A2E26) : AppTheme.photoFallback,
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -293,25 +293,22 @@ class WatermarkedMealImage extends StatelessWidget {
                 ? CachedNetworkImage(
                     imageUrl: imageUrl!,
                     fit: fit,
-                    placeholder: (context, url) => Container(
-                      color: isDark ? const Color(0xFF1E1E1E) : Colors.grey.shade100,
-                      child: const Center(
-                        child: SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary),
-                        ),
+                    placeholder: (context, url) => const AppShimmer(
+                      child: ShimmerBox(
+                        width: double.infinity,
+                        height: double.infinity,
+                        borderRadius: BorderRadius.zero,
                       ),
                     ),
-                    errorWidget: (_, _, _) => const Icon(Icons.restaurant, color: Colors.grey),
+                    errorWidget: (_, _, _) => const Icon(Icons.soup_kitchen_outlined, color: Color(0xFFC4A484)),
                   )
-                : const Icon(Icons.restaurant, color: Colors.grey),
+                : const Icon(Icons.soup_kitchen_outlined, color: Color(0xFFC4A484)),
             const Positioned(
-              bottom: 6,
-              right: 6,
+              bottom: 8,
+              right: 8,
               child: Opacity(
-                opacity: 0.7,
-                child: AppLogo(size: 22),
+                opacity: 0.45,
+                child: AppLogo(size: 16),
               ),
             ),
           ],
@@ -699,7 +696,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
                       );
                 final Color trustColor;
                 if (verified) {
-                  trustColor = Colors.green;
+                  trustColor = AppTheme.veg;
                 } else if (status == 'pending') {
                   trustColor = Colors.orange;
                 } else {
@@ -1394,12 +1391,10 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                                         ),
                                         const SizedBox(height: 4),
                                         Text(
-                                          fssai.isNotEmpty
-                                              ? '$fssaiTrustLine • ${copy.tapForInfo}'
-                                              : '${copy.fssaiMissing} • ${copy.tapForInfo}',
+                                          fssaiVerified ? 'Licensed kitchen' : fssaiTrustLine,
                                           style: TextStyle(
                                             color: fssaiVerified
-                                                ? Colors.green
+                                                ? AppTheme.veg
                                                 : (isDark ? Colors.grey.shade400 : AppTheme.textMuted),
                                             fontSize: 12,
                                             fontWeight: FontWeight.w600,

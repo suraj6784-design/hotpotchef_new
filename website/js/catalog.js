@@ -67,6 +67,26 @@
     return hay.indexOf(q) !== -1;
   }
 
+  function slotLabel(meal) {
+    var raw = (meal.time_slot || '').toString();
+    var m = raw.match(/(\d{1,2}:\d{2}\s*(?:AM|PM))\s+to\s+(\d{1,2}:\d{2}\s*(?:AM|PM))/i);
+    if (m) return m[1].replace(/\s+/g, ' ') + '–' + m[2].replace(/\s+/g, ' ');
+    if (!raw.trim() || /asap/i.test(raw)) return 'On your slot';
+    return raw;
+  }
+
+  function dedupePlates(rows) {
+    var seen = {};
+    var out = [];
+    rows.forEach(function (m) {
+      var key = (m.chef_id || '') + '|' + norm(m.title);
+      if (seen[key]) return;
+      seen[key] = true;
+      out.push(m);
+    });
+    return out;
+  }
+
   function mealCard(meal) {
     var id = (meal.id || '').toString();
     var title = api.mealTitle(meal);
@@ -82,9 +102,11 @@
         api.escapeHtml(title) +
         '" loading="lazy" />'
       : '<div class="catalog-thumb catalog-thumb--empty" aria-hidden="true">HotPotChef</div>';
+    var slot = slotLabel(meal);
 
     return (
-      '<a class="catalog-card" href="' +
+      '<article class="catalog-card">' +
+      '<a class="catalog-card-link" href="' +
       href +
       '">' +
       media +
@@ -92,6 +114,8 @@
       '<p class="catalog-kicker">' +
       dietLabel(meal) +
       (city ? ' · ' + api.escapeHtml(city) : '') +
+      ' · ' +
+      api.escapeHtml(slot) +
       '</p>' +
       '<h3 class="catalog-title">' +
       api.escapeHtml(title) +
@@ -102,7 +126,11 @@
       '<p class="catalog-price">' +
       api.escapeHtml(price) +
       '</p>' +
-      '</div></a>'
+      '</div></a>' +
+      '<button type="button" class="catalog-add" data-add-id="' +
+      api.escapeHtml(id) +
+      '">Add</button>' +
+      '</article>'
     );
   }
 
@@ -224,7 +252,7 @@
     setStatus('Loading neighbourhood plates…');
     try {
       var rows = await api.supabaseGet(
-        'meals?status=eq.Available&price=gt.0&select=id,title,price,image_url,chef_name,chef_id,is_veg,created_at&order=created_at.desc&limit=' +
+        'meals?status=eq.Available&price=gt.0&select=id,title,price,image_url,chef_name,chef_id,is_veg,time_slot,created_at&order=created_at.desc&limit=' +
           LIMIT
       );
       if (!rows || !rows.length) {
@@ -286,7 +314,7 @@
         if (city) m.city = city;
       });
 
-      allMeals = rows;
+      allMeals = dedupePlates(rows);
       render();
     } catch (err) {
       allMeals = [];
@@ -326,6 +354,29 @@
         var id = btn.getAttribute('data-chef') || '';
         chefFilterId = id;
         render();
+      });
+    }
+
+    var grid = document.getElementById('catalog-grid');
+    if (grid && window.HotPotCart) {
+      grid.addEventListener('click', function (ev) {
+        var btn = ev.target.closest('[data-add-id]');
+        if (!btn) return;
+        ev.preventDefault();
+        var id = btn.getAttribute('data-add-id') || '';
+        var meal = allMeals.find(function (m) {
+          return (m.id || '').toString() === id;
+        });
+        if (!meal) return;
+        var result = window.HotPotCart.add(meal, 1);
+        if (!result.ok && result.reason === 'kitchen') {
+          setStatus('Web cart is one kitchen at a time. Clear extra kitchens in the cart, or finish in the app.', true);
+          return;
+        }
+        btn.textContent = 'Added';
+        setTimeout(function () {
+          btn.textContent = 'Add';
+        }, 1200);
       });
     }
   }

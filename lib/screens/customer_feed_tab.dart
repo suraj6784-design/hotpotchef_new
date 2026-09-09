@@ -8,7 +8,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:go_router/go_router.dart';
 
 import '../utils/app_page.dart';
 import '../utils/helpers.dart';
@@ -1661,20 +1660,6 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       if (isLoggedIn) const DailyStreakBanner(),
       if (isLoggedIn) const AiRecommendationsSection(),
       const DynamicUIEngine(screenName: 'customer_feed'),
-      Padding(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-        child: TextButton.icon(
-          onPressed: () {
-            if (!isLoggedIn) {
-              showAuthBottomSheet(context, () => setState(() {}));
-              return;
-            }
-            context.push('/bulk-request');
-          },
-          icon: const Icon(Icons.campaign_outlined, size: 18),
-          label: const Text('Bulk / catering request'),
-        ),
-      ),
     ];
   }
 
@@ -1789,7 +1774,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             crossAxisCount: columns,
             crossAxisSpacing: 16,
             mainAxisSpacing: 16,
-            mainAxisExtent: 368,
+            mainAxisExtent: 412,
           ),
           itemCount: meals.length,
           itemBuilder: (context, index) {
@@ -1800,7 +1785,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             final availableQty = int.tryParse(meal['quantity'].toString()) ?? 0;
             final isSoldOut = availableQty <= 0 || meal['status']?.toString().toLowerCase() == 'sold out';
             final isAvailable = !isExpired && !isSoldOut;
-            String overlayText = isSoldOut ? 'SOLD OUT' : (isExpired ? 'TIME PASSED' : '');
+            String overlayText = isSoldOut ? 'Sold out' : (isExpired ? 'Slot passed' : '');
 
             final cartState = ref.watch(cartProvider);
             final offerSummary = PricingCalculator.calculateItemSummary(meal, 1);
@@ -1819,14 +1804,6 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                 ),
                 child: Stack(
                   children: [
-                    Positioned(
-                      bottom: -20,
-                      right: -20,
-                      child: Opacity(
-                        opacity: 0.08,
-                        child: const AppLogo(size: 96, elevated: true),
-                      ),
-                    ),
                     Opacity(
                       opacity: isAvailable ? 1.0 : 0.6,
                       child: Column(
@@ -1837,9 +1814,9 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                               ClipRRect(
                                 borderRadius: const BorderRadius.vertical(top: Radius.circular(AppTheme.rLg)),
                                 child: Container(
-                                  height: 148,
+                                  height: 188,
                                   width: double.infinity,
-                                  color: const Color(0xFFF6EDE4),
+                                  color: AppTheme.photoFallback,
                                   child: meal['image_url'] != null
                                       ? Hero(
                                           tag: 'meal-image-${meal['id']}',
@@ -1851,7 +1828,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                             placeholder: (_, _) => const AppShimmer(
                                               child: ShimmerBox(
                                                 width: double.infinity,
-                                                height: 148,
+                                                height: 188,
                                                 borderRadius: BorderRadius.zero,
                                               ),
                                             ),
@@ -1895,7 +1872,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                       child: Text(
                                         overlayText,
                                         style: const TextStyle(
-                                            color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+                                            color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13),
                                       ),
                                     ),
                                   ),
@@ -1953,9 +1930,17 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                       borderRadius: BorderRadius.circular(4)),
                                   child: Icon(
                                     Icons.circle,
-                                    color: meal['is_veg'] == true ? Colors.green : Colors.red,
+                                    color: meal['is_veg'] == true ? AppTheme.veg : AppTheme.nonVeg,
                                     size: 10,
                                   ),
+                                ),
+                              ),
+                              const Positioned(
+                                bottom: 8,
+                                right: 8,
+                                child: Opacity(
+                                  opacity: 0.5,
+                                  child: AppLogo(size: 16, onDark: true),
                                 ),
                               ),
                             ],
@@ -2069,10 +2054,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                             ),
                                           Text(
                                             '₹${offerSummary.effectiveUnitPrice.toInt()}',
-                                            style: TextStyle(
-                                                fontWeight: FontWeight.w800,
-                                                fontSize: 16,
-                                                color: AppTheme.onSurfaceOf(context)),
+                                            style: AppTheme.priceOf(context),
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                           ),
