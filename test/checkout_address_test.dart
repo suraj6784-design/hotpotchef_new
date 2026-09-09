@@ -474,6 +474,14 @@ void main() {
       alertOpenPath({'chef_id': 'chef-19'}, role: 'Customer'),
       '/customer-hub',
     );
+    expect(
+      alertOpenPath({'kind': 'kyc_pending'}, role: 'chef'),
+      '/chef-profile',
+    );
+    expect(
+      alertOpenPath({'kind': 'kyc_pending', 'role': 'driver'}),
+      '/driver-profile',
+    );
     expect(customerHubTabIndex('orders'), 2);
     expect(chefHubTabIndex('leads'), 4);
     expect(chefHubTabIndex('supplies'), 5);

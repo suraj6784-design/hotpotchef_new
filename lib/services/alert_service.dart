@@ -101,6 +101,17 @@ class AlertService {
           schema: 'public',
           table: 'customer_request_quotes',
           callback: (payload) => unawaited(_onQuoteRow(payload.newRecord)),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'user_notifications',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: uid,
+          ),
+          callback: (payload) => _onUserNotification(payload.newRecord),
         );
 
     _channel!.subscribe();
@@ -127,6 +138,16 @@ class AlertService {
       'table': 'messages',
       'type': 'INSERT',
       'record': {'id': messageId},
+    }));
+  }
+
+  static void notifyKycReminder({required String notificationId}) {
+    final id = notificationId.trim();
+    if (id.isEmpty) return;
+    unawaited(_invoke({
+      'table': 'user_notifications',
+      'type': 'INSERT',
+      'record': {'id': id},
     }));
   }
 
@@ -274,6 +295,22 @@ class AlertService {
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Catering quote alert failed');
     }
+  }
+
+  static void _onUserNotification(Map<String, dynamic> row) {
+    final uid = _supabase.auth.currentUser?.id;
+    if (uid == null || row['user_id']?.toString() != uid) return;
+    final title = (row['title'] ?? 'HotPotChef').toString();
+    final body = (row['body'] ?? '').toString();
+    final kind = (row['kind'] ?? 'kyc_pending').toString();
+    final raw = row['data'];
+    final extra = raw is Map ? _stringData(Map<String, dynamic>.from(raw)) : const <String, String?>{};
+    _show(
+      'note-${row['id']}',
+      title,
+      body,
+      path: alertOpenPath({'kind': kind, ...extra}, role: _role.name),
+    );
   }
 
   static void _onChatRow(Map<String, dynamic> row) {

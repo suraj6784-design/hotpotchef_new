@@ -152,6 +152,7 @@ async function notifyUser(
   title: string,
   body: string,
   data: Record<string, string>,
+  opts?: { email?: boolean },
 ) {
   if (!userId) return
   const { data: user } = await admin
@@ -166,6 +167,7 @@ async function notifyUser(
       console.error('FCM send failed', err)
     }
   }
+  if (opts?.email === false) return
   try {
     await sendEmail(user?.email, title, body)
   } catch (err) {
@@ -327,5 +329,26 @@ export async function dispatchKitchenLiveAlert(admin: SupabaseClient, chefId: st
     await notifyUser(admin, userId, copy.title, copy.body, data)
   }
   return { sent: targets.length, title: copy.title }
+}
+
+export async function dispatchUserNotification(admin: SupabaseClient, notificationId: string) {
+  const { data: row } = await admin
+    .from('user_notifications')
+    .select('id, user_id, title, body, kind, data')
+    .eq('id', notificationId)
+    .maybeSingle()
+  if (!row?.user_id) return { sent: 0 }
+
+  const extra = (row.data && typeof row.data === 'object' ? row.data : {}) as Record<string, unknown>
+  const data: Record<string, string> = {
+    kind: String(row.kind ?? 'kyc_pending'),
+    alert_id: String(row.id),
+  }
+  for (const [key, value] of Object.entries(extra)) {
+    if (value == null || typeof value === 'object') continue
+    data[key] = String(value)
+  }
+  await notifyUser(admin, String(row.user_id), String(row.title), String(row.body), data, { email: false })
+  return { sent: 1, title: row.title }
 }
 

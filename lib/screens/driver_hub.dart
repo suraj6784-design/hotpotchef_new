@@ -21,6 +21,7 @@ import '../models/driver_delivery_model.dart';
 import '../services/auth_session.dart';
 import '../services/delivery_estimator_service.dart';
 import '../services/order_lifecycle.dart';
+import '../widgets/kyc_reminder_banner.dart';
 
 class DriverHubScreen extends ConsumerStatefulWidget {
   const DriverHubScreen({super.key});
@@ -433,6 +434,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 ],
               ),
             ),
+                const KycReminderBanner(profilePath: '/driver-profile'),
                 Expanded(
                   child: HubTabSwitcher(
                     index: _selectedIndex,

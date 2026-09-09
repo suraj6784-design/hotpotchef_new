@@ -11,6 +11,7 @@ import 'app_theme.dart';
 import 'network.dart';
 import 'notification_copy.dart';
 import 'pricing_calculator.dart';
+import '../models/app_role.dart';
 import '../models/pricing_models.dart';
 
 // Export the theme so all screens automatically inherit it
@@ -590,9 +591,13 @@ bool chefNameMatchesQuery(String? query, Map<String, dynamic>? chefOrMeal) {
       return true;
     }
   }
-  final display = chefDisplayName(chefOrMeal, fallback: '').toLowerCase();
-  if (display.isEmpty) return false;
-  return display.contains(q) || display.replaceAll(RegExp(r'\s+'), '').contains(compactQ);
+  return false;
+}
+
+/// Home / bulk kitchen search: diners and drivers must not appear as chefs.
+bool isChefAccount(Map<String, dynamic>? data) {
+  if (data == null) return false;
+  return AppRole.parse(data['role']?.toString()) == AppRole.chef;
 }
 
 
@@ -742,6 +747,17 @@ String? alertOpenPath(Map<String, String?> data, {String? role}) {
   final kitchenId = (data['chef_id'] ?? data['kitchen_id'] ?? '').trim();
   if (kitchenId.isNotEmpty && (data['order_id'] ?? '').trim().isEmpty) {
     return '/customer-hub';
+  }
+
+  final kind = (data['kind'] ?? data['type'] ?? '').trim().toLowerCase();
+  if (kind == 'kyc_pending' || kind == 'kyc') {
+    final fromPayload = (data['role'] ?? '').trim().toLowerCase();
+    if (parsedRole.contains('driver') ||
+        parsedRole.contains('delivery') ||
+        fromPayload.contains('driver')) {
+      return '/driver-profile';
+    }
+    return '/chef-profile';
   }
 
   final orderId = (data['order_id'] ?? '').trim();
@@ -1100,6 +1116,8 @@ bool isStackAlertPath(String path) {
   return route.startsWith('/chat/') ||
       route.startsWith('/meal/') ||
       route.startsWith('/chef/') ||
+      route == '/chef-profile' ||
+      route == '/driver-profile' ||
       route == '/cart' ||
       route.startsWith('/cart?');
 }

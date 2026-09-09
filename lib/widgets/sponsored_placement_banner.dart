@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -7,7 +8,20 @@ import 'package:video_player/video_player.dart';
 
 import '../utils/app_theme.dart';
 
-/// Diner-facing sponsored strip (third-party advertising framework v1).
+class SponsoredFlashSlide {
+  const SponsoredFlashSlide({
+    required this.ad,
+    required this.stillUrl,
+    required this.clipUrl,
+  });
+
+  final Map<String, dynamic> ad;
+  final String stillUrl;
+  final String clipUrl;
+}
+
+/// Diner-facing sponsored strip. Live campaigns rotate like kitchen offers.
+/// A campaign with both a still and a clip gets two slides so the still is not hidden.
 class SponsoredPlacementBanner extends StatefulWidget {
   const SponsoredPlacementBanner({
     super.key,
@@ -26,14 +40,38 @@ class SponsoredPlacementBanner extends StatefulWidget {
   State<SponsoredPlacementBanner> createState() => _SponsoredPlacementBannerState();
 }
 
-class _SponsoredPlacementBannerState extends State<SponsoredPlacementBanner> {
-  List<Map<String, dynamic>> _ads = const [];
+class _SponsoredPlacementBannerState extends State<SponsoredPlacementBanner>
+    with TickerProviderStateMixin {
+  List<SponsoredFlashSlide> _slides = const [];
   bool _ready = false;
+  late final PageController _pageController;
+  late final AnimationController _blink;
+  Timer? _rotate;
+  int _page = 0;
 
   @override
   void initState() {
     super.initState();
+    _pageController = PageController(viewportFraction: 0.92);
+    _blink = AnimationController(vsync: this, duration: const Duration(milliseconds: 700))
+      ..repeat(reverse: true);
     unawaited(_load());
+  }
+
+  @override
+  void didUpdateWidget(covariant SponsoredPlacementBanner oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.cityHint != widget.cityHint) {
+      unawaited(_load());
+    }
+  }
+
+  @override
+  void dispose() {
+    _rotate?.cancel();
+    _pageController.dispose();
+    _blink.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -43,18 +81,36 @@ class _SponsoredPlacementBannerState extends State<SponsoredPlacementBanner> {
           .select()
           .eq('status', 'live')
           .order('updated_at', ascending: false)
-          .limit(20);
+          .limit(40);
       if (!mounted) return;
+      final ads = liveSponsoredCampaigns(
+        List<Map<String, dynamic>>.from(rows as List),
+        cityHint: widget.cityHint,
+      );
       setState(() {
-        _ads = liveSponsoredCampaigns(
-          List<Map<String, dynamic>>.from(rows as List),
-          cityHint: widget.cityHint,
-        );
+        _slides = sponsoredFlashSlides(ads);
         _ready = true;
       });
+      _syncRotation(_slides.length);
     } catch (_) {
       if (mounted) setState(() => _ready = true);
     }
+  }
+
+  void _syncRotation(int count) {
+    _rotate?.cancel();
+    _rotate = null;
+    final reduce = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (count < 2 || reduce) return;
+    _rotate = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (!mounted || !_pageController.hasClients || _slides.length < 2) return;
+      final next = (_page + 1) % _slides.length;
+      _pageController.animateToPage(
+        next,
+        duration: const Duration(milliseconds: 520),
+        curve: Curves.easeOutCubic,
+      );
+    });
   }
 
   Future<void> _open(Map<String, dynamic> ad) async {
@@ -76,76 +132,202 @@ class _SponsoredPlacementBannerState extends State<SponsoredPlacementBanner> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_ready || _ads.isEmpty) return const SizedBox.shrink();
-    final ad = _ads.first;
+    if (!_ready || _slides.isEmpty) return const SizedBox.shrink();
+    final current = _page % _slides.length;
+
+    if (widget.dense) {
+      return SizedBox.expand(
+        child: _SponsoredFlashCard(
+          slide: _slides[current],
+          playing: true,
+          dense: true,
+          onTap: () => _open(_slides[current].ad),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 2, 0, 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Row(
+              children: [
+                FadeTransition(
+                  opacity: Tween(begin: 0.35, end: 1.0).animate(_blink),
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: AppTheme.primary,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text('Sponsored', style: AppTheme.homeSectionLabelOf(context)),
+              ],
+            ),
+          ),
+          SizedBox(
+            height: 132,
+            child: PageView.builder(
+              controller: _pageController,
+              itemCount: _slides.length,
+              onPageChanged: (index) => setState(() => _page = index),
+              itemBuilder: (context, index) {
+                final slide = _slides[index];
+                return _SponsoredFlashCard(
+                  slide: slide,
+                  playing: index == current,
+                  dense: false,
+                  onTap: () => _open(slide.ad),
+                );
+              },
+            ),
+          ),
+          if (_slides.length > 1)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  for (var i = 0; i < _slides.length; i++)
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 220),
+                      margin: const EdgeInsets.symmetric(horizontal: 3),
+                      width: i == current ? 16 : 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: i == current ? AppTheme.primary : AppTheme.hairlineOf(context),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SponsoredFlashCard extends StatelessWidget {
+  const _SponsoredFlashCard({
+    required this.slide,
+    required this.playing,
+    required this.dense,
+    required this.onTap,
+  });
+
+  final SponsoredFlashSlide slide;
+  final bool playing;
+  final bool dense;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ad = slide.ad;
     final title = (ad['title'] ?? 'Sponsored').toString();
     final body = (ad['body'] ?? '').toString().trim();
     final cta = (ad['cta_label'] ?? 'Learn more').toString();
-    final image = (ad['image_url'] ?? '').toString().trim();
-    final video = (ad['video_url'] ?? '').toString().trim();
     final advertiser = (ad['advertiser_name'] ?? '').toString().trim();
 
-    final card = Padding(
-      padding: widget.dense ? EdgeInsets.zero : const EdgeInsets.fromLTRB(16, 2, 16, 6),
+    return Container(
+      margin: dense ? EdgeInsets.zero : const EdgeInsets.symmetric(horizontal: 6),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: () => _open(ad),
+          onTap: onTap,
           child: Ink(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
               gradient: LinearGradient(
                 colors: [
-                  AppTheme.primary.withValues(alpha: 0.14),
-                  AppTheme.accent.withValues(alpha: 0.10),
+                  AppTheme.primary.withValues(alpha: 0.18),
+                  AppTheme.accent.withValues(alpha: 0.12),
                 ],
               ),
               border: Border.all(color: AppTheme.primary.withValues(alpha: 0.22)),
             ),
-            child: Padding(
-              padding: EdgeInsets.all(widget.dense ? 10 : 14),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Stack(
+                fit: StackFit.expand,
                 children: [
                   _SponsoredMedia(
-                    imageUrl: image,
-                    videoUrl: widget.dense ? '' : video,
-                    size: widget.dense ? 52 : 72,
+                    imageUrl: slide.stillUrl,
+                    videoUrl: slide.clipUrl,
+                    playing: playing,
+                    fill: true,
                   ),
-                  SizedBox(width: widget.dense ? 8 : 12),
-                  Expanded(
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                        colors: [
+                          Colors.black.withValues(alpha: 0.62),
+                          Colors.black.withValues(alpha: 0.28),
+                          Colors.black.withValues(alpha: 0.08),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: EdgeInsets.all(dense ? 10 : 14),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Sponsored', style: AppTheme.homeKickerOf(context)),
-                        if (advertiser.isNotEmpty) ...[
-                          const SizedBox(height: 2),
+                        if (advertiser.isNotEmpty)
                           Text(
-                            advertiser,
+                            advertiser.toUpperCase(),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: AppTheme.metaOf(context).copyWith(fontSize: 11),
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.86),
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.7,
+                            ),
                           ),
-                        ],
                         const SizedBox(height: 4),
                         Text(
                           title,
-                          maxLines: widget.dense ? 2 : 3,
+                          maxLines: dense ? 2 : 2,
                           overflow: TextOverflow.ellipsis,
-                          style: AppTheme.homeCardTitleOf(context),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 16,
+                            height: 1.15,
+                          ),
                         ),
-                        if (!widget.dense && body.isNotEmpty) ...[
+                        if (!dense && body.isNotEmpty) ...[
                           const SizedBox(height: 4),
                           Text(
                             body,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: AppTheme.metaOf(context).copyWith(fontSize: 12, fontWeight: FontWeight.w500),
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.9),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ],
-                        if (widget.dense) const Spacer() else const SizedBox(height: 8),
-                        Text(cta, style: AppTheme.homeKickerOf(context)),
+                        const Spacer(),
+                        Text(
+                          cta,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -156,8 +338,6 @@ class _SponsoredPlacementBannerState extends State<SponsoredPlacementBanner> {
         ),
       ),
     );
-    if (widget.dense) return SizedBox.expand(child: card);
-    return card;
   }
 }
 
@@ -166,11 +346,15 @@ class _SponsoredMedia extends StatefulWidget {
     required this.imageUrl,
     required this.videoUrl,
     this.size = 72,
+    this.playing = true,
+    this.fill = false,
   });
 
   final String imageUrl;
   final String videoUrl;
   final double size;
+  final bool playing;
+  final bool fill;
 
   @override
   State<_SponsoredMedia> createState() => _SponsoredMediaState();
@@ -190,6 +374,18 @@ class _SponsoredMediaState extends State<_SponsoredMedia> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.videoUrl != widget.videoUrl) {
       unawaited(_boot());
+      return;
+    }
+    unawaited(_syncPlayback());
+  }
+
+  Future<void> _syncPlayback() async {
+    final clip = _clip;
+    if (clip == null || !clip.value.isInitialized) return;
+    if (widget.playing) {
+      await clip.play();
+    } else {
+      await clip.pause();
     }
   }
 
@@ -197,7 +393,7 @@ class _SponsoredMediaState extends State<_SponsoredMedia> {
     await _clip?.dispose();
     _clip = null;
     final url = widget.videoUrl.trim();
-    if (url.isEmpty) {
+    if (url.isEmpty || looksLikeImageUrl(url)) {
       if (mounted) setState(() {});
       return;
     }
@@ -208,7 +404,7 @@ class _SponsoredMediaState extends State<_SponsoredMedia> {
       await controller.initialize();
       await controller.setLooping(true);
       await controller.setVolume(0);
-      await controller.play();
+      if (widget.playing) await controller.play();
       if (!mounted) {
         await controller.dispose();
         return;
@@ -226,52 +422,100 @@ class _SponsoredMediaState extends State<_SponsoredMedia> {
     super.dispose();
   }
 
+  Widget _frame(Widget child) {
+    if (widget.fill) return SizedBox.expand(child: child);
+    return SizedBox(width: widget.size, height: widget.size, child: child);
+  }
+
   @override
   Widget build(BuildContext context) {
     final clip = _clip;
-    if (clip != null && clip.value.isInitialized) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: SizedBox(
-          width: widget.size,
-          height: widget.size,
-          child: FittedBox(
-            fit: BoxFit.cover,
-            child: SizedBox(
-              width: clip.value.size.width,
-              height: clip.value.size.height,
-              child: IgnorePointer(child: VideoPlayer(clip)),
-            ),
+    if (clip != null && clip.value.isInitialized && widget.imageUrl.trim().isEmpty) {
+      return _frame(
+        FittedBox(
+          fit: BoxFit.cover,
+          clipBehavior: Clip.hardEdge,
+          child: SizedBox(
+            width: clip.value.size.width,
+            height: clip.value.size.height,
+            child: IgnorePointer(child: VideoPlayer(clip)),
           ),
         ),
       );
     }
     if (widget.imageUrl.isNotEmpty) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Image.network(
-          widget.imageUrl,
-          width: widget.size,
-          height: widget.size,
+      return _frame(
+        CachedNetworkImage(
+          imageUrl: widget.imageUrl,
           fit: BoxFit.cover,
-          errorBuilder: (_, error, stack) => _placeholderThumb(widget.size),
+          width: widget.fill ? double.infinity : widget.size,
+          height: widget.fill ? double.infinity : widget.size,
+          errorWidget: (_, error, stack) => _placeholderThumb(widget.fill ? 72 : widget.size),
+          placeholder: (_, url) => _placeholderThumb(widget.fill ? 72 : widget.size),
         ),
       );
     }
-    return _placeholderThumb(widget.size);
+    return _frame(_placeholderThumb(widget.fill ? 72 : widget.size));
   }
 }
 
 Widget _placeholderThumb([double size = 72]) {
-  return Container(
-    width: size,
-    height: size,
-    decoration: BoxDecoration(
-      color: AppTheme.primary.withValues(alpha: 0.12),
-      borderRadius: BorderRadius.circular(12),
+  return ColoredBox(
+    color: AppTheme.primary.withValues(alpha: 0.18),
+    child: SizedBox(
+      width: size,
+      height: size,
+      child: const Icon(Icons.campaign_outlined, color: Colors.white),
     ),
-    child: const Icon(Icons.campaign_outlined, color: AppTheme.primary),
   );
+}
+
+final _kVideoExt = RegExp(r'\.(mp4|webm|mov|m4v|avi)(\?|#|$)', caseSensitive: false);
+final _kImageExt = RegExp(r'\.(png|jpe?g|webp|gif|heic|heif|bmp)(\?|#|$)', caseSensitive: false);
+
+bool looksLikeVideoUrl(String raw) => _kVideoExt.hasMatch(raw.trim());
+
+bool looksLikeImageUrl(String raw) => _kImageExt.hasMatch(raw.trim());
+
+/// Splits stored still/clip fields when an image was saved into `video_url` (or vice versa).
+({String still, String clip}) sponsoredCreativeUrls({
+  String? imageUrl,
+  String? videoUrl,
+}) {
+  var still = (imageUrl ?? '').trim();
+  var clip = (videoUrl ?? '').trim();
+
+  if (clip.isNotEmpty && looksLikeImageUrl(clip) && !looksLikeVideoUrl(clip)) {
+    if (still.isEmpty) still = clip;
+    clip = '';
+  }
+  if (still.isNotEmpty && looksLikeVideoUrl(still) && !looksLikeImageUrl(still)) {
+    if (clip.isEmpty) clip = still;
+    still = '';
+  }
+  return (still: still, clip: clip);
+}
+
+/// One diner slide per still, plus a separate slide for a clip so stills stay visible.
+List<SponsoredFlashSlide> sponsoredFlashSlides(Iterable<Map<String, dynamic>> ads) {
+  final out = <SponsoredFlashSlide>[];
+  for (final raw in ads) {
+    final ad = Map<String, dynamic>.from(raw);
+    final creative = sponsoredCreativeUrls(
+      imageUrl: ad['image_url']?.toString(),
+      videoUrl: ad['video_url']?.toString(),
+    );
+    if (creative.still.isNotEmpty) {
+      out.add(SponsoredFlashSlide(ad: ad, stillUrl: creative.still, clipUrl: ''));
+    }
+    if (creative.clip.isNotEmpty) {
+      out.add(SponsoredFlashSlide(ad: ad, stillUrl: '', clipUrl: creative.clip));
+    }
+    if (creative.still.isEmpty && creative.clip.isEmpty) {
+      out.add(SponsoredFlashSlide(ad: ad, stillUrl: '', clipUrl: ''));
+    }
+  }
+  return out;
 }
 
 /// Turns stored CTA text into a launchable https URL.

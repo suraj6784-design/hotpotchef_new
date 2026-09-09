@@ -169,7 +169,7 @@ class _BrandCampaignEditorSheetState extends State<_BrandCampaignEditorSheet> {
           'p_campaign_id': id,
           'p_cta_url': uri?.toString() ?? (_url.text.trim().isEmpty ? null : _url.text.trim()),
           'p_cta_label': _label.text.trim().isEmpty ? 'Learn more' : _label.text.trim(),
-          'p_image_url': _imageUrl,
+          'p_image_url': (_imageUrl ?? '').trim(),
           'p_video_url': _videoUrl,
           'p_ends_at': _endsAt?.toUtc().toIso8601String(),
           'p_daily_start_minute': startMin,
@@ -299,6 +299,11 @@ class _BrandCampaignEditorSheetState extends State<_BrandCampaignEditorSheet> {
                   icon: const Icon(Icons.videocam_outlined, size: 18),
                   label: Text((_videoUrl ?? '').isEmpty ? 'Upload clip (≤30s)' : 'Replace clip'),
                 ),
+                if ((_imageUrl ?? '').isNotEmpty)
+                  TextButton(
+                    onPressed: () => setState(() => _imageUrl = null),
+                    child: const Text('Remove still'),
+                  ),
                 if ((_videoUrl ?? '').isNotEmpty)
                   TextButton(
                     onPressed: () => setState(() => _videoUrl = null),
@@ -312,7 +317,19 @@ class _BrandCampaignEditorSheetState extends State<_BrandCampaignEditorSheet> {
             ],
             if ((_imageUrl ?? '').isNotEmpty) ...[
               const SizedBox(height: 10),
-              Text('Still saved', style: TextStyle(fontSize: 12, color: AppTheme.success)),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.network(
+                  _imageUrl!,
+                  height: 140,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, error, stack) => const SizedBox(
+                    height: 80,
+                    child: Center(child: Text('Still saved, but preview failed to load')),
+                  ),
+                ),
+              ),
             ],
             if ((_videoUrl ?? '').isNotEmpty) ...[
               const SizedBox(height: 4),

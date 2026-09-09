@@ -211,4 +211,14 @@ void main() {
     expect(rooms.first.roomId, 'legacy-room');
     expect(rooms.first.preview, 'Still there?');
   });
+
+  test('KYC reminder copy names missing fields', () {
+    final chef = kycReminderCopy(role: 'Chef', missing: ['PAN', 'GSTIN']);
+    expect(chef.title, 'Complete your KYC');
+    expect(chef.body, contains('PAN'));
+    expect(chef.body, contains('kitchen'));
+
+    final driver = kycReminderCopy(role: 'Driver', missing: const []);
+    expect(driver.body, contains('delivery-partner'));
+  });
 }

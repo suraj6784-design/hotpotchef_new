@@ -18,5 +18,13 @@ void main() {
       );
       expect(chefNameMatchesQuery('', {'name': 'Asha'}), isFalse);
     });
+
+    test('isChefAccount ignores diner and driver rows', () {
+      expect(isChefAccount({'role': 'Chef'}), isTrue);
+      expect(isChefAccount({'role': 'chef'}), isTrue);
+      expect(isChefAccount({'role': 'Customer', 'name': 'User_hungry7'}), isFalse);
+      expect(isChefAccount({'role': 'Driver'}), isFalse);
+      expect(isChefAccount({'email': 'hungry7@example.com'}), isFalse);
+    });
   });
 }

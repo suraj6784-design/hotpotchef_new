@@ -9,6 +9,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/auth_session.dart';
+import '../services/alert_service.dart';
 import '../utils/helpers.dart';
 import '../utils/network.dart';
 import '../utils/platform_ops_access.dart';
@@ -86,6 +87,7 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> {
         onReject: (row) => _setBrandStatus(row, 'draft', packageLabel: 'Returned to draft'),
         onPublish: _publishBrand,
         onSchedule: _scheduleBrand,
+        onCreate: _createBrandCampaign,
       ),
     );
     add(
@@ -444,6 +446,122 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> {
   Future<void> _scheduleBrand(Map<String, dynamic> row) async {
     final saved = await showBrandCampaignEditorSheet(context, row: row);
     if (saved && mounted) _bump();
+  }
+
+  Future<void> _createBrandCampaign() async {
+    if (_busy) return;
+    final brand = TextEditingController();
+    final title = TextEditingController();
+    final body = TextEditingController();
+    var reach = 'overall';
+    final city = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('New brand campaign'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'You can keep several campaigns Live at once. Diners see them rotating on Home, like kitchen offers.',
+                  style: TextStyle(fontSize: 13, height: 1.35),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: brand,
+                  decoration: const InputDecoration(labelText: 'Brand / partner name'),
+                ),
+                TextField(
+                  controller: title,
+                  decoration: const InputDecoration(labelText: 'Headline'),
+                ),
+                TextField(
+                  controller: body,
+                  maxLines: 2,
+                  decoration: const InputDecoration(labelText: 'Body (optional)'),
+                ),
+                const SizedBox(height: 8),
+                SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(value: 'overall', label: Text('Overall')),
+                    ButtonSegment(value: 'targeted', label: Text('City')),
+                  ],
+                  selected: {reach},
+                  onSelectionChanged: (next) => setLocal(() => reach = next.first),
+                ),
+                if (reach == 'targeted')
+                  TextField(
+                    controller: city,
+                    decoration: const InputDecoration(labelText: 'City'),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Create draft')),
+          ],
+        ),
+      ),
+    );
+    final brandName = brand.text.trim();
+    final headline = title.text.trim();
+    final copy = body.text.trim();
+    final cityName = city.text.trim();
+    brand.dispose();
+    title.dispose();
+    body.dispose();
+    city.dispose();
+    if (ok != true || !mounted) return;
+    if (brandName.isEmpty || headline.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Brand name and headline are required')),
+      );
+      return;
+    }
+    if (reach == 'targeted' && cityName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Targeted campaigns need a city')),
+      );
+      return;
+    }
+    final uid = _supabase.auth.currentUser?.id;
+    if (uid == null) return;
+    setState(() => _busy = true);
+    try {
+      final inserted = await _supabase.from('ad_campaigns').insert({
+        'advertiser_id': uid,
+        'advertiser_name': brandName,
+        'title': headline,
+        'body': copy.isEmpty ? null : copy,
+        'cta_label': 'Learn more',
+        'reach_mode': reach,
+        'city': reach == 'targeted' ? cityName : null,
+        'status': 'draft',
+        'source_role': 'platform_sales',
+        'package_label': 'Ops-created',
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }).select().single();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Draft created. Add media, then Publish live. Multiple live campaigns rotate on diner Home.'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      _bump();
+      await _scheduleBrand(Map<String, dynamic>.from(inserted));
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Ops create brand campaign failed');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(opsFriendlyError(e)), backgroundColor: Colors.redAccent),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _confirmLogout() async {
@@ -876,6 +994,7 @@ class _BrandOpsList extends StatelessWidget {
     required this.onReject,
     required this.onEnd,
     required this.onSchedule,
+    required this.onCreate,
   });
 
   final bool busy;
@@ -883,6 +1002,7 @@ class _BrandOpsList extends StatelessWidget {
   final Future<void> Function(Map<String, dynamic> row) onReject;
   final Future<void> Function(Map<String, dynamic> row) onEnd;
   final Future<void> Function(Map<String, dynamic> row) onSchedule;
+  final Future<void> Function() onCreate;
 
   @override
   Widget build(BuildContext context) {
@@ -908,18 +1028,43 @@ class _BrandOpsList extends StatelessWidget {
           );
         }
         final rows = snap.data ?? const [];
+        final liveCount = rows.where((r) => (r['status']?.toString() ?? '').toLowerCase() == 'live').length;
         if (rows.isEmpty) {
-          return const EmptyState(
+          return EmptyState(
             icon: Icons.campaign_outlined,
-            title: 'No brand referrals yet',
-            message: 'When chefs submit Refer a brand, they appear here for review and go-live.',
+            title: 'No brand campaigns yet',
+            message: 'Create a campaign here, or wait for a chef Refer a brand. Several can be Live at once — they rotate on diner Home.',
+            actionLabel: 'New campaign',
+            onAction: busy ? null : () => onCreate(),
           );
         }
         return ListView.builder(
           padding: const EdgeInsets.all(16),
-          itemCount: rows.length,
+          itemCount: rows.length + 1,
           itemBuilder: (context, index) {
-            final row = rows[index];
+            if (index == 0) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      liveCount == 0
+                          ? 'No campaigns are live. Publish as many as you need — they rotate on diner Home like kitchen offers.'
+                          : '$liveCount live now. Diners see them rotating on Home (still, then clip if both are uploaded).',
+                      style: AppTheme.caption,
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: busy ? null : onCreate,
+                      icon: const Icon(Icons.add),
+                      label: const Text('New campaign'),
+                    ),
+                  ],
+                ),
+              );
+            }
+            final row = rows[index - 1];
             final status = (row['status']?.toString() ?? 'draft').toLowerCase();
             final brand = row['advertiser_name']?.toString() ?? 'Brand';
             final title = row['title']?.toString() ?? '';
@@ -1465,7 +1610,30 @@ class _KycOpsList extends StatelessWidget {
   }
 }
 
-class _KycRoleQueue extends StatelessWidget {
+Future<String> _sendKycReminderInApp(Map<String, dynamic> row) async {
+  final id = row['id']?.toString() ?? '';
+  if (id.isEmpty) throw Exception('Missing partner id');
+  final checklist = _kycChecklistFor(row);
+  final raw = await Supabase.instance.client.rpc(
+    'ops_send_kyc_reminder',
+    params: {
+      'p_user_id': id,
+      'p_missing': checklist.missing,
+    },
+  ).withTimeout(NetworkTimeouts.standard);
+  final result = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+  if (result['throttled'] == true) {
+    final mins = result['retry_after_minutes'] ?? 60;
+    return 'Already reminded in the last 4 hours. Try again in $mins min.';
+  }
+  if (result['ok'] != true) {
+    throw Exception('Could not send reminder');
+  }
+  AlertService.notifyKycReminder(notificationId: result['id']?.toString() ?? '');
+  return 'In-app reminder sent';
+}
+
+class _KycRoleQueue extends StatefulWidget {
   const _KycRoleQueue({
     required this.rows,
     required this.emptyTitle,
@@ -1477,29 +1645,125 @@ class _KycRoleQueue extends StatelessWidget {
   final String emptyMessage;
 
   @override
+  State<_KycRoleQueue> createState() => _KycRoleQueueState();
+}
+
+class _KycRoleQueueState extends State<_KycRoleQueue> {
+  bool _bulkBusy = false;
+
+  Future<void> _remindAllPending() async {
+    final pending = widget.rows.where((row) => _kycChecklistFor(row).incomplete).toList();
+    if (pending.isEmpty || _bulkBusy) return;
+    setState(() => _bulkBusy = true);
+    var sent = 0;
+    var skipped = 0;
+    var failed = 0;
+    try {
+      for (final row in pending) {
+        try {
+          final message = await _sendKycReminderInApp(row);
+          if (message.startsWith('Already')) {
+            skipped++;
+          } else {
+            sent++;
+          }
+        } catch (_) {
+          failed++;
+        }
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Reminders: $sent sent, $skipped already nudged, $failed failed'),
+          backgroundColor: failed == 0 ? Colors.green : Colors.orange,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _bulkBusy = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (rows.isEmpty) {
+    if (widget.rows.isEmpty) {
       return EmptyState(
         icon: Icons.badge_outlined,
-        title: emptyTitle,
-        message: emptyMessage,
+        title: widget.emptyTitle,
+        message: widget.emptyMessage,
       );
     }
+    final pending = widget.rows.where((row) => _kycChecklistFor(row).incomplete).length;
     return ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: rows.length,
-      itemBuilder: (context, index) => _KycPartnerTile(row: rows[index]),
+      itemCount: widget.rows.length + 1,
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  pending == 0
+                      ? 'Everyone in this list has a complete checklist.'
+                      : '$pending pending. Send an in-app reminder — they see a banner and a push if notifications are on.',
+                  style: AppTheme.caption,
+                ),
+                if (pending > 0) ...[
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: _bulkBusy ? null : _remindAllPending,
+                    icon: _bulkBusy
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.notifications_active_outlined),
+                    label: Text(_bulkBusy ? 'Sending…' : 'Remind all pending'),
+                  ),
+                ],
+              ],
+            ),
+          );
+        }
+        return _KycPartnerTile(row: widget.rows[index - 1]);
+      },
     );
   }
 }
 
-class _KycPartnerTile extends StatelessWidget {
+class _KycPartnerTile extends StatefulWidget {
   const _KycPartnerTile({required this.row});
 
   final Map<String, dynamic> row;
 
   @override
+  State<_KycPartnerTile> createState() => _KycPartnerTileState();
+}
+
+class _KycPartnerTileState extends State<_KycPartnerTile> {
+  bool _sending = false;
+
+  Future<void> _remind() async {
+    if (_sending) return;
+    setState(() => _sending = true);
+    try {
+      final message = await _sendKycReminderInApp(widget.row);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: Colors.green),
+      );
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'KYC in-app reminder failed');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(opsFriendlyError(e)), backgroundColor: Colors.redAccent),
+      );
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final row = widget.row;
     final checklist = _kycChecklistFor(row);
     final name = row['name']?.toString() ?? row['full_name']?.toString() ?? 'Partner';
     final role = row['role']?.toString() ?? '';
@@ -1556,6 +1820,17 @@ class _KycPartnerTile extends StatelessWidget {
             Text(
               'Missing: ${checklist.missing.join(', ')}',
               style: const TextStyle(fontSize: 12, color: AppTheme.error),
+            ),
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.icon(
+                onPressed: _sending ? null : _remind,
+                icon: _sending
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.notifications_active_outlined, size: 18),
+                label: Text(_sending ? 'Sending…' : 'Remind in app'),
+              ),
             ),
           ] else ...[
             const SizedBox(height: 8),

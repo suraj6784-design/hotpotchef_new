@@ -197,3 +197,34 @@ LeadAlertCopy? leadAlertCopy({
   }
   return null;
 }
+
+class KycReminderCopy {
+  const KycReminderCopy({required this.title, required this.body});
+
+  final String title;
+  final String body;
+}
+
+KycReminderCopy kycReminderCopy({
+  required String role,
+  List<String> missing = const [],
+}) {
+  final isDriver = role.trim().toLowerCase().contains('driver');
+  final needed = missing.map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+  if (needed.isEmpty) {
+    return KycReminderCopy(
+      title: 'Complete your KYC',
+      body: isDriver
+          ? 'HotPotChef still needs your delivery-partner KYC. Open Profile and finish the missing details.'
+          : 'HotPotChef still needs your kitchen KYC. Open Profile and finish the missing details.',
+    );
+  }
+  final listed = needed.take(8).join(', ');
+  final extra = needed.length > 8 ? ' and more' : '';
+  return KycReminderCopy(
+    title: 'Complete your KYC',
+    body: isDriver
+        ? 'Still needed: $listed$extra. Open Profile to finish so we can keep you on jobs.'
+        : 'Still needed: $listed$extra. Open Profile to finish so we can keep your kitchen live.',
+  );
+}

@@ -371,11 +371,11 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         final chefRows = await client
             .from('users')
             .select('id, name, full_name, email, fssai_number, role')
-            .eq('role', 'Chef')
+            .or('role.eq.Chef,role.eq.chef,role.eq.Cook,role.eq.cook')
             .limit(250)
             .withTimeout(NetworkTimeouts.standard);
         for (final row in List<Map<String, dynamic>>.from(chefRows as List)) {
-          if (!chefNameMatchesQuery(trimmed, row)) continue;
+          if (!isChefAccount(row) || !chefNameMatchesQuery(trimmed, row)) continue;
           final id = row['id']?.toString() ?? '';
           if (id.isEmpty) continue;
           chefHits[id] = row;
@@ -404,8 +404,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
               .from('users')
               .select('id, name, full_name, email, fssai_number, role')
               .inFilter('id', kitchenIds)
+              .or('role.eq.Chef,role.eq.chef,role.eq.Cook,role.eq.cook')
               .withTimeout(NetworkTimeouts.standard);
           for (final row in List<Map<String, dynamic>>.from(extraChefs as List)) {
+            if (!isChefAccount(row)) continue;
             final id = row['id']?.toString() ?? '';
             if (id.isEmpty) continue;
             final merged = Map<String, dynamic>.from(row);
@@ -427,6 +429,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           'name': chefDisplayName(meal),
           'chef_name': meal['chef_name'],
           'fssai_number': meal['fssai_number'],
+          'role': 'Chef',
         };
       }
 
@@ -448,7 +451,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         return isInventory && status != 'paused' && status != 'cancelled';
       }).toList();
 
-      final rankedChefs = chefHits.values.toList()
+      final rankedChefs = chefHits.values.where(isChefAccount).toList()
         ..sort((a, b) {
           final an = chefDisplayName(a).toLowerCase();
           final bn = chefDisplayName(b).toLowerCase();

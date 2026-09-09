@@ -26,6 +26,7 @@ import '../services/alert_service.dart';
 import '../services/invoice_pdf_service.dart';
 import '../services/kitchen_media.dart';
 import '../widgets/chef_boost_sheet.dart';
+import '../widgets/kyc_reminder_banner.dart';
 import 'packaging_store_screen.dart';
 import 'chef_publish_meal_screen.dart';
 
@@ -719,6 +720,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 body: Column(
                   children: [
                     _buildHeader(),
+                    const KycReminderBanner(profilePath: '/chef-profile'),
                     Expanded(
                       child: HubTabSwitcher(
                         index: _selectedIndex,

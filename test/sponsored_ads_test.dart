@@ -82,6 +82,43 @@ void main() {
     );
   });
 
+  test('still and clip become separate Home slides so stills stay visible', () {
+    final slides = sponsoredFlashSlides([
+      {
+        'id': 'both',
+        'title': 'Both',
+        'image_url': 'https://cdn.example/ad.jpg',
+        'video_url': 'https://cdn.example/ad.mp4',
+      },
+      {
+        'id': 'still',
+        'title': 'Still only',
+        'image_url': 'https://cdn.example/banner.webp',
+      },
+      {
+        'id': 'clip',
+        'title': 'Clip only',
+        'video_url': 'https://cdn.example/spot.mp4',
+      },
+    ]);
+    expect(slides.length, 4);
+    expect(slides[0].stillUrl, contains('.jpg'));
+    expect(slides[0].clipUrl, isEmpty);
+    expect(slides[1].clipUrl, contains('.mp4'));
+    expect(slides[1].stillUrl, isEmpty);
+    expect(slides[2].stillUrl, contains('.webp'));
+    expect(slides[3].clipUrl, contains('.mp4'));
+  });
+
+  test('image saved in video_url is treated as a still', () {
+    final creative = sponsoredCreativeUrls(
+      imageUrl: '',
+      videoUrl: 'https://cdn.example/hero.png',
+    );
+    expect(creative.still, contains('.png'));
+    expect(creative.clip, isEmpty);
+  });
+
   test('chef-facing labels never imply self-serve go-live', () {
     expect(adCampaignStatusLabel('pending_review'), contains('HotPotChef'));
     expect(adCampaignStatusLabel('live'), contains('platform'));
