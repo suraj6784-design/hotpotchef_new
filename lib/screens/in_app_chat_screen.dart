@@ -283,7 +283,7 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
     final bg = isDark ? AppTheme.backgroundDark : AppTheme.background;
     final surface = isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight;
     final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
-    final muted = isDark ? Colors.grey.shade400 : AppTheme.textMuted;
+    final muted = isDark ? AppTheme.textMuted : AppTheme.textMuted;
     final otherBubble = isDark ? AppTheme.surfaceMutedDark : AppTheme.surfaceMutedLight;
     final otherText = isDark ? AppTheme.textMainDark : AppTheme.textMain;
     final composerFill = isDark ? AppTheme.surfaceMutedDark : AppTheme.surfaceMutedLight;

@@ -11,6 +11,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
+import '../utils/app_theme.dart';
 import '../utils/gst_invoice.dart';
 import '../utils/helpers.dart';
 import '../widgets/app_widgets.dart';
@@ -123,7 +124,7 @@ class InvoicePdfService {
             style: TextStyle(fontSize: 13, color: AppTheme.onSurfaceOf(context)),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Dismiss', style: TextStyle(color: Colors.grey))),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Dismiss', style: TextStyle(color: AppTheme.textMuted))),
             IconButton(
               tooltip: 'Share invoice',
               icon: const Icon(Icons.share_outlined),

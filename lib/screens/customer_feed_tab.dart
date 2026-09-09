@@ -1018,7 +1018,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                           dense: true,
                                           leading: Icon(
                                             Icons.my_location,
-                                            color: _isUsingDevicePin ? brandPrimary : Colors.grey,
+                                                    color: _isUsingDevicePin ? brandPrimary : AppTheme.textMuted,
                                           ),
                                           title: Text(
                                             _deviceLocationPin!['address']?.toString() ?? 'Current location',
@@ -1064,7 +1064,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                               child: ListTile(
                                                 dense: true,
                                                 leading: Icon(Icons.location_on,
-                                                    color: isSelected ? brandPrimary : Colors.grey),
+                                                    color: isSelected ? brandPrimary : AppTheme.textMuted),
                                                 title: Text(
                                                   addrStr,
                                                   style: TextStyle(
@@ -2072,14 +2072,14 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                             mainAxisSize: MainAxisSize.min,
                                             children: [
                                               Icon(isAvailable ? Icons.add_rounded : Icons.lock_clock,
-                                                  size: 15, color: isAvailable ? Colors.white : Colors.grey),
+                                                  size: 15, color: isAvailable ? Colors.white : AppTheme.textMuted),
                                               const SizedBox(width: 4),
                                               Text(
                                                 isAvailable ? 'Add' : 'Closed',
                                                 style: TextStyle(
                                                     fontWeight: FontWeight.bold,
                                                     fontSize: 12,
-                                                    color: isAvailable ? Colors.white : Colors.grey),
+                                                    color: isAvailable ? Colors.white : AppTheme.textMuted),
                                               ),
                                             ],
                                           ),

@@ -304,7 +304,7 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                             ),
                             const Text(
                               'Amounts in ₹',
-                              style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                              style: AppTheme.micro,
                             ),
                           ],
                         ),
@@ -340,7 +340,7 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                                             _dailyTrend[idx].dayLabel,
                                             style: const TextStyle(
                                               fontSize: 11,
-                                              color: Colors.grey,
+                                              color: AppTheme.textMuted,
                                               fontWeight: FontWeight.w500,
                                             ),
                                           ),
@@ -430,7 +430,7 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                                 ),
                                 subtitle: Text(
                                   'Earned ₹${dish.totalEarned.toStringAsFixed(2)}',
-                                  style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                                  style: AppTheme.caption,
                                 ),
                                 trailing: Text(
                                   '${dish.totalPortions} Sold',

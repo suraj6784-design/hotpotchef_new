@@ -167,7 +167,7 @@ class _DriverIdCardScreenState extends State<DriverIdCardScreen> {
                           backgroundColor: Colors.grey.shade300,
                           backgroundImage: widget.avatarUrl != null ? NetworkImage(widget.avatarUrl!) : null,
                           child: widget.avatarUrl == null
-                              ? const Icon(Icons.person, size: 50, color: Colors.grey)
+                              ? const Icon(Icons.person, size: 50, color: AppTheme.textMuted)
                               : null,
                         ),
                       ),

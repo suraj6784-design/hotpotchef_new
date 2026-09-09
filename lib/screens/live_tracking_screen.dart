@@ -576,7 +576,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
             children: [
               Text(title, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppTheme.onSurfaceOf(context))),
               const SizedBox(height: 1),
-              Text(subtitle, style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+              Text(subtitle, style: AppTheme.micro),
             ],
           ),
         ),
@@ -688,7 +688,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(_etaText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.onSurfaceOf(context))),
-                                const Text('Live route tracking active', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                                const Text('Live route tracking active', style: AppTheme.micro),
                               ],
                             ),
                           ],

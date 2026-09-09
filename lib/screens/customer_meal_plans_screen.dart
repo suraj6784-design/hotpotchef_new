@@ -93,12 +93,12 @@ class _PlanCard extends ConsumerWidget {
           const SizedBox(height: 4),
           Text(
             '${plan.chefName} · ${plan.quantity} portion${plan.quantity == 1 ? '' : 's'}',
-            style: TextStyle(fontSize: 13, color: isDark ? Colors.grey.shade400 : AppTheme.textMuted),
+            style: TextStyle(fontSize: 13, color: isDark ? AppTheme.textMuted : AppTheme.textMuted),
           ),
           const SizedBox(height: 2),
           Text(
             '${plan.daysLabel} · ${plan.timeSlot}',
-            style: TextStyle(fontSize: 13, color: isDark ? Colors.grey.shade400 : AppTheme.textMuted),
+            style: TextStyle(fontSize: 13, color: isDark ? AppTheme.textMuted : AppTheme.textMuted),
           ),
           const SizedBox(height: 12),
           Row(
@@ -129,7 +129,7 @@ class _PlanCard extends ConsumerWidget {
                 Expanded(
                   child: Text(
                     'Next on ${plan.daysLabel}',
-                    style: TextStyle(fontSize: 13, color: isDark ? Colors.grey.shade400 : AppTheme.textMuted),
+                    style: TextStyle(fontSize: 13, color: isDark ? AppTheme.textMuted : AppTheme.textMuted),
                   ),
                 ),
               TextButton(

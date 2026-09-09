@@ -128,7 +128,7 @@ class _AvatarUploadWidgetState extends State<AvatarUploadWidget> {
                       child: const Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.broken_image, size: 80, color: Colors.grey),
+                          Icon(Icons.broken_image, size: 80, color: AppTheme.textMuted),
                           SizedBox(height: 8),
                           Text('Failed to load image', style: TextStyle(color: Colors.white)),
                         ],
@@ -139,7 +139,7 @@ class _AvatarUploadWidgetState extends State<AvatarUploadWidget> {
                     color: Colors.grey.shade300,
                     width: 300,
                     height: 300,
-                    child: const Icon(Icons.person, size: 150, color: Colors.grey),
+                    child: const Icon(Icons.person, size: 150, color: AppTheme.textMuted),
                   ),
           ),
         ),
@@ -167,7 +167,7 @@ class _AvatarUploadWidgetState extends State<AvatarUploadWidget> {
                 ? NetworkImage(_currentAvatarUrl!)
                 : null,
             child: (_currentAvatarUrl == null || _currentAvatarUrl!.isEmpty) && !_isUploading
-                ? const Icon(Icons.person, size: 50, color: Colors.grey)
+                ? const Icon(Icons.person, size: 50, color: AppTheme.textMuted)
                 : null,
           ),
           if (_isUploading)

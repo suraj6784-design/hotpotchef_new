@@ -154,7 +154,7 @@ class _ChefAcademyScreenState extends State<ChefAcademyScreen> {
                       Text(
                         '${_snap.completedLessons.intersection(allAcademyLessonIds().toSet()).length}/${allAcademyLessonIds().length} lessons · '
                         '${_snap.passedQuizzes.intersection(allAcademyQuizKeys().toSet()).length}/${allAcademyQuizKeys().length} quizzes',
-                        style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                        style: AppTheme.caption,
                       ),
                       if (_snap.hasCertificate) ...[
                         const SizedBox(height: 12),
@@ -257,7 +257,7 @@ class _ModuleCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       module.subtitle,
-                      style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                      style: AppTheme.caption,
                     ),
                     const SizedBox(height: 6),
                     Text(
@@ -406,7 +406,7 @@ class _AcademyModuleScreenState extends State<_AcademyModuleScreen> {
                               lessonsDone
                                   ? '3 questions · need $kAcademyQuizPassCorrect correct to pass'
                                   : 'Finish lessons first, then take the quiz',
-                              style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                              style: AppTheme.caption,
                             ),
                           ],
                         ),
@@ -473,7 +473,7 @@ class _LessonTile extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       '${lesson.minutes} min read${hasVideo ? ' · video tip' : ''}',
-                      style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                      style: AppTheme.caption,
                     ),
                   ],
                 ),
@@ -570,7 +570,7 @@ class _AcademyLessonScreenState extends State<_AcademyLessonScreen> {
           children: [
             Text(
               '${widget.module.title} · ${widget.lesson.minutes} min',
-              style: const TextStyle(fontSize: 12, color: AppTheme.textMuted, fontWeight: FontWeight.w600),
+              style: AppTheme.caption,
             ),
             const SizedBox(height: 16),
             Text(
@@ -852,7 +852,7 @@ class _AcademyCertificateScreen extends StatelessWidget {
                 ),
                 if (date.isNotEmpty) ...[
                   const SizedBox(height: 4),
-                  Text('Issued $date', style: const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                  Text('Issued $date', style: AppTheme.caption),
                 ],
               ],
             ),

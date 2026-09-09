@@ -11,7 +11,7 @@ class NotFoundPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
-    final muted = isDark ? Colors.grey.shade400 : AppTheme.textMuted;
+    final muted = isDark ? AppTheme.textMuted : AppTheme.textMuted;
 
     return Scaffold(
       backgroundColor: isDark ? AppTheme.backgroundDark : AppTheme.background,

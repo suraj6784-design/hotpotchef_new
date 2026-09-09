@@ -218,7 +218,7 @@ class _BrandCampaignEditorSheetState extends State<_BrandCampaignEditorSheet> {
             const SizedBox(height: 14),
             Text('Schedule & media', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppTheme.onSurfaceOf(context))),
             const SizedBox(height: 4),
-            Text(brand, style: const TextStyle(color: AppTheme.textMuted)),
+            Text(brand, style: AppTheme.caption),
             const SizedBox(height: 16),
             TextField(
               controller: _url,

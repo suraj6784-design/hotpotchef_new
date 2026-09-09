@@ -152,7 +152,7 @@ class _AiRecommendationsSectionState extends ConsumerState<AiRecommendationsSect
                               : null,
                         ),
                         child: (imageUrl == null || imageUrl.isEmpty)
-                            ? const Icon(Icons.restaurant, color: Colors.grey)
+                            ? const Icon(Icons.restaurant, color: AppTheme.textMuted)
                             : null,
                       ),
                       Padding(
@@ -169,7 +169,7 @@ class _AiRecommendationsSectionState extends ConsumerState<AiRecommendationsSect
                             const SizedBox(height: 2),
                             Text(
                               chefDisplayName(meal),
-                              style: const TextStyle(color: AppTheme.textMuted, fontSize: 11),
+                              style: AppTheme.micro,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),

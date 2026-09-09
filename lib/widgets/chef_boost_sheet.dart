@@ -172,7 +172,7 @@ class _ChefBoostSheetState extends State<ChefBoostSheet> {
           const SizedBox(height: 8),
           Text(
             '₹$kChefBoostRupees buys a paid Home placement (paid promotion) — this dish first on diner Home offers until $until. Charged to your kitchen — not taken from diner orders.',
-            style: TextStyle(fontSize: 14, height: 1.4, color: isDark ? Colors.grey.shade400 : AppTheme.textMuted),
+            style: TextStyle(fontSize: 14, height: 1.4, color: isDark ? AppTheme.textMuted : AppTheme.textMuted),
           ),
           const SizedBox(height: 20),
           SizedBox(
@@ -181,7 +181,7 @@ class _ChefBoostSheetState extends State<ChefBoostSheet> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primary,
                 foregroundColor: Colors.white,
-                disabledBackgroundColor: Colors.grey.shade400,
+                disabledBackgroundColor: AppTheme.textMuted,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 elevation: 0,

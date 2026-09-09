@@ -414,9 +414,9 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
       ),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+        labelStyle: TextStyle(color: isDark ? AppTheme.textMuted : AppTheme.textMuted),
         floatingLabelStyle: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold),
-        prefixIcon: Icon(icon, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+        prefixIcon: Icon(icon, color: isDark ? AppTheme.textMuted : AppTheme.textMuted),
         filled: true,
         fillColor: isDark ? const Color(0xFF2A2A2A) : Colors.white,
         border: OutlineInputBorder(
@@ -507,7 +507,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                         style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 15, fontWeight: FontWeight.w500),
                         decoration: InputDecoration(
                           labelText: 'Gender',
-                          labelStyle: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                          labelStyle: TextStyle(color: isDark ? AppTheme.textMuted : AppTheme.textMuted),
                           floatingLabelStyle: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold),
                           filled: true,
                           fillColor: isDark ? const Color(0xFF2A2A2A) : Colors.white,
@@ -530,9 +530,9 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                   style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 15, fontWeight: FontWeight.w500),
                   decoration: InputDecoration(
                     labelText: 'Dietary Preference',
-                    labelStyle: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                    labelStyle: TextStyle(color: isDark ? AppTheme.textMuted : AppTheme.textMuted),
                     floatingLabelStyle: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold),
-                    prefixIcon: Icon(Icons.restaurant_menu, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                    prefixIcon: Icon(Icons.restaurant_menu, color: isDark ? AppTheme.textMuted : AppTheme.textMuted),
                     filled: true,
                     fillColor: isDark ? const Color(0xFF2A2A2A) : Colors.white,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: isDark ? Colors.white12 : Colors.grey.shade300)),
@@ -683,7 +683,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         child: Text(
                           'No coin activity yet.',
-                          style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey, fontSize: 13),
+                          style: TextStyle(color: isDark ? AppTheme.textMuted : Colors.grey, fontSize: 13),
                         ),
                       )
                     else
@@ -712,7 +712,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                                       Text(
                                         'Order ${entry.orderRef}',
                                         style: TextStyle(
-                                          color: isDark ? Colors.grey.shade400 : AppTheme.textMuted,
+                                          color: isDark ? AppTheme.textMuted : AppTheme.textMuted,
                                           fontSize: 11,
                                           fontWeight: FontWeight.w700,
                                         ),
@@ -825,7 +825,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                 style: TextStyle(
                   fontSize: 12,
                   height: 1.35,
-                  color: isDark ? Colors.grey.shade400 : AppTheme.textMuted,
+                  color: isDark ? AppTheme.textMuted : AppTheme.textMuted,
                 ),
               ),
               const SizedBox(height: 12),
@@ -851,7 +851,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                     customerPayMethodSubtitle(method),
                     style: TextStyle(
                       fontSize: 12,
-                      color: isDark ? Colors.grey.shade400 : AppTheme.textMuted,
+                      color: isDark ? AppTheme.textMuted : AppTheme.textMuted,
                     ),
                   ),
                   trailing: Icon(
@@ -929,7 +929,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
               if (_addresses.isEmpty)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 8),
-                  child: Text('No saved addresses.', style: TextStyle(color: Colors.grey)),
+                  child: Text('No saved addresses.', style: TextStyle(color: AppTheme.textMuted)),
                 )
               else
                 Flexible(
@@ -956,7 +956,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                                 tooltip: addr['is_default'] == true ? 'Default address' : 'Use as default',
                                 icon: Icon(
                                   addr['is_default'] == true ? Icons.star : Icons.star_border,
-                                  color: addr['is_default'] == true ? Colors.amber : (isDark ? Colors.white70 : Colors.grey),
+                                  color: addr['is_default'] == true ? Colors.amber : (AppTheme.textMuted),
                                 ),
                                 onPressed: addr['is_default'] == true
                                     ? null
@@ -965,7 +965,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                                         setSheetState(() {});
                                       },
                               ),
-                              Icon(Icons.edit, size: 16, color: isDark ? Colors.white70 : Colors.grey),
+                              Icon(Icons.edit, size: 16, color: AppTheme.textMuted),
                             ],
                           ),
                           onTap: () async {
@@ -997,9 +997,9 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
         ),
         child: Icon(icon, color: AppTheme.primary, size: 20),
       ),
-      title: Text(title, style: TextStyle(color: isDark ? Colors.white : AppTheme.textMain, fontSize: 15, fontWeight: FontWeight.w600)),
-      subtitle: subtitle != null ? Text(subtitle, style: TextStyle(color: isDark ? Colors.grey.shade300 : AppTheme.textMuted, fontSize: 12)) : null,
-      trailing: Icon(Icons.chevron_right, color: isDark ? Colors.white70 : Colors.grey, size: 20),
+      title: Text(title, style: AppTheme.listTitleOf(context)),
+      subtitle: subtitle != null ? Text(subtitle, style: AppTheme.caption) : null,
+      trailing: const Icon(Icons.chevron_right, color: AppTheme.textMuted, size: 20),
       onTap: onTap,
     );
   }
@@ -1059,7 +1059,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
           actions: [
             IconButton(
               tooltip: 'Log out',
-              icon: const Icon(Icons.logout, color: Colors.grey),
+              icon: const Icon(Icons.logout, color: AppTheme.textMuted),
               onPressed: _handleLogout,
             ),
           ],
@@ -1094,11 +1094,11 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                                 const SizedBox(height: 4),
                                 Text(
                                   _phoneController.text.isEmpty ? 'Add phone number' : _phoneController.text,
-                                  style: TextStyle(fontSize: 13, color: isDark ? Colors.grey.shade300 : AppTheme.textMuted),
+                                  style: TextStyle(fontSize: 13, color: AppTheme.textMuted),
                                 ),
                                 const SizedBox(height: 2),
                                 Text(_email,
-                                    style: TextStyle(fontSize: 12, color: isDark ? Colors.grey.shade400 : AppTheme.textMuted),
+                                    style: TextStyle(fontSize: 12, color: isDark ? AppTheme.textMuted : AppTheme.textMuted),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis),
                                 const SizedBox(height: 8),
@@ -1306,7 +1306,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 8),
                       child: Center(
-                        child: Text('App Version: 1.0.0 (Build 12)', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                        child: Text('App Version: 1.0.0 (Build 12)', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
                       ),
                     ),
                     const SizedBox(height: 40),

@@ -195,28 +195,18 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               children: [
                 Text(
                   title,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.4,
-                    color: color,
-                  ),
+                  style: AppTheme.homeKickerOf(context).copyWith(color: color),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   address,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    height: 1.3,
-                    color: AppTheme.onSurfaceOf(context),
-                  ),
+                  style: AppTheme.bodyOf(context),
                 ),
                 if (coordLabel.isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Text(
                     'Pinned $coordLabel',
-                    style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                    style: AppTheme.micro,
                   ),
                 ],
               ],
@@ -532,7 +522,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                       Text('${state.activeDeliveries.length}',
                           style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                       const SizedBox(height: 4),
-                      const Text('Active Runs', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                      const Text('Active Runs', style: AppTheme.caption),
                     ],
                   ),
                 ),
@@ -548,7 +538,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                       Text('${state.availableDeliveries.length}',
                           style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                       const SizedBox(height: 4),
-                      const Text('Available Pool', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                      const Text('Available Pool', style: AppTheme.caption),
                     ],
                   ),
                 ),
@@ -556,7 +546,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
             ],
           ),
           const SizedBox(height: 24),
-          Text('Recent completed deliveries', style: AppTheme.sectionTitleOf(context).copyWith(fontSize: 18)),
+          Text('Recent completed deliveries', style: AppTheme.homeSectionLabelOf(context)),
           const SizedBox(height: 12),
           if (state.recentDeliveries.isEmpty)
             const SizedBox(
@@ -593,32 +583,20 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                                 Expanded(
                                   child: Text(
                                     'Order #${delivery.displayOrderNumber}',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 14,
-                                      color: AppTheme.onSurfaceOf(context),
-                                    ),
+                                    style: AppTheme.listTitleOf(context),
                                   ),
                                 ),
                                 Text(
                                   '+₹${delivery.payout.toStringAsFixed(0)}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w900,
-                                    color: AppTheme.success,
-                                    fontSize: 15,
-                                  ),
+                                  style: AppTheme.priceOf(context).copyWith(color: AppTheme.success, fontSize: 15),
                                 ),
                               ],
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              delivery.chefName,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 13,
-                                color: AppTheme.textMuted,
-                              ),
-                            ),
+                delivery.chefName,
+                style: AppTheme.caption,
+              ),
                             if (detail.isNotEmpty) ...[
                               const SizedBox(height: 2),
                               Text(
@@ -635,7 +613,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                             const SizedBox(height: 4),
                             Text(
                               formatOrderDate(delivery.createdAt.toIso8601String()),
-                              style: const TextStyle(color: AppTheme.textMuted, fontSize: 11),
+                              style: AppTheme.micro,
                             ),
                           ],
                         ),
@@ -682,7 +660,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text('Order #${formatOrderId(null, delivery.orderId)}',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textMuted)),
                   Text('+₹${delivery.payout.toStringAsFixed(0)} Payout',
                       style: const TextStyle(fontWeight: FontWeight.w900, color: Colors.green, fontSize: 14)),
                 ],
@@ -701,18 +679,18 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.onSurfaceOf(context))),
               ],
               const SizedBox(height: 4),
-              Text(delivery.pickupAddress, style: const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+              Text(delivery.pickupAddress, style: AppTheme.caption),
               if (delivery.pickupCoordLabel.isNotEmpty) ...[
                 const SizedBox(height: 2),
                 Text('Pinned ${delivery.pickupCoordLabel}',
-                    style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                    style: AppTheme.micro),
               ],
               const SizedBox(height: 8),
               Text('Dropoff: ${delivery.customerAddress}', style: TextStyle(fontSize: 12, color: AppTheme.onSurfaceOf(context))),
               if (delivery.dropoffCoordLabel.isNotEmpty) ...[
                 const SizedBox(height: 2),
                 Text('Pinned ${delivery.dropoffCoordLabel}',
-                    style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                    style: AppTheme.micro),
               ],
               if (delivery.distanceKm > 0) ...[
                 const SizedBox(height: 8),
@@ -831,18 +809,17 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text('Run #${formatOrderId(null, delivery.orderId)}',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textMuted)),
+                      style: AppTheme.micro),
                   AppStatusBadge(status: rawStatus),
                 ],
               ),
               const SizedBox(height: 12),
-              Text(delivery.activeStepTitle,
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.onSurfaceOf(context))),
+              Text(delivery.activeStepTitle, style: AppTheme.listTitleOf(context)),
               if (delivery.itemsSummary.isNotEmpty) ...[
                 const SizedBox(height: 6),
                 Text(
                   'Order #${delivery.displayOrderNumber} · ${delivery.itemsSummary}',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textMuted),
+                  style: AppTheme.caption,
                 ),
               ],
               const SizedBox(height: 10),

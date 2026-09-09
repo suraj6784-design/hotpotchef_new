@@ -513,7 +513,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Widget _buildSheet(bool isDark) {
     final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
-    final muted = isDark ? Colors.grey.shade400 : AppTheme.textMuted;
+    final muted = isDark ? AppTheme.textMuted : AppTheme.textMuted;
     final bg = isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight;
     final title = widget.sheetTitle ?? (_isLogin ? 'Sign in to continue' : 'Join HotPotChef');
     final subtitle = widget.sheetSubtitle ??
@@ -812,7 +812,7 @@ class _AuthScreenState extends State<AuthScreen> {
           onPressed: _handleForgotUsername,
           child: const Text(
             'Forgot Email / Username?',
-            style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
+            style: AppTheme.caption,
           ),
         ),
       TextButton(

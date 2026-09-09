@@ -493,7 +493,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     final bg = isDark ? AppTheme.backgroundDark : AppTheme.background;
     final surface = isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight;
     final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
-    final muted = isDark ? Colors.grey.shade400 : AppTheme.textMuted;
+    final muted = isDark ? AppTheme.textMuted : AppTheme.textMuted;
     final fill = isDark ? AppTheme.surfaceMutedDark : Colors.white;
     final divider = isDark ? Colors.white24 : Colors.black12;
     final optionBorder = isDark ? Colors.white12 : Colors.grey.shade300;
@@ -781,7 +781,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
-    final muted = isDark ? Colors.grey.shade400 : AppTheme.textMuted;
+    final muted = isDark ? AppTheme.textMuted : AppTheme.textMuted;
     final fill = isDark ? AppTheme.surfaceMutedDark : Colors.white;
     final border = isDark ? Colors.white12 : Colors.grey.shade300;
 

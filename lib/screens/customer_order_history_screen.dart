@@ -173,7 +173,7 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                             children: [
                               const Icon(Icons.local_shipping_outlined, size: 14, color: AppTheme.primary),
                               const SizedBox(width: 6),
-                              const Text('Type: ', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                              const Text('Type: ', style: AppTheme.caption),
                               Text(orderType, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                             ],
                           ),
@@ -182,7 +182,7 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                             children: [
                               const Icon(Icons.access_time, size: 14, color: AppTheme.textMuted),
                               const SizedBox(width: 6),
-                              const Text('Placed: ', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                              const Text('Placed: ', style: AppTheme.caption),
                               Text(dateTimeString, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppTheme.onSurfaceOf(context))),
                             ],
                           ),
@@ -192,7 +192,7 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                               children: [
                                 const Icon(Icons.done_all, size: 14, color: Colors.green),
                                 const SizedBox(width: 6),
-                                const Text('Delivered: ', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                                const Text('Delivered: ', style: AppTheme.caption),
                                 Text(
                                   formatOrderDate(
                                     orderRecord['delivered_at']?.toString() ??
@@ -210,7 +210,7 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                               children: [
                                 const Icon(Icons.cancel_outlined, size: 14, color: Colors.redAccent),
                                 const SizedBox(width: 6),
-                                const Text('Cancelled: ', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                                const Text('Cancelled: ', style: AppTheme.caption),
                                 Text(
                                   formatOrderDate(orderRecord['updated_at']?.toString() ?? orderRecord['created_at']?.toString()),
                                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Colors.redAccent),
@@ -223,7 +223,7 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                             children: [
                               const Icon(Icons.event_available, size: 14, color: Colors.green),
                               const SizedBox(width: 6),
-                              const Text('Delivery Slot: ', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                              const Text('Delivery Slot: ', style: AppTheme.caption),
                               Text(slotLabel, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
                             ],
                           ),
@@ -235,7 +235,7 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                               const SizedBox(width: 6),
                               Expanded(
                                 child: Text('Address: $displayAddress',
-                                    style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                                    style: AppTheme.caption,
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis),
                               ),
@@ -273,7 +273,7 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                                       );
                                     },
                                   ),
-                                  const Text('Home kitchen', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+                                  const Text('Home kitchen', style: AppTheme.caption),
                                 ],
                               ),
                             ),
@@ -347,7 +347,7 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                                         Text('${item['quantity']} x ${item['title']}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                                         if (shownSlot.isNotEmpty) ...[
                                           const SizedBox(height: 2),
-                                          Text('Slot: $shownSlot', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+                                          Text('Slot: $shownSlot', style: AppTheme.caption),
                                         ]
                                       ],
                                     ),
@@ -661,7 +661,7 @@ class _HistoryOrdersListState extends ConsumerState<_HistoryOrdersList> {
                   const SizedBox(height: 10),
                   Text(title, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                   const SizedBox(height: 4),
-                  Text('Ordered on: $dateStr', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+                  Text('Ordered on: $dateStr', style: AppTheme.caption),
                   const SizedBox(height: 12),
                   Divider(height: 1, color: AppTheme.hairlineOf(context)),
                   const SizedBox(height: 10),

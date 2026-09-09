@@ -66,7 +66,7 @@ class LastOrderReorderBanner extends ConsumerWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w800,
-              color: isDark ? Colors.grey.shade400 : AppTheme.textMuted,
+              color: isDark ? AppTheme.textMuted : AppTheme.textMuted,
             ),
           ),
           const SizedBox(height: 4),
@@ -81,7 +81,7 @@ class LastOrderReorderBanner extends ConsumerWidget {
           const SizedBox(height: 2),
           Text(
             chef,
-            style: TextStyle(fontSize: 13, color: isDark ? Colors.grey.shade400 : AppTheme.textMuted),
+            style: TextStyle(fontSize: 13, color: isDark ? AppTheme.textMuted : AppTheme.textMuted),
           ),
           const SizedBox(height: 12),
           SizedBox(

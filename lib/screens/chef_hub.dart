@@ -1578,7 +1578,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   padding: EdgeInsets.only(bottom: 6),
                   child: Text(
                     'Stock is back — boost will publish this dish on Home again.',
-                    style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                    style: AppTheme.caption,
                   ),
                 ),
               SizedBox(
@@ -1587,7 +1587,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.primary,
                     foregroundColor: Colors.white,
-                    disabledBackgroundColor: Colors.grey.shade400,
+                    disabledBackgroundColor: AppTheme.textMuted,
                     elevation: 0,
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusSm),
@@ -1896,7 +1896,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               const SizedBox(height: 8),
               Text(
                 'Quantity: ${req['quantity']} • Left: $remaining • $distance • Needed by: ${req['target_date_time'] ?? 'ASAP'}',
-                style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                style: AppTheme.caption,
               ),
               const SizedBox(height: 14),
               if (isOpen)
@@ -1911,10 +1911,10 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 )
               else if (awaitingPay)
                 const Text('Stay ready. The customer pays from My Orders, then this becomes a kitchen order.',
-                    style: TextStyle(fontSize: 12, color: AppTheme.textMuted))
+                    style: AppTheme.caption)
               else
                 const Text('Payment received. Confirm the new order on the Orders tab.',
-                    style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                    style: AppTheme.caption),
               const SizedBox(height: 8),
               if (hasMyQuote || awaitingPay || paid)
                 Row(
@@ -1947,7 +1947,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 )
               else
                 const Text('Submit a quote to message the customer about this lead.',
-                    style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                    style: AppTheme.caption),
             ],
           ),
         ).entrance(index: index);

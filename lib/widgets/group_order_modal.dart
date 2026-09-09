@@ -190,7 +190,7 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
             Text(
               'Share with your building or desk — neighbours add plates, you pay once.',
               style: TextStyle(
-                color: isDark ? Colors.grey.shade300 : AppTheme.textMuted,
+                color: AppTheme.textMuted,
                 fontSize: 13,
                 height: 1.4,
               ),
@@ -228,7 +228,7 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
               ),
             ),
             const SizedBox(height: 12),
-            Text(invite, style: TextStyle(fontSize: 12, height: 1.35, color: isDark ? Colors.grey.shade400 : AppTheme.textMuted)),
+            Text(invite, style: TextStyle(fontSize: 12, height: 1.35, color: isDark ? AppTheme.textMuted : AppTheme.textMuted)),
           ],
         ),
         actions: [
@@ -300,7 +300,7 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
               'One host, many plates. Neighbours add dishes to your cart — you pay once.',
               style: TextStyle(
                 fontSize: 13,
-                color: isDark ? Colors.grey.shade400 : AppTheme.textMuted,
+                color: isDark ? AppTheme.textMuted : AppTheme.textMuted,
               ),
             ),
             const SizedBox(height: 16),
@@ -384,7 +384,7 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
                   borderRadius: BorderRadius.circular(12),
                   borderSide: const BorderSide(color: AppTheme.primary, width: 1.5),
                 ),
-                labelStyle: TextStyle(color: isDark ? Colors.grey.shade400 : AppTheme.textMuted, fontSize: 13),
+                labelStyle: TextStyle(color: isDark ? AppTheme.textMuted : AppTheme.textMuted, fontSize: 13),
               ),
             ),
             const SizedBox(height: 12),

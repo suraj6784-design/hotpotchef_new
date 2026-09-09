@@ -79,7 +79,7 @@ class _CustomerSupportTicketsScreenState extends State<CustomerSupportTicketsScr
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark ? AppTheme.backgroundDark : AppTheme.background;
     final onSurface = AppTheme.onSurfaceOf(context);
-    final muted = isDark ? Colors.grey.shade400 : AppTheme.textMuted;
+    final muted = isDark ? AppTheme.textMuted : AppTheme.textMuted;
 
     return Scaffold(
       backgroundColor: bg,
@@ -305,7 +305,7 @@ class _SupportTicketDetailScreenState extends State<_SupportTicketDetailScreen> 
     final bg = isDark ? AppTheme.backgroundDark : AppTheme.background;
     final surface = isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight;
     final onSurface = AppTheme.onSurfaceOf(context);
-    final muted = isDark ? Colors.grey.shade400 : AppTheme.textMuted;
+    final muted = isDark ? AppTheme.textMuted : AppTheme.textMuted;
     final publicId = widget.ticket['public_id']?.toString() ?? 'Ticket';
     final subject = widget.ticket['subject']?.toString() ?? '';
     final status = (widget.ticket['status']?.toString() ?? 'open').replaceAll('_', ' ');

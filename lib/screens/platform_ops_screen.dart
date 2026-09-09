@@ -613,7 +613,7 @@ class _OpsDeskNav extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       email,
-                      style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                      style: AppTheme.caption,
                     ),
                   ],
                 ],
@@ -724,7 +724,7 @@ class _PackagingOpsList extends StatelessWidget {
                   const SizedBox(height: 6),
                   Text(
                     '${requestId.isEmpty ? 'SUP' : requestId} · Qty ${row['quantity'] ?? 1} · ₹${total.toStringAsFixed(0)}',
-                    style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                    style: AppTheme.caption,
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -735,7 +735,7 @@ class _PackagingOpsList extends StatelessWidget {
                     row['delivery_address']?.toString() ?? '',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                    style: AppTheme.caption,
                   ),
                   const SizedBox(height: 10),
                   Wrap(
@@ -825,7 +825,7 @@ class _FssaiOpsList extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     'FSSAI ${row['fssai_number'] ?? '—'} · ${row['phone'] ?? ''}',
-                    style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                    style: AppTheme.caption,
                   ),
                   if (proof.isNotEmpty) ...[
                     const SizedBox(height: 10),
@@ -956,7 +956,7 @@ class _BrandOpsList extends StatelessWidget {
                       row['body'].toString(),
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                      style: AppTheme.caption,
                     ),
                   ],
                   const SizedBox(height: 6),
@@ -966,7 +966,7 @@ class _BrandOpsList extends StatelessWidget {
                       if (contact.isNotEmpty) contact,
                       if (url.isNotEmpty) url,
                     ].join(' · '),
-                    style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                    style: AppTheme.caption,
                   ),
                   const SizedBox(height: 10),
                   Wrap(
@@ -1111,7 +1111,7 @@ class _RefundsOpsList extends StatelessWidget {
                   Text(
                     'Status $status · ₹${amount.toStringAsFixed(0)}'
                     '${row['refund_id'] != null ? ' · refund ${row['refund_id']}' : ''}',
-                    style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                    style: AppTheme.caption,
                   ),
                   if (orderUuid.isNotEmpty) ...[
                     const SizedBox(height: 4),
@@ -1119,14 +1119,14 @@ class _RefundsOpsList extends StatelessWidget {
                       'UUID $orderUuid',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: AppTheme.textMuted, fontSize: 11),
+                      style: AppTheme.micro,
                     ),
                   ],
                   if (dispute != null) ...[
                     const SizedBox(height: 4),
                     Text(
                       'Dispute ${dispute['public_id'] ?? ''} · $disputeStatus',
-                      style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                      style: AppTheme.caption,
                     ),
                   ],
                   const SizedBox(height: 10),
@@ -1295,7 +1295,7 @@ class _TicketsOpsList extends StatelessWidget {
                                   if (sla.isNotEmpty) 'SLA $sla',
                                   row['category']?.toString() ?? '',
                                 ].where((s) => s.trim().isNotEmpty).join(' · '),
-                                style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                                style: AppTheme.caption,
                               ),
                             ],
                           ),
@@ -1531,7 +1531,7 @@ class _KycPartnerTile extends StatelessWidget {
               if (kitchen.isNotEmpty) kitchen,
               row['email']?.toString() ?? '',
             ].where((s) => s.trim().isNotEmpty).join(' · '),
-            style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+            style: AppTheme.caption,
           ),
           Builder(
             builder: (_) {
@@ -1546,7 +1546,7 @@ class _KycPartnerTile extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(
                   bits.join(' · '),
-                  style: const TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w600),
+                  style: AppTheme.caption,
                 ),
               );
             },
@@ -1724,7 +1724,7 @@ class _OpsTicketThreadScreenState extends State<_OpsTicketThreadScreen> {
             child: _loading
                 ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
                 : _error != null
-                    ? Center(child: Text(_error!, style: const TextStyle(color: AppTheme.textMuted)))
+                    ? Center(child: Text(_error!, style: AppTheme.caption))
                     : _messages.isEmpty
                         ? const Center(
                             child: Text('No messages yet.', style: TextStyle(color: AppTheme.textMuted)),
@@ -1822,7 +1822,7 @@ class _OpsTicketThreadScreenState extends State<_OpsTicketThreadScreen> {
                     ),
                     subtitle: const Text(
                       'Not shown to the diner',
-                      style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                      style: AppTheme.micro,
                     ),
                   ),
                   Row(

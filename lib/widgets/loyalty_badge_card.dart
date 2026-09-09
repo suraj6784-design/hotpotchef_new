@@ -94,7 +94,7 @@ class _LoyaltyBadgeCardState extends State<LoyaltyBadgeCard> {
                 Text(
                   'Customer Loyalty Tier',
                   style: TextStyle(
-                    color: isDark ? Colors.grey.shade400 : AppTheme.textMuted,
+                    color: isDark ? AppTheme.textMuted : AppTheme.textMuted,
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
                   ),
@@ -114,7 +114,7 @@ class _LoyaltyBadgeCardState extends State<LoyaltyBadgeCard> {
                     Text(
                       '$_completedOrders Orders Completed',
                       style: TextStyle(
-                        color: isDark ? Colors.grey.shade300 : AppTheme.textMuted,
+                        color: AppTheme.textMuted,
                         fontSize: 12,
                       ),
                     ),

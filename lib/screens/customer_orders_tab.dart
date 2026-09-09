@@ -609,7 +609,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                             children: [
                               const Icon(Icons.local_shipping_outlined, size: 14, color: AppTheme.primary),
                               const SizedBox(width: 6),
-                              const Text('Type: ', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                              const Text('Type: ', style: AppTheme.caption),
                               Text(orderType, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                             ],
                           ),
@@ -618,7 +618,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                             children: [
                               const Icon(Icons.access_time, size: 14, color: AppTheme.textMuted),
                               const SizedBox(width: 6),
-                              const Text('Placed: ', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                              const Text('Placed: ', style: AppTheme.caption),
                               Text(dateTimeString, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppTheme.onSurfaceOf(context))),
                             ],
                           ),
@@ -627,7 +627,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                             children: [
                               const Icon(Icons.event_available, size: 14, color: Colors.green),
                               const SizedBox(width: 6),
-                              const Text('Promised slot: ', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                              const Text('Promised slot: ', style: AppTheme.caption),
                               Expanded(
                                 child: Text(slotLabel, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
                               ),
@@ -674,7 +674,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                               const SizedBox(width: 6),
                               Expanded(
                                 child: Text('$addressLabel: $addressValue',
-                                    style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                                    style: AppTheme.caption,
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis),
                               ),
@@ -736,7 +736,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                         );
                                       },
                                     ),
-                                    const Text('Home kitchen', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+                                    const Text('Home kitchen', style: AppTheme.caption),
                                   ],
                                 ),
                               ]),
@@ -866,7 +866,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                       children: [
                                         Text('${item['quantity']} x ${item['title']}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                                         const SizedBox(height: 2),
-                                        Text('Slot: $shownSlot', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+                                        Text('Slot: $shownSlot', style: AppTheme.caption),
                                       ],
                                     ),
                                   ),
@@ -1172,7 +1172,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
             style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 14),
           ),
           const SizedBox(height: 8),
-          Row(children: [const Icon(Icons.calendar_today, size: 14, color: AppTheme.textMuted), const SizedBox(width: 6), Text('Needed By: ${req['target_date_time']}', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12))]),
+          Row(children: [const Icon(Icons.calendar_today, size: 14, color: AppTheme.textMuted), const SizedBox(width: 6), Text('Needed By: ${req['target_date_time']}', style: AppTheme.caption)]),
           if ((isOpen || isAccepted) && !isCancelled) ...[
             Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: AppTheme.hairlineOf(context))),
             Text(
@@ -1186,7 +1186,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                 padding: EdgeInsets.only(top: 6),
                 child: Text(
                   'Nearby chefs can bid. You choose who cooks, then pay.',
-                  style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                  style: AppTheme.caption,
                 ),
               )
             else
@@ -1285,7 +1285,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
               )
             else
               const Text('Paid. This catering job is now a regular kitchen order.',
-                  style: TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w600)),
+                  style: AppTheme.caption),
           ] else if (!isCancelled) ...[
             const SizedBox(height: 12),
             SizedBox(
@@ -1587,7 +1587,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                             children: [
                               const Icon(Icons.local_shipping_outlined, size: 14, color: AppTheme.primary),
                               const SizedBox(width: 6),
-                              const Text('Type: ', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                              const Text('Type: ', style: AppTheme.caption),
                               Text(orderType, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                             ],
                           ),
@@ -1598,8 +1598,8 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                             children: [
                               const Icon(Icons.access_time, size: 14, color: AppTheme.textMuted),
                               const SizedBox(width: 6),
-                              const Text('Placed: ', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
-                              Text(dateTimeString, style: const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                              const Text('Placed: ', style: AppTheme.caption),
+                              Text(dateTimeString, style: AppTheme.caption),
                             ],
                           ),
                           const SizedBox(height: 4),
@@ -1607,7 +1607,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                             children: [
                               const Icon(Icons.event_available, size: 14, color: Colors.green),
                               const SizedBox(width: 6),
-                              const Text('Delivery Slot: ', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                              const Text('Delivery Slot: ', style: AppTheme.caption),
                               Text(smartTimeSlot, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
                             ],
                           ),

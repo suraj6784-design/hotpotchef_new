@@ -72,7 +72,7 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
-    final muted = isDark ? Colors.grey.shade300 : AppTheme.textMuted;
+    final muted = AppTheme.textMuted;
     final fill = isDark ? AppTheme.surfaceMutedDark : AppTheme.surfaceMutedLight;
 
     InputDecoration decoration(String label, IconData icon) {

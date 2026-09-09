@@ -67,7 +67,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+            child: const Text('Cancel', style: TextStyle(color: AppTheme.textMuted)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary, foregroundColor: Colors.white),
@@ -306,7 +306,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.close, color: Colors.grey),
+                        icon: const Icon(Icons.close, color: AppTheme.textMuted),
                         onPressed: () => ref.read(cartProvider.notifier).removeItem(cartItemId),
                       ),
                     ],

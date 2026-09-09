@@ -61,7 +61,7 @@ class _SocietyNightsBannerState extends State<SocietyNightsBanner> {
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
               child: Text(
                 'Society nights nearby are hidden — they are not listed for your society / wing.',
-                style: TextStyle(fontSize: 12, color: AppTheme.textMuted, fontWeight: FontWeight.w600),
+                style: AppTheme.caption,
               ),
             );
           }

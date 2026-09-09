@@ -21,8 +21,6 @@ class AppEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(32),
@@ -42,21 +40,13 @@ class AppEmptyState extends StatelessWidget {
             Text(
               title,
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: isDark ? AppTheme.textMainDark : AppTheme.textMain,
-              ),
+              style: AppTheme.cardTitleOf(context),
             ),
             const SizedBox(height: 8),
             Text(
               subtitle,
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13,
-                color: isDark ? Colors.grey.shade400 : AppTheme.textMuted,
-                height: 1.4,
-              ),
+              style: AppTheme.bodyMuted,
             ),
             if (buttonText != null && onActionPressed != null) ...[
               const SizedBox(height: 24),

@@ -40,7 +40,7 @@ Future<void> showKitchenPhotoChecklist(BuildContext context) {
           const SizedBox(height: 8),
           Text(
             'Good photos build diner trust. Use these before you shoot.',
-            style: TextStyle(fontSize: 13, height: 1.35, color: AppTheme.textMuted),
+            style: AppTheme.metaOf(context),
           ),
           const SizedBox(height: 14),
           for (var i = 0; i < kKitchenPhotoChecklist.length; i++)

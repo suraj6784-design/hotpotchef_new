@@ -620,7 +620,7 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
                         title: Text(chef.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
                         subtitle: subtitleParts.isEmpty
                             ? null
-                            : Text(subtitleParts.join(' · '), style: const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                            : Text(subtitleParts.join(' · '), style: AppTheme.caption),
                         onChanged: (on) {
                           setState(() {
                             if (on == true) {
@@ -639,7 +639,7 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
                     '$selectedCount kitchen${selectedCount == 1 ? '' : 's'} selected',
-                    style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                    style: AppTheme.caption,
                   ),
                 ),
             ],

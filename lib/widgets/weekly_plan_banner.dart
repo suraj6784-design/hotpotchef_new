@@ -58,7 +58,7 @@ class WeeklyPlanDueBanner extends ConsumerWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w800,
-              color: isDark ? Colors.grey.shade400 : AppTheme.textMuted,
+              color: isDark ? AppTheme.textMuted : AppTheme.textMuted,
             ),
           ),
           const SizedBox(height: 4),
@@ -73,13 +73,13 @@ class WeeklyPlanDueBanner extends ConsumerWidget {
           const SizedBox(height: 2),
           Text(
             '${plan.quantity} × ${plan.chefName} · ${plan.timeSlot}',
-            style: TextStyle(fontSize: 13, color: isDark ? Colors.grey.shade400 : AppTheme.textMuted),
+            style: TextStyle(fontSize: 13, color: isDark ? AppTheme.textMuted : AppTheme.textMuted),
           ),
           if (extra > 0) ...[
             const SizedBox(height: 4),
             Text(
               '+$extra more plan${extra == 1 ? '' : 's'} due today',
-              style: TextStyle(fontSize: 12, color: isDark ? Colors.grey.shade400 : AppTheme.textMuted),
+              style: TextStyle(fontSize: 12, color: isDark ? AppTheme.textMuted : AppTheme.textMuted),
             ),
           ],
           const SizedBox(height: 12),

@@ -153,7 +153,7 @@ class _DriverDashboardTabState extends ConsumerState<DriverDashboardTab>
                             children: const [
                               Icon(Icons.bolt, color: AppTheme.primary),
                               SizedBox(height: 8),
-                              Text('Active Runs', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                              Text('Active Runs', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
                               SizedBox(height: 4),
                               Text('Live Sync', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
                             ],
@@ -174,7 +174,7 @@ class _DriverDashboardTabState extends ConsumerState<DriverDashboardTab>
                             children: const [
                               Icon(Icons.verified, color: Colors.green),
                               SizedBox(height: 8),
-                              Text('Status', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                              Text('Status', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
                               SizedBox(height: 4),
                               Text('Verified Partner', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
                             ],
@@ -223,7 +223,7 @@ class _DriverDashboardTabState extends ConsumerState<DriverDashboardTab>
                                       Text(delivery.chefName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                                       const SizedBox(height: 2),
                                       Text(formatOrderDate(delivery.createdAt.toIso8601String()),
-                                          style: const TextStyle(color: AppTheme.textMuted, fontSize: 11)),
+                                          style: AppTheme.micro),
                                     ],
                                   ),
                                 ],

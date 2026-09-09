@@ -327,7 +327,7 @@ class _ChefAdvertiseScreenState extends State<ChefAdvertiseScreen> {
                             Text(
                               '${adCampaignStatusLabel(status)} · ${reach == 'targeted' ? 'Targeted' : 'Overall'}'
                               '${reach == 'targeted' && (row['city']?.toString().isNotEmpty ?? false) ? ' · ${row['city']}' : ''}',
-                              style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                              style: AppTheme.caption,
                             ),
                             if (editable) ...[
                               const SizedBox(height: 10),
@@ -355,7 +355,7 @@ class _ChefAdvertiseScreenState extends State<ChefAdvertiseScreen> {
                                 padding: EdgeInsets.only(top: 8),
                                 child: Text(
                                   'Live on diner Home. Contact HotPotChef to pause or change terms.',
-                                  style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                                  style: AppTheme.caption,
                                 ),
                               ),
                           ],

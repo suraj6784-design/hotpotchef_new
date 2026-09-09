@@ -539,7 +539,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     final bg = isDark ? AppTheme.backgroundDark : AppTheme.background;
     final surface = isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight;
     final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
-    final muted = isDark ? Colors.grey.shade400 : AppTheme.textMuted;
+    final muted = isDark ? AppTheme.textMuted : AppTheme.textMuted;
     final divider = isDark ? Colors.white24 : Colors.black12;
     final verified = isDark ? Colors.greenAccent : Colors.green.shade700;
 
@@ -718,7 +718,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                     padding: EdgeInsets.only(top: 4, bottom: 8),
                     child: Text(
                       'GSTIN is only needed when you want tax invoices. Leave blank for a bill of supply. FSSAI verification is still required before you can publish meals.',
-                      style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                      style: AppTheme.micro,
                     ),
                   ),
                   Divider(height: 32, color: divider),
@@ -1089,7 +1089,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
-    final muted = isDark ? Colors.grey.shade400 : AppTheme.textMuted;
+    final muted = isDark ? AppTheme.textMuted : AppTheme.textMuted;
     final fill = isDark ? AppTheme.surfaceMutedDark : Colors.white;
     final border = isDark ? Colors.white12 : Colors.grey.shade300;
 

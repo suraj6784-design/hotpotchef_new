@@ -317,7 +317,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     final bg = isDark ? AppTheme.backgroundDark : AppTheme.background;
     final surface = isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight;
     final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
-    final muted = isDark ? Colors.grey.shade400 : AppTheme.textMuted;
+    final muted = isDark ? AppTheme.textMuted : AppTheme.textMuted;
     final fill = isDark ? AppTheme.surfaceMutedDark : Colors.white;
     final divider = isDark ? Colors.white24 : Colors.black12;
     final verified = isDark ? Colors.lightBlueAccent : Colors.blue.shade700;
@@ -694,7 +694,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
-    final muted = isDark ? Colors.grey.shade400 : AppTheme.textMuted;
+    final muted = isDark ? AppTheme.textMuted : AppTheme.textMuted;
     final fill = isDark ? AppTheme.surfaceMutedDark : Colors.white;
     final border = isDark ? Colors.white12 : Colors.grey.shade300;
 

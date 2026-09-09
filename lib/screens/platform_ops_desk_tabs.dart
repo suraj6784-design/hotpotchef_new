@@ -78,17 +78,17 @@ class _AdminProfileListState extends State<_AdminProfileList> {
                   color: AppTheme.primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(999),
                 ),
-                child: const Text(
+                child: Text(
                   'ADMIN',
-                  style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w800, fontSize: 11, letterSpacing: 0.6),
+                  style: AppTheme.homeKickerOf(context),
                 ),
               ),
               const SizedBox(height: 10),
-              Text(widget.email.isEmpty ? 'Platform owner' : widget.email, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              Text(widget.email.isEmpty ? 'Platform owner' : widget.email, style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 6),
               Text(
                 'Database role: $_dbRole · Session role: $_sessionRole',
-                style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                style: AppTheme.caption,
               ),
               const SizedBox(height: 12),
               FilledButton.icon(
@@ -102,7 +102,7 @@ class _AdminProfileListState extends State<_AdminProfileList> {
           ),
         ),
         const SizedBox(height: 16),
-        Text('Controls', style: AppTheme.sectionTitleOf(context)),
+        Text('Controls', style: AppTheme.homeSectionLabelOf(context)),
         const SizedBox(height: 8),
         for (final action in actions)
           AppCard(
@@ -117,7 +117,7 @@ class _AdminProfileListState extends State<_AdminProfileList> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(action.$2, style: const TextStyle(fontWeight: FontWeight.w800)),
-                      Text(action.$3, style: const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                      Text(action.$3, style: AppTheme.caption),
                     ],
                   ),
                 ),
@@ -137,7 +137,7 @@ class _AdminProfileListState extends State<_AdminProfileList> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('Website', style: TextStyle(fontWeight: FontWeight.w800)),
-                    Text('hotpotchef.com catalog and policies', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                    Text('hotpotchef.com catalog and policies', style: AppTheme.caption),
                   ],
                 ),
               ),
@@ -279,9 +279,9 @@ class _OpsDashListState extends State<_OpsDashList> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(c.$1, style: const TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w600)),
+                      Text(c.$1, style: AppTheme.caption),
                       const SizedBox(height: 6),
-                      Text(c.$2, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+                      Text(c.$2, style: AppTheme.listTitleOf(context).copyWith(fontSize: 20)),
                     ],
                   ),
                 ),
@@ -290,7 +290,7 @@ class _OpsDashListState extends State<_OpsDashList> {
         ),
         if (snap.series.isNotEmpty) ...[
           const SizedBox(height: 16),
-          Text('Trend', style: AppTheme.sectionTitleOf(context)),
+          Text('Trend', style: AppTheme.homeSectionLabelOf(context)),
           const SizedBox(height: 8),
           AppCard(
             child: Column(
@@ -300,7 +300,7 @@ class _OpsDashListState extends State<_OpsDashList> {
                     children: [
                       SizedBox(
                         width: 88,
-                        child: Text(b.bucketDate, style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                        child: Text(b.bucketDate, style: AppTheme.micro),
                       ),
                       Expanded(
                         child: ClipRRect(
@@ -324,7 +324,7 @@ class _OpsDashListState extends State<_OpsDashList> {
           ),
         ],
         const SizedBox(height: 16),
-        Text('Recent paid orders', style: AppTheme.sectionTitleOf(context)),
+        Text('Recent paid orders', style: AppTheme.homeSectionLabelOf(context)),
         const SizedBox(height: 8),
         if (snap.recent.isEmpty)
           const Text('No paid orders in this window.', style: TextStyle(color: AppTheme.textMuted))
@@ -343,7 +343,7 @@ class _OpsDashListState extends State<_OpsDashList> {
                         Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
                         Text(
                           '${row['status'] ?? ''} · ${row['created_at'] ?? ''}',
-                          style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                          style: AppTheme.micro,
                         ),
                       ],
                     ),
@@ -652,7 +652,7 @@ class _OpsAccountsListState extends State<_OpsAccountsList> {
                                           Text(name, style: const TextStyle(fontWeight: FontWeight.w800)),
                                           Text(
                                             '${locked ? 'Admin' : shownRole} · $email · $shownStatus',
-                                            style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                                            style: AppTheme.caption,
                                           ),
                                         ],
                                       ),
@@ -714,7 +714,7 @@ class _OpsAccountsListState extends State<_OpsAccountsList> {
                                 const SizedBox(height: 4),
                                 const Text(
                                   'Tap Save to apply role or suspend changes.',
-                                  style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                                  style: AppTheme.micro,
                                 ),
                               ],
                             ],
@@ -825,9 +825,9 @@ class _OpsHelpersListState extends State<_OpsHelpersList> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text(
+                      Text(
                         'This creates a login. Share the username and password with the helper. They sign in on the same app and open only the tabs you grant.',
-                        style: TextStyle(fontSize: 13, height: 1.35, color: AppTheme.textMuted),
+                        style: AppTheme.metaOf(context),
                       ),
                       const SizedBox(height: 12),
                       TextField(
@@ -1001,7 +1001,7 @@ class _OpsHelpersListState extends State<_OpsHelpersList> {
                     if (!active) 'revoked',
                     if (status == 'suspended') 'suspended',
                   ].join(' · '),
-                  style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                  style: AppTheme.caption,
                 ),
                 const SizedBox(height: 8),
                 Wrap(
@@ -1048,7 +1048,7 @@ class _OpsHelpersListState extends State<_OpsHelpersList> {
               onPressed: widget.busy ? null : _createHelper,
             ),
             const SizedBox(height: 16),
-            Text('Active helpers', style: AppTheme.sectionTitleOf(context)),
+            Text('Active helpers', style: AppTheme.homeSectionLabelOf(context)),
             const SizedBox(height: 8),
             if (helpers.isEmpty)
               const Text('No active helpers yet.', style: TextStyle(color: AppTheme.textMuted))
@@ -1056,7 +1056,7 @@ class _OpsHelpersListState extends State<_OpsHelpersList> {
               ...helpers.map((seat) => helperCard(seat, active: true)),
             if (revoked.isNotEmpty) ...[
               const SizedBox(height: 16),
-              Text('Revoked', style: AppTheme.sectionTitleOf(context)),
+              Text('Revoked', style: AppTheme.homeSectionLabelOf(context)),
               const SizedBox(height: 8),
               ...revoked.map((seat) => helperCard(seat, active: false)),
             ],
@@ -1119,7 +1119,7 @@ class _CatalogOpsList extends StatelessWidget {
                         Text(mealDisplayTitle(row), style: const TextStyle(fontWeight: FontWeight.w800)),
                         Text(
                           '${row['chef_name'] ?? 'Kitchen'} · $status · ₹${parseMoney(row['price']).toStringAsFixed(0)}',
-                          style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                          style: AppTheme.caption,
                         ),
                       ],
                     ),
@@ -1190,7 +1190,7 @@ class _OpsAuditList extends StatelessWidget {
                       row['target_id']?.toString() ?? '',
                       row['created_at']?.toString() ?? '',
                     ].where((s) => s.trim().isNotEmpty).join(' · '),
-                    style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                    style: AppTheme.caption,
                   ),
                 ],
               ),

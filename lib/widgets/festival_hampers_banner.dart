@@ -118,7 +118,7 @@ class _FestivalHampersBannerState extends State<FestivalHampersBanner> {
                             const Spacer(),
                             Text(
                               price > 0 ? 'From ₹${price.toStringAsFixed(0)}' : 'Tap to gift',
-                              style: const TextStyle(fontSize: 12, color: AppTheme.textMuted, fontWeight: FontWeight.w600),
+                              style: AppTheme.caption,
                             ),
                           ],
                         ),

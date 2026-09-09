@@ -154,7 +154,7 @@ class _WeeklyPlanSheetState extends ConsumerState<WeeklyPlanSheet> {
           const SizedBox(height: 8),
           Text(
             'We will not charge you automatically. On plan days, add today\'s box from Home when you want it.',
-            style: TextStyle(fontSize: 13, height: 1.4, color: isDark ? Colors.grey.shade400 : AppTheme.textMuted),
+            style: TextStyle(fontSize: 13, height: 1.4, color: isDark ? AppTheme.textMuted : AppTheme.textMuted),
           ),
           const SizedBox(height: 16),
           Wrap(
@@ -225,7 +225,7 @@ class _WeeklyPlanSheetState extends ConsumerState<WeeklyPlanSheet> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primary,
                 foregroundColor: Colors.white,
-                disabledBackgroundColor: Colors.grey.shade400,
+                disabledBackgroundColor: AppTheme.textMuted,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 elevation: 0,

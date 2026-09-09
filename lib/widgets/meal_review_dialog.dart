@@ -46,7 +46,7 @@ class _MealReviewDialogState extends State<MealReviewDialog> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
-    final muted = isDark ? Colors.grey.shade300 : AppTheme.textMuted;
+    final muted = AppTheme.textMuted;
 
     return AlertDialog(
       backgroundColor: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,

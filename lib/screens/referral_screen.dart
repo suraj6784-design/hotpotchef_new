@@ -167,7 +167,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                       Text(
                         'Your Exclusive Referral Code',
                         style: TextStyle(
-                          color: isDark ? Colors.grey.shade400 : AppTheme.textMuted,
+                          color: isDark ? AppTheme.textMuted : AppTheme.textMuted,
                           fontSize: 13,
                           fontWeight: FontWeight.bold,
                         ),
@@ -249,7 +249,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                             Text(
                               'Friends Joined',
                               style: TextStyle(
-                                color: isDark ? Colors.grey.shade400 : AppTheme.textMuted,
+                                color: isDark ? AppTheme.textMuted : AppTheme.textMuted,
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -283,7 +283,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                             Text(
                               'Coins Earned',
                               style: TextStyle(
-                                color: isDark ? Colors.grey.shade400 : AppTheme.textMuted,
+                                color: isDark ? AppTheme.textMuted : AppTheme.textMuted,
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -313,7 +313,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                   style: TextStyle(
                     fontSize: 13,
                     height: 1.35,
-                    color: isDark ? Colors.grey.shade400 : AppTheme.textMuted,
+                    color: isDark ? AppTheme.textMuted : AppTheme.textMuted,
                     fontWeight: FontWeight.w600,
                   ),
                   textAlign: TextAlign.center,

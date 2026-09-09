@@ -79,7 +79,7 @@ Widget shareCardPreview(BuildContext context, String text) {
   if (match == null) {
     return SelectableText(
       text,
-      style: const TextStyle(fontSize: 13, height: 1.35, color: AppTheme.textMuted),
+      style: AppTheme.metaOf(context),
     );
   }
   final before = text.substring(0, match.start);
@@ -87,7 +87,7 @@ Widget shareCardPreview(BuildContext context, String text) {
   final after = text.substring(match.end);
   return SelectableText.rich(
     TextSpan(
-      style: const TextStyle(fontSize: 13, height: 1.35, color: AppTheme.textMuted),
+      style: AppTheme.metaOf(context),
       children: [
         TextSpan(text: before),
         TextSpan(
@@ -181,7 +181,7 @@ Future<void> showPlateShareSheet(
               const SizedBox(height: 4),
               const Text(
                 'Share who cooked it — and the FSSAI number when the kitchen has listed one. The link opens this dish in HotPotChef.',
-                style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                style: AppTheme.caption,
               ),
               const SizedBox(height: 10),
               shareCardPreview(ctx, text),
@@ -611,7 +611,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final ink = isDark ? AppTheme.textMainDark : AppTheme.textMain;
-    final muted = isDark ? Colors.grey.shade400 : AppTheme.textMuted;
+    final muted = isDark ? AppTheme.textMuted : AppTheme.textMuted;
 
     return AlertDialog(
       shape: AppTheme.dialogShape,
@@ -884,7 +884,7 @@ Future<bool> confirmReplaceKitchenCart(BuildContext context) async {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(ctx, false),
-          child: const Text('Keep cart', style: TextStyle(color: Colors.grey)),
+          child: const Text('Keep cart', style: TextStyle(color: AppTheme.textMuted)),
         ),
         ElevatedButton(
           style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary, foregroundColor: Colors.white),
@@ -1061,12 +1061,12 @@ Widget _mealInfoChip({
             children: [
               Text(
                 label,
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: textColor.withValues(alpha: 0.8)),
+                style: AppTheme.micro.copyWith(color: textColor.withValues(alpha: 0.85)),
               ),
               const SizedBox(height: 2),
               Text(
                 value,
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: textColor, height: 1.3),
+                style: AppTheme.caption.copyWith(color: textColor, fontSize: 13, fontWeight: FontWeight.w700, height: 1.3),
               ),
             ],
           ),
@@ -1175,11 +1175,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                           Expanded(
                             child: Text(
                               meal['title']?.toString() ?? 'Home Meal',
-                              style: TextStyle(
-                                fontSize: 26,
-                                fontWeight: FontWeight.w900,
-                                color: isDark ? AppTheme.textMainDark : AppTheme.textMain,
-                              ),
+                              style: AppTheme.sectionTitleOf(context).copyWith(fontSize: 26),
                             ),
                           ),
                           AppIconAction(
@@ -1293,7 +1289,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                                 const SizedBox(height: 2),
                               ],
                               Text('₹${price.toInt()}',
-                                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: AppTheme.primary)),
+                                  style: AppTheme.priceOf(context).copyWith(fontSize: 24)),
                               if (offerSummary.isOfferApplied &&
                                   (offerSummary.offerDescription ?? '').isNotEmpty)
                                 Text(
@@ -1367,11 +1363,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                                             Expanded(
                                               child: Text(
                                                 '${copy.preparedBy} $shownName',
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 16,
-                                                  color: isDark ? AppTheme.textMainDark : AppTheme.textMain,
-                                                ),
+                                                style: AppTheme.listTitleOf(context),
                                               ),
                                             ),
                                             if (locale != 'en')
@@ -1388,12 +1380,8 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                                         const SizedBox(height: 4),
                                         Text(
                                           fssaiVerified ? 'Licensed kitchen' : fssaiTrustLine,
-                                          style: TextStyle(
-                                            color: fssaiVerified
-                                                ? AppTheme.veg
-                                                : (isDark ? Colors.grey.shade400 : AppTheme.textMuted),
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
+                                          style: AppTheme.caption.copyWith(
+                                            color: fssaiVerified ? AppTheme.veg : AppTheme.textMuted,
                                           ),
                                         ),
                                       ],
@@ -1406,7 +1394,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                                 chefName: chefName,
                                 compact: true,
                               ),
-                              const Icon(Icons.chevron_right, color: Colors.grey),
+                              const Icon(Icons.chevron_right, color: AppTheme.textMuted),
                             ],
                           ),
                         ),
@@ -1431,11 +1419,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                       ),
                       if (_availableAddOns.isNotEmpty) ...[
                         const SizedBox(height: 24),
-                        Text('Customise',
-                            style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w900,
-                                color: isDark ? AppTheme.textMainDark : AppTheme.textMain)),
+                        Text('Customise', style: AppTheme.homeSectionLabelOf(context).copyWith(fontSize: 16)),
                         const SizedBox(height: 10),
                         ..._availableAddOns.map((addon) {
                           final selected = _selectedAddOnIds.contains(addon.id);
@@ -1488,17 +1472,12 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                         }),
                       ],
                       const SizedBox(height: 24),
-                      Text('About this meal',
-                          style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                              color: isDark ? AppTheme.textMainDark : AppTheme.textMain)),
+                      Text('About this meal', style: AppTheme.homeSectionLabelOf(context).copyWith(fontSize: 16)),
                       const SizedBox(height: 8),
                       Text(
                         meal['description']?.toString() ??
                             'Delicious home-cooked meal prepared with love and high hygiene standards.',
-                        style: TextStyle(
-                            color: isDark ? Colors.grey.shade400 : AppTheme.textMuted, fontSize: 14, height: 1.5),
+                        style: AppTheme.bodyMuted,
                       ),
                     ],
                   ),
@@ -1573,7 +1552,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppTheme.primary,
                         foregroundColor: Colors.white,
-                        disabledBackgroundColor: Colors.grey.shade400,
+                        disabledBackgroundColor: AppTheme.textMuted,
                         padding: const EdgeInsets.symmetric(vertical: 18),
                         minimumSize: const Size(0, 48),
                         shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusLg),
@@ -1786,7 +1765,7 @@ class _MealRatingBadgeState extends State<MealRatingBadge> {
         ),
         if (_summary.hasReviews)
           Text(' (${_summary.count})',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey.shade400)),
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textMuted)),
       ],
     );
   }

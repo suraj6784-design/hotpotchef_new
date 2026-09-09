@@ -1351,7 +1351,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 const SizedBox(height: 4),
                 const Text(
                   'Chefs cook to this window — not a restaurant ETA.',
-                  style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                  style: AppTheme.caption,
                 ),
                 const SizedBox(height: 14),
                 ...widget.cartItems.map((item) {
@@ -1549,7 +1549,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppTheme.onSurfaceOf(context))),
                           const SizedBox(height: 2),
                           const Text('100% of the tip amount goes directly to them',
-                              style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                              style: AppTheme.micro),
                         ],
                       ),
                       const Icon(Icons.delivery_dining_outlined, color: AppTheme.textMuted, size: 22),

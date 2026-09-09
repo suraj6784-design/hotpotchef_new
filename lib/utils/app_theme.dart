@@ -196,11 +196,38 @@ class AppTheme {
       );
 
   static TextStyle homeCardTitleOf(BuildContext context) => GoogleFonts.figtree(
-        fontSize: 14,
+        fontSize: 15,
         fontWeight: FontWeight.w800,
         color: onSurfaceOf(context),
         height: 1.25,
       );
+
+  /// Card / list row title. Use everywhere instead of ad-hoc w800.
+  static TextStyle listTitleOf(BuildContext context) => homeCardTitleOf(context);
+
+  /// Secondary line under a title (12 / muted). Safe in light and dark.
+  static const TextStyle caption = TextStyle(
+    fontSize: 12,
+    fontWeight: FontWeight.w600,
+    color: textMuted,
+    height: 1.35,
+  );
+
+  /// Timestamps and chart labels.
+  static const TextStyle micro = TextStyle(
+    fontSize: 11,
+    fontWeight: FontWeight.w600,
+    color: textMuted,
+    height: 1.3,
+  );
+
+  /// Body copy that is supporting, not primary.
+  static const TextStyle bodyMuted = TextStyle(
+    fontSize: 14,
+    fontWeight: FontWeight.w500,
+    color: textMuted,
+    height: 1.45,
+  );
 
   static TextStyle priceOf(BuildContext context) => GoogleFonts.figtree(
         fontSize: 16,
@@ -255,12 +282,18 @@ class AppTheme {
     final baseTypography =
         isDark ? Typography.material2021().white : Typography.material2021().black;
     final textTheme = GoogleFonts.figtreeTextTheme(baseTypography).copyWith(
-      displaySmall: GoogleFonts.fraunces(fontWeight: FontWeight.w700, color: onSurface, fontSize: 28),
-      headlineMedium: GoogleFonts.fraunces(fontWeight: FontWeight.w700, color: onSurface, fontSize: 24),
-      headlineSmall: GoogleFonts.fraunces(fontWeight: FontWeight.w600, color: onSurface, fontSize: 20),
-      titleLarge: GoogleFonts.fraunces(fontWeight: FontWeight.w600, color: onSurface, fontSize: 18),
-      titleMedium: GoogleFonts.figtree(fontWeight: FontWeight.w600, color: onSurface),
-      labelLarge: GoogleFonts.figtree(fontWeight: FontWeight.w600),
+      displaySmall: GoogleFonts.fraunces(fontWeight: FontWeight.w700, color: onSurface, fontSize: 28, height: 1.15),
+      headlineMedium: GoogleFonts.fraunces(fontWeight: FontWeight.w700, color: onSurface, fontSize: 24, height: 1.15),
+      headlineSmall: GoogleFonts.fraunces(fontWeight: FontWeight.w600, color: onSurface, fontSize: 20, height: 1.2),
+      titleLarge: GoogleFonts.figtree(fontWeight: FontWeight.w800, color: onSurface, fontSize: 18, height: 1.2),
+      titleMedium: GoogleFonts.figtree(fontWeight: FontWeight.w800, color: onSurface, fontSize: 15, height: 1.25),
+      titleSmall: GoogleFonts.figtree(fontWeight: FontWeight.w700, color: onSurface, fontSize: 14, height: 1.25),
+      bodyLarge: GoogleFonts.figtree(fontWeight: FontWeight.w500, color: onSurface, fontSize: 16, height: 1.4),
+      bodyMedium: GoogleFonts.figtree(fontWeight: FontWeight.w500, color: onSurface, fontSize: 14, height: 1.4),
+      bodySmall: GoogleFonts.figtree(fontWeight: FontWeight.w600, color: textMuted, fontSize: 12, height: 1.35),
+      labelLarge: GoogleFonts.figtree(fontWeight: FontWeight.w700, color: onSurface, fontSize: 14),
+      labelMedium: GoogleFonts.figtree(fontWeight: FontWeight.w600, color: textMuted, fontSize: 13, height: 1.35),
+      labelSmall: GoogleFonts.figtree(fontWeight: FontWeight.w800, color: primary, fontSize: 11, letterSpacing: 0.3, height: 1.2),
     ).apply(
       bodyColor: onSurface,
       displayColor: onSurface,
@@ -287,8 +320,9 @@ class AppTheme {
         iconTheme: IconThemeData(color: onSurface),
         titleTextStyle: GoogleFonts.figtree(
           color: onSurface,
-          fontSize: 19,
-          fontWeight: FontWeight.w700,
+          fontSize: 18,
+          fontWeight: FontWeight.w800,
+          height: 1.2,
         ),
       ),
       cardTheme: CardThemeData(
@@ -374,8 +408,8 @@ class AppTheme {
         backgroundColor: surface,
         elevation: 12,
         shape: RoundedRectangleBorder(borderRadius: radiusLg),
-        titleTextStyle: GoogleFonts.figtree(fontSize: 18, fontWeight: FontWeight.w700, color: onSurface),
-        contentTextStyle: GoogleFonts.figtree(fontSize: 14, color: isDark ? Colors.white70 : textMain),
+        titleTextStyle: GoogleFonts.figtree(fontSize: 18, fontWeight: FontWeight.w800, color: onSurface, height: 1.2),
+        contentTextStyle: GoogleFonts.figtree(fontSize: 14, fontWeight: FontWeight.w500, color: isDark ? Colors.white70 : textMain, height: 1.4),
       ),
       bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: surface,
@@ -396,8 +430,8 @@ class AppTheme {
       ),
       listTileTheme: ListTileThemeData(
         iconColor: primary,
-        titleTextStyle: GoogleFonts.figtree(fontSize: 14.5, fontWeight: FontWeight.w600, color: onSurface),
-        subtitleTextStyle: GoogleFonts.figtree(fontSize: 12.5, color: textMuted),
+        titleTextStyle: GoogleFonts.figtree(fontSize: 15, fontWeight: FontWeight.w800, color: onSurface, height: 1.25),
+        subtitleTextStyle: GoogleFonts.figtree(fontSize: 12, fontWeight: FontWeight.w600, color: textMuted, height: 1.35),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
