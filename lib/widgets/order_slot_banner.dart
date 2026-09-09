@@ -71,7 +71,7 @@ class _OrderSlotBannerState extends State<OrderSlotBanner> {
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w800,
-                      color: late ? AppTheme.error : AppTheme.primary,
+                      color: late ? AppTheme.error : AppTheme.linkOf(context),
                     ),
                   ),
                 ],

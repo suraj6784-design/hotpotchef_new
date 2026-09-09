@@ -23,15 +23,17 @@ extension AppMotion on Widget {
     return MediaQuery.maybeOf(context)?.disableAnimations ?? false;
   }
 
-  /// Fade + gentle upward slide. Pass [index] for a staggered list effect.
+  /// Fade + slight upward slide. Stagger is capped so long lists do not wait.
   Widget entrance({int index = 0, Duration? delay}) {
     return Builder(
       builder: (context) {
         if (_reduce(context)) return this;
-        final d = delay ?? Duration(milliseconds: 60 * index);
+        final staggerIndex = index.clamp(0, AppTheme.entranceStaggerMaxIndex);
+        final d = delay ?? Duration(milliseconds: AppTheme.entranceStaggerMs * staggerIndex);
+        const dur = AppTheme.entranceDuration;
         return animate()
-            .fadeIn(duration: 420.ms, delay: d, curve: Curves.easeOut)
-            .slideY(begin: 0.12, end: 0, duration: 420.ms, delay: d, curve: Curves.easeOutCubic);
+            .fadeIn(duration: dur, delay: d, curve: Curves.easeOut)
+            .slideY(begin: 0.06, end: 0, duration: dur, delay: d, curve: Curves.easeOutCubic);
       },
     );
   }
@@ -782,7 +784,7 @@ class _HubDockButton extends StatelessWidget {
                   isLabelVisible: destination.badgeCount > 0,
                   child: Icon(
                     selected ? destination.selectedIcon : destination.icon,
-                    color: selected ? AppTheme.primary : AppTheme.textMuted,
+                    color: selected ? AppTheme.linkOf(context) : AppTheme.textMutedOf(context),
                     size: 22,
                   ),
                 ),
@@ -790,8 +792,8 @@ class _HubDockButton extends StatelessWidget {
                   const SizedBox(width: 6),
                   Text(
                     destination.label,
-                    style: const TextStyle(
-                      color: AppTheme.primary,
+                    style: TextStyle(
+                      color: AppTheme.linkOf(context),
                       fontWeight: FontWeight.w700,
                       fontSize: 13,
                     ),

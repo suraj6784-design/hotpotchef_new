@@ -273,7 +273,7 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                                 style: const TextStyle(
                                   fontSize: 22,
                                   fontWeight: FontWeight.w900,
-                                  color: AppTheme.primary,
+                                  color: AppTheme.link,
                                 ),
                               ),
                             ],
@@ -418,7 +418,7 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                                   child: Text(
                                     '#${index + 1}',
                                     style: const TextStyle(
-                                      color: AppTheme.primary,
+                                      color: AppTheme.link,
                                       fontWeight: FontWeight.bold,
                                       fontSize: 12,
                                     ),
@@ -436,7 +436,7 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                                   '${dish.totalPortions} Sold',
                                   style: const TextStyle(
                                     fontWeight: FontWeight.bold,
-                                    color: AppTheme.primary,
+                                    color: AppTheme.link,
                                   ),
                                 ),
                               );

@@ -626,7 +626,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                   children: [
                     const Text(
                       'Editing published dish',
-                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: AppTheme.primary),
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: AppTheme.link),
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -928,7 +928,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.bold,
-                            color: _activeTimeSlot.isEmpty ? AppTheme.textMuted : AppTheme.primary,
+                            color: _activeTimeSlot.isEmpty ? AppTheme.textMuted : AppTheme.linkOf(context),
                           ),
                         ),
                       ),
@@ -945,7 +945,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                       icon: const Icon(Icons.schedule, size: 16, color: AppTheme.primary),
                       label: Text(
                         _activeTimeSlot.isEmpty ? 'Set cooking & serving slot' : 'Change time slot',
-                        style: const TextStyle(color: AppTheme.primary),
+                        style: const TextStyle(color: AppTheme.link),
                       ),
                       onPressed: _openScheduleBuilder,
                     ),

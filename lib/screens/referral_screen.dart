@@ -192,7 +192,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                                 fontSize: 20,
                                 fontWeight: FontWeight.w900,
                                 letterSpacing: 2.0,
-                                color: isDark ? Colors.orange.shade200 : AppTheme.primary,
+                                color: isDark ? Colors.orange.shade200 : AppTheme.linkOf(context),
                               ),
                             ),
                             IconButton(

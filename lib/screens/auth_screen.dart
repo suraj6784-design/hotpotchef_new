@@ -740,10 +740,10 @@ class _AuthScreenState extends State<AuthScreen> {
                         const Text('I agree to the '),
                         GestureDetector(
                           onTap: () => openLegalDocument(context, LegalDocumentType.terms),
-                          child: const Text(
+                          child: Text(
                             'Terms & conditions',
                             style: TextStyle(
-                              color: AppTheme.primary,
+                              color: AppTheme.linkOf(context),
                               fontWeight: FontWeight.w700,
                               decoration: TextDecoration.underline,
                             ),
@@ -752,10 +752,10 @@ class _AuthScreenState extends State<AuthScreen> {
                         const Text(' and '),
                         GestureDetector(
                           onTap: () => openLegalDocument(context, LegalDocumentType.privacy),
-                          child: const Text(
+                          child: Text(
                             'Privacy policy',
                             style: TextStyle(
-                              color: AppTheme.primary,
+                              color: AppTheme.linkOf(context),
                               fontWeight: FontWeight.w700,
                               decoration: TextDecoration.underline,
                             ),

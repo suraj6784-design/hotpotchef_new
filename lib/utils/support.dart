@@ -411,7 +411,7 @@ class _ContactSupportSheetState extends State<ContactSupportSheet> {
                   child: Text(
                     'Order $linkedOrder',
                     style: const TextStyle(
-                      color: AppTheme.primary,
+                      color: AppTheme.link,
                       fontWeight: FontWeight.w800,
                       fontSize: 12,
                       letterSpacing: 0.4,

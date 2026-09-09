@@ -718,7 +718,7 @@ class _PackagingOpsList extends StatelessWidget {
                           style: const TextStyle(fontWeight: FontWeight.w800),
                         ),
                       ),
-                      Text(status, style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.primary)),
+                      Text(status, style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.link)),
                     ],
                   ),
                   const SizedBox(height: 6),
@@ -944,7 +944,7 @@ class _BrandOpsList extends StatelessWidget {
                                 : status == 'ended'
                                     ? 'Ended'
                                     : 'Draft',
-                        style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.primary, fontSize: 12),
+                        style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.link, fontSize: 12),
                       ),
                     ],
                   ),
@@ -1281,7 +1281,7 @@ class _TicketsOpsList extends StatelessWidget {
                                     style: TextStyle(
                                       fontWeight: FontWeight.w700,
                                       fontSize: 12,
-                                      color: overdue ? AppTheme.error : AppTheme.primary,
+                                      color: overdue ? AppTheme.error : AppTheme.linkOf(context),
                                     ),
                                   ),
                                 ],
@@ -1771,7 +1771,7 @@ class _OpsTicketThreadScreenState extends State<_OpsTicketThreadScreen> {
                                           fontSize: 10,
                                           fontWeight: FontWeight.w800,
                                           color: internal
-                                              ? AppTheme.primary
+                                              ? AppTheme.linkOf(context)
                                               : (isMe ? Colors.white70 : AppTheme.textMuted),
                                         ),
                                       ),

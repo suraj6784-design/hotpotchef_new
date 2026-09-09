@@ -18,7 +18,7 @@ EdgeInsets _academyListPadding(BuildContext context) {
 ButtonStyle _academyPrimaryButtonStyle(BuildContext context, {bool outlined = false}) {
   return ElevatedButton.styleFrom(
     backgroundColor: outlined ? AppTheme.surfaceOf(context) : AppTheme.primary,
-    foregroundColor: outlined ? AppTheme.primary : Colors.white,
+    foregroundColor: outlined ? AppTheme.linkOf(context) : Colors.white,
     elevation: 0,
     minimumSize: const Size(double.infinity, 52),
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -175,7 +175,7 @@ class _ChefAcademyScreenState extends State<ChefAcademyScreen> {
                         const SizedBox(height: 8),
                         const Text(
                           'Course complete — preparing your practice certificate…',
-                          style: TextStyle(fontSize: 12, color: AppTheme.primary, fontWeight: FontWeight.w600),
+                          style: TextStyle(fontSize: 12, color: AppTheme.link, fontWeight: FontWeight.w600),
                         ),
                       ],
                     ],
@@ -267,7 +267,7 @@ class _ModuleCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
-                        color: lessonsDone && quizPassed ? AppTheme.primary : AppTheme.textMuted,
+                        color: lessonsDone && quizPassed ? AppTheme.linkOf(context) : AppTheme.textMuted,
                       ),
                     ),
                   ],
@@ -708,7 +708,7 @@ class _AcademyQuizScreenState extends State<_AcademyQuizScreen> {
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Text(
                   'You already passed this quiz. Retake anytime to practice.',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primary),
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.link),
                 ),
               ),
             for (final q in _questions) ...[
@@ -741,7 +741,7 @@ class _AcademyQuizScreenState extends State<_AcademyQuizScreen> {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
-                  color: _passed ? AppTheme.primary : Colors.redAccent,
+                  color: _passed ? AppTheme.linkOf(context) : Colors.redAccent,
                 ),
               ),
               const SizedBox(height: 12),
@@ -831,7 +831,7 @@ class _AcademyCertificateScreen extends StatelessWidget {
                     SizedBox(width: 8),
                     Text(
                       'HotPotChef Kitchen Academy',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppTheme.primary),
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppTheme.link),
                     ),
                   ],
                 ),

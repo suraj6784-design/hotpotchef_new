@@ -553,7 +553,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
         actions: [
           TextButton.icon(
             icon: Icon(_isEditing ? Icons.close : Icons.edit, color: AppTheme.primary, size: 18),
-            label: Text(_isEditing ? 'Cancel' : 'Edit', style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold)),
+            label: Text(_isEditing ? 'Cancel' : 'Edit', style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold)),
             onPressed: () => setState(() => _isEditing = !_isEditing),
           ),
         ],
@@ -613,7 +613,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
 
                   // Personal Information Section
                   const Text('Kitchen & Business Credentials',
-                      style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 15)),
+                      style: TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 15)),
                   const SizedBox(height: 8),
                   Text(
                     'Diners see your FSSAI number on the kitchen card. Upload a clear photo of the licence for platform verification before publishing meals.',
@@ -723,7 +723,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                   ),
                   Divider(height: 32, color: divider),
                   const Text('Kitchen story',
-                      style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 15)),
+                      style: TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 15)),
                   const SizedBox(height: 8),
                   Text(
                     'Diners see this on your kitchen card. Keep it short and true.',
@@ -743,7 +743,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                           selectedColor: AppTheme.primary.withValues(alpha: 0.18),
                           labelStyle: TextStyle(
                             fontWeight: FontWeight.w700,
-                            color: _cardLocale == locale ? AppTheme.primary : AppTheme.textMuted,
+                            color: _cardLocale == locale ? AppTheme.linkOf(context) : AppTheme.textMuted,
                           ),
                         ),
                     ],
@@ -827,7 +827,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text('Kitchen Pickup Address',
-                          style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 15)),
+                          style: TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 15)),
                       Row(
                         children: [
                           Icon(_latitude != null ? Icons.check_circle : Icons.warning_amber_rounded,
@@ -859,7 +859,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                           icon: Icon(Icons.pin_drop, color: _latitude == null ? AppTheme.primary : Colors.green),
                           label: Text(
                             _latitude == null ? 'Pin Exact Kitchen on Map *' : 'Location Pinned (Tap to update)',
-                            style: TextStyle(fontWeight: FontWeight.bold, color: _latitude == null ? AppTheme.primary : Colors.green),
+                            style: TextStyle(fontWeight: FontWeight.bold, color: _latitude == null ? AppTheme.linkOf(context) : Colors.green),
                           ),
                           onPressed: _openMapPicker,
                         ),
@@ -915,7 +915,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
 
                   // Automated Settlements & Payout Section
                   const Text('Automated Bank Payout Routing',
-                      style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 15)),
+                      style: TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 15)),
                   const SizedBox(height: 12),
                   Card(
                     color: surface,
@@ -985,7 +985,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
 
                   // Customer Reviews Section
                   const Text('Customer Reviews & Ratings',
-                      style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 15)),
+                      style: TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 15)),
                   const SizedBox(height: 12),
                   if (_reviews.isEmpty)
                     Padding(
@@ -1023,7 +1023,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                                 ),
                                 const SizedBox(height: 6),
                                 Text('Dish: ${rev.mealTitle}',
-                                    style: const TextStyle(color: AppTheme.primary, fontSize: 12, fontWeight: FontWeight.bold)),
+                                    style: const TextStyle(color: AppTheme.link, fontSize: 12, fontWeight: FontWeight.bold)),
                                 const SizedBox(height: 2),
                                 Text(rev.customerName, style: TextStyle(color: titleColor, fontSize: 13, fontWeight: FontWeight.w600)),
                                 if (rev.comment.isNotEmpty) ...[
@@ -1106,7 +1106,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
       decoration: InputDecoration(
         labelText: label,
         labelStyle: TextStyle(color: muted, fontSize: 13),
-        floatingLabelStyle: const TextStyle(color: AppTheme.primary, fontSize: 14, fontWeight: FontWeight.bold),
+        floatingLabelStyle: const TextStyle(color: AppTheme.link, fontSize: 14, fontWeight: FontWeight.bold),
         prefixIcon: prefixIcon != null ? Icon(prefixIcon, color: AppTheme.primary, size: 20) : null,
         filled: true,
         fillColor: fill,

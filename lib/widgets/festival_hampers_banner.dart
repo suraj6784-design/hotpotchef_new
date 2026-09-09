@@ -100,7 +100,7 @@ class _FestivalHampersBannerState extends State<FestivalHampersBanner> {
                               style: const TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w800,
-                                color: AppTheme.primary,
+                                color: AppTheme.link,
                               ),
                             ),
                             const SizedBox(height: 6),

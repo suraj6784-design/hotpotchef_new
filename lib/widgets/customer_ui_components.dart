@@ -93,7 +93,7 @@ Widget shareCardPreview(BuildContext context, String text) {
         TextSpan(
           text: link,
           style: const TextStyle(
-            color: AppTheme.primary,
+            color: AppTheme.link,
             decoration: TextDecoration.underline,
             fontWeight: FontWeight.w600,
           ),
@@ -650,7 +650,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
                         ),
                         child: Text(
                           chefCardLocaleLabel(_cardLocale),
-                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.primary),
+                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.link),
                         ),
                       ),
                     ],
@@ -1211,7 +1211,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                               SizedBox(width: 6),
                               Text(
                                 'Festival hamper',
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppTheme.primary),
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppTheme.link),
                               ),
                             ],
                           ),
@@ -1236,7 +1236,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                                 style: const TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w800,
-                                  color: AppTheme.primary,
+                                  color: AppTheme.link,
                                 ),
                               ),
                             ],
@@ -1262,7 +1262,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                                 style: const TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w800,
-                                  color: AppTheme.primary,
+                                  color: AppTheme.link,
                                 ),
                               ),
                             ],
@@ -1372,7 +1372,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                                                 style: const TextStyle(
                                                   fontSize: 11,
                                                   fontWeight: FontWeight.w800,
-                                                  color: AppTheme.primary,
+                                                  color: AppTheme.link,
                                                 ),
                                               ),
                                           ],
@@ -1462,7 +1462,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                                     ),
                                     Text(
                                       addon.price > 0 ? '+₹${addon.price.toInt()}' : 'Free',
-                                      style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.primary),
+                                      style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.link),
                                     ),
                                   ],
                                 ),
@@ -1598,7 +1598,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                   icon: const Icon(Icons.event_repeat, size: 18),
                   label: const Text('Weekly plan', style: TextStyle(fontWeight: FontWeight.w800)),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: AppTheme.primary,
+                    foregroundColor: AppTheme.linkOf(context),
                     side: const BorderSide(color: AppTheme.primary),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusLg),

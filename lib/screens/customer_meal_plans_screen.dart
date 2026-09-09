@@ -85,7 +85,7 @@ class _PlanCard extends ConsumerWidget {
                   ),
                   child: const Text(
                     'Due today',
-                    style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w800, fontSize: 11),
+                    style: TextStyle(color: AppTheme.link, fontWeight: FontWeight.w800, fontSize: 11),
                   ),
                 ),
             ],

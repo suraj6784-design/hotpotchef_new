@@ -1148,7 +1148,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(color: AppTheme.primary.withValues(alpha: 0.12), borderRadius: AppTheme.radiusSm),
-                    child: const Text('Bulk broadcast', style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 11)),
+                    child: const Text('Bulk broadcast', style: TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 11)),
                   ),
                   const SizedBox(width: 8),
                   Text(displayRequestId, style: const TextStyle(color: AppTheme.textMuted, fontWeight: FontWeight.bold, fontSize: 11)),
@@ -1169,7 +1169,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                     cateringPayableTotal(req) != parseMoney(req['budget'])
                 ? 'Selected quote: ₹${cateringPayableTotal(req).toStringAsFixed(0)}  (budget ₹${req['budget']})'
                 : 'Budget: ₹${req['budget']}',
-            style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 14),
+            style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 14),
           ),
           const SizedBox(height: 8),
           Row(children: [const Icon(Icons.calendar_today, size: 14, color: AppTheme.textMuted), const SizedBox(width: 6), Text('Needed By: ${req['target_date_time']}', style: AppTheme.caption)]),
@@ -1217,7 +1217,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                               const SizedBox(height: 2),
                               Text(
                                 '₹${amount.toStringAsFixed(0)}',
-                                style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w800),
+                                style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.w800),
                               ),
                             ],
                           ),
@@ -1692,7 +1692,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                           Row(
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: const [
-                              Text('Tap for full details →', style: TextStyle(color: AppTheme.primary, fontSize: 12, fontWeight: FontWeight.bold)),
+                              Text('Tap for full details →', style: TextStyle(color: AppTheme.link, fontSize: 12, fontWeight: FontWeight.bold)),
                             ],
                           ),
                         ],

@@ -211,7 +211,7 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
                     style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w900,
-                      color: isDark ? Colors.orange.shade200 : AppTheme.primary,
+                      color: isDark ? Colors.orange.shade200 : AppTheme.linkOf(context),
                       letterSpacing: 2,
                     ),
                   ),
@@ -265,7 +265,7 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
       labelStyle: TextStyle(
         fontWeight: FontWeight.w700,
         fontSize: 12,
-        color: selected ? AppTheme.primary : AppTheme.textMuted,
+        color: selected ? AppTheme.linkOf(context) : AppTheme.textMuted,
       ),
       side: BorderSide(color: selected ? AppTheme.primary : AppTheme.hairlineOf(context)),
     );
@@ -397,7 +397,7 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
               onPressed: _isLoading ? null : _joinGroupOrder,
               child: const Text(
                 'Join with code',
-                style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold),
+                style: TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold),
               ),
             ),
           ],

@@ -178,7 +178,7 @@ class _AiRecommendationsSectionState extends ConsumerState<AiRecommendationsSect
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text('₹${price.toStringAsFixed(0)}',
-                                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: AppTheme.primary)),
+                                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: AppTheme.link)),
                                 Container(
                                   padding: const EdgeInsets.all(4),
                                   decoration: BoxDecoration(

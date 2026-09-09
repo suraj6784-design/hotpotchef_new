@@ -971,7 +971,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               CircleAvatar(
                 radius: 22,
                 backgroundColor: AppTheme.primary.withValues(alpha: 0.12),
-                child: Text(initial, style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w800)),
+                child: Text(initial, style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.w800)),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -992,7 +992,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   borderRadius: AppTheme.radiusMd,
                 ),
                 child: Text('₹${totalAmount.toStringAsFixed(0)}',
-                    style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w800, fontSize: 14)),
+                    style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.w800, fontSize: 14)),
               ),
             ],
           ),
@@ -1494,7 +1494,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                           Expanded(
                             child: Text(
                               slot,
-                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.primary),
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.link),
                             ),
                           ),
                         ],
@@ -1570,7 +1570,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             if (isMealBoosted(meal))
               Text(
                 mealBoostUntilLabel(meal),
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppTheme.primary),
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppTheme.link),
               )
             else ...[
               if (canBoost && !isAvailable)
@@ -1607,7 +1607,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               width: double.infinity,
               child: OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: AppTheme.primary,
+                  foregroundColor: AppTheme.linkOf(context),
                   side: const BorderSide(color: AppTheme.primary),
                   padding: const EdgeInsets.symmetric(vertical: 10),
                   shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusSm),
@@ -1874,7 +1874,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                         : (cateringPayableTotal(req) > 0
                             ? '₹${cateringPayableTotal(req).toStringAsFixed(0)}'
                             : '₹${req['budget'] ?? '0'}'),
-                    style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w800),
+                    style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.w800),
                   ),
                 ],
               ),

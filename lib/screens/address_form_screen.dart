@@ -629,7 +629,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
               OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
                   backgroundColor: fill,
-                  foregroundColor: AppTheme.primary,
+                  foregroundColor: AppTheme.linkOf(context),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: AppTheme.radiusMd),
                   side: const BorderSide(color: AppTheme.primary, width: 1.2),
@@ -795,7 +795,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
       decoration: InputDecoration(
         labelText: label,
         labelStyle: TextStyle(color: muted, fontSize: 13),
-        floatingLabelStyle: const TextStyle(color: AppTheme.primary, fontSize: 14, fontWeight: FontWeight.bold),
+        floatingLabelStyle: const TextStyle(color: AppTheme.link, fontSize: 14, fontWeight: FontWeight.bold),
         filled: true,
         fillColor: fill,
         counterText: '',

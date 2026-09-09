@@ -1023,7 +1023,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                           title: Text(
                                             _deviceLocationPin!['address']?.toString() ?? 'Current location',
                                             style: TextStyle(
-                                              color: _isUsingDevicePin ? AppTheme.primary : AppTheme.onSurfaceOf(context),
+                                              color: _isUsingDevicePin ? AppTheme.linkOf(context) : AppTheme.onSurfaceOf(context),
                                               fontSize: 13,
                                               fontWeight: _isUsingDevicePin ? FontWeight.bold : FontWeight.normal,
                                             ),
@@ -1068,7 +1068,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                                 title: Text(
                                                   addrStr,
                                                   style: TextStyle(
-                                                    color: isSelected ? AppTheme.primary : AppTheme.onSurfaceOf(context),
+                                                    color: isSelected ? AppTheme.linkOf(context) : AppTheme.onSurfaceOf(context),
                                                     fontSize: 13,
                                                     fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                                                   ),
@@ -1547,7 +1547,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 11,
-                              color: selected ? AppTheme.primary : AppTheme.textMuted,
+                              color: selected ? AppTheme.linkOf(context) : AppTheme.textMuted,
                               height: 1.3,
                               fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                             ),
@@ -2001,7 +2001,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                       Text(
                                         etaLabel,
                                         style: const TextStyle(
-                                          color: AppTheme.primary,
+                                          color: AppTheme.link,
                                           fontSize: 11,
                                           fontWeight: FontWeight.w700,
                                         ),

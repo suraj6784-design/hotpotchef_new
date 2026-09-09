@@ -415,7 +415,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
       decoration: InputDecoration(
         labelText: label,
         labelStyle: TextStyle(color: isDark ? AppTheme.textMuted : AppTheme.textMuted),
-        floatingLabelStyle: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold),
+        floatingLabelStyle: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold),
         prefixIcon: Icon(icon, color: isDark ? AppTheme.textMuted : AppTheme.textMuted),
         filled: true,
         fillColor: isDark ? const Color(0xFF2A2A2A) : Colors.white,
@@ -508,7 +508,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                         decoration: InputDecoration(
                           labelText: 'Gender',
                           labelStyle: TextStyle(color: isDark ? AppTheme.textMuted : AppTheme.textMuted),
-                          floatingLabelStyle: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold),
+                          floatingLabelStyle: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold),
                           filled: true,
                           fillColor: isDark ? const Color(0xFF2A2A2A) : Colors.white,
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: isDark ? Colors.white12 : Colors.grey.shade300)),
@@ -531,7 +531,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                   decoration: InputDecoration(
                     labelText: 'Dietary Preference',
                     labelStyle: TextStyle(color: isDark ? AppTheme.textMuted : AppTheme.textMuted),
-                    floatingLabelStyle: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold),
+                    floatingLabelStyle: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold),
                     prefixIcon: Icon(Icons.restaurant_menu, color: isDark ? AppTheme.textMuted : AppTheme.textMuted),
                     filled: true,
                     fillColor: isDark ? const Color(0xFF2A2A2A) : Colors.white,
@@ -947,7 +947,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                           leading: const Icon(Icons.location_on, color: AppTheme.primary),
                           title: Text(displayStr, style: TextStyle(color: isDark ? Colors.white : AppTheme.textMain, fontSize: 14)),
                           subtitle: addr['is_default'] == true
-                              ? const Text('Default', style: TextStyle(color: AppTheme.primary, fontSize: 12, fontWeight: FontWeight.w700))
+                              ? const Text('Default', style: TextStyle(color: AppTheme.link, fontSize: 12, fontWeight: FontWeight.w700))
                               : null,
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -1105,7 +1105,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                                 GestureDetector(
                                   onTap: _showEditProfileSheet,
                                   child: const Text('Edit Profile & Dietary Info',
-                                      style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 13)),
+                                      style: TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 13)),
                                 ),
                               ],
                             ),

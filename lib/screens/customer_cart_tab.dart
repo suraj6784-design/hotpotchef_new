@@ -366,7 +366,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                         isExpanded: true,
                         icon: const Icon(Icons.arrow_drop_down, color: AppTheme.primary),
                         value: currentService,
-                        style: const TextStyle(color: AppTheme.primary, fontSize: 13, fontWeight: FontWeight.w600),
+                        style: const TextStyle(color: AppTheme.link, fontSize: 13, fontWeight: FontWeight.w600),
                         items: availableServices.map((svc) {
                           return DropdownMenuItem(
                             value: svc,

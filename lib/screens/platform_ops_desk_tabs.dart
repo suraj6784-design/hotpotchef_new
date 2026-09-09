@@ -663,7 +663,7 @@ class _OpsAccountsListState extends State<_OpsAccountsList> {
                                       padding: EdgeInsets.only(top: 8),
                                       child: Text(
                                         'Locked',
-                                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primary),
+                                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.link),
                                       ),
                                     )
                                   else if (editing) ...[

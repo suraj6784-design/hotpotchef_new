@@ -668,7 +668,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               const SizedBox(height: 8),
               Text(
                 delivery.statusLabel.isEmpty ? delivery.status.toDbValue() : delivery.statusLabel,
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primary),
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.link),
               ),
               const SizedBox(height: 10),
               Text('Pickup: ${delivery.chefName}',
@@ -696,7 +696,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 const SizedBox(height: 8),
                 Text(
                   '${delivery.distanceKm.toStringAsFixed(1)} km • ~${DeliveryEstimatorService.estimateEtaMinutes(delivery.distanceKm)} min',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primary),
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.link),
                 ),
               ],
               const SizedBox(height: 16),

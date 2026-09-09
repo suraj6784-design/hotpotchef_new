@@ -46,9 +46,23 @@ class AppTheme {
 
   // Text
   static const Color textMain = Color(0xFF241F1C);
-  static const Color textMuted = Color(0xFF8C8279);
+  /// Supporting copy on cream. ~5.8:1 on [snow] / [surfaceLight] (WCAG AA at 12px).
+  static const Color textMuted = Color(0xFF5C564F);
+  /// Supporting copy on [backgroundDark] / [surfaceDark] (~5.5:1).
+  static const Color textMutedOnDark = Color(0xFFC4BBB3);
   static const Color textMainLight = Colors.black87;
   static const Color textMainDark = Colors.white;
+
+  /// Muted copy that stays AA in light and dark.
+  static Color textMutedOf(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? textMutedOnDark : textMuted;
+
+  /// Const light-mode link/label color (AA on cream). Prefer [linkOf] when [context] exists.
+  static const Color link = primaryDark;
+
+  /// Text links and selected labels. Fills stay [primary]; small text uses this.
+  static Color linkOf(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? primary : link;
 
   // ---------------------------------------------------------------------------
   // 2. Gradients
@@ -82,6 +96,9 @@ class AppTheme {
   static const Duration pageDuration = Duration(milliseconds: 340);
   static const Duration pageReverseDuration = Duration(milliseconds: 280);
   static const Curve pageCurve = Curves.easeOutCubic;
+  static const Duration entranceDuration = Duration(milliseconds: 250);
+  static const int entranceStaggerMs = 60;
+  static const int entranceStaggerMaxIndex = 4;
 
   // ---------------------------------------------------------------------------
   // 4. Shadows
@@ -175,7 +192,7 @@ class AppTheme {
   static TextStyle metaOf(BuildContext context) => GoogleFonts.figtree(
         fontSize: 13,
         fontWeight: FontWeight.w600,
-        color: textMuted.withValues(alpha: 0.92),
+        color: textMutedOf(context),
         height: 1.35,
       );
 
@@ -191,7 +208,7 @@ class AppTheme {
         fontSize: 11,
         fontWeight: FontWeight.w800,
         letterSpacing: 0.3,
-        color: primary,
+        color: linkOf(context),
         height: 1.2,
       );
 
@@ -205,13 +222,16 @@ class AppTheme {
   /// Card / list row title. Use everywhere instead of ad-hoc w800.
   static TextStyle listTitleOf(BuildContext context) => homeCardTitleOf(context);
 
-  /// Secondary line under a title (12 / muted). Safe in light and dark.
+  /// Secondary line under a title (12 / muted). Light-mode AA; prefer [captionOf] in dark.
   static const TextStyle caption = TextStyle(
     fontSize: 12,
     fontWeight: FontWeight.w600,
     color: textMuted,
     height: 1.35,
   );
+
+  static TextStyle captionOf(BuildContext context) =>
+      caption.copyWith(color: textMutedOf(context));
 
   /// Timestamps and chart labels.
   static const TextStyle micro = TextStyle(
@@ -221,6 +241,9 @@ class AppTheme {
     height: 1.3,
   );
 
+  static TextStyle microOf(BuildContext context) =>
+      micro.copyWith(color: textMutedOf(context));
+
   /// Body copy that is supporting, not primary.
   static const TextStyle bodyMuted = TextStyle(
     fontSize: 14,
@@ -228,6 +251,9 @@ class AppTheme {
     color: textMuted,
     height: 1.45,
   );
+
+  static TextStyle bodyMutedOf(BuildContext context) =>
+      bodyMuted.copyWith(color: textMutedOf(context));
 
   static TextStyle priceOf(BuildContext context) => GoogleFonts.figtree(
         fontSize: 16,
@@ -251,9 +277,9 @@ class AppTheme {
 
   static ButtonStyle secondaryOutline(BuildContext context) {
     return OutlinedButton.styleFrom(
-      foregroundColor: primary,
+      foregroundColor: linkOf(context),
       minimumSize: const Size(0, 48),
-      side: const BorderSide(color: primary, width: 1.4),
+      side: BorderSide(color: linkOf(context), width: 1.4),
       shape: const RoundedRectangleBorder(borderRadius: radiusMd),
       textStyle: GoogleFonts.figtree(fontSize: 14, fontWeight: FontWeight.w700),
     );
@@ -270,6 +296,8 @@ class AppTheme {
     final scaffoldBg = isDark ? backgroundDark : background;
     final surface = isDark ? surfaceDark : surfaceLight;
     final onSurface = isDark ? textMainDark : textMain;
+    final muted = isDark ? textMutedOnDark : textMuted;
+    final link = isDark ? primary : primaryDark;
 
     final colorScheme = ColorScheme.fromSeed(
       seedColor: primary,
@@ -290,10 +318,10 @@ class AppTheme {
       titleSmall: GoogleFonts.figtree(fontWeight: FontWeight.w700, color: onSurface, fontSize: 14, height: 1.25),
       bodyLarge: GoogleFonts.figtree(fontWeight: FontWeight.w500, color: onSurface, fontSize: 16, height: 1.4),
       bodyMedium: GoogleFonts.figtree(fontWeight: FontWeight.w500, color: onSurface, fontSize: 14, height: 1.4),
-      bodySmall: GoogleFonts.figtree(fontWeight: FontWeight.w600, color: textMuted, fontSize: 12, height: 1.35),
+      bodySmall: GoogleFonts.figtree(fontWeight: FontWeight.w600, color: muted, fontSize: 12, height: 1.35),
       labelLarge: GoogleFonts.figtree(fontWeight: FontWeight.w700, color: onSurface, fontSize: 14),
-      labelMedium: GoogleFonts.figtree(fontWeight: FontWeight.w600, color: textMuted, fontSize: 13, height: 1.35),
-      labelSmall: GoogleFonts.figtree(fontWeight: FontWeight.w800, color: primary, fontSize: 11, letterSpacing: 0.3, height: 1.2),
+      labelMedium: GoogleFonts.figtree(fontWeight: FontWeight.w600, color: muted, fontSize: 13, height: 1.35),
+      labelSmall: GoogleFonts.figtree(fontWeight: FontWeight.w800, color: link, fontSize: 11, letterSpacing: 0.3, height: 1.2),
     ).apply(
       bodyColor: onSurface,
       displayColor: onSurface,
@@ -344,8 +372,8 @@ class AppTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: primary,
-          side: const BorderSide(color: primary, width: 1.5),
+          foregroundColor: link,
+          side: BorderSide(color: link, width: 1.5),
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
           shape: RoundedRectangleBorder(borderRadius: radiusMd),
           textStyle: GoogleFonts.figtree(fontSize: 15, fontWeight: FontWeight.w700),
@@ -353,7 +381,7 @@ class AppTheme {
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: primary,
+          foregroundColor: link,
           textStyle: GoogleFonts.figtree(fontSize: 14, fontWeight: FontWeight.w600),
         ),
       ),
@@ -386,12 +414,12 @@ class AppTheme {
           (states) => GoogleFonts.figtree(
             fontSize: 11,
             fontWeight: states.contains(WidgetState.selected) ? FontWeight.w700 : FontWeight.w500,
-            color: states.contains(WidgetState.selected) ? primary : textMuted,
+            color: states.contains(WidgetState.selected) ? link : muted,
           ),
         ),
         iconTheme: WidgetStateProperty.resolveWith(
           (states) => IconThemeData(
-            color: states.contains(WidgetState.selected) ? primary : textMuted,
+            color: states.contains(WidgetState.selected) ? link : muted,
           ),
         ),
       ),
@@ -431,7 +459,7 @@ class AppTheme {
       listTileTheme: ListTileThemeData(
         iconColor: primary,
         titleTextStyle: GoogleFonts.figtree(fontSize: 15, fontWeight: FontWeight.w800, color: onSurface, height: 1.25),
-        subtitleTextStyle: GoogleFonts.figtree(fontSize: 12, fontWeight: FontWeight.w600, color: textMuted, height: 1.35),
+        subtitleTextStyle: GoogleFonts.figtree(fontSize: 12, fontWeight: FontWeight.w600, color: muted, height: 1.35),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
@@ -446,9 +474,9 @@ class AppTheme {
           borderRadius: radiusMd,
           borderSide: const BorderSide(color: primary, width: 1.6),
         ),
-        labelStyle: GoogleFonts.figtree(color: textMuted, fontSize: 13),
-        hintStyle: GoogleFonts.figtree(color: textMuted, fontSize: 13),
-        prefixIconColor: textMuted,
+        labelStyle: GoogleFonts.figtree(color: muted, fontSize: 13),
+        hintStyle: GoogleFonts.figtree(color: muted, fontSize: 13),
+        prefixIconColor: muted,
       ),
     );
   }

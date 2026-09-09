@@ -320,7 +320,7 @@ class _ChefAdvertiseScreenState extends State<ChefAdvertiseScreen> {
                               const SizedBox(height: 2),
                               Text(
                                 row['advertiser_name'].toString(),
-                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.primary),
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.link),
                               ),
                             ],
                             const SizedBox(height: 4),

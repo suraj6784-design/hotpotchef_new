@@ -1,4 +1,4 @@
-﻿// lib/screens/driver_profile_screen.dart
+// lib/screens/driver_profile_screen.dart
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -332,7 +332,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
         actions: [
           TextButton.icon(
             icon: Icon(_isEditing ? Icons.close : Icons.edit, color: AppTheme.primary, size: 18),
-            label: Text(_isEditing ? 'Cancel' : 'Edit', style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold)),
+            label: Text(_isEditing ? 'Cancel' : 'Edit', style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold)),
             onPressed: () => setState(() => _isEditing = !_isEditing),
           ),
         ],
@@ -425,7 +425,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
 
                   // Personal Info
                   const Text('Personal & Identity Info (Govt. Compliance)',
-                      style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 15)),
+                      style: TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 15)),
                   const SizedBox(height: 12),
                   _buildTextField(
                     controller: _nameController,
@@ -513,7 +513,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text('Permanent / Residential Address',
-                          style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 15)),
+                          style: TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 15)),
                       Row(
                         children: [
                           Icon(_latitude != null ? Icons.check_circle : Icons.warning_amber_rounded,
@@ -547,7 +547,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                           icon: Icon(Icons.pin_drop, color: _latitude == null ? AppTheme.primary : Colors.green),
                           label: Text(
                             _latitude == null ? 'Pin Home Address on Map *' : 'Location Pinned (Tap to change)',
-                            style: TextStyle(fontWeight: FontWeight.bold, color: _latitude == null ? AppTheme.primary : Colors.green),
+                            style: TextStyle(fontWeight: FontWeight.bold, color: _latitude == null ? AppTheme.linkOf(context) : Colors.green),
                           ),
                           onPressed: _openMapPicker,
                         ),
@@ -607,7 +607,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
 
                   // Vehicle & License Details
                   const Text('Vehicle & License Details (MoRTH / RTO)',
-                      style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 15)),
+                      style: TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 15)),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     value: _vehicleType,
@@ -709,7 +709,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
       decoration: InputDecoration(
         labelText: label,
         labelStyle: TextStyle(color: muted, fontSize: 13),
-        floatingLabelStyle: const TextStyle(color: AppTheme.primary, fontSize: 14, fontWeight: FontWeight.bold),
+        floatingLabelStyle: const TextStyle(color: AppTheme.link, fontSize: 14, fontWeight: FontWeight.bold),
         prefixIcon: prefixIcon != null ? Icon(prefixIcon, color: muted, size: 20) : null,
         filled: true,
         fillColor: fill,

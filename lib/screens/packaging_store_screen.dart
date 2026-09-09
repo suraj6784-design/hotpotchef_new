@@ -228,7 +228,7 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
                       Icon(Icons.inventory_2_rounded, color: AppTheme.primary, size: 40),
                       SizedBox(height: 10),
                       Text('HotPotChef Supply Store',
-                          style: TextStyle(color: AppTheme.primary, fontSize: 18, fontWeight: FontWeight.bold)),
+                          style: TextStyle(color: AppTheme.link, fontSize: 18, fontWeight: FontWeight.bold)),
                       SizedBox(height: 4),
                       Text(
                         'Tap Request to place the order on your kitchen account. The HotPotChef supply desk confirms stock in-app; WhatsApp is optional backup.',
@@ -305,7 +305,7 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text('₹${price.toStringAsFixed(0)}',
-                                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17, color: AppTheme.primary)),
+                                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17, color: AppTheme.link)),
                                 ElevatedButton(
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: alreadyRequested ? AppTheme.success : AppTheme.primary,

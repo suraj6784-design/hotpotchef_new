@@ -670,7 +670,7 @@ class _HistoryOrdersListState extends ConsumerState<_HistoryOrdersList> {
                     children: [
                       Text(
                         'Total: ₹${totalPrice.toStringAsFixed(0)}',
-                        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: AppTheme.primary),
+                        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: AppTheme.link),
                       ),
                       Row(
                         mainAxisSize: MainAxisSize.min,

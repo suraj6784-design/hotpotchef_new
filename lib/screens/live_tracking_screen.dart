@@ -694,7 +694,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                           ],
                         ),
                         TextButton(
-                          style: TextButton.styleFrom(foregroundColor: AppTheme.primary),
+                          style: TextButton.styleFrom(foregroundColor: AppTheme.linkOf(context)),
                           onPressed: _showOrderSummaryModal,
                           child: const Text('Details', style: TextStyle(fontWeight: FontWeight.bold)),
                         ),

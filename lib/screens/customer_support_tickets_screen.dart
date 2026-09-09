@@ -171,7 +171,7 @@ class _CustomerSupportTicketsScreenState extends State<CustomerSupportTicketsScr
                                       style: const TextStyle(
                                         fontWeight: FontWeight.w700,
                                         fontSize: 12,
-                                        color: AppTheme.primary,
+                                        color: AppTheme.link,
                                       ),
                                     ),
                                   ],
