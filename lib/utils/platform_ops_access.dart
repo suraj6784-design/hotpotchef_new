@@ -7,6 +7,8 @@ import 'helpers.dart';
 const kPlatformOwnerEmail = 'suraj6784@gmail.com';
 
 const kOpsPermissionDashboard = 'dashboard';
+const kOpsPermissionAnalytics = 'analytics';
+const kOpsPermissionCrm = 'crm';
 const kOpsPermissionPackaging = 'packaging';
 const kOpsPermissionFssai = 'fssai';
 const kOpsPermissionBrands = 'brands';
@@ -22,6 +24,8 @@ const kOpsPermissionAudit = 'audit';
 /// Scopes that can be granted via helper invite codes.
 const kOpsInviteablePermissions = <String>[
   kOpsPermissionDashboard,
+  kOpsPermissionAnalytics,
+  kOpsPermissionCrm,
   kOpsPermissionPackaging,
   kOpsPermissionFssai,
   kOpsPermissionBrands,
@@ -43,6 +47,10 @@ String opsPermissionLabel(String key) {
   switch (key.toLowerCase().trim()) {
     case kOpsPermissionDashboard:
       return 'Dashboard';
+    case kOpsPermissionAnalytics:
+      return 'Analytics';
+    case kOpsPermissionCrm:
+      return 'CRM';
     case kOpsPermissionPackaging:
       return 'Packaging';
     case kOpsPermissionFssai:
@@ -77,7 +85,12 @@ class OpsNavGroup {
 }
 
 const kOpsNavGroups = <OpsNavGroup>[
-  OpsNavGroup('Overview', [kOpsPermissionDashboard, kOpsPermissionProfile]),
+  OpsNavGroup('Overview', [
+    kOpsPermissionDashboard,
+    kOpsPermissionAnalytics,
+    kOpsPermissionCrm,
+    kOpsPermissionProfile,
+  ]),
   OpsNavGroup('Kitchen', [
     kOpsPermissionCatalog,
     kOpsPermissionPackaging,
@@ -258,4 +271,204 @@ class OpsSnapshotBucket {
       orderCount: int.tryParse(json['order_count']?.toString() ?? '') ?? 0,
     );
   }
+}
+
+int _opsInt(dynamic value) => int.tryParse(value?.toString() ?? '') ?? 0;
+
+double _opsDouble(dynamic value) => double.tryParse(value?.toString() ?? '') ?? 0;
+
+class OpsNamedCount {
+  const OpsNamedCount({required this.label, required this.count});
+
+  final String label;
+  final int count;
+
+  factory OpsNamedCount.fromJson(Map<String, dynamic> json) {
+    return OpsNamedCount(
+      label: json['label']?.toString() ?? json['status']?.toString() ?? json['role']?.toString() ?? '',
+      count: _opsInt(json['count'] ?? json['value']),
+    );
+  }
+}
+
+class OpsKitchenRank {
+  const OpsKitchenRank({
+    required this.chefId,
+    required this.name,
+    required this.orderCount,
+    required this.gmv,
+  });
+
+  final String chefId;
+  final String name;
+  final int orderCount;
+  final double gmv;
+
+  factory OpsKitchenRank.fromJson(Map<String, dynamic> json) {
+    return OpsKitchenRank(
+      chefId: json['chef_id']?.toString() ?? json['id']?.toString() ?? '',
+      name: (json['name']?.toString() ?? json['kitchen']?.toString() ?? 'Kitchen').trim(),
+      orderCount: _opsInt(json['order_count']),
+      gmv: _opsDouble(json['gmv']),
+    );
+  }
+}
+
+class OpsAdminHq {
+  const OpsAdminHq({
+    required this.snapshot,
+    required this.chefCount,
+    required this.dinerCount,
+    required this.driverCount,
+    required this.newUsers,
+    required this.pendingKyc,
+    required this.pendingFssai,
+    required this.openTickets,
+    required this.openDisputes,
+    required this.failedRefunds,
+    required this.liveMeals,
+    required this.userCount,
+    required this.topKitchens,
+    required this.ticketsByStatus,
+    required this.usersByRole,
+  });
+
+  final OpsTransactionSnapshot snapshot;
+  final int chefCount;
+  final int dinerCount;
+  final int driverCount;
+  final int newUsers;
+  final int pendingKyc;
+  final int pendingFssai;
+  final int openTickets;
+  final int openDisputes;
+  final int failedRefunds;
+  final int liveMeals;
+  final int userCount;
+  final List<OpsKitchenRank> topKitchens;
+  final List<OpsNamedCount> ticketsByStatus;
+  final List<OpsNamedCount> usersByRole;
+
+  double get fulfillmentRate {
+    final n = snapshot.orderCount;
+    if (n <= 0) return 0;
+    return snapshot.deliveredCount / n;
+  }
+
+  double get cancelRate {
+    final n = snapshot.orderCount;
+    if (n <= 0) return 0;
+    return snapshot.cancelledCount / n;
+  }
+
+  factory OpsAdminHq.fromJson(Map<String, dynamic>? json) {
+    final raw = json ?? const <String, dynamic>{};
+    final snapRaw = raw['snapshot'];
+    final snapMap = snapRaw is Map
+        ? Map<String, dynamic>.from(snapRaw)
+        : Map<String, dynamic>.from(raw);
+    List<Map<String, dynamic>> asMaps(dynamic value) {
+      if (value is! List) return const [];
+      return value.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    }
+
+    final roles = asMaps(raw['users_by_role']);
+    int roleCount(String needle) {
+      for (final row in roles) {
+        if ((row['role']?.toString() ?? row['label']?.toString() ?? '').toLowerCase() == needle) {
+          return _opsInt(row['count']);
+        }
+      }
+      return 0;
+    }
+
+    return OpsAdminHq(
+      snapshot: OpsTransactionSnapshot.fromJson(snapMap),
+      chefCount: raw.containsKey('chef_count') ? _opsInt(raw['chef_count']) : roleCount('chef'),
+      dinerCount: raw.containsKey('diner_count')
+          ? _opsInt(raw['diner_count'])
+          : roleCount('customer') + roleCount('diner'),
+      driverCount: raw.containsKey('driver_count') ? _opsInt(raw['driver_count']) : roleCount('driver'),
+      newUsers: _opsInt(raw['new_users']),
+      pendingKyc: _opsInt(raw['pending_kyc']),
+      pendingFssai: _opsInt(raw['pending_fssai']),
+      openTickets: _opsInt(raw['open_tickets']),
+      openDisputes: _opsInt(raw['open_disputes']),
+      failedRefunds: _opsInt(raw['failed_refunds']),
+      liveMeals: _opsInt(raw['live_meals']),
+      userCount: _opsInt(raw['user_count']),
+      topKitchens: asMaps(raw['top_kitchens']).map(OpsKitchenRank.fromJson).toList(),
+      ticketsByStatus: asMaps(raw['tickets_by_status']).map(OpsNamedCount.fromJson).toList(),
+      usersByRole: roles.map(OpsNamedCount.fromJson).toList(),
+    );
+  }
+}
+
+class OpsCrmContact {
+  const OpsCrmContact({
+    required this.id,
+    required this.role,
+    required this.name,
+    required this.email,
+    required this.phone,
+    required this.accountStatus,
+    required this.fssaiStatus,
+    required this.kitchenName,
+    required this.orderCount,
+    required this.gmv,
+    required this.lastOrderAt,
+    required this.openTickets,
+    required this.createdAt,
+    required this.lastNote,
+  });
+
+  final String id;
+  final String role;
+  final String name;
+  final String email;
+  final String phone;
+  final String accountStatus;
+  final String fssaiStatus;
+  final String kitchenName;
+  final int orderCount;
+  final double gmv;
+  final String lastOrderAt;
+  final int openTickets;
+  final String createdAt;
+  final String lastNote;
+
+  factory OpsCrmContact.fromJson(Map<String, dynamic> json) {
+    final display = [
+      json['full_name']?.toString(),
+      json['name']?.toString(),
+      json['kitchen_name']?.toString(),
+    ].where((v) => v != null && v.trim().isNotEmpty).map((v) => v!.trim());
+    return OpsCrmContact(
+      id: json['id']?.toString() ?? '',
+      role: (json['role']?.toString() ?? '').toLowerCase(),
+      name: display.isEmpty ? 'Account' : display.first,
+      email: json['email']?.toString() ?? '',
+      phone: json['phone']?.toString() ?? '',
+      accountStatus: (json['account_status']?.toString() ?? 'active').toLowerCase(),
+      fssaiStatus: (json['fssai_verification_status']?.toString() ?? '').toLowerCase(),
+      kitchenName: json['kitchen_name']?.toString() ?? '',
+      orderCount: _opsInt(json['order_count']),
+      gmv: _opsDouble(json['gmv']),
+      lastOrderAt: json['last_order_at']?.toString() ?? '',
+      openTickets: _opsInt(json['open_tickets']),
+      createdAt: json['created_at']?.toString() ?? '',
+      lastNote: json['last_note']?.toString() ?? '',
+    );
+  }
+}
+
+List<OpsCrmContact> parseOpsCrmDirectory(dynamic raw) {
+  if (raw is List) {
+    return raw.whereType<Map>().map((e) => OpsCrmContact.fromJson(Map<String, dynamic>.from(e))).toList();
+  }
+  if (raw is Map) {
+    final inner = raw['contacts'] ?? raw['rows'] ?? raw['data'];
+    return parseOpsCrmDirectory(inner);
+  }
+  return const [];
 }

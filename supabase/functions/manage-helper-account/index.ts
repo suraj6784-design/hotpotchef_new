@@ -3,7 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts'
 
 const HELPER_DOMAIN = 'helpers.hotpotchef.app'
-const ALLOWED = ['dashboard', 'packaging', 'fssai', 'brands', 'refunds', 'tickets', 'kyc']
+const ALLOWED = ['dashboard', 'analytics', 'crm', 'packaging', 'fssai', 'brands', 'refunds', 'tickets', 'kyc']
 
 function jsonFail(message: string, status = 400) {
   return jsonResponse({ ok: false, error: message }, status)

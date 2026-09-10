@@ -2,7 +2,9 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -18,9 +20,10 @@ import '../widgets/app_widgets.dart';
 import '../widgets/customer_ui_components.dart';
 import 'brand_campaign_editor_sheet.dart';
 
+part 'platform_ops_hq.dart';
 part 'platform_ops_desk_tabs.dart';
 
-/// In-app desk for packaging, FSSAI, brand ads, refunds, tickets, KYC, accounts, and helpers.
+/// In-app desk for dashboard, CRM, analytics, packaging, FSSAI, ads, refunds, tickets, KYC, accounts, and helpers.
 class PlatformOpsScreen extends StatefulWidget {
   const PlatformOpsScreen({super.key});
 
@@ -66,7 +69,13 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> {
       }
     }
 
-    add(kOpsPermissionDashboard, 'Dashboard', () => _OpsDashList(key: ValueKey('dash-$_reloadToken')));
+    add(
+      kOpsPermissionDashboard,
+      'Dashboard',
+      () => _OpsDashList(key: ValueKey('dash-$_reloadToken'), onOpenTab: _openTab),
+    );
+    add(kOpsPermissionAnalytics, 'Analytics', () => _OpsAnalyticsList(key: ValueKey('analytics-$_reloadToken')));
+    add(kOpsPermissionCrm, 'CRM', () => _OpsCrmList(key: ValueKey('crm-$_reloadToken')));
     add(
       kOpsPermissionPackaging,
       'Packaging',
@@ -666,6 +675,10 @@ IconData _opsNavIcon(String key) {
   switch (key) {
     case kOpsPermissionDashboard:
       return Icons.insights_outlined;
+    case kOpsPermissionAnalytics:
+      return Icons.bar_chart_outlined;
+    case kOpsPermissionCrm:
+      return Icons.handshake_outlined;
     case kOpsPermissionProfile:
       return Icons.person_outline;
     case kOpsPermissionCatalog:
