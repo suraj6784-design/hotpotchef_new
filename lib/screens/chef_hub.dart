@@ -1225,7 +1225,6 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     try {
       await _supabase.from('meals').update({
         'status': 'Archived',
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
       }).eq('id', id);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1285,16 +1284,17 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         final history = all.where((m) => !isChefMenuActiveMeal(m)).toList();
         final showing = _menuFilter == 'History' ? history : active;
 
-        // Soft-clean: archive expired dishes still marked Available/Paused.
+        // Soft-clean: archive expired or incomplete dishes still marked Available/Paused.
         for (final meal in all) {
           if (isChefMealArchived(meal)) continue;
-          if (!isPublishedMealExpired(meal)) continue;
+          if (!isPublishedMealExpired(meal) && !mealFailsCurrentCatalogRequirements(meal)) {
+            continue;
+          }
           final id = meal['id']?.toString();
           if (id == null || id.isEmpty || !_autoArchivedMealIds.add(id)) continue;
           unawaited(
             _supabase.from('meals').update({
               'status': 'Archived',
-              'updated_at': DateTime.now().toUtc().toIso8601String(),
             }).eq('id', id),
           );
         }

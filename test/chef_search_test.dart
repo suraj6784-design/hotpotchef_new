@@ -22,9 +22,30 @@ void main() {
     test('isChefAccount ignores diner and driver rows', () {
       expect(isChefAccount({'role': 'Chef'}), isTrue);
       expect(isChefAccount({'role': 'chef'}), isTrue);
-      expect(isChefAccount({'role': 'Customer', 'name': 'User_hungry7'}), isFalse);
+      expect(isChefAccount({'role': 'Customer', 'name': 'Arushi'}), isFalse);
+      expect(isChefAccount({'role': 'Chef', 'chef_name': 'Arushi'}), isTrue);
       expect(isChefAccount({'role': 'Driver'}), isFalse);
       expect(isChefAccount({'email': 'hungry7@example.com'}), isFalse);
+      expect(isChefAccount({'role': 'Chef', 'name': 'Arushi'}), isTrue);
+    });
+
+    test('meal chef labels do not treat a diner name on the meal as a kitchen', () {
+      expect(
+        mealChefLabelMatchesQuery('arushi', {
+          'name': 'Arushi',
+          'full_name': 'Arushi',
+          'chef_name': 'Meera Kitchen',
+          'chef_id': 'customer-1',
+        }),
+        isFalse,
+      );
+      expect(
+        mealChefLabelMatchesQuery('arushi', {
+          'chef_name': 'Arushi',
+          'chef_id': 'chef-1',
+        }),
+        isTrue,
+      );
     });
   });
 }

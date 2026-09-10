@@ -99,7 +99,7 @@ void main() {
           certificateCode: code,
           issuedAt: DateTime(2026, 9, 6),
         ),
-        contains('Meera'),
+        allOf([contains('Meera'), contains('https://hotpotchef.com')]),
       );
     });
 

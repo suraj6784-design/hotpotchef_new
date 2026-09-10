@@ -179,6 +179,23 @@ void main() {
     expect(unlocked.single['price'], 50.0);
   });
 
+  test('a promo code without an offer type does not invent a discount', () {
+    final item = _buildItem(
+      quantity: 1,
+      mealDetails: {
+        'price': 100,
+        'offer_type': 'none',
+        'promo_code': 'HOME50',
+      },
+    );
+    final unlocked = checkoutCartPayload(
+      [item.toCheckoutPayload()],
+      appliedPromoCode: 'HOME50',
+    );
+    expect(unlocked.single['line_net'], 100.0);
+    expect(unlocked.single['price'], 100.0);
+  });
+
   test('an explicit flash-sale percent is not overwritten by the code digits', () {
     final item = _buildItem(
       quantity: 1,

@@ -163,13 +163,22 @@ String? sanitizeReferredBy({String? referredBy, String? ownCode}) {
   return code;
 }
 
-String referralInviteUri(String code) {
+String referralInviteAppUri(String code) {
   final normalized = normalizeReferralCode(code) ?? code;
   return 'hotpotchef://app/auth?ref=$normalized';
 }
 
+/// HTTPS so WhatsApp / Instagram / Messages auto-link the invite.
+String referralInviteUri(String code) {
+  final normalized = Uri.encodeQueryComponent(normalizeReferralCode(code) ?? code);
+  return '$kMealShareWebBase/auth?ref=$normalized';
+}
+
 String referralInviteText(String code) {
-  return 'Craving authentic home-cooked food? Join HotPotChef with my code $code. We both get ${kReferralBonusCoins.toInt()} HotPot Coins when you place your first order.\n${referralInviteUri(code)}';
+  final display = normalizeReferralCode(code) ?? code.trim().toUpperCase();
+  return 'Craving authentic home-cooked food? Join HotPotChef with my code $display. '
+      'We both get ${kReferralBonusCoins.toInt()} HotPot Coins when you place your first order.\n'
+      '${referralInviteUri(display)}';
 }
 
 double referralCoinsFromRewardedFriends(int rewardedFriends, [double bonus = kReferralBonusCoins]) {
@@ -334,10 +343,36 @@ bool chefCanPublishWithFssai({
   String? proofUrl,
   String? verificationStatus,
 }) {
-  if (normalizeFssaiNumber(fssaiNumber) == null) return false;
-  final proof = (proofUrl ?? '').trim();
-  if (proof.isEmpty) return false;
-  return normalizeFssaiVerificationStatus(verificationStatus) == 'verified';
+  return chefFssaiPublishBlockReason(
+        fssaiNumber: fssaiNumber,
+        proofUrl: proofUrl,
+        verificationStatus: verificationStatus,
+      ) ==
+      null;
+}
+
+/// Null when the chef may publish. Otherwise a chef-facing reason.
+String? chefFssaiPublishBlockReason({
+  String? fssaiNumber,
+  String? proofUrl,
+  String? verificationStatus,
+}) {
+  if (normalizeFssaiNumber(fssaiNumber) == null) {
+    return 'Add a valid 14-digit FSSAI licence number in Chef Profile, then try again.';
+  }
+  if ((proofUrl ?? '').trim().isEmpty) {
+    return 'Upload your FSSAI licence proof in Chef Profile. Publishing requires ops verification.';
+  }
+  switch (normalizeFssaiVerificationStatus(verificationStatus)) {
+    case 'verified':
+      return null;
+    case 'pending':
+      return 'FSSAI proof is under review (typically 1 business day). Publishing unlocks after HotPotChef verifies.';
+    case 'rejected':
+      return 'Your FSSAI proof was rejected. Upload a clear licence photo in Chef Profile.';
+    default:
+      return 'HotPotChef still needs to verify your FSSAI proof in Chef Profile before you can publish.';
+  }
 }
 
 /// Honest diner-facing FSSAI line (never imply verified without ops status).
@@ -572,6 +607,10 @@ const kPayInAppChatNotice =
 String offAppPaymentNudgeCopy() =>
     'This looks like an off-app payment request. HotPotChef may suspend accounts that move paid customers off the platform. Send anyway only if you are discussing something else.';
 
+/// Stored `users.role` values for kitchens. Avoid lowercase `chef` in PostgREST
+/// filters — invalid enum values can fail the whole query.
+const kStoredChefRoles = ['Chef', 'Cook'];
+
 /// True when a chef/kitchen label matches a diner search string.
 bool chefNameMatchesQuery(String? query, Map<String, dynamic>? chefOrMeal) {
   final q = (query ?? '').trim().toLowerCase();
@@ -586,6 +625,21 @@ bool chefNameMatchesQuery(String? query, Map<String, dynamic>? chefOrMeal) {
     'display_name',
   ]) {
     final value = chefOrMeal[key]?.toString().trim().toLowerCase() ?? '';
+    if (value.isEmpty) continue;
+    if (value.contains(q) || value.replaceAll(RegExp(r'\s+'), '').contains(compactQ)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// Meal rows: only kitchen labels, not a diner `name` copied onto the meal.
+bool mealChefLabelMatchesQuery(String? query, Map<String, dynamic>? meal) {
+  final q = (query ?? '').trim().toLowerCase();
+  if (q.isEmpty || meal == null) return false;
+  final compactQ = q.replaceAll(RegExp(r'\s+'), '');
+  for (final key in const ['chef_name', 'kitchen_name', 'local_kitchen_name']) {
+    final value = meal[key]?.toString().trim().toLowerCase() ?? '';
     if (value.isEmpty) continue;
     if (value.contains(q) || value.replaceAll(RegExp(r'\s+'), '').contains(compactQ)) {
       return true;
@@ -1924,6 +1978,31 @@ bool isCatalogMeal(Map<String, dynamic> meal) {
   return owner.isEmpty;
 }
 
+/// Placeholder leftovers from older publish (₹0, Flexible/ASAP, no pin, no service).
+bool mealFailsCurrentCatalogRequirements(Map<String, dynamic> meal) {
+  if (isChefMealArchived(meal)) return false;
+  final title = meal['title']?.toString().trim() ?? '';
+  if (title.isEmpty) return true;
+  if (PricingCalculator.basePrice(meal) <= 0) return true;
+  if (mealHasPlaceholderOrMissingSlot(meal)) return true;
+  if ((meal['service_type'] ?? meal['selected_service_type'] ?? '').toString().trim().isEmpty) {
+    return true;
+  }
+  if (kitchenCoordinate(meal, latitude: true) == null ||
+      kitchenCoordinate(meal, latitude: false) == null) {
+    return true;
+  }
+  final address = (meal['hosting_address'] ?? meal['address'] ?? '').toString().trim();
+  if (address.isEmpty) return true;
+  return false;
+}
+
+bool mealHasPlaceholderOrMissingSlot(Map<String, dynamic> meal) {
+  final slot = meal['time_slot']?.toString().trim() ?? '';
+  if (slot.isEmpty || isImmediateDeliverySlot(slot)) return true;
+  return !RegExp(r'\d{1,2}:\d{2}').hasMatch(slot);
+}
+
 const int kChefBoostRupees = 99;
 const int kChefBoostPaise = 9900;
 
@@ -1948,12 +2027,40 @@ String mealBoostUntilLabel(Map<String, dynamic>? meal, {DateTime? now}) {
 
 bool mealHasFlashableOffer(Map<String, dynamic> meal, {DateTime? now}) {
   if (!isCatalogMeal(meal) || !mealHasSellableStock(meal)) return false;
+  if (mealFailsCurrentCatalogRequirements(meal)) return false;
+  if (!isChefMenuActiveMeal(meal, now: now)) return false;
+  if (!mealHasBookableSlotNow(meal, now: now)) return false;
   if (isMealBoosted(meal, now: now)) return true;
-  final hasOffer = OfferType.fromString(meal['offer_type']?.toString()) != OfferType.none;
+  final hasOffer = PricingCalculator.resolvedOfferType(meal) != OfferType.none;
   final hasPromo = PricingCalculator.mealPromoCode(meal) != null;
   if (!hasOffer && !hasPromo) return false;
   // Checkout still gates promo codes; Home lists every live family (BOGO, Flash, %, Flat).
   return PricingCalculator.isWithinOfferWindow(meal, referenceTime: now);
+}
+
+/// True when a diner can still book this plate on the current local day.
+bool mealHasBookableSlotNow(Map<String, dynamic> meal, {DateTime? now}) {
+  final n = (now ?? DateTime.now()).toLocal();
+  final slot = meal['time_slot']?.toString();
+  final days = chefServingWeekdays(slot);
+  if (days != null && days.isNotEmpty && !days.contains(n.weekday)) return false;
+  if (isChefMealArchived(meal)) return false;
+  if (slot == null || slot.trim().isEmpty || isImmediateDeliverySlot(slot)) return false;
+  final labeledDay = parseSlotCalendarDay(slot, now: n);
+  final selected = DateTime.tryParse(meal['selected_date']?.toString() ?? '');
+  final day = selected ?? labeledDay;
+  if (day != null && calendarDay(day).isBefore(calendarDay(n))) return false;
+  final remaining = futureChefSubSlots(slot, scheduledDate: calendarDay(n), now: n);
+  if (remaining.isNotEmpty) return true;
+  final clocks =
+      RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)', caseSensitive: false).allMatches(slot).toList();
+  if (clocks.isEmpty) return true;
+  final end = parseClockOnDate(
+    (clocks.length >= 2 ? clocks[1] : clocks.first).group(0)!,
+    calendarDay(n),
+  );
+  if (end == null) return true;
+  return n.isBefore(end);
 }
 
 List<Map<String, dynamic>> flashableOfferMeals(
@@ -3581,7 +3688,8 @@ const int kChefPrepIdealMinutes = 60;
 
 bool isImmediateDeliverySlot(String? slot) {
   final text = (slot ?? '').trim().toLowerCase();
-  if (text.isEmpty || text == 'asap' || text == 'now') return true;
+  if (text.isEmpty || text == 'asap' || text == 'now' || text == 'flexible') return true;
+  if (text.contains('flexible')) return true;
   return text.contains('asap') && !RegExp(r'\d{1,2}:\d{2}').hasMatch(text);
 }
 

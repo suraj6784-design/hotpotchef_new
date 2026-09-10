@@ -22,38 +22,78 @@ final GlobalKey<ScaffoldMessengerState> globalMessengerKey = GlobalKey<ScaffoldM
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await loadAppEnv();
+  try {
+    await loadAppEnv();
 
-  await Firebase.initializeApp();
+    await Firebase.initializeApp();
 
-  // Pass all uncaught asynchronous errors to Crashlytics
-  FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
-  PlatformDispatcher.instance.onError = (error, stack) {
-    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-    return true;
-  };
+    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+    PlatformDispatcher.instance.onError = (error, stack) {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      return true;
+    };
 
-  // 2. Validate environment credentials
-  final supabaseUrl = appEnv('SUPABASE_URL');
-  final supabaseAnonKey = appEnv('SUPABASE_ANON_KEY');
+    final supabaseUrl = appEnv('SUPABASE_URL');
+    final supabaseAnonKey = appEnv('SUPABASE_ANON_KEY');
 
-  if (supabaseUrl.isEmpty) {
-    throw Exception('FATAL: SUPABASE_URL is missing. Pass --dart-define=SUPABASE_URL=... or a local .env file.');
+    if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
+      throw StateError(
+        'Missing backend config. Rebuild with --dart-define-from-file=.env',
+      );
+    }
+
+    await Supabase.initialize(
+      url: supabaseUrl,
+      anonKey: supabaseAnonKey,
+    );
+
+    await PushNotificationService.initialize();
+
+    runApp(const ProviderScope(child: HotPotChefApp()));
+  } catch (error, stack) {
+    debugPrint('HotPotChef failed to start: $error\n$stack');
+    runApp(_StartupFailedApp(message: error.toString()));
   }
-  if (supabaseAnonKey.isEmpty) {
-    throw Exception('FATAL: SUPABASE_ANON_KEY is missing. Pass --dart-define=SUPABASE_ANON_KEY=... or a local .env file.');
+}
+
+/// Shown instead of a blank window when Firebase/Supabase init fails.
+class _StartupFailedApp extends StatelessWidget {
+  const _StartupFailedApp({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        backgroundColor: const Color(0xFFF7F3EE),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'HotPotChef could not start',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF241F1C),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  message,
+                  style: const TextStyle(fontSize: 14, height: 1.4, color: Color(0xFF5C564F)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
-
-  // 3. Initialize Supabase
-  await Supabase.initialize(
-    url: supabaseUrl,
-    anonKey: supabaseAnonKey,
-  );
-
-  // 4. Initialize Push Notifications cleanly via centralized service
-  await PushNotificationService.initialize();
-
-  runApp(const ProviderScope(child: HotPotChefApp()));
 }
 
 class HotPotChefApp extends StatefulWidget {

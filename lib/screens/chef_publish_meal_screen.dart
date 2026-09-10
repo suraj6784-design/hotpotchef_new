@@ -108,9 +108,8 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     super.initState();
     if (widget.existingMeal != null) {
       _initializeExistingMeal(widget.existingMeal!);
-    } else {
-      _autoFillChefDetails();
     }
+    _autoFillChefDetails();
   }
 
   void _initializeExistingMeal(Map<String, dynamic> meal) {
@@ -227,10 +226,14 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
 
       if (chefProfile != null && mounted) {
         setState(() {
-          _fssaiController.text = chefProfile['fssai_number']?.toString() ?? '';
-          _hostingAddressController.text = chefProfile['address']?.toString() ?? '';
-          _pickupLat = (chefProfile['lat'] as num?)?.toDouble();
-          _pickupLng = (chefProfile['lng'] as num?)?.toDouble();
+          if (_fssaiController.text.trim().isEmpty) {
+            _fssaiController.text = chefProfile['fssai_number']?.toString() ?? '';
+          }
+          if (_hostingAddressController.text.trim().isEmpty) {
+            _hostingAddressController.text = chefProfile['address']?.toString() ?? '';
+          }
+          _pickupLat ??= (chefProfile['lat'] as num?)?.toDouble();
+          _pickupLng ??= (chefProfile['lng'] as num?)?.toDouble();
           _fssaiProofUrl = chefProfile['fssai_proof_url']?.toString();
           _fssaiVerificationStatus = normalizeFssaiVerificationStatus(
             chefProfile['fssai_verification_status']?.toString(),
@@ -300,29 +303,46 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
       return;
     }
 
-    final fssai = _fssaiController.text.trim();
     final kitchenAddress = _hostingAddressController.text.trim();
-    if (fssai.isEmpty || kitchenAddress.isEmpty || _pickupLat == null || _pickupLng == null) {
+    if (kitchenAddress.isEmpty || _pickupLat == null || _pickupLng == null) {
       _showSnackBar(
-        'Add your FSSAI licence, kitchen address, and map pin in Chef Profile, then try publishing again.',
+        'Add your kitchen address and map pin in Chef Profile, then try publishing again.',
         isError: true,
       );
       return;
     }
-    if (!chefCanPublishWithFssai(
+
+    try {
+      final uid = _supabase.auth.currentUser?.id;
+      if (uid != null) {
+        final live = await _supabase
+            .from('users')
+            .select('fssai_number, fssai_proof_url, fssai_verification_status')
+            .eq('id', uid)
+            .maybeSingle()
+            .withTimeout(NetworkTimeouts.short);
+        if (live != null && mounted) {
+          _fssaiProofUrl = live['fssai_proof_url']?.toString() ?? _fssaiProofUrl;
+          _fssaiVerificationStatus = normalizeFssaiVerificationStatus(
+            live['fssai_verification_status']?.toString(),
+          );
+          if (_fssaiController.text.trim().isEmpty) {
+            _fssaiController.text = live['fssai_number']?.toString() ?? '';
+          }
+        }
+      }
+    } catch (e, st) {
+      FirebaseCrashlytics.instance.recordError(e, st, reason: 'Live FSSAI gate lookup failed');
+    }
+
+    final fssai = _fssaiController.text.trim();
+    final blocked = chefFssaiPublishBlockReason(
       fssaiNumber: fssai,
       proofUrl: _fssaiProofUrl,
       verificationStatus: _fssaiVerificationStatus,
-    )) {
-      final status = normalizeFssaiVerificationStatus(_fssaiVerificationStatus);
-      _showSnackBar(
-        status == 'rejected'
-            ? 'Your FSSAI proof was rejected. Upload a clear licence photo in Chef Profile.'
-            : status == 'pending'
-                ? 'FSSAI proof is under review (typically 1 business day). Publishing unlocks after HotPotChef verifies.'
-                : 'Upload your FSSAI licence proof in Chef Profile. Publishing requires ops verification.',
-        isError: true,
-      );
+    );
+    if (blocked != null) {
+      _showSnackBar(blocked, isError: true);
       return;
     }
 

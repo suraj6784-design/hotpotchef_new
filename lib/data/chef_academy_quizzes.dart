@@ -87,6 +87,7 @@ String academyCertificateShareText({
     'Issued: $date',
     'Covered: hygiene, bulk cooking, timing, orders, handling, packaging, equipment.',
     'Practice certificate only — not an FSSAI licence or government food-safety certification.',
+    'https://hotpotchef.com',
   ].join('\n');
 }
 

@@ -37,6 +37,9 @@ class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
   Timer? _rotate;
   int _page = 0;
   int _offerCount = 0;
+  final Set<String> _resolvedChefIds = {};
+  final Set<String> _closedChefIds = {};
+  bool _hydratingKitchens = false;
 
   @override
   void initState() {
@@ -82,14 +85,60 @@ class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
     });
   }
 
+  Future<void> _hydrateKitchenHours(List<Map<String, dynamic>> meals) async {
+    final missing = <String>{};
+    for (final meal in meals) {
+      final chefId = meal['chef_id']?.toString() ?? '';
+      if (chefId.isEmpty || _resolvedChefIds.contains(chefId)) continue;
+      missing.add(chefId);
+    }
+    if (missing.isEmpty || _hydratingKitchens) return;
+    _hydratingKitchens = true;
+    try {
+      final rows = await Supabase.instance.client
+          .from('chef_profiles')
+          .select('user_id, is_open')
+          .inFilter('user_id', missing.toList());
+      for (final row in rows) {
+        final id = row['user_id']?.toString();
+        if (id == null || id.isEmpty) continue;
+        _resolvedChefIds.add(id);
+        if (!isChefKitchenOpen(Map<String, dynamic>.from(row))) {
+          _closedChefIds.add(id);
+        }
+      }
+      _resolvedChefIds.addAll(missing);
+      if (mounted) setState(() {});
+    } catch (_) {
+      _resolvedChefIds.addAll(missing);
+    } finally {
+      _hydratingKitchens = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<Map<String, dynamic>>>(
       stream: _mealsStream,
       builder: (context, snapshot) {
+        final rows = snapshot.data ?? const <Map<String, dynamic>>[];
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _hydrateKitchenHours(rows);
+        });
+        final unresolvedChefs = <String>{};
+        for (final meal in rows) {
+          final chefId = meal['chef_id']?.toString() ?? '';
+          if (chefId.isNotEmpty && !_resolvedChefIds.contains(chefId)) {
+            unresolvedChefs.add(chefId);
+          }
+        }
         final offers = flashableOfferMeals(
-          snapshot.data ?? const [],
-          excludedChefIds: widget.excludedChefIds,
+          rows,
+          excludedChefIds: {
+            ...widget.excludedChefIds,
+            ..._closedChefIds,
+            ...unresolvedChefs,
+          },
           destinationLat: widget.destinationLat,
           destinationLng: widget.destinationLng,
           chefKitchenPins: widget.chefKitchenPins,

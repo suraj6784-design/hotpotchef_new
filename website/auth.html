@@ -24,12 +24,16 @@
         <article class="meal-card">
           <p class="meal-kicker">Account</p>
           <h1 class="meal-title" id="auth-title">Welcome back</h1>
-          <p class="meal-meta">Use the same email and password as the HotPotChef app.</p>
+          <p class="meal-meta" id="auth-meta">Use the same email and password as the HotPotChef app.</p>
 
           <form class="auth-form" id="auth-form">
             <label>
               Name
               <input id="auth-name" type="text" autocomplete="name" hidden />
+            </label>
+            <label id="auth-ref-wrap" hidden>
+              Referral code
+              <input id="auth-ref" type="text" autocomplete="off" spellcheck="false" />
             </label>
             <label>
               Email
@@ -49,6 +53,9 @@
               <button class="btn btn-ghost" type="button" id="auth-toggle">Create account</button>
             </div>
           </form>
+          <p class="cta-row" id="auth-open-wrap" hidden>
+            <a class="btn btn-primary" id="open-app" href="#">Open in HotPotChef</a>
+          </p>
         </article>
       </div>
     </main>
@@ -63,6 +70,6 @@
     <script src="/js/config.js"></script>
     <script src="/js/api.js"></script>
     <script src="/js/cart.js"></script>
-    <script src="/js/auth-page.js"></script>
+    <script src="/js/auth-page.js?v=20260911a"></script>
   </body>
 </html>

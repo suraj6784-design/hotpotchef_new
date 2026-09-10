@@ -59,9 +59,12 @@ void main() {
   });
 
   test('share copy tells friends both sides earn on the first order', () {
+    expect(referralInviteUri('CHEFAB12'), 'https://hotpotchef.com/auth?ref=CHEFAB12');
     expect(referralInviteText('CHEFAB12'), contains('CHEFAB12'));
     expect(referralInviteText('CHEFAB12'), contains('50 HotPot Coins'));
-    expect(referralInviteText('CHEFAB12'), contains('auth?ref=CHEFAB12'));
+    expect(referralInviteText('CHEFAB12'), contains('https://hotpotchef.com/auth?ref=CHEFAB12'));
+    expect(referralInviteText('CHEFAB12'), isNot(contains('hotpotchef://')));
+    expect(referralInviteAppUri('chefab12'), 'hotpotchef://app/auth?ref=CHEFAB12');
   });
 
   test('generated referral codes match the signup field', () {

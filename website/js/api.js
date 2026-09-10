@@ -281,11 +281,13 @@
     return data;
   }
 
-  async function signUp(email, password, fullName) {
+  async function signUp(email, password, fullName, referredBy) {
+    var meta = { role: 'Customer', full_name: fullName || '' };
+    if (referredBy) meta.referred_by = referredBy;
     var data = await authRequest('signup', {
       email: email,
       password: password,
-      data: { role: 'Customer', full_name: fullName || '' },
+      data: meta,
     });
     if (data.access_token) writeSession(data);
     return data;

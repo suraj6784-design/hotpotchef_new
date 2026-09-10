@@ -35,6 +35,25 @@ void main() {
         ),
         isTrue,
       );
+      expect(
+        chefFssaiPublishBlockReason(
+          fssaiNumber: '11234567890123',
+          proofUrl: 'https://example.com/fssai.jpg',
+          verificationStatus: 'verified',
+        ),
+        isNull,
+      );
+    });
+
+    test('verified without loaded proof still blocks, with a proof message', () {
+      expect(
+        chefFssaiPublishBlockReason(
+          fssaiNumber: '11234567890123',
+          proofUrl: null,
+          verificationStatus: 'verified',
+        ),
+        contains('licence proof'),
+      );
     });
 
     test('rejects when ops marked rejected', () {

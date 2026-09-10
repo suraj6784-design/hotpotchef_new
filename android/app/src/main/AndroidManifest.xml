@@ -55,6 +55,10 @@
                     android:scheme="https"
                     android:host="hotpotchef.com"
                     android:pathPrefix="/cart"/>
+                <data
+                    android:scheme="https"
+                    android:host="hotpotchef.com"
+                    android:pathPrefix="/auth"/>
             </intent-filter>
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW"/>
@@ -72,6 +76,10 @@
                     android:scheme="https"
                     android:host="www.hotpotchef.com"
                     android:pathPrefix="/cart"/>
+                <data
+                    android:scheme="https"
+                    android:host="www.hotpotchef.com"
+                    android:pathPrefix="/auth"/>
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>

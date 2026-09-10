@@ -101,9 +101,12 @@ class _ReferralScreenState extends State<ReferralScreen> {
   }
 
   void _shareCode() {
-    Share.share(
-      referralInviteText(_referralCode),
-      subject: 'Claim your HotPotChef Bonus!',
+    final text = referralInviteText(_referralCode);
+    SharePlus.instance.share(
+      ShareParams(
+        text: text,
+        subject: 'Join HotPotChef with my code $_referralCode',
+      ),
     );
   }
 
@@ -201,11 +204,11 @@ class _ReferralScreenState extends State<ReferralScreen> {
                                 color: isDark ? AppTheme.textMainDark : AppTheme.textMain,
                               ),
                               onPressed: () {
-                                Clipboard.setData(ClipboardData(text: _referralCode));
+                                Clipboard.setData(ClipboardData(text: referralInviteText(_referralCode)));
                                 if (!mounted) return;
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
-                                    content: Text('Referral code copied to clipboard!'),
+                                    content: Text('Invite copied — the link is ready to paste'),
                                     backgroundColor: Colors.green,
                                     behavior: SnackBarBehavior.floating,
                                   ),

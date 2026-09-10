@@ -44,7 +44,7 @@ class PricingCalculator {
     return _parseCurrency(mealDetails['promo_discount_value']) > 0;
   }
 
-  /// `FESTIVE50` / `HOME20` → 50 / 20 when the chef left discount_value blank.
+  /// `FESTIVE50` → 50 only when the chef already picked an offer type.
   static double? numericSuffixFromPromoCode(String? code) {
     final normalized = normalizedPromoCode(code);
     if (normalized == null) return null;
@@ -53,6 +53,10 @@ class PricingCalculator {
     final value = double.tryParse(match.group(1)!);
     if (value == null || value <= 0) return null;
     return value;
+  }
+
+  static OfferType resolvedOfferType(Map<String, dynamic> mealDetails) {
+    return OfferType.fromString(mealDetails['offer_type']?.toString());
   }
 
   static double resolvedOfferDiscount(
@@ -102,7 +106,7 @@ class PricingCalculator {
     String? appliedPromoCode,
   }) {
     try {
-      final offerType = OfferType.fromString(mealDetails['offer_type']?.toString());
+      final offerType = resolvedOfferType(mealDetails);
       if (offerType == OfferType.none) return false;
       if (!isWithinOfferWindow(mealDetails, referenceTime: referenceTime)) return false;
       if (isOfferGated(mealDetails) && !promoCodeMatches(mealDetails, appliedPromoCode)) {
@@ -159,7 +163,7 @@ class PricingCalculator {
       );
     }
 
-    final offerType = OfferType.fromString(mealDetails['offer_type']?.toString());
+    final offerType = resolvedOfferType(mealDetails);
     final discountVal = resolvedOfferDiscount(mealDetails, offerType: offerType);
     final maxDiscountCap = _parseCurrency(mealDetails['max_discount_cap']);
     final hasCap = maxDiscountCap > 0.0;
@@ -409,7 +413,7 @@ class PricingCalculator {
 
   static String offerBadgeLabel(Map<String, dynamic> mealDetails, {int quantity = 1}) {
     if (isOfferGated(mealDetails)) return 'PROMO';
-    final offerType = OfferType.fromString(mealDetails['offer_type']?.toString());
+    final offerType = resolvedOfferType(mealDetails);
     final discountVal = resolvedOfferDiscount(mealDetails, offerType: offerType);
     switch (offerType) {
       case OfferType.bogo:

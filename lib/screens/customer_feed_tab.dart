@@ -356,7 +356,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         final title = m['title']?.toString().toLowerCase().replaceAll(' ', '') ?? '';
         final desc = m['description']?.toString().toLowerCase().replaceAll(' ', '') ?? '';
         if (title.contains(qClean) || desc.contains(qClean)) return true;
-        return chefNameMatchesQuery(trimmed, m);
+        return mealChefLabelMatchesQuery(trimmed, m);
       }).toList();
 
       for (var lm in localMatches) {
@@ -371,7 +371,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         final chefRows = await client
             .from('users')
             .select('id, name, full_name, email, fssai_number, role')
-            .or('role.eq.Chef,role.eq.chef,role.eq.Cook,role.eq.cook')
+            .inFilter('role', kStoredChefRoles)
             .limit(250)
             .withTimeout(NetworkTimeouts.standard);
         for (final row in List<Map<String, dynamic>>.from(chefRows as List)) {
@@ -404,7 +404,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
               .from('users')
               .select('id, name, full_name, email, fssai_number, role')
               .inFilter('id', kitchenIds)
-              .or('role.eq.Chef,role.eq.chef,role.eq.Cook,role.eq.cook')
+              .inFilter('role', kStoredChefRoles)
               .withTimeout(NetworkTimeouts.standard);
           for (final row in List<Map<String, dynamic>>.from(extraChefs as List)) {
             if (!isChefAccount(row)) continue;
@@ -419,18 +419,31 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Kitchen name search failed');
       }
 
-      // Also pick chefs already present on local meal rows whose display name matches.
+      // Meal labels can match a diner's name. Only keep rows whose users.role is chef.
+      final unverifiedMealChefIds = <String>{};
       for (final meal in localMeals) {
-        if (!chefNameMatchesQuery(trimmed, meal)) continue;
+        if (!mealChefLabelMatchesQuery(trimmed, meal)) continue;
         final id = meal['chef_id']?.toString() ?? '';
         if (id.isEmpty || chefHits.containsKey(id)) continue;
-        chefHits[id] = {
-          'id': id,
-          'name': chefDisplayName(meal),
-          'chef_name': meal['chef_name'],
-          'fssai_number': meal['fssai_number'],
-          'role': 'Chef',
-        };
+        unverifiedMealChefIds.add(id);
+      }
+      if (unverifiedMealChefIds.isNotEmpty) {
+        try {
+          final verified = await client
+              .from('users')
+              .select('id, name, full_name, email, fssai_number, role')
+              .inFilter('id', unverifiedMealChefIds.toList())
+              .inFilter('role', kStoredChefRoles)
+              .withTimeout(NetworkTimeouts.standard);
+          for (final row in List<Map<String, dynamic>>.from(verified as List)) {
+            if (!isChefAccount(row)) continue;
+            final id = row['id']?.toString() ?? '';
+            if (id.isEmpty) continue;
+            chefHits[id] = row;
+          }
+        } catch (e, stack) {
+          FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Meal chef role verify failed');
+        }
       }
 
       if (chefHits.isNotEmpty) {
@@ -568,8 +581,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       final meals = <Map<String, dynamic>>[];
       for (final raw in List<Map<String, dynamic>>.from(rows as List)) {
         if (offerFlashGroupKeyForMeal(raw) != groupKey) continue;
-        if (!isCatalogMeal(raw) || !mealHasSellableStock(raw)) continue;
-        if (!PricingCalculator.isWithinOfferWindow(raw)) continue;
+        if (!mealHasFlashableOffer(raw)) continue;
         final chefId = raw['chef_id']?.toString() ?? '';
         if (chefId.isNotEmpty && _closedChefIds.contains(chefId)) continue;
         final pinned = mealWithKitchenPin(raw, chefPin: _chefKitchenPins[chefId]);
@@ -793,7 +805,12 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       _hydrateKitchenHours(meals);
     });
     final pinned = _openKitchenMeals(
-      meals.where((meal) => mealAvoidsAllergies(meal, _allergies)).map(_pinnedMeal).toList(),
+      meals
+          .where((meal) =>
+              mealAvoidsAllergies(meal, _allergies) &&
+              !mealFailsCurrentCatalogRequirements(meal))
+          .map(_pinnedMeal)
+          .toList(),
     );
     if (!_hasDeliveryPin) return pinned;
     final dest = _selectedAddressMap;

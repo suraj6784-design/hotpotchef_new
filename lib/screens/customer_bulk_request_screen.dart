@@ -84,7 +84,7 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
         final users = await _supabase
             .from('users')
             .select('id, name, full_name, city, role')
-            .or('role.eq.Chef,role.eq.chef,role.eq.Cook,role.eq.cook')
+            .inFilter('role', kStoredChefRoles)
             .limit(250)
             .withTimeout(NetworkTimeouts.standard);
         userRows = List<Map<String, dynamic>>.from(users as List);
@@ -95,6 +95,7 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
               .from('users')
               .select('id, name, full_name, city, role')
               .inFilter('id', kitchenNames.keys.toList())
+              .inFilter('role', kStoredChefRoles)
               .withTimeout(NetworkTimeouts.standard);
           userRows = List<Map<String, dynamic>>.from(extra as List);
         }
@@ -120,6 +121,7 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
 
       final byId = <String, _BulkChefOption>{};
       for (final row in userRows) {
+        if (!isChefAccount(row)) continue;
         final id = row['id']?.toString() ?? '';
         if (id.isEmpty) continue;
         final kitchen = kitchenNames[id] ?? '';
@@ -136,20 +138,6 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
           isOpen: kitchenOpen[id] ?? true,
         );
       }
-      for (final entry in kitchenNames.entries) {
-        if (byId.containsKey(entry.key)) continue;
-        final kitchen = entry.value;
-        byId[entry.key] = _BulkChefOption(
-          id: entry.key,
-          name: kitchen.isNotEmpty ? kitchen : 'Home kitchen',
-          kitchen: kitchen,
-          city: '',
-          followed: followed.contains(entry.key),
-          isOpen: kitchenOpen[entry.key] ?? true,
-        );
-      }
-
-      final list = byId.values.toList()
         ..sort((a, b) {
           if (a.followed != b.followed) return a.followed ? -1 : 1;
           return a.name.toLowerCase().compareTo(b.name.toLowerCase());
