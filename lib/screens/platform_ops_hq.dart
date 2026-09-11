@@ -1,11 +1,19 @@
 part of 'platform_ops_screen.dart';
 
 Future<OpsAdminHq> _fetchOpsAdminHq(String period) async {
-  final raw = await Supabase.instance.client.rpc(
+  final client = Supabase.instance.client;
+  final raw = await client.rpc(
     'ops_admin_hq',
     params: {'p_period': period},
   ).withTimeout(NetworkTimeouts.standard);
   final map = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+  try {
+    final sig = await client.rpc(
+      'ops_readiness_signals',
+      params: {'p_period': period},
+    ).withTimeout(NetworkTimeouts.standard);
+    if (sig is Map) map.addAll(Map<String, dynamic>.from(sig));
+  } catch (_) {}
   return OpsAdminHq.fromJson(map);
 }
 
@@ -142,6 +150,12 @@ class _OpsDashListState extends State<_OpsDashList> {
           icon: Icons.confirmation_number_outlined,
           title: 'Open tickets',
           value: '${hq.openTickets}',
+          onTap: () => _open(kOpsPermissionTickets),
+        ),
+        _OpsQueueTile(
+          icon: Icons.timer_off_outlined,
+          title: 'SLA breached',
+          value: '${hq.slaBreached}',
           onTap: () => _open(kOpsPermissionTickets),
         ),
         _OpsQueueTile(
@@ -296,6 +310,11 @@ class _OpsAnalyticsListState extends State<_OpsAnalyticsList> {
             _OpsMiniStat(label: 'Delivery fees', value: '₹${snap.deliveryFeeSum.toStringAsFixed(0)}'),
             _OpsMiniStat(label: 'New accounts', value: '${hq.newUsers}'),
             _OpsMiniStat(label: 'Fill rate', value: _opsPct(hq.fulfillmentRate)),
+            _OpsMiniStat(label: '7d GMV forecast', value: '₹${hq.forecastGmv7d.toStringAsFixed(0)}'),
+            _OpsMiniStat(label: 'Repeat 30d', value: '${hq.repeat30d}'),
+            _OpsMiniStat(label: 'Churn 21d', value: '${hq.churn21d}'),
+            _OpsMiniStat(label: 'Fraud flags', value: '${hq.fraudFlags}'),
+            _OpsMiniStat(label: 'Avg CSAT', value: hq.avgCsat <= 0 ? '—' : hq.avgCsat.toStringAsFixed(1)),
           ],
         ),
         const SizedBox(height: 16),
@@ -318,6 +337,32 @@ class _OpsAnalyticsListState extends State<_OpsAnalyticsList> {
                     ],
                   ],
                 ),
+        ),
+        const SizedBox(height: 16),
+        Text('Acquisition mix', style: AppTheme.homeSectionLabelOf(context)),
+        const SizedBox(height: 8),
+        AppCard(
+          child: Column(
+            children: [
+              _OpsMeterRow(
+                label: 'Referred',
+                value: '${hq.referredAccounts}',
+                ratio: (hq.referredAccounts + hq.organicAccounts) <= 0
+                    ? 0
+                    : hq.referredAccounts / (hq.referredAccounts + hq.organicAccounts),
+              ),
+              const SizedBox(height: 8),
+              _OpsMeterRow(
+                label: 'Organic diners',
+                value: '${hq.organicAccounts}',
+                ratio: (hq.referredAccounts + hq.organicAccounts) <= 0
+                    ? 0
+                    : hq.organicAccounts / (hq.referredAccounts + hq.organicAccounts),
+              ),
+              const SizedBox(height: 8),
+              Text('Refunds last 7 days: ${hq.refundVelocity}', style: AppTheme.caption),
+            ],
+          ),
         ),
         const SizedBox(height: 16),
         Text('Tickets', style: AppTheme.homeSectionLabelOf(context)),
@@ -790,7 +835,7 @@ class _OpsGmvChart extends StatelessWidget {
                   touchTooltipData: BarTouchTooltipData(
                     getTooltipItem: (group, groupIndex, rod, rodIndex) {
                       if (group.x < 0 || group.x >= series.length) {
-                        return const BarTooltipItem('', TextStyle(color: Colors.white));
+                        return BarTooltipItem('', const TextStyle(color: Colors.white));
                       }
                       final item = series[group.x.toInt()];
                       return BarTooltipItem(

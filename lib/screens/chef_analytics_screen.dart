@@ -48,6 +48,7 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
 
   double _totalRevenue = 0.0;
   int _completedOrdersCount = 0;
+  double _nextWeekForecast = 0.0;
   List<DailyMetric> _dailyTrend = [];
   List<TopDishMetric> _topDishes = [];
   int _selectedDays = 7;
@@ -161,6 +162,7 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
         setState(() {
           _totalRevenue = totalRev;
           _completedOrdersCount = completedCount;
+          _nextWeekForecast = _selectedDays <= 0 ? 0 : (totalRev / _selectedDays) * 7;
           _dailyTrend = trendList;
           _topDishes = topDishes;
           _isLoading = false;
@@ -307,6 +309,10 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                               style: AppTheme.micro,
                             ),
                           ],
+                        ),
+                        Text(
+                          'Run-rate next 7 days: ₹${_nextWeekForecast.toStringAsFixed(0)} (from this window)',
+                          style: AppTheme.caption,
                         ),
                         const SizedBox(height: 24),
                         SizedBox(

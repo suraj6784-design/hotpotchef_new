@@ -138,6 +138,7 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
           isOpen: kitchenOpen[id] ?? true,
         );
       }
+      final list = byId.values.toList()
         ..sort((a, b) {
           if (a.followed != b.followed) return a.followed ? -1 : 1;
           return a.name.toLowerCase().compareTo(b.name.toLowerCase());

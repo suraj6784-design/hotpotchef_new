@@ -159,7 +159,7 @@ void main() {
     expect(lines.single['offer_type'], 'percentage');
   });
 
-  test('FESTIVE50 with a blank flash-sale percent is 50% off, not the 20% default', () {
+  test('FESTIVE50 with a blank flash-sale percent is 50% then floored to 40% off', () {
     final item = _buildItem(
       quantity: 1,
       mealDetails: {
@@ -175,8 +175,20 @@ void main() {
       [item.toCheckoutPayload()],
       appliedPromoCode: 'FESTIVE50',
     );
-    expect(unlocked.single['line_net'], 50.0);
-    expect(unlocked.single['price'], 50.0);
+    expect(unlocked.single['line_net'], 60.0);
+    expect(unlocked.single['price'], 60.0);
+  });
+
+  test('percentage discounts cannot cut diner-paid food below 60% of list', () {
+    final item = _buildItem(
+      quantity: 1,
+      mealDetails: {
+        'price': 100,
+        'offer_type': 'Percentage Discount (%)',
+        'discount_value': 80,
+      },
+    );
+    expect(CartState(items: [item]).getEffectiveItemTotal(item), 60.0);
   });
 
   test('a promo code without an offer type does not invent a discount', () {

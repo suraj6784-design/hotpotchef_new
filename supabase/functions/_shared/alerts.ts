@@ -146,6 +146,18 @@ async function sendEmail(to: string | null | undefined, subject: string, text: s
   })
 }
 
+export async function dispatchWelcome(admin: SupabaseClient, userId: string) {
+  await notifyUser(
+    admin,
+    userId,
+    'Welcome to HotPotChef',
+    'Browse kitchens near you, add a plate, and checkout. Help is in Support if you get stuck.',
+    { alert_id: `welcome-${userId}`, kind: 'welcome' },
+    { email: true },
+  )
+  return { sent: 1 }
+}
+
 async function notifyUser(
   admin: SupabaseClient,
   userId: string | null | undefined,

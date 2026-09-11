@@ -1387,7 +1387,7 @@ class _TicketsOpsList extends StatelessWidget {
             message: opsFriendlyError(snap.error ?? 'unknown'),
           );
         }
-        final rows = snap.data ?? const [];
+        final rows = List<Map<String, dynamic>>.from(snap.data ?? const []);
         if (rows.isEmpty) {
           return const EmptyState(
             icon: Icons.support_agent_outlined,
@@ -1395,6 +1395,12 @@ class _TicketsOpsList extends StatelessWidget {
             message: 'In-app tickets from customers and chefs appear here.',
           );
         }
+        rows.sort((a, b) {
+          final ao = _isOverdue(a);
+          final bo = _isOverdue(b);
+          if (ao != bo) return ao ? -1 : 1;
+          return (b['created_at']?.toString() ?? '').compareTo(a['created_at']?.toString() ?? '');
+        });
         return ListView.builder(
           padding: const EdgeInsets.all(16),
           itemCount: rows.length,

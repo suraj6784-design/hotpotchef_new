@@ -1223,9 +1223,15 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     final id = meal['id']?.toString() ?? '';
     if (id.isEmpty) return;
     try {
-      await _supabase.from('meals').update({
-        'status': 'Archived',
-      }).eq('id', id);
+      try {
+        await _supabase.from('meals').update({
+          'status': 'Archived',
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        }).eq('id', id);
+      } on PostgrestException catch (e) {
+        if (e.code != 'PGRST204') rethrow;
+        await _supabase.from('meals').update({'status': 'Archived'}).eq('id', id);
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(reason == 'expired' ? 'Expired dish moved to History.' : 'Dish removed from Menu.')),
@@ -1295,6 +1301,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
           unawaited(
             _supabase.from('meals').update({
               'status': 'Archived',
+              'updated_at': DateTime.now().toUtc().toIso8601String(),
             }).eq('id', id),
           );
         }

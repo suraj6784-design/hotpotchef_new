@@ -10,6 +10,9 @@ class PricingCalculator {
   /// Default fallback percentage for Flash Sales if not specified by backend.
   static const double defaultFlashSaleDiscountPercent = 20.0;
 
+  /// Stacked % / flat offers cannot cut diner-paid food below this share of list.
+  static const double minNetFractionOfGross = 0.60;
+
   /// Rounds currency amounts cleanly to two decimal places (e.g. Paise/Cents).
   static double roundCurrency(double value) {
     if (value.isNaN || value.isInfinite) return 0.0;
@@ -275,14 +278,19 @@ class PricingCalculator {
       }
     }
 
-    final totalDiscount = roundCurrency(math.max(0.0, grossTotal - stackedNet));
+    var net = stackedNet;
+    final offerType = resolvedOfferType(mealDetails);
+    if (offerType != OfferType.bogo && grossTotal > 0) {
+      final floorNet = roundCurrency(grossTotal * minNetFractionOfGross);
+      if (net < floorNet) net = floorNet;
+    }
     return ItemPricingSummary(
       baseUnitPrice: unitPrice,
-      effectiveUnitPrice: roundCurrency(stackedNet / quantity),
+      effectiveUnitPrice: quantity <= 0 ? 0 : roundCurrency(net / quantity),
       grossTotal: grossTotal,
-      netTotal: stackedNet,
-      totalDiscount: totalDiscount,
-      isOfferApplied: totalDiscount > 0.0,
+      netTotal: net,
+      totalDiscount: roundCurrency(math.max(0.0, grossTotal - net)),
+      isOfferApplied: grossTotal - net > 0.0,
       offerDescription: stackedDescription,
     );
   }

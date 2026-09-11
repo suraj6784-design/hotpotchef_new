@@ -110,12 +110,19 @@ void main() {
         'users_by_role': [
           {'role': 'customer', 'count': 9},
         ],
+        'sla_breached': 2,
+        'forecast_gmv_7d': 2100,
+        'churn_21d': 4,
+        'fraud_flags': 1,
       });
       expect(hq.snapshot.gmv, 1200);
       expect(hq.dinerCount, 9);
       expect(hq.fulfillmentRate, 0.75);
       expect(hq.topKitchens.single.name, 'Nani Kitchen');
       expect(hq.ticketsByStatus.single.label, 'open');
+      expect(hq.slaBreached, 2);
+      expect(hq.forecastGmv7d, 2100);
+      expect(hq.fraudFlags, 1);
     });
 
     test('CRM directory parse', () {

@@ -10,6 +10,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../models/app_role.dart';
 import '../services/auth_session.dart';
+import '../services/lifecycle_drip.dart';
 import '../services/push_notification_service.dart';
 import '../utils/account_hint.dart';
 import '../utils/helpers.dart';
@@ -158,6 +159,7 @@ class _AuthScreenState extends State<AuthScreen> {
           // Write referred_by before the diner can reach checkout, or the first-order bonus is missed.
           await _ensurePublicUserProfile(recordLegalConsent: _acceptedTerms);
           unawaited(PushNotificationService.syncTokenForCurrentUser());
+          unawaited(enqueueWelcomeDrip());
           _leaveAuthAfterSuccess();
         } else {
           _showAuthError('Wrong email or password. Please try again.');
@@ -224,6 +226,7 @@ class _AuthScreenState extends State<AuthScreen> {
           );
 
           unawaited(PushNotificationService.syncTokenForCurrentUser());
+          unawaited(enqueueWelcomeDrip());
           _leaveAuthAfterSuccess();
         }
         }

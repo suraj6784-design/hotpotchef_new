@@ -48,7 +48,7 @@ class _CustomerSupportTicketsScreenState extends State<CustomerSupportTicketsScr
     try {
       final rows = await _supabase
           .from('support_tickets')
-          .select('id, public_id, subject, status, sla_due_at, last_message_at, order_number, created_at')
+          .select('id, public_id, subject, status, sla_due_at, last_message_at, order_number, created_at, csat_score')
           .eq('created_by', user.id)
           .order('created_at', ascending: false)
           .withTimeout(NetworkTimeouts.standard);
@@ -219,6 +219,7 @@ class _SupportTicketDetailScreenState extends State<_SupportTicketDetailScreen> 
   bool _sending = false;
   String? _error;
   List<Map<String, dynamic>> _messages = const [];
+  int? _csat;
 
   String get _ticketId => widget.ticket['id']?.toString() ?? '';
 
@@ -229,6 +230,7 @@ class _SupportTicketDetailScreenState extends State<_SupportTicketDetailScreen> 
       widget.ticket['id']?.toString() ?? '',
       widget.ticket['last_message_at']?.toString(),
     );
+    _csat = int.tryParse(widget.ticket['csat_score']?.toString() ?? '');
     _loadMessages();
   }
 
@@ -329,6 +331,37 @@ class _SupportTicketDetailScreenState extends State<_SupportTicketDetailScreen> 
                     'Status: $status',
                     style: TextStyle(color: muted, fontSize: 13, fontWeight: FontWeight.w600),
                   ),
+                  if (['resolved', 'closed'].contains((widget.ticket['status']?.toString() ?? '').toLowerCase())) ...[
+                    const SizedBox(height: 10),
+                    Text('How did we do?', style: TextStyle(color: muted, fontSize: 12)),
+                    Row(
+                      children: [
+                        for (var i = 1; i <= 5; i++)
+                          IconButton(
+                            onPressed: _csat != null
+                                ? null
+                                : () async {
+                                    try {
+                                      await _supabase.rpc(
+                                        'submit_ticket_csat',
+                                        params: {'p_ticket_id': _ticketId, 'p_score': i},
+                                      ).withTimeout(NetworkTimeouts.standard);
+                                      if (mounted) setState(() => _csat = i);
+                                    } catch (e) {
+                                      if (!mounted) return;
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('Could not save that rating. Try again.')),
+                                      );
+                                    }
+                                  },
+                            icon: Icon(
+                              i <= (_csat ?? 0) ? Icons.star : Icons.star_border,
+                              color: AppTheme.accent,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),

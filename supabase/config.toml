@@ -499,3 +499,13 @@ entrypoint = "./functions/ai-search/index.ts"
 enabled = true
 verify_jwt = true
 entrypoint = "./functions/meal-boost/index.ts"
+
+[functions.ops-cron]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/ops-cron/index.ts"
+
+[functions.retry-failed-refunds]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/retry-failed-refunds/index.ts"

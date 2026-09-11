@@ -20,6 +20,7 @@ import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/customer_ui_components.dart';
+import '../widgets/diner_onboarding_coach.dart';
 import 'customer_feed_tab.dart';
 import 'customer_cart_tab.dart';
 import 'customer_orders_tab.dart';
@@ -195,6 +196,10 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
                 const HubDockDestination(icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: 'Orders'),
               ],
             ),
+          ),
+          DinerOnboardingCoach(
+            onGoHome: () => _onNavigationItemTapped(0),
+            onGoOrders: () => _onNavigationItemTapped(2),
           ),
         ],
       ),

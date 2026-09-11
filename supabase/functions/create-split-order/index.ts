@@ -64,6 +64,19 @@ serve(async (req) => {
 
     const admin = createClient(supabaseUrl, serviceKey)
 
+    const { error: rateError } = await userClient.rpc('assert_user_rate_limit', {
+      p_scope: 'checkout',
+      p_limit: 8,
+      p_window_minutes: 15,
+    })
+    if (rateError) {
+      return jsonResponse({
+        success: false,
+        code: 'rate_limited',
+        error: rateError.message || 'Too many checkout attempts. Wait a few minutes.',
+      }, 429)
+    }
+
     const chefIds = [...new Set(
       cartItems
         .map((row) => String(row.chef_id ?? row.chefId ?? '').trim())

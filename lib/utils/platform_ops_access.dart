@@ -331,6 +331,16 @@ class OpsAdminHq {
     required this.topKitchens,
     required this.ticketsByStatus,
     required this.usersByRole,
+    this.slaBreached = 0,
+    this.avgCsat = 0,
+    this.repeat7d = 0,
+    this.repeat30d = 0,
+    this.churn21d = 0,
+    this.referredAccounts = 0,
+    this.organicAccounts = 0,
+    this.refundVelocity = 0,
+    this.fraudFlags = 0,
+    this.forecastGmv7d = 0,
   });
 
   final OpsTransactionSnapshot snapshot;
@@ -348,6 +358,16 @@ class OpsAdminHq {
   final List<OpsKitchenRank> topKitchens;
   final List<OpsNamedCount> ticketsByStatus;
   final List<OpsNamedCount> usersByRole;
+  final int slaBreached;
+  final double avgCsat;
+  final int repeat7d;
+  final int repeat30d;
+  final int churn21d;
+  final int referredAccounts;
+  final int organicAccounts;
+  final int refundVelocity;
+  final int fraudFlags;
+  final double forecastGmv7d;
 
   double get fulfillmentRate {
     final n = snapshot.orderCount;
@@ -400,6 +420,16 @@ class OpsAdminHq {
       topKitchens: asMaps(raw['top_kitchens']).map(OpsKitchenRank.fromJson).toList(),
       ticketsByStatus: asMaps(raw['tickets_by_status']).map(OpsNamedCount.fromJson).toList(),
       usersByRole: roles.map(OpsNamedCount.fromJson).toList(),
+      slaBreached: _opsInt(raw['sla_breached']),
+      avgCsat: _opsDouble(raw['avg_csat']),
+      repeat7d: _opsInt(raw['repeat_7d']),
+      repeat30d: _opsInt(raw['repeat_30d']),
+      churn21d: _opsInt(raw['churn_21d']),
+      referredAccounts: _opsInt(raw['referred_accounts']),
+      organicAccounts: _opsInt(raw['organic_accounts']),
+      refundVelocity: _opsInt(raw['refund_velocity']),
+      fraudFlags: _opsInt(raw['fraud_flags']),
+      forecastGmv7d: _opsDouble(raw['forecast_gmv_7d']),
     );
   }
 }
