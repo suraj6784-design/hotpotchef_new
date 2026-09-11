@@ -11,6 +11,7 @@ import 'app_theme.dart';
 import 'network.dart';
 import 'notification_copy.dart';
 import 'pricing_calculator.dart';
+import 'meal_nutrition.dart';
 import '../models/app_role.dart';
 import '../models/pricing_models.dart';
 
@@ -283,6 +284,7 @@ String mealShareText(Map<String, dynamic> meal) {
   final code = mealSharePromoCode(meal);
   final link = mealShareUri(meal['id']?.toString() ?? mealIdFromOrderItem(meal));
   final priceSlot = price > 0 ? '₹${price.toStringAsFixed(0)} · $slot' : slot;
+  final nutrition = mealNutritionFacts(meal).compactLine;
   final lines = <String>[
     isFestivalHamper(meal)
         ? 'Festival hamper: $title from $chef'
@@ -292,6 +294,7 @@ String mealShareText(Map<String, dynamic> meal) {
                 ? 'Shelf from home (${shelfItemKind(meal)}): $title from $chef'
                 : '$title from $chef')),
     priceSlot,
+    if (nutrition.isNotEmpty) nutrition,
     if (code != null) 'Use code $code at checkout',
     isFestivalHamper(meal)
         ? 'Gift a home kitchen box — order in 2 taps on HotPotChef'
@@ -397,6 +400,13 @@ String dinerFssaiTrustLabel({
 
 bool dinerFssaiIsVerified(String? verificationStatus) =>
     normalizeFssaiVerificationStatus(verificationStatus) == 'verified';
+
+final _panNumberRegex = RegExp(r'^[A-Z]{5}[0-9]{4}[A-Z]$');
+
+bool isValidPan(String? raw) {
+  final cleaned = (raw ?? '').replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
+  return _panNumberRegex.hasMatch(cleaned);
+}
 
 String maskPan(String? raw) {
   final cleaned = (raw ?? '').replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();

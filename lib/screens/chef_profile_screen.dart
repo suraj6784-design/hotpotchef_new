@@ -79,6 +79,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
   final _phoneController = TextEditingController();
   final _fssaiController = TextEditingController();
   final _gstinController = TextEditingController();
+  final _panController = TextEditingController();
   final _gatewayAccountController = TextEditingController();
 
   final _bankAccountController = TextEditingController();
@@ -117,6 +118,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     _phoneController.dispose();
     _fssaiController.dispose();
     _gstinController.dispose();
+    _panController.dispose();
     _gatewayAccountController.dispose();
     _bankAccountController.dispose();
     _ifscController.dispose();
@@ -142,6 +144,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     _phoneController.text = userData?['phone']?.toString() ?? user.userMetadata?['phone']?.toString() ?? '';
     _fssaiController.text = userData?['fssai_number']?.toString() ?? '';
     _gstinController.text = userData?['gstin']?.toString() ?? '';
+    _panController.text = maskPan(userData?['pan_number']?.toString());
     _gatewayAccountController.text = userData?['gateway_account_id']?.toString() ?? '';
 
     _beneficiaryNameController.text = userData?['beneficiary_name']?.toString() ?? '';
@@ -436,6 +439,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
             ? 'unsubmitted'
             : (_fssaiVerificationStatus == 'verified' ? 'verified' : 'pending'),
         'gstin': _gstinController.text.trim().toUpperCase(),
+        if (isValidPan(_panController.text)) 'pan_number': _panController.text.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase(),
         'address': formattedAddress,
         'house_no': house,
         'street': street,
@@ -720,6 +724,18 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                       'GSTIN is only needed when you want tax invoices. Leave blank for a bill of supply. FSSAI verification is still required before you can publish meals.',
                       style: AppTheme.micro,
                     ),
+                  ),
+                  _buildValidatedTextField(
+                    controller: _panController,
+                    label: 'PAN (optional, for payouts)',
+                    prefixIcon: Icons.badge_outlined,
+                    maxLength: 10,
+                    validator: (v) {
+                      final value = v?.trim() ?? '';
+                      if (value.isEmpty || value.contains('*')) return null;
+                      if (!isValidPan(value)) return 'Enter a valid 10-character PAN';
+                      return null;
+                    },
                   ),
                   Divider(height: 32, color: divider),
                   const Text('Kitchen story',

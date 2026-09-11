@@ -17,6 +17,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../widgets/kitchen_live_badge.dart';
 
 import '../utils/helpers.dart';
+import '../utils/meal_nutrition.dart';
 import '../utils/app_page.dart';
 import '../utils/app_theme.dart';
 import '../utils/pricing_calculator.dart';
@@ -1035,6 +1036,56 @@ void dismissAppSnackBars(BuildContext context) {
   ScaffoldMessenger.maybeOf(context)?.clearSnackBars();
 }
 
+class MealNutritionStrip extends StatelessWidget {
+  const MealNutritionStrip({super.key, required this.meal, this.compact = false});
+
+  final Map<String, dynamic> meal;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final tiles = mealNutritionFacts(meal).tiles;
+    if (tiles.isEmpty) return const SizedBox.shrink();
+    return Wrap(
+      spacing: compact ? 6 : 8,
+      runSpacing: compact ? 6 : 8,
+      children: [
+        for (final tile in tiles)
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: compact ? 7 : 10, vertical: compact ? 4 : 8),
+            decoration: BoxDecoration(
+              color: AppTheme.canvasOf(context),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppTheme.hairlineOf(context)),
+            ),
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: '${tile.$1}  ',
+                    style: TextStyle(
+                      fontSize: compact ? 10 : 11,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.linkOf(context),
+                    ),
+                  ),
+                  TextSpan(
+                    text: tile.$2,
+                    style: TextStyle(
+                      fontSize: compact ? 10 : 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.onSurfaceOf(context),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 Widget _mealInfoChip({
   required IconData icon,
   required String label,
@@ -1417,6 +1468,17 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                         iconColor: Colors.orangeAccent,
                         textColor: isDark ? Colors.orange.shade200 : Colors.orange.shade800,
                       ),
+                      if (mealNutritionFacts(meal).hasValues) ...[
+                        const SizedBox(height: 16),
+                        Text('Nutrition', style: AppTheme.homeSectionLabelOf(context).copyWith(fontSize: 16)),
+                        const SizedBox(height: 8),
+                        MealNutritionStrip(meal: meal),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Per listed portion, as entered by the kitchen.',
+                          style: AppTheme.caption,
+                        ),
+                      ],
                       if (_availableAddOns.isNotEmpty) ...[
                         const SizedBox(height: 24),
                         Text('Customise', style: AppTheme.homeSectionLabelOf(context).copyWith(fontSize: 16)),

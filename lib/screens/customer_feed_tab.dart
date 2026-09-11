@@ -16,6 +16,7 @@ import '../utils/dynamic_ui_engine.dart';
 import '../utils/network.dart';
 import '../utils/pinned_address.dart';
 import '../utils/pricing_calculator.dart';
+import '../utils/meal_nutrition.dart';
 import '../providers/cart_provider.dart';
 import '../providers/delivery_preference.dart';
 import '../providers/kitchen_follows_provider.dart';
@@ -1742,7 +1743,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             crossAxisCount: columns,
             crossAxisSpacing: 16,
             mainAxisSpacing: 16,
-            mainAxisExtent: 412,
+            mainAxisExtent: 436,
           ),
           itemCount: meals.length,
           itemBuilder: (context, index) {
@@ -1954,6 +1955,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                     ],
                                   ),
                                 ),
+                                if (mealNutritionFacts(meal).hasValues) ...[
+                                  const SizedBox(height: 8),
+                                  MealNutritionStrip(meal: meal, compact: true),
+                                ],
                                 const SizedBox(height: 8),
                                 Row(
                                   children: [

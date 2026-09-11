@@ -213,9 +213,9 @@ void main() {
   });
 
   test('KYC reminder copy names missing fields', () {
-    final chef = kycReminderCopy(role: 'Chef', missing: ['PAN', 'GSTIN']);
+    final chef = kycReminderCopy(role: 'Chef', missing: ['FSSAI number', 'Kitchen pin']);
     expect(chef.title, 'Complete your KYC');
-    expect(chef.body, contains('PAN'));
+    expect(chef.body, contains('FSSAI number'));
     expect(chef.body, contains('kitchen'));
 
     final driver = kycReminderCopy(role: 'Driver', missing: const []);

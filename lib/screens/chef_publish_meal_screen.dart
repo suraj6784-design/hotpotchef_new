@@ -10,6 +10,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../utils/network.dart';
 import '../utils/helpers.dart';
 import '../utils/pricing_calculator.dart';
+import '../utils/meal_nutrition.dart';
 import '../models/cart_enums.dart';
 import '../models/pricing_models.dart';
 import '../models/app_role.dart';
@@ -51,6 +52,12 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
   final _descriptionController = TextEditingController();
   final _priceController = TextEditingController();
   final _quantityController = TextEditingController();
+  final _caloriesController = TextEditingController();
+  final _weightController = TextEditingController();
+  final _proteinController = TextEditingController();
+  final _carbsController = TextEditingController();
+  final _fatController = TextEditingController();
+  final _fiberController = TextEditingController();
   final _fssaiController = TextEditingController();
   final _hostingAddressController = TextEditingController();
   final _societyLabelController = TextEditingController();
@@ -117,6 +124,13 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     _descriptionController.text = meal['description']?.toString() ?? '';
     _priceController.text = meal['price']?.toString() ?? '';
     _quantityController.text = meal['quantity']?.toString() ?? '';
+    final nutrition = mealNutritionFacts(meal);
+    _caloriesController.text = nutrition.caloriesKcal?.toString() ?? '';
+    _weightController.text = nutrition.weightG?.toString() ?? '';
+    _proteinController.text = nutrition.proteinG?.toString() ?? '';
+    _carbsController.text = nutrition.carbsG?.toString() ?? '';
+    _fatController.text = nutrition.fatG?.toString() ?? '';
+    _fiberController.text = nutrition.fiberG?.toString() ?? '';
     _fssaiController.text = meal['fssai_number']?.toString() ?? '';
     _hostingAddressController.text = meal['hosting_address']?.toString() ?? '';
 
@@ -197,6 +211,12 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     _descriptionController.dispose();
     _priceController.dispose();
     _quantityController.dispose();
+    _caloriesController.dispose();
+    _weightController.dispose();
+    _proteinController.dispose();
+    _carbsController.dispose();
+    _fatController.dispose();
+    _fiberController.dispose();
     _fssaiController.dispose();
     _hostingAddressController.dispose();
     _societyLabelController.dispose();
@@ -463,6 +483,14 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
         'status': widget.existingMeal != null ? (widget.existingMeal!['status'] ?? 'Available') : 'Available',
         'image_url': imageUrl,
         'health_tags': _mergedHealthTags(healthTags),
+        ...mealNutritionPayload(
+          caloriesKcal: parseMealNutritionNumber(_caloriesController.text),
+          weightG: parseMealNutritionNumber(_weightController.text),
+          proteinG: parseMealNutritionNumber(_proteinController.text),
+          carbsG: parseMealNutritionNumber(_carbsController.text),
+          fatG: parseMealNutritionNumber(_fatController.text),
+          fiberG: parseMealNutritionNumber(_fiberController.text),
+        ),
         'offer_type': _selectedOfferType.name,
         'discount_value': discountVal,
         'max_discount_cap': maxCapVal > 0 ? maxCapVal : null,
@@ -509,6 +537,12 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
         'society_label',
         'is_shelf_item',
         'shelf_kind',
+        'calories_kcal',
+        'portion_weight_g',
+        'protein_g',
+        'carbs_g',
+        'fat_g',
+        'fiber_g',
       ])
         if (payload.containsKey(key)) key,
     };
@@ -915,6 +949,81 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
               ],
             ),
             const SizedBox(height: 24),
+            Text('Nutrition (per portion)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor)),
+            const SizedBox(height: 4),
+            const Text(
+              'Shown on the diner meal card. Leave blank if you are not sure — do not guess.',
+              style: AppTheme.caption,
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: _caloriesController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,1}'))],
+                    validator: (v) => _optionalNutrition(v, max: 5000),
+                    decoration: _inputStyle('Cal (kcal)'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextFormField(
+                    controller: _weightController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,1}'))],
+                    validator: (v) => _optionalNutrition(v, max: 5000),
+                    decoration: _inputStyle('Wt (g)'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextFormField(
+                    controller: _proteinController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,1}'))],
+                    validator: (v) => _optionalNutrition(v, max: 400),
+                    decoration: _inputStyle('Protein (g)'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: _carbsController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,1}'))],
+                    validator: (v) => _optionalNutrition(v, max: 400),
+                    decoration: _inputStyle('Carbs (g)'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextFormField(
+                    controller: _fatController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,1}'))],
+                    validator: (v) => _optionalNutrition(v, max: 400),
+                    decoration: _inputStyle('Fat (g)'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextFormField(
+                    controller: _fiberController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,1}'))],
+                    validator: (v) => _optionalNutrition(v, max: 100),
+                    decoration: _inputStyle('Fiber (g)'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
 
             // Logistics & Schedule
             Text('Time slots', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor)),
@@ -1309,6 +1418,15 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
       case ServiceType.dineIn:
         return Icons.restaurant_rounded;
     }
+  }
+
+  String? _optionalNutrition(String? raw, {required double max}) {
+    final text = (raw ?? '').trim();
+    if (text.isEmpty) return null;
+    final value = parseMealNutritionNumber(text);
+    if (value == null) return 'Enter a number greater than 0';
+    if (value > max) return 'That value looks too high';
+    return null;
   }
 
   InputDecoration _inputStyle(String label) {

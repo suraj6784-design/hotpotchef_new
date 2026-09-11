@@ -52,6 +52,7 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
   List<DailyMetric> _dailyTrend = [];
   List<TopDishMetric> _topDishes = [];
   int _selectedDays = 7;
+  int _liveBoostCount = 0;
 
   @override
   void initState() {
@@ -158,6 +159,16 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
       dishesList.sort((a, b) => b.totalPortions.compareTo(a.totalPortions));
       final topDishes = dishesList.take(10).toList(); // Take Top 10
 
+      var liveBoosts = 0;
+      try {
+        final boosted = await _supabase
+            .from('meals')
+            .select('id')
+            .eq('chef_id', user.id)
+            .gt('boosted_until', DateTime.now().toUtc().toIso8601String());
+        liveBoosts = (boosted as List).length;
+      } catch (_) {}
+
       if (mounted) {
         setState(() {
           _totalRevenue = totalRev;
@@ -165,6 +176,7 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
           _nextWeekForecast = _selectedDays <= 0 ? 0 : (totalRev / _selectedDays) * 7;
           _dailyTrend = trendList;
           _topDishes = topDishes;
+          _liveBoostCount = liveBoosts;
           _isLoading = false;
         });
       }
@@ -284,6 +296,25 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 12),
+                  AppCard(
+                    margin: EdgeInsets.zero,
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.rocket_launch_outlined, color: AppTheme.primary),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            _liveBoostCount == 0
+                                ? 'No dishes boosted on Home right now. Boost is ₹99 until midnight.'
+                                : '$_liveBoostCount dish${_liveBoostCount == 1 ? '' : 'es'} boosted on Home until midnight.',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ).entrance(index: 2),
                   const SizedBox(height: 20),
 
                   // Trend Bar Chart

@@ -13,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/auth_session.dart';
 import '../services/alert_service.dart';
 import '../utils/helpers.dart';
+import '../utils/kyc_checklist.dart';
 import '../utils/network.dart';
 import '../utils/platform_ops_access.dart';
 import '../utils/support.dart';
@@ -1506,52 +1507,6 @@ class _TicketsOpsList extends StatelessWidget {
   }
 }
 
-class _KycChecklist {
-  const _KycChecklist({required this.done, required this.total, required this.missing});
-
-  final int done;
-  final int total;
-  final List<String> missing;
-
-  bool get incomplete => done < total;
-}
-
-_KycChecklist _kycChecklistFor(Map<String, dynamic> row) {
-  final role = (row['role']?.toString() ?? '').toLowerCase();
-  final isDriver = role == 'driver';
-  final checks = <String, String>{
-    'Name': row['name']?.toString() ?? row['full_name']?.toString() ?? '',
-    'Email': row['email']?.toString() ?? '',
-    'Phone': row['phone']?.toString() ?? '',
-    'Bank account': row['bank_account_number']?.toString() ?? '',
-    'IFSC': row['ifsc_code']?.toString() ?? row['bank_ifsc']?.toString() ?? '',
-    'PAN': row['pan_number']?.toString() ?? '',
-    'Aadhaar': row['aadhaar_masked']?.toString() ?? '',
-  };
-  if (isDriver) {
-    checks['Vehicle type'] = row['vehicle_type']?.toString() ?? '';
-    checks['Vehicle number'] = row['vehicle_reg_no']?.toString() ?? row['vehicle_number']?.toString() ?? '';
-  } else {
-    checks['FSSAI number'] = row['fssai_number']?.toString() ?? '';
-    checks['FSSAI proof'] = row['fssai_proof_url']?.toString() ?? '';
-    checks['FSSAI verified'] =
-        normalizeFssaiVerificationStatus(row['fssai_verification_status']?.toString()) == 'verified' ? 'yes' : '';
-    checks['GSTIN'] = row['gstin']?.toString() ?? '';
-    if (role == 'chef') {
-      checks['Kitchen name'] = row['local_kitchen_name']?.toString() ?? '';
-    }
-  }
-  final missing = <String>[];
-  var done = 0;
-  for (final entry in checks.entries) {
-    if (entry.value.trim().isEmpty) {
-      missing.add(entry.key);
-    } else {
-      done++;
-    }
-  }
-  return _KycChecklist(done: done, total: checks.length, missing: missing);
-}
 
 class _KycOpsList extends StatelessWidget {
   const _KycOpsList({super.key});
@@ -1565,8 +1520,8 @@ class _KycOpsList extends StatelessWidget {
         ? [for (final row in raw) Map<String, dynamic>.from(row as Map)]
         : <Map<String, dynamic>>[];
     list.sort((a, b) {
-      final ca = _kycChecklistFor(a);
-      final cb = _kycChecklistFor(b);
+      final ca = kycChecklistFor(a);
+      final cb = kycChecklistFor(b);
       if (ca.incomplete != cb.incomplete) return ca.incomplete ? -1 : 1;
       return ca.done.compareTo(cb.done);
     });
@@ -1632,12 +1587,13 @@ class _KycOpsList extends StatelessWidget {
 Future<String> _sendKycReminderInApp(Map<String, dynamic> row) async {
   final id = row['id']?.toString() ?? '';
   if (id.isEmpty) throw Exception('Missing partner id');
-  final checklist = _kycChecklistFor(row);
+  final checklist = kycChecklistFor(row);
+  final fields = [...checklist.missing, ...checklist.payoutMissing];
   final raw = await Supabase.instance.client.rpc(
     'ops_send_kyc_reminder',
     params: {
       'p_user_id': id,
-      'p_missing': checklist.missing,
+      'p_missing': fields,
     },
   ).withTimeout(NetworkTimeouts.standard);
   final result = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
@@ -1671,7 +1627,7 @@ class _KycRoleQueueState extends State<_KycRoleQueue> {
   bool _bulkBusy = false;
 
   Future<void> _remindAllPending() async {
-    final pending = widget.rows.where((row) => _kycChecklistFor(row).incomplete).toList();
+    final pending = widget.rows.where((row) => kycChecklistFor(row).needsReminder).toList();
     if (pending.isEmpty || _bulkBusy) return;
     setState(() => _bulkBusy = true);
     var sent = 0;
@@ -1711,7 +1667,7 @@ class _KycRoleQueueState extends State<_KycRoleQueue> {
         message: widget.emptyMessage,
       );
     }
-    final pending = widget.rows.where((row) => _kycChecklistFor(row).incomplete).length;
+    final pending = widget.rows.where((row) => kycChecklistFor(row).needsReminder).length;
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: widget.rows.length + 1,
@@ -1783,7 +1739,7 @@ class _KycPartnerTileState extends State<_KycPartnerTile> {
   @override
   Widget build(BuildContext context) {
     final row = widget.row;
-    final checklist = _kycChecklistFor(row);
+    final checklist = kycChecklistFor(row);
     final name = row['name']?.toString() ?? row['full_name']?.toString() ?? 'Partner';
     final role = row['role']?.toString() ?? '';
     final kitchen = row['local_kitchen_name']?.toString() ?? '';
@@ -1834,12 +1790,21 @@ class _KycPartnerTileState extends State<_KycPartnerTile> {
               );
             },
           ),
-          if (checklist.missing.isNotEmpty) ...[
+          if (checklist.missing.isNotEmpty || checklist.payoutMissing.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text(
-              'Missing: ${checklist.missing.join(', ')}',
-              style: const TextStyle(fontSize: 12, color: AppTheme.error),
-            ),
+            if (checklist.missing.isNotEmpty)
+              Text(
+                'Missing: ${checklist.missing.join(', ')}',
+                style: const TextStyle(fontSize: 12, color: AppTheme.error),
+              ),
+            if (checklist.payoutMissing.isNotEmpty)
+              Padding(
+                padding: EdgeInsets.only(top: checklist.missing.isEmpty ? 0 : 4),
+                child: Text(
+                  'Payout still needed: ${checklist.payoutMissing.join(', ')}',
+                  style: const TextStyle(fontSize: 12, color: AppTheme.warning),
+                ),
+              ),
             const SizedBox(height: 10),
             Align(
               alignment: Alignment.centerLeft,

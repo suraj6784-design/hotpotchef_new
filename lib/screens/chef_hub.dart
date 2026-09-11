@@ -14,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../utils/app_haptics.dart';
 import '../utils/helpers.dart';
+import '../utils/meal_nutrition.dart';
 import '../models/cart_enums.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
@@ -27,6 +28,7 @@ import '../services/invoice_pdf_service.dart';
 import '../services/kitchen_media.dart';
 import '../widgets/chef_boost_sheet.dart';
 import '../widgets/kyc_reminder_banner.dart';
+import '../widgets/chef_onboarding_coach.dart';
 import 'packaging_store_screen.dart';
 import 'chef_publish_meal_screen.dart';
 
@@ -62,6 +64,8 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   String get _currentUserId => _supabase.auth.currentUser?.id ?? '';
   String get _currentUserEmail => _supabase.auth.currentUser?.email ?? 'Chef';
   Map<String, dynamic>? _chefPin;
+  Map<String, dynamic> _chefProfile = {};
+  bool _hasActiveDish = false;
 
   /// Stable stream instances so rebuilds do not recreate realtime subscriptions.
   Stream<List<Map<String, dynamic>>>? _ordersStream;
@@ -79,6 +83,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     _ensureHubStreams();
     _loadKitchenStatus();
     _loadChefPin();
+    unawaited(_loadActiveDishCount());
     unawaited(_loadOpsAccess());
   }
 
@@ -297,12 +302,32 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     try {
       final row = await _supabase
           .from('users')
-          .select('lat, lng, latitude, longitude')
+          .select('lat, lng, latitude, longitude, fssai_number, fssai_proof_url, fssai_verification_status')
           .eq('id', _currentUserId)
           .maybeSingle();
-      if (row != null && mounted) setState(() => _chefPin = row);
+      if (row != null && mounted) {
+        setState(() {
+          _chefPin = row;
+          _chefProfile = Map<String, dynamic>.from(row);
+        });
+      }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to load chef kitchen pin');
+    }
+  }
+
+  Future<void> _loadActiveDishCount() async {
+    if (_currentUserId.isEmpty) return;
+    try {
+      final rows = await _supabase
+          .from('meals')
+          .select('id, status, time_slot')
+          .eq('chef_id', _currentUserId);
+      final list = List<Map<String, dynamic>>.from(rows);
+      final active = list.where(isChefMenuActiveMeal).isNotEmpty;
+      if (mounted) setState(() => _hasActiveDish = active);
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to load chef active dishes');
     }
   }
 
@@ -715,12 +740,24 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 const PackagingStoreScreen(),
               ];
 
-              return Scaffold(
+              return Stack(
+                children: [
+                  Scaffold(
                 backgroundColor: AppTheme.canvasOf(context),
                 body: Column(
                   children: [
                     _buildHeader(),
                     const KycReminderBanner(profilePath: '/chef-profile'),
+                    ChefSetupStrip(
+                      profile: _chefProfile,
+                      isKitchenOpen: _isKitchenOpen,
+                      hasActiveDish: _hasActiveDish,
+                      onOpenProfile: () => context.push('/chef-profile'),
+                      onPublish: () => context.push('/chef-publish-meal'),
+                      onGoOnline: () {
+                        if (!_isKitchenOpen) unawaited(_toggleKitchenStatus());
+                      },
+                    ),
                     Expanded(
                       child: HubTabSwitcher(
                         index: _selectedIndex,
@@ -759,6 +796,12 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                     const NavigationDestination(icon: Icon(Icons.inventory_2_outlined), selectedIcon: Icon(Icons.inventory_2, color: AppTheme.primary), label: 'Supplies'),
                   ],
                 ),
+              ),
+                  ChefOnboardingCoach(
+                    onOpenProfile: () => context.push('/chef-profile'),
+                    onPublish: () => context.push('/chef-publish-meal'),
+                  ),
+                ],
               );
                 },
               );
@@ -1489,6 +1532,13 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                         fontWeight: lowStock && !historyMode ? FontWeight.w700 : FontWeight.w500,
                       ),
                     ),
+                    if (mealNutritionFacts(meal).hasValues) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        mealNutritionFacts(meal).compactLine,
+                        style: const TextStyle(fontSize: 11, color: AppTheme.link, fontWeight: FontWeight.w600),
+                      ),
+                    ],
                     if (!historyMode && lowStock) ...[
                       const SizedBox(height: 4),
                       const Text('Low stock — restock soon',
