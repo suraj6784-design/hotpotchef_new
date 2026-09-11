@@ -4644,6 +4644,95 @@ List<Map<String, dynamic>> checkoutItemsFromCateringRequest(Map<String, dynamic>
   ];
 }
 
+List<Map<String, dynamic>> orderItemsFrom(dynamic rawItems) {
+  if (rawItems is List) {
+    return rawItems
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+  if (rawItems is String && rawItems.trim().isNotEmpty) {
+    try {
+      final decoded = jsonDecode(rawItems);
+      if (decoded is List) {
+        return decoded
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+      }
+    } catch (_) {}
+  }
+  return const [];
+}
+
+String walletOrderDishLine(dynamic items) {
+  final parsed = orderItemsFrom(items);
+  if (parsed.isEmpty) {
+    final fallback = mealTitleFromItems(items);
+    return fallback == 'your order' ? 'Order' : fallback;
+  }
+  final first = parsed.first;
+  final title = (first['title'] ?? first['name'] ?? first['meal_name'] ?? 'Meal')
+      .toString()
+      .trim();
+  final label = title.isEmpty ? 'Meal' : title;
+  if (parsed.length > 1) return '$label (+${parsed.length - 1} more)';
+  return label;
+}
+
+String walletOrderStatusLabel(String? status) {
+  final raw = (status ?? '').trim().replaceAll('_', ' ');
+  if (raw.isEmpty) return 'Placed';
+  return raw
+      .split(RegExp(r'\s+'))
+      .where((w) => w.isNotEmpty)
+      .map((w) => '${w[0].toUpperCase()}${w.substring(1).toLowerCase()}')
+      .join(' ');
+}
+
+class WalletOrderSummary {
+  const WalletOrderSummary({
+    required this.orderRef,
+    required this.dishLine,
+    required this.statusLabel,
+    required this.total,
+    required this.coinsApplied,
+    this.at,
+  });
+
+  final String orderRef;
+  final String dishLine;
+  final String statusLabel;
+  final double total;
+  final double coinsApplied;
+  final DateTime? at;
+}
+
+WalletOrderSummary walletOrderSummaryFrom(Map<String, dynamic> order) {
+  final coins = (order['coins_applied'] as num?)?.toDouble() ??
+      double.tryParse(order['coins_applied']?.toString() ?? '') ??
+      0.0;
+  final total = (order['total_price'] as num?)?.toDouble() ??
+      (order['total_amount'] as num?)?.toDouble() ??
+      (order['price'] as num?)?.toDouble() ??
+      0.0;
+  return WalletOrderSummary(
+    orderRef: formatOrderId(order['order_id']?.toString(), order['id']?.toString() ?? ''),
+    dishLine: walletOrderDishLine(order['items'] ?? order['cart_items']),
+    statusLabel: walletOrderStatusLabel(order['status']?.toString()),
+    total: total,
+    coinsApplied: coins,
+    at: DateTime.tryParse(order['created_at']?.toString() ?? ''),
+  );
+}
+
+List<WalletOrderSummary> walletOrderSummaries(
+  List<Map<String, dynamic>> orders, {
+  int limit = 12,
+}) {
+  return orders.take(limit).map(walletOrderSummaryFrom).toList();
+}
+
 class CoinLedgerEntry {
   const CoinLedgerEntry({
     required this.title,
@@ -4651,6 +4740,7 @@ class CoinLedgerEntry {
     this.at,
     required this.isDebit,
     this.orderRef,
+    this.detail,
   });
 
   final String title;
@@ -4659,6 +4749,8 @@ class CoinLedgerEntry {
   final bool isDebit;
   /// Brief order id when this debit is tied to a kitchen order.
   final String? orderRef;
+  /// Dish and rupee line when a checkout debit is matched to an order.
+  final String? detail;
 }
 
 bool isCoinLedgerDebit(String? type, double amount) {
@@ -4681,8 +4773,7 @@ String? _briefOrderRef(Map<String, dynamic> order) {
   return label;
 }
 
-/// Matches a coin debit to an order by coins amount and nearby created_at.
-String? matchOrderRefForCoinDebit({
+Map<String, dynamic>? matchOrderForCoinDebit({
   required double amount,
   required DateTime? at,
   required List<Map<String, dynamic>> orders,
@@ -4713,10 +4804,48 @@ String? matchOrderRefForCoinDebit({
     }
   }
 
+  if (best == null && at != null) {
+    for (final order in orders) {
+      final id = order['id']?.toString() ?? '';
+      if (id.isNotEmpty && used.contains(id)) continue;
+      final orderAt = DateTime.tryParse(order['created_at']?.toString() ?? '');
+      if (orderAt == null) continue;
+      final delta = at.difference(orderAt).abs();
+      if (delta > const Duration(hours: 2)) continue;
+      if (delta <= bestDelta) {
+        bestDelta = delta;
+        best = order;
+      }
+    }
+  }
+
   if (best == null) return null;
   final id = best['id']?.toString() ?? '';
   if (id.isNotEmpty) used.add(id);
-  return _briefOrderRef(best);
+  return best;
+}
+
+/// Matches a coin debit to an order by coins amount and nearby created_at.
+String? matchOrderRefForCoinDebit({
+  required double amount,
+  required DateTime? at,
+  required List<Map<String, dynamic>> orders,
+  Set<String>? usedOrderIds,
+}) {
+  final matched = matchOrderForCoinDebit(
+    amount: amount,
+    at: at,
+    orders: orders,
+    usedOrderIds: usedOrderIds,
+  );
+  return matched == null ? null : _briefOrderRef(matched);
+}
+
+String? _coinDebitOrderDetail(Map<String, dynamic> order) {
+  final summary = walletOrderSummaryFrom(order);
+  final bits = <String>[summary.dishLine];
+  if (summary.total > 0) bits.add('₹${summary.total.toStringAsFixed(0)}');
+  return bits.join(' · ');
 }
 
 String coinCheckoutDebitTitle({required String base, String? orderRef}) {
@@ -4746,15 +4875,27 @@ List<CoinLedgerEntry> mergeCoinLedger({
         : (type.isNotEmpty ? type : 'Coin transaction');
     String? orderRef = txn['order_id']?.toString().trim();
     if (orderRef != null && orderRef.isEmpty) orderRef = null;
+    Map<String, dynamic>? matchedOrder;
     if (orderRef != null) {
       orderRef = formatOrderId(orderRef, orderRef);
+      for (final o in orders) {
+        final ref = formatOrderId(o['order_id']?.toString(), o['id']?.toString() ?? '');
+        if (ref == orderRef) {
+          matchedOrder = o;
+          break;
+        }
+      }
     } else if (debit && _looksLikeCheckoutCoinDebit(title, type)) {
-      orderRef = matchOrderRefForCoinDebit(
+      matchedOrder = matchOrderForCoinDebit(
         amount: rawAmount.abs(),
         at: DateTime.tryParse(txn['created_at']?.toString() ?? ''),
         orders: orders,
         usedOrderIds: usedOrderIds,
       );
+      orderRef = matchedOrder == null ? null : _briefOrderRef(matchedOrder);
+    }
+    if (debit && _looksLikeCheckoutCoinDebit(title, type)) {
+      title = coinCheckoutDebitTitle(base: title, orderRef: orderRef);
     }
     entries.add(CoinLedgerEntry(
       title: title,
@@ -4762,6 +4903,7 @@ List<CoinLedgerEntry> mergeCoinLedger({
       at: DateTime.tryParse(txn['created_at']?.toString() ?? ''),
       isDebit: debit,
       orderRef: orderRef,
+      detail: matchedOrder == null ? null : _coinDebitOrderDetail(matchedOrder),
     ));
   }
 
@@ -4778,11 +4920,12 @@ List<CoinLedgerEntry> mergeCoinLedger({
     if (coins <= 0) continue;
     final label = _briefOrderRef(order);
     entries.add(CoinLedgerEntry(
-      title: 'Coins applied at checkout',
+      title: coinCheckoutDebitTitle(base: 'Coins applied at checkout', orderRef: label),
       amount: coins,
       at: DateTime.tryParse(order['created_at']?.toString() ?? ''),
       isDebit: true,
       orderRef: label,
+      detail: _coinDebitOrderDetail(order),
     ));
   }
 

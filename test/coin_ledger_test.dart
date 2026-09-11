@@ -55,4 +55,52 @@ void main() {
       'Coins applied at checkout · ABC12345',
     );
   });
+
+  test('wallet order summary shows dish, rupee total, and extra items', () {
+    final summary = walletOrderSummaryFrom({
+      'id': 'abcdef12-3456-7890-abcd-ef1234567890',
+      'order_id': 'HP-1042',
+      'status': 'out_for_delivery',
+      'total_price': 420,
+      'coins_applied': 15,
+      'created_at': '2026-09-09T11:45:00Z',
+      'items': [
+        {'title': 'Paneer Butter Masala'},
+        {'name': 'Jeera Rice'},
+      ],
+    });
+    expect(summary.orderRef, isNotEmpty);
+    expect(summary.dishLine, 'Paneer Butter Masala (+1 more)');
+    expect(summary.statusLabel, 'Out For Delivery');
+    expect(summary.total, 420);
+    expect(summary.coinsApplied, 15);
+  });
+
+  test('checkout coin rows attach dish summary when coins_applied is missing', () {
+    final entries = mergeCoinLedger(
+      transactions: [
+        {
+          'amount': 15,
+          'transaction_type': 'payment',
+          'description': 'Coins applied at checkout',
+          'created_at': '2026-09-09T11:45:00Z',
+        },
+      ],
+      orders: [
+        {
+          'id': 'abcdef12-3456-7890-abcd-ef1234567890',
+          'coins_applied': 0,
+          'total_price': 320,
+          'created_at': '2026-09-09T11:40:00Z',
+          'items': [
+            {'title': 'Veg Thali'},
+          ],
+        },
+      ],
+    );
+    expect(entries, hasLength(1));
+    expect(entries.first.orderRef, 'ABCDEF12');
+    expect(entries.first.detail, 'Veg Thali · ₹320');
+    expect(entries.first.title, contains('ABCDEF12'));
+  });
 }

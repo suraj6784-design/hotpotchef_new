@@ -575,7 +575,11 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
   Future<Map<String, dynamic>> _loadWalletLedger() async {
     final user = _supabase.auth.currentUser;
     if (user == null) {
-      return {'coins': _hotpotCoins, 'entries': const <CoinLedgerEntry>[]};
+      return {
+        'coins': _hotpotCoins,
+        'entries': const <CoinLedgerEntry>[],
+        'orders': const <WalletOrderSummary>[],
+      };
     }
 
     List<Map<String, dynamic>> transactions = const [];
@@ -598,16 +602,25 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
       );
     } catch (_) {}
 
-    try {
-      orders = List<Map<String, dynamic>>.from(
-        await _supabase
-            .from('orders')
-            .select('id, order_id, coins_applied, created_at')
-            .eq('customer_id', user.id)
-            .order('created_at', ascending: false)
-            .limit(40) as List,
-      );
-    } catch (_) {}
+    const orderSelects = [
+      'id, order_id, items, total_price, total_amount, status, coins_applied, created_at',
+      'id, order_id, items, total_price, status, coins_applied, created_at',
+      'id, order_id, coins_applied, created_at, total_price, status',
+      'id, order_id, coins_applied, created_at',
+    ];
+    for (final columns in orderSelects) {
+      try {
+        orders = List<Map<String, dynamic>>.from(
+          await _supabase
+              .from('orders')
+              .select(columns)
+              .eq('customer_id', user.id)
+              .order('created_at', ascending: false)
+              .limit(40) as List,
+        );
+        break;
+      } catch (_) {}
+    }
 
     if (mounted && coins != _hotpotCoins) {
       setState(() => _hotpotCoins = coins);
@@ -616,6 +629,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
     return {
       'coins': coins,
       'entries': mergeCoinLedger(transactions: transactions, orders: orders),
+      'orders': walletOrderSummaries(orders),
     };
   }
 
@@ -635,7 +649,9 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
         ),
         content: SizedBox(
           width: double.maxFinite,
-          child: FutureBuilder<Map<String, dynamic>>(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.65),
+            child: FutureBuilder<Map<String, dynamic>>(
             future: _loadWalletLedger(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
@@ -647,6 +663,8 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
 
               final coins = (snapshot.data?['coins'] as num?)?.toDouble() ?? _hotpotCoins;
               final entries = (snapshot.data?['entries'] as List<CoinLedgerEntry>?) ?? const <CoinLedgerEntry>[];
+              final orders = (snapshot.data?['orders'] as List<WalletOrderSummary>?) ?? const <WalletOrderSummary>[];
+              final muted = isDark ? AppTheme.textMuted : Colors.grey;
 
               return SingleChildScrollView(
                 child: Column(
@@ -674,7 +692,93 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                     ),
                     const SizedBox(height: 20),
                     Text(
-                      'Transaction & Order History',
+                      'Order summary',
+                      style: TextStyle(color: isDark ? Colors.white : AppTheme.textMain, fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    const SizedBox(height: 10),
+                    if (orders.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Text(
+                          'No orders yet.',
+                          style: TextStyle(color: muted, fontSize: 13),
+                        ),
+                      )
+                    else
+                      ...orders.map((order) {
+                        return InkWell(
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            context.push('/order-history');
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        order.dishLine,
+                                        style: TextStyle(
+                                          color: isDark ? Colors.white70 : Colors.black87,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      Text(
+                                        '${order.orderRef.isEmpty ? 'Order' : 'Order ${order.orderRef}'} · ${formatOrderDate(order.at?.toIso8601String())}',
+                                        style: TextStyle(color: muted, fontSize: 11, fontWeight: FontWeight.w700),
+                                      ),
+                                      Text(
+                                        order.statusLabel,
+                                        style: TextStyle(color: muted, fontSize: 11),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      order.total > 0 ? '₹${order.total.toStringAsFixed(0)}' : '—',
+                                      style: TextStyle(
+                                        color: isDark ? Colors.white : AppTheme.textMain,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    if (order.coinsApplied > 0)
+                                      Text(
+                                        '−${order.coinsApplied.toInt()} 🪙',
+                                        style: const TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.w700),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+                    if (orders.isNotEmpty)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton(
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            context.push('/order-history');
+                          },
+                          child: const Text('See all orders'),
+                        ),
+                      ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Coin activity',
                       style: TextStyle(color: isDark ? Colors.white : AppTheme.textMain, fontWeight: FontWeight.bold, fontSize: 14),
                     ),
                     const SizedBox(height: 10),
@@ -683,7 +787,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         child: Text(
                           'No coin activity yet.',
-                          style: TextStyle(color: isDark ? AppTheme.textMuted : Colors.grey, fontSize: 13),
+                          style: TextStyle(color: muted, fontSize: 13),
                         ),
                       )
                     else
@@ -708,14 +812,17 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
-                                    if ((entry.orderRef ?? '').isNotEmpty)
+                                    if ((entry.detail ?? '').isNotEmpty)
+                                      Text(
+                                        entry.detail!,
+                                        style: TextStyle(color: muted, fontSize: 11, fontWeight: FontWeight.w600),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      )
+                                    else if ((entry.orderRef ?? '').isNotEmpty)
                                       Text(
                                         'Order ${entry.orderRef}',
-                                        style: TextStyle(
-                                          color: isDark ? AppTheme.textMuted : AppTheme.textMuted,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w700,
-                                        ),
+                                        style: TextStyle(color: muted, fontSize: 11, fontWeight: FontWeight.w700),
                                       ),
                                     Text(
                                       formatOrderDate(entry.at?.toIso8601String()),
@@ -736,6 +843,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                 ),
               );
             },
+            ),
           ),
         ),
         actions: [
