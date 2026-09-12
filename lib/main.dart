@@ -9,6 +9,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'utils/app_env.dart';
 import 'utils/helpers.dart';
 import 'utils/app_theme.dart';
@@ -32,6 +33,7 @@ void main() async {
       FirebaseCrashlytics.instance.recordError(error, stack, fatal: false);
       return true;
     };
+    GoogleFonts.config.allowRuntimeFetching = false;
 
     final supabaseUrl = appEnv('SUPABASE_URL');
     final supabaseAnonKey = appEnv('SUPABASE_ANON_KEY');

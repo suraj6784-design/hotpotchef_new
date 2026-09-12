@@ -328,14 +328,22 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
 
     try {
       final client = Supabase.instance.client;
-      final response = await client.functions.invoke(
-        'ai-search',
-        body: {'prompt': trimmed},
-      ).withTimeout(NetworkTimeouts.payment);
-
       List<Map<String, dynamic>> rawMeals = [];
-      if (response.status == 200 && response.data != null && response.data['success'] == true) {
-        rawMeals = List<Map<String, dynamic>>.from(response.data['meals']);
+      if (client.auth.currentUser != null) {
+        try {
+          final response = await client.functions.invoke(
+            'ai-search',
+            body: {'prompt': trimmed},
+          ).withTimeout(NetworkTimeouts.payment);
+          if (response.status == 200 &&
+              response.data != null &&
+              response.data['success'] == true &&
+              response.data['meals'] is List) {
+            rawMeals = List<Map<String, dynamic>>.from(response.data['meals'] as List);
+          }
+        } catch (e, stack) {
+          FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Home AI search skipped');
+        }
       }
 
       final localResponse = await client

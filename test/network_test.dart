@@ -19,6 +19,15 @@ void main() {
         NetworkException.offlineMessage,
       );
     });
+
+    test('does not dump raw 401 function errors', () {
+      expect(
+        networkErrorMessage(
+          Exception('FunctionsHttpError(status: 401, details: {success: false, error: Unauthorized})'),
+        ),
+        'Please sign in to continue.',
+      );
+    });
   });
 
   group('WithNetworkTimeout', () {

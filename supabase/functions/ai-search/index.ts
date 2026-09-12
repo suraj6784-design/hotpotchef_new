@@ -13,23 +13,15 @@ Deno.serve(async (req) => {
 
   try {
     const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Unauthorized' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 },
-      )
-    }
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     const gateUrl = Deno.env.get('SUPABASE_URL') ?? ''
-    const userClient = createClient(gateUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } },
-    })
-    const { data: userData, error: userError } = await userClient.auth.getUser()
-    if (userError || !userData.user) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Unauthorized' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 },
-      )
+    let signedIn = false
+    if (authHeader) {
+      const userClient = createClient(gateUrl, anonKey, {
+        global: { headers: { Authorization: authHeader } },
+      })
+      const { data: userData } = await userClient.auth.getUser()
+      signedIn = Boolean(userData.user)
     }
 
     const { prompt } = await req.json()
@@ -44,6 +36,9 @@ Deno.serve(async (req) => {
     let matchedMeals = []
 
     try {
+      if (!signedIn) {
+        throw new Error('skip-embedding-for-guest')
+      }
       // 1. Try Google Gemini AI Vector Embedding Search first
       const geminiApiKey = Deno.env.get('GEMINI_API_KEY')
       const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${geminiApiKey}`
@@ -71,7 +66,9 @@ Deno.serve(async (req) => {
         }
       }
     } catch (aiError) {
-      console.error("AI Embedding step failed, falling back to text search:", aiError)
+      if (String(aiError) !== 'Error: skip-embedding-for-guest') {
+        console.error("AI Embedding step failed, falling back to text search:", aiError)
+      }
     }
 
     // 2. Fallback or Secondary Check: Direct Text Search if vector search returned nothing

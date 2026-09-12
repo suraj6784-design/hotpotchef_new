@@ -36,7 +36,10 @@ String networkErrorMessage(Object? error) {
   if (text.contains('timeout') || text.contains('timed out')) {
     return NetworkException.timedOutMessage;
   }
-  return error?.toString() ?? 'Something went wrong. Please try again.';
+  if (text.contains('unauthorized') || text.contains('401')) {
+    return 'Please sign in to continue.';
+  }
+  return 'Something went wrong. Please try again.';
 }
 
 extension WithNetworkTimeout<T> on Future<T> {
