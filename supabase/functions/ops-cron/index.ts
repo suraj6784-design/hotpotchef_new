@@ -21,6 +21,11 @@ serve(async (req) => {
     const admin = createClient(supabaseUrl, serviceKey)
 
     await admin.rpc('ops_escalate_overdue_tickets')
+    try {
+      await admin.rpc('expire_lapsed_fssai_licences')
+    } catch (expireErr) {
+      console.error('expire_lapsed_fssai_licences', expireErr)
+    }
 
     const { data: rows, error } = await admin
       .from('orders')

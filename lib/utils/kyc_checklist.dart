@@ -1,4 +1,5 @@
 import '../models/app_role.dart';
+import 'fssai_certificate_scan.dart';
 import 'helpers.dart';
 
 class KycChecklist {
@@ -45,7 +46,8 @@ KycChecklist kycChecklistFor(Map<String, dynamic> row) {
     'FSSAI number': row['fssai_number']?.toString() ?? '',
     'FSSAI proof': row['fssai_proof_url']?.toString() ?? '',
     'FSSAI verified':
-        normalizeFssaiVerificationStatus(row['fssai_verification_status']?.toString()) == 'verified'
+        (!fssaiLicenceIsExpired(parseStoredFssaiValidUntil(row['fssai_valid_until'])) &&
+                normalizeFssaiVerificationStatus(row['fssai_verification_status']?.toString()) == 'verified')
             ? 'yes'
             : '',
     'Kitchen pin': hasKitchenPin(row) ? 'yes' : '',

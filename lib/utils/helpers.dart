@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'app_theme.dart';
+import 'fssai_certificate_scan.dart';
 import 'network.dart';
 import 'notification_copy.dart';
 import 'pricing_calculator.dart';
@@ -345,11 +346,15 @@ bool chefCanPublishWithFssai({
   String? fssaiNumber,
   String? proofUrl,
   String? verificationStatus,
+  DateTime? validUntil,
+  DateTime? now,
 }) {
   return chefFssaiPublishBlockReason(
         fssaiNumber: fssaiNumber,
         proofUrl: proofUrl,
         verificationStatus: verificationStatus,
+        validUntil: validUntil,
+        now: now,
       ) ==
       null;
 }
@@ -359,12 +364,17 @@ String? chefFssaiPublishBlockReason({
   String? fssaiNumber,
   String? proofUrl,
   String? verificationStatus,
+  DateTime? validUntil,
+  DateTime? now,
 }) {
   if (normalizeFssaiNumber(fssaiNumber) == null) {
     return 'Add a valid 14-digit FSSAI licence number in Chef Profile, then try again.';
   }
   if ((proofUrl ?? '').trim().isEmpty) {
     return 'Upload your FSSAI licence proof in Chef Profile. Publishing requires ops verification.';
+  }
+  if (fssaiLicenceIsExpired(validUntil, now: now)) {
+    return 'Your FSSAI licence has expired. Upload a current certificate in Chef Profile.';
   }
   switch (normalizeFssaiVerificationStatus(verificationStatus)) {
     case 'verified':

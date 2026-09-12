@@ -20,7 +20,8 @@ class KycReminderBanner extends StatelessWidget {
         .map((rows) {
           final unread = rows.where((row) {
             final kind = row['kind']?.toString() ?? '';
-            return kind == 'kyc_pending' && row['read_at'] == null;
+            return (kind == 'kyc_pending' || kind == 'fssai_expired' || kind == 'fssai_review') &&
+                row['read_at'] == null;
           }).toList()
             ..sort((a, b) => (b['created_at']?.toString() ?? '').compareTo(a['created_at']?.toString() ?? ''));
           return unread;

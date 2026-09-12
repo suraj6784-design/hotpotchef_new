@@ -9,6 +9,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/network.dart';
 import '../utils/helpers.dart';
+import '../utils/fssai_certificate_scan.dart';
 import '../utils/pricing_calculator.dart';
 import '../utils/meal_nutrition.dart';
 import '../models/cart_enums.dart';
@@ -80,6 +81,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
   String? _existingImageUrl;
   String? _fssaiProofUrl;
   String _fssaiVerificationStatus = 'unsubmitted';
+  DateTime? _fssaiValidUntil;
 
   // Meal Specifications
   bool _isLoading = false;
@@ -240,7 +242,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
 
       final chefProfile = await _supabase
           .from('users')
-          .select('fssai_number, fssai_proof_url, fssai_verification_status, address, lat, lng')
+          .select('fssai_number, fssai_proof_url, fssai_verification_status, fssai_valid_until, address, lat, lng')
           .eq('id', user.id)
           .maybeSingle();
 
@@ -258,6 +260,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
           _fssaiVerificationStatus = normalizeFssaiVerificationStatus(
             chefProfile['fssai_verification_status']?.toString(),
           );
+          _fssaiValidUntil = parseStoredFssaiValidUntil(chefProfile['fssai_valid_until']);
         });
       }
     } catch (e, st) {
@@ -337,7 +340,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
       if (uid != null) {
         final live = await _supabase
             .from('users')
-            .select('fssai_number, fssai_proof_url, fssai_verification_status')
+            .select('fssai_number, fssai_proof_url, fssai_verification_status, fssai_valid_until')
             .eq('id', uid)
             .maybeSingle()
             .withTimeout(NetworkTimeouts.short);
@@ -346,6 +349,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
           _fssaiVerificationStatus = normalizeFssaiVerificationStatus(
             live['fssai_verification_status']?.toString(),
           );
+          _fssaiValidUntil = parseStoredFssaiValidUntil(live['fssai_valid_until']) ?? _fssaiValidUntil;
           if (_fssaiController.text.trim().isEmpty) {
             _fssaiController.text = live['fssai_number']?.toString() ?? '';
           }
@@ -360,6 +364,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
       fssaiNumber: fssai,
       proofUrl: _fssaiProofUrl,
       verificationStatus: _fssaiVerificationStatus,
+      validUntil: _fssaiValidUntil,
     );
     if (blocked != null) {
       _showSnackBar(blocked, isError: true);

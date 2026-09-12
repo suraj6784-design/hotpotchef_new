@@ -10,6 +10,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'map_picker_screen.dart';
 import '../utils/app_page.dart';
 import '../utils/helpers.dart';
+import '../utils/fssai_certificate_scan.dart';
 import '../utils/pinned_address.dart';
 import '../utils/gst_invoice.dart';
 import '../utils/network.dart';
@@ -17,9 +18,11 @@ import '../widgets/avatar_upload.dart';
 import '../widgets/change_password_dialog.dart';
 import '../widgets/premium_profile_template.dart';
 import '../services/kitchen_media.dart';
+import '../services/fssai_certificate_ocr.dart';
 import '../services/auth_session.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:intl/intl.dart';
 
 class ChefReviewModel {
   final String id;
@@ -79,6 +82,9 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _fssaiController = TextEditingController();
+  final _fssaiLegalNameController = TextEditingController();
+  final _fssaiAddressController = TextEditingController();
+  DateTime? _fssaiValidUntil;
   final _gstinController = TextEditingController();
   final _panController = TextEditingController();
   final _gatewayAccountController = TextEditingController();
@@ -118,6 +124,8 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     _nameController.dispose();
     _phoneController.dispose();
     _fssaiController.dispose();
+    _fssaiLegalNameController.dispose();
+    _fssaiAddressController.dispose();
     _gstinController.dispose();
     _panController.dispose();
     _gatewayAccountController.dispose();
@@ -144,6 +152,9 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
         '';
     _phoneController.text = userData?['phone']?.toString() ?? user.userMetadata?['phone']?.toString() ?? '';
     _fssaiController.text = userData?['fssai_number']?.toString() ?? '';
+    _fssaiLegalNameController.text = userData?['fssai_legal_name']?.toString() ?? '';
+    _fssaiAddressController.text = userData?['fssai_registered_address']?.toString() ?? '';
+    _fssaiValidUntil = parseStoredFssaiValidUntil(userData?['fssai_valid_until']);
     _gstinController.text = userData?['gstin']?.toString() ?? '';
     _panController.text = maskPan(userData?['pan_number']?.toString());
     _gatewayAccountController.text = userData?['gateway_account_id']?.toString() ?? '';
@@ -270,22 +281,94 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     if (source == null || !mounted) return;
     setState(() => _uploadingFssaiProof = true);
     try {
-      final url = await uploadKitchenImage(source: source, folder: 'fssai', fileKey: 'licence');
-      if (url == null || !mounted) return;
+      final uploaded = await pickAndUploadKitchenImage(source: source, folder: 'fssai', fileKey: 'licence');
+      if (uploaded == null || !mounted) return;
+      var scan = const FssaiCertificateScan();
+      try {
+        scan = await scanFssaiCertificateImage(uploaded.localPath);
+      } catch (e, stack) {
+        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'FSSAI certificate scan failed');
+      }
       setState(() {
-        _fssaiProofUrl = url;
+        _isEditing = true;
+        _fssaiProofUrl = uploaded.url;
         _fssaiVerificationStatus = 'pending';
-        _fssaiReviewNote = null;
+        _fssaiReviewNote = fssaiLicenceIsExpired(scan.validUntil)
+            ? 'Scanned licence is expired. Upload a current FSSAI certificate.'
+            : null;
+        if ((scan.registrationNumber ?? '').isNotEmpty) {
+          _fssaiController.text = scan.registrationNumber!;
+        }
+        if ((scan.legalName ?? '').isNotEmpty) {
+          _fssaiLegalNameController.text = scan.legalName!;
+        }
+        if ((scan.address ?? '').isNotEmpty) {
+          _fssaiAddressController.text = scan.address!;
+        }
+        if (scan.validUntil != null) {
+          _fssaiValidUntil = scan.validUntil;
+        }
       });
-      _showSnackBar(
-        'FSSAI proof uploaded. Under review — typically 1 business day. You can publish after HotPotChef verifies.',
-      );
+      await _persistFssaiDetails(proofUrl: uploaded.url);
+      if (!mounted) return;
+      if (!scan.hasAnyField) {
+        _showSnackBar(
+          'Certificate uploaded. We could not read the card — type Reg No, name, address, and validity, then Save.',
+        );
+      } else if (fssaiLicenceIsExpired(scan.validUntil)) {
+        _showSnackBar(
+          'This certificate is expired. Upload a current FSSAI licence. Details were sent to HotPotChef for review.',
+          isError: true,
+        );
+      } else {
+        _showSnackBar(
+          'FSSAI details scanned. Check the fields, then wait for HotPotChef to verify — typically 1 business day.',
+        );
+      }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'FSSAI proof upload failed');
       if (mounted) _showSnackBar('Could not upload FSSAI proof. Try again.', isError: true);
     } finally {
       if (mounted) setState(() => _uploadingFssaiProof = false);
     }
+  }
+
+  Map<String, dynamic> _fssaiDetailFields({String? proofUrl}) {
+    final expired = fssaiLicenceIsExpired(_fssaiValidUntil);
+    return {
+      'fssai_number': _fssaiController.text.trim(),
+      'fssai_proof_url': proofUrl ?? _fssaiProofUrl,
+      'fssai_legal_name': _fssaiLegalNameController.text.trim(),
+      'fssai_registered_address': _fssaiAddressController.text.trim(),
+      'fssai_valid_until': _fssaiValidUntil == null ? null : fssaiValidUntilIsoDate(_fssaiValidUntil),
+      'fssai_verification_status': (proofUrl ?? _fssaiProofUrl ?? '').trim().isEmpty
+          ? 'unsubmitted'
+          : (_fssaiVerificationStatus == 'verified' && !expired ? 'verified' : 'pending'),
+      if (expired)
+        'fssai_review_note': 'FSSAI licence validity ended. Upload a current certificate.',
+    };
+  }
+
+  Future<void> _persistFssaiDetails({String? proofUrl}) async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) return;
+    try {
+      await _supabase.from('users').update(_fssaiDetailFields(proofUrl: proofUrl)).eq('id', user.id);
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'FSSAI scanned fields save failed');
+    }
+  }
+
+  Future<void> _pickFssaiValidUntil() async {
+    if (!_isEditing && (_fssaiProofUrl ?? '').isEmpty) return;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _fssaiValidUntil ?? DateTime.now(),
+      firstDate: DateTime(2015),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 8)),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _fssaiValidUntil = DateTime(picked.year, picked.month, picked.day));
   }
 
   // --- Secure Server-Side Payout Provisioning ---
@@ -435,10 +518,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
         'full_name': name,
         'phone': phone,
         'fssai_number': fssai,
-        'fssai_proof_url': _fssaiProofUrl,
-        'fssai_verification_status': (_fssaiProofUrl ?? '').trim().isEmpty
-            ? 'unsubmitted'
-            : (_fssaiVerificationStatus == 'verified' ? 'verified' : 'pending'),
+        ..._fssaiDetailFields(),
         'gstin': _gstinController.text.trim().toUpperCase(),
         if (isValidPan(_panController.text)) 'pan_number': _panController.text.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase(),
         'address': formattedAddress,
@@ -573,7 +653,9 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
               workspace: ProfileWorkspace.chef,
               displayName: _nameController.text.isEmpty ? 'Home kitchen partner' : _nameController.text,
               subtitle: email,
-              badgeLabel: fssaiVerificationLabel(_fssaiVerificationStatus),
+              badgeLabel: fssaiLicenceIsExpired(_fssaiValidUntil)
+                  ? 'FSSAI expired — update certificate'
+                  : fssaiVerificationLabel(_fssaiVerificationStatus),
               avatar: AvatarUploadWidget(
                 initialAvatarUrl: _avatarUrl,
                 isEditing: _isEditing,
@@ -586,12 +668,14 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
               stats: [
                 PremiumProfileStat(
                   label: 'FSSAI',
-                  value: switch (normalizeFssaiVerificationStatus(_fssaiVerificationStatus)) {
-                    'verified' => 'Verified',
-                    'pending' => 'Review',
-                    'rejected' => 'Retry',
-                    _ => 'Needed',
-                  },
+                  value: fssaiLicenceIsExpired(_fssaiValidUntil)
+                      ? 'Expired'
+                      : switch (normalizeFssaiVerificationStatus(_fssaiVerificationStatus)) {
+                          'verified' => 'Verified',
+                          'pending' => 'Review',
+                          'rejected' => 'Retry',
+                          _ => 'Needed',
+                        },
                 ),
                 PremiumProfileStat(label: 'Rating', value: avgRating),
                 PremiumProfileStat(label: 'Pickup', value: _latitude != null ? 'Pinned' : 'Needed'),
@@ -599,7 +683,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
             ),
             PremiumProfileFormSection(
               title: 'Kitchen credentials',
-              caption: 'Diners see your FSSAI number on the kitchen card. Upload a clear licence photo before publishing meals.',
+              caption: 'Your diner-facing kitchen name and phone. FSSAI details are scanned from the licence photo.',
               children: [
                   _buildValidatedTextField(
                     controller: _nameController,
@@ -615,10 +699,23 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                     keyboardType: TextInputType.phone,
                     validator: (v) => v == null || v.trim().length < 10 ? 'Enter valid 10-digit number' : null,
                   ),
-                  const SizedBox(height: 12),
+              ],
+            ),
+            PremiumProfileFormSection(
+              title: 'FSSAI details',
+              caption: 'Upload a clear licence photo. We scan Registration No, name, address, and validity, then send the same fields to HotPotChef for verification.',
+              children: [
+                  if (fssaiLicenceIsExpired(_fssaiValidUntil))
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Text(
+                        'This licence expired on ${DateFormat('d MMM yyyy').format(_fssaiValidUntil!)}. Upload a current certificate to keep publishing.',
+                        style: const TextStyle(color: AppTheme.error, fontSize: 13, fontWeight: FontWeight.w700, height: 1.35),
+                      ),
+                    ),
                   _buildValidatedTextField(
                     controller: _fssaiController,
-                    label: '14-digit FSSAI licence number *',
+                    label: 'Registration no (14-digit FSSAI) *',
                     prefixIcon: Icons.verified_user_outlined,
                     keyboardType: TextInputType.number,
                     maxLength: 14,
@@ -631,6 +728,39 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                       }
                       return null;
                     },
+                  ),
+                  const SizedBox(height: 12),
+                  _buildValidatedTextField(
+                    controller: _fssaiLegalNameController,
+                    label: 'Name on licence',
+                    prefixIcon: Icons.badge_outlined,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildValidatedTextField(
+                    controller: _fssaiAddressController,
+                    label: 'Address on licence',
+                    prefixIcon: Icons.home_outlined,
+                    maxLines: 3,
+                  ),
+                  const SizedBox(height: 12),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      Icons.event_outlined,
+                      color: fssaiLicenceIsExpired(_fssaiValidUntil) ? AppTheme.error : AppTheme.primary,
+                    ),
+                    title: Text(
+                      _fssaiValidUntil == null
+                          ? 'Validity (valid upto)'
+                          : 'Valid upto ${DateFormat('d MMM yyyy').format(_fssaiValidUntil!)}',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: Text(
+                      _fssaiValidUntil == null
+                          ? 'Scanned from the certificate, or tap to set'
+                          : (fssaiLicenceIsExpired(_fssaiValidUntil) ? 'Expired — update the certificate' : 'Sent to ops with your proof'),
+                    ),
+                    onTap: _pickFssaiValidUntil,
                   ),
                   const SizedBox(height: 8),
                   if ((_fssaiProofUrl ?? '').isNotEmpty)
@@ -651,7 +781,9 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                         style: const TextStyle(color: AppTheme.error, fontSize: 12),
                       ),
                     ),
-                  if (_fssaiVerificationStatus == 'pending' && (_fssaiProofUrl ?? '').trim().isNotEmpty)
+                  if (_fssaiVerificationStatus == 'pending' &&
+                      (_fssaiProofUrl ?? '').trim().isNotEmpty &&
+                      !fssaiLicenceIsExpired(_fssaiValidUntil))
                     const Padding(
                       padding: EdgeInsets.only(top: 8),
                       child: Text(
@@ -664,8 +796,8 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                     onPressed: _uploadingFssaiProof ? null : _uploadFssaiProof,
                     icon: _uploadingFssaiProof
                         ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.upload_file_outlined),
-                    label: Text((_fssaiProofUrl ?? '').isEmpty ? 'Upload FSSAI proof' : 'Replace FSSAI proof'),
+                        : const Icon(Icons.document_scanner_outlined),
+                    label: Text((_fssaiProofUrl ?? '').isEmpty ? 'Scan FSSAI certificate' : 'Replace and re-scan certificate'),
                   ),
                   Align(
                     alignment: Alignment.centerRight,

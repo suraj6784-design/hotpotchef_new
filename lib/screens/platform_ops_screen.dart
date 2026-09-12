@@ -14,6 +14,7 @@ import '../services/auth_session.dart';
 import '../services/alert_service.dart';
 import '../models/app_role.dart';
 import '../utils/helpers.dart';
+import '../utils/fssai_certificate_scan.dart';
 import '../utils/kyc_checklist.dart';
 import '../utils/network.dart';
 import '../utils/platform_ops_access.dart';
@@ -908,7 +909,7 @@ class _FssaiOpsList extends StatelessWidget {
         final rows = await client
             .from('users')
             .select(
-              'id, name, full_name, phone, email, role, fssai_number, fssai_proof_url, fssai_verification_status, fssai_review_note',
+              'id, name, full_name, phone, email, role, fssai_number, fssai_proof_url, fssai_verification_status, fssai_review_note, fssai_legal_name, fssai_registered_address, fssai_valid_until',
             )
             .neq('fssai_verification_status', 'unsubmitted')
             .order('updated_at', ascending: false)
@@ -944,6 +945,10 @@ class _FssaiOpsList extends StatelessWidget {
             final status = normalizeFssaiVerificationStatus(row['fssai_verification_status']?.toString());
             final proof = row['fssai_proof_url']?.toString() ?? '';
             final name = row['name']?.toString() ?? row['full_name']?.toString() ?? 'Chef';
+            final licenceName = row['fssai_legal_name']?.toString() ?? '';
+            final licenceAddress = row['fssai_registered_address']?.toString() ?? '';
+            final validUntil = parseStoredFssaiValidUntil(row['fssai_valid_until']);
+            final expired = fssaiLicenceIsExpired(validUntil);
             return AppCard(
               margin: const EdgeInsets.only(bottom: 12),
               child: Column(
@@ -959,9 +964,24 @@ class _FssaiOpsList extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'FSSAI ${row['fssai_number'] ?? '—'} · ${row['phone'] ?? ''}',
+                    'Reg ${row['fssai_number'] ?? '—'} · ${row['phone'] ?? ''}',
                     style: AppTheme.caption,
                   ),
+                  if (licenceName.isNotEmpty)
+                    Text('Name on licence: $licenceName', style: AppTheme.caption),
+                  if (licenceAddress.isNotEmpty)
+                    Text('Address: $licenceAddress', style: AppTheme.caption),
+                  if (validUntil != null)
+                    Text(
+                      expired
+                          ? 'Valid upto ${validUntil.day} ${validUntil.month} ${validUntil.year} — EXPIRED'
+                          : 'Valid upto ${validUntil.year}-${validUntil.month.toString().padLeft(2, '0')}-${validUntil.day.toString().padLeft(2, '0')}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: expired ? AppTheme.error : AppTheme.textMuted,
+                      ),
+                    ),
                   if (proof.isNotEmpty) ...[
                     const SizedBox(height: 10),
                     ClipRRect(

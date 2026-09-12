@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../utils/app_theme.dart';
+import '../utils/fssai_certificate_scan.dart';
 import '../utils/helpers.dart';
 
 class ChefSetupStrip extends StatelessWidget {
@@ -81,6 +82,13 @@ enum ChefSetupTarget { profile, publish, online }
     return (
       'Finish kitchen KYC',
       'Add your 14-digit FSSAI number and licence photo in Profile.',
+      ChefSetupTarget.profile,
+    );
+  }
+  if (fssaiLicenceIsExpired(parseStoredFssaiValidUntil(profile['fssai_valid_until']))) {
+    return (
+      'FSSAI licence expired',
+      'Scan a current certificate in Profile. Publishing stays locked until HotPotChef verifies the new card.',
       ChefSetupTarget.profile,
     );
   }

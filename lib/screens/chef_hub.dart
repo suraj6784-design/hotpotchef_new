@@ -302,7 +302,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     try {
       final row = await _supabase
           .from('users')
-          .select('lat, lng, latitude, longitude, fssai_number, fssai_proof_url, fssai_verification_status')
+          .select('lat, lng, latitude, longitude, fssai_number, fssai_proof_url, fssai_verification_status, fssai_valid_until')
           .eq('id', _currentUserId)
           .maybeSingle();
       if (row != null && mounted) {

@@ -137,6 +137,13 @@ Future<ImageSource?> pickKitchenImageSource(BuildContext context) {
   );
 }
 
+class UploadedKitchenImage {
+  const UploadedKitchenImage({required this.url, required this.localPath});
+
+  final String url;
+  final String localPath;
+}
+
 Future<String?> capturePackedBoxPhoto({required String orderId}) {
   return uploadKitchenImage(
     source: ImageSource.camera,
@@ -150,11 +157,19 @@ Future<String?> uploadKitchenImage({
   String folder = 'kitchen',
   String? fileKey,
 }) async {
+  return (await pickAndUploadKitchenImage(source: source, folder: folder, fileKey: fileKey))?.url;
+}
+
+Future<UploadedKitchenImage?> pickAndUploadKitchenImage({
+  ImageSource source = ImageSource.camera,
+  String folder = 'kitchen',
+  String? fileKey,
+}) async {
   final picker = ImagePicker();
   final image = await picker.pickImage(
     source: source,
     imageQuality: 72,
-    maxWidth: 1200,
+    maxWidth: 1600,
   );
   if (image == null) return null;
 
@@ -174,7 +189,10 @@ Future<String?> uploadKitchenImage({
           file,
           fileOptions: FileOptions(contentType: 'image/$ext', upsert: true),
         );
-    return Supabase.instance.client.storage.from('meal_images').getPublicUrl(path);
+    return UploadedKitchenImage(
+      url: Supabase.instance.client.storage.from('meal_images').getPublicUrl(path),
+      localPath: image.path,
+    );
   } catch (e, stack) {
     FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Kitchen photo upload failed on meal_images');
     await Supabase.instance.client.storage.from('avatars').upload(
@@ -182,7 +200,10 @@ Future<String?> uploadKitchenImage({
           file,
           fileOptions: FileOptions(contentType: 'image/$ext', upsert: true),
         );
-    return Supabase.instance.client.storage.from('avatars').getPublicUrl(path.replaceAll('/', '_'));
+    return UploadedKitchenImage(
+      url: Supabase.instance.client.storage.from('avatars').getPublicUrl(path.replaceAll('/', '_')),
+      localPath: image.path,
+    );
   }
 }
 
