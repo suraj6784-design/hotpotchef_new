@@ -13,7 +13,6 @@ import 'package:go_router/go_router.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'dart:convert';
 import '../utils/helpers.dart';
-import '../utils/app_theme.dart';
 import '../utils/chat_ids.dart';
 import '../widgets/customer_ui_components.dart';
 

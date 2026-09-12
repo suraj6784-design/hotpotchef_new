@@ -9,7 +9,6 @@ import 'package:geocoding/geocoding.dart'; // 🌟 Added for reverse geocoding
 
 import 'map_picker_screen.dart';
 import '../utils/helpers.dart';
-import '../utils/app_theme.dart';
 import '../widgets/avatar_upload.dart';
 
 class ChefReviewModel {

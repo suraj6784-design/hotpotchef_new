@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../utils/helpers.dart';
-import '../utils/app_theme.dart';
 import '../models/cart_state.dart';
 import '../models/cart_enums.dart';
 import '../providers/cart_provider.dart';

@@ -4,10 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
-import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
 import '../utils/chat_ids.dart';
 import '../models/cart_enums.dart';
