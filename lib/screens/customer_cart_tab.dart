@@ -5,10 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../utils/helpers.dart';
-import '../utils/app_theme.dart';
 import '../models/cart_state.dart';
 import '../models/cart_enums.dart';
 import '../providers/cart_provider.dart';
+import '../providers/favorites_provider.dart';
 import '../widgets/customer_ui_components.dart';
 import 'checkout_screen.dart';
 import 'customer_hub.dart';
@@ -566,6 +566,8 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                     cartItems: checkoutItems,
                     onOrderPlacedSuccess: () {
                       ref.read(cartProvider.notifier).clearCart();
+                      ref.read(cartProvider.notifier).fetchUserCoins();
+                      ref.read(favoritesProvider.notifier).fetchFavorites();
                       widget.onOrderPlacedSuccess();
                     },
                   ),

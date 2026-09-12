@@ -7,11 +7,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
-import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
 import '../widgets/customer_ui_components.dart';
 import '../providers/driver_dashboard_provider.dart';
 import '../models/driver_delivery_model.dart';
+import '../services/push_notification_service.dart';
 import 'driver_profile_screen.dart';
 
 class DriverHubScreen extends ConsumerStatefulWidget {
@@ -148,6 +148,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                       GestureDetector(
                         onTap: () async {
                           try {
+                            await PushNotificationService.clearTokenOnLogout();
                             await Supabase.instance.client.auth.signOut();
                             if (mounted) context.go('/auth');
                           } catch (e, stack) {

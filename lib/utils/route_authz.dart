@@ -88,7 +88,9 @@ abstract final class RouteAuthz {
     final p = normalizePath(path);
 
     if (p == authPath) return RouteAccess.public;
-    if (p == customerHub) return RouteAccess.guestOrCustomer;
+    if (p == customerHub || p == '/cart' || p == '/app/cart') {
+      return RouteAccess.guestOrCustomer;
+    }
     if (customerOnlyPaths.contains(p) || p.startsWith('/customer-')) {
       return RouteAccess.customer;
     }
