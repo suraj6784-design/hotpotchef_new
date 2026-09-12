@@ -315,11 +315,16 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
         'lat': _latitude,
         'lng': _longitude,
         if (_avatarUrl != null) 'avatar_url': _avatarUrl,
+        'role': 'Chef',
         'updated_at': DateTime.now().toIso8601String(),
       };
 
       await _supabase.from('users').upsert(updateData);
-      await _supabase.auth.updateUser(UserAttributes(data: {'name': name, 'phone': phone}));
+      await _supabase.auth.updateUser(UserAttributes(data: {
+        'name': name,
+        'phone': phone,
+        'role': 'Chef',
+      }));
 
       if (mounted) {
         setState(() => _isEditing = false);

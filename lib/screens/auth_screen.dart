@@ -8,6 +8,8 @@ import 'package:go_router/go_router.dart';
 
 import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
+import '../utils/auth_role_sync.dart';
+import '../services/push_notification_service.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -60,6 +62,15 @@ class _AuthScreenState extends State<AuthScreen> {
 
     // 2. Fallback check: Auth metadata if public table query was blocked or empty
     role ??= user.userMetadata?['role']?.toString() ?? 'Customer';
+
+    // Login reads public.users.role; GoRouter guards JWT metadata. Keep them aligned.
+    try {
+      await AuthRoleSync.ensureJwtRole(_supabase, role);
+    } catch (e, st) {
+      FirebaseCrashlytics.instance.recordError(e, st, reason: 'JWT role sync after login');
+    }
+
+    await PushNotificationService.syncTokenForCurrentUser();
 
     final normalizedRole = role.trim().toLowerCase();
 

@@ -33,7 +33,14 @@ class CartNotifier extends Notifier<CartState> {
 
   @override
   CartState build() {
+    final authSub = _supabase.auth.onAuthStateChange.listen((data) {
+      if (data.event == AuthChangeEvent.signedIn) {
+        syncGuestCartToUser();
+      }
+    });
+
     ref.onDispose(() {
+      authSub.cancel();
       _stockChannel?.unsubscribe();
       _debounceTimer?.cancel();
     });
@@ -303,8 +310,16 @@ class CartNotifier extends Notifier<CartState> {
   Future<void> syncGuestCartToUser() async {
     try {
       final user = _supabase.auth.currentUser;
-      if (user == null || state.isEmpty) return;
-      await _cartService.saveCart(state.items);
+      if (user == null) return;
+      if (!_isInitialized && state.isEmpty) {
+        await _loadLocalCart();
+      }
+      if (state.isNotEmpty) {
+        await _cartService.saveCart(state.items);
+      } else {
+        await _loadRemoteCartAndReconcile();
+      }
+      await fetchUserCoins();
     } catch (e, st) {
       _logCartError(e, st, 'Failed to sync guest cart to user');
     }

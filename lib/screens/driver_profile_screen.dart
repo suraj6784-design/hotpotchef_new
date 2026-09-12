@@ -298,7 +298,11 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
       };
 
       await _supabase.from('users').upsert(updateData);
-      await _supabase.auth.updateUser(UserAttributes(data: {'name': name, 'phone': phone}));
+      await _supabase.auth.updateUser(UserAttributes(data: {
+        'name': name,
+        'phone': phone,
+        'role': 'Driver',
+      }));
 
       if (!mounted) return;
       setState(() => _isEditing = false);
