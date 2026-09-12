@@ -42,6 +42,14 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
   @override
   bool get wantKeepAlive => true;
 
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(cartProvider.notifier).fetchUserCoins();
+    });
+  }
+
   // --- Sub-Slot Generator ---
 
   List<String> _generateSubSlots(String rawChefSlot) => chefHourlySubSlots(rawChefSlot);

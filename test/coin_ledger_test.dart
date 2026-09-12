@@ -101,6 +101,54 @@ void main() {
     expect(entries, hasLength(1));
     expect(entries.first.orderRef, 'ABCDEF12');
     expect(entries.first.detail, 'Veg Thali · ₹320');
-    expect(entries.first.title, contains('ABCDEF12'));
+    expect(entries.first.title, 'Coins applied at checkout');
+    expect(coinWalletOrderNumber(entries.first.orderRef), 'Order #ABCDEF12');
+  });
+
+  test('credited coins on an order show the same Order # as checkout', () {
+    final entries = mergeCoinLedger(
+      transactions: [
+        {
+          'amount': 15,
+          'transaction_type': 'earning',
+          'description': 'HotPot Coins credited',
+          'created_at': '2026-09-11T02:44:00Z',
+        },
+        {
+          'amount': 15,
+          'transaction_type': 'payment',
+          'description': 'Coins applied at checkout',
+          'created_at': '2026-09-11T02:44:05Z',
+        },
+        {
+          'amount': 15,
+          'transaction_type': 'earning',
+          'description': 'Daily streak bonus',
+          'created_at': '2026-09-11T08:08:00Z',
+        },
+      ],
+      orders: [
+        {
+          'id': '65709a47-aaaa-bbbb-cccc-ddddeeeeffff',
+          'coins_applied': 15,
+          'created_at': '2026-09-11T02:44:10Z',
+          'items': [
+            {'title': 'Veg Biryani'},
+          ],
+        },
+      ],
+    );
+    expect(entries[0].isDebit, isFalse);
+    expect(entries[0].title, 'Daily streak bonus');
+    expect(entries[0].orderRef, isNull);
+    expect(entries[1].isDebit, isTrue);
+    expect(coinWalletOrderNumber(entries[1].orderRef), 'Order #65709A47');
+    expect(entries[2].isDebit, isFalse);
+    expect(coinWalletOrderNumber(entries[2].orderRef), 'Order #65709A47');
+  });
+
+  test('coinWalletOrderNumber prefixes Order # once', () {
+    expect(coinWalletOrderNumber('ABC12345'), 'Order #ABC12345');
+    expect(coinWalletOrderNumber('Order ABC12345'), 'Order #ABC12345');
   });
 }

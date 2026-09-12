@@ -1238,11 +1238,11 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                           Container(
                             padding: const EdgeInsets.all(4),
                             decoration: BoxDecoration(
-                              border: Border.all(color: meal['is_veg'] == true ? Colors.green : Colors.redAccent),
+                              border: Border.all(color: mealIsVegetarian(meal) ? Colors.green : Colors.redAccent),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Icon(Icons.circle,
-                                color: meal['is_veg'] == true ? Colors.green : Colors.redAccent, size: 10),
+                                color: mealIsVegetarian(meal) ? Colors.green : Colors.redAccent, size: 10),
                           ),
                         ],
                       ),

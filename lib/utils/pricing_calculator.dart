@@ -4,6 +4,18 @@ import 'dart:math' as math;
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../models/pricing_models.dart';
 
+class CheckoutBillLine {
+  const CheckoutBillLine({
+    required this.label,
+    required this.amount,
+    this.isAddOn = false,
+  });
+
+  final String label;
+  final double amount;
+  final bool isAddOn;
+}
+
 class PricingCalculator {
   PricingCalculator._();
 
@@ -217,7 +229,6 @@ class PricingCalculator {
           break;
 
         case OfferType.none:
-        default:
           netTotal = grossTotal;
           break;
       }
@@ -476,6 +487,33 @@ class PricingCalculator {
     final meal = pricingSourceFromLine(item);
     final addOnUnit = addOnsTotal(item['selectedAddOns'] ?? item['selected_add_ons']);
     return roundCurrency(basePrice(meal) * qty + addOnUnit * qty);
+  }
+
+  /// Plate and extra rows for checkout Bill Summary (extras stay visible, not folded into one total).
+  static List<CheckoutBillLine> checkoutBillFoodLines(Iterable<Map<String, dynamic>> items) {
+    final lines = <CheckoutBillLine>[];
+    for (final item in items) {
+      final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+      final meal = pricingSourceFromLine(item);
+      final title = (item['title'] ?? item['name'] ?? meal['title'] ?? 'Meal').toString().trim();
+      final plate = roundCurrency(basePrice(meal) * qty);
+      final qtySuffix = qty > 1 ? ' × $qty' : '';
+      lines.add(CheckoutBillLine(
+        label: '${title.isEmpty ? 'Meal' : title}$qtySuffix',
+        amount: plate,
+      ));
+      final addOns = item['selectedAddOns'] ?? item['selected_add_ons'];
+      if (addOns is! List) continue;
+      for (final addon in addOns) {
+        if (addon is! Map) continue;
+        final name = (addon['title'] ?? addon['name'] ?? 'Extra').toString().trim();
+        if (name.isEmpty) continue;
+        final amount = roundCurrency(_parseCurrency(addon['price']) * qty);
+        if (amount <= 0) continue;
+        lines.add(CheckoutBillLine(label: name, amount: amount, isAddOn: true));
+      }
+    }
+    return lines;
   }
 
   /// Bill-summary label for the automatic or typed offer on a cart.

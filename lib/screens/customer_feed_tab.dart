@@ -1899,7 +1899,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                       borderRadius: BorderRadius.circular(4)),
                                   child: Icon(
                                     Icons.circle,
-                                    color: meal['is_veg'] == true ? AppTheme.veg : AppTheme.nonVeg,
+                                    color: mealIsVegetarian(meal) ? AppTheme.veg : AppTheme.nonVeg,
                                     size: 10,
                                   ),
                                 ),

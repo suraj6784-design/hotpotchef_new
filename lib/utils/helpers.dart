@@ -868,10 +868,32 @@ List<String> allergyTokens(String? raw) {
       .toList();
 }
 
+bool mealTitleLooksNonVegetarian(Map<String, dynamic>? meal) {
+  final hay = mealDietHaystack(meal ?? const {});
+  return RegExp(
+    r'\b(egg|eggs|chicken|mutton|gosht|keema|fish|prawn|shrimp|meat|pork|bacon|ham|beef|non[- ]?veg)\b',
+    caseSensitive: false,
+  ).hasMatch(hay);
+}
+
+/// Green mark when veg. Accepts bool, 1/0, and "true"/"false" strings.
+bool mealIsVegetarian(Map<String, dynamic>? meal) {
+  if (meal == null) return true;
+  final flag = meal['is_veg'] ?? meal['isVeg'];
+  if (flag == true || flag == 1) return true;
+  if (flag == false || flag == 0) return false;
+  final text = flag?.toString().trim().toLowerCase() ?? '';
+  if (text == 'true' || text == '1' || text == 'yes' || text == 'veg') return true;
+  if (text == 'false' || text == '0' || text == 'no' || text.contains('non')) {
+    return false;
+  }
+  return !mealTitleLooksNonVegetarian(meal);
+}
+
 bool mealMatchesDietaryPreference(Map<String, dynamic> meal, String? preference) {
   final pref = (preference ?? '').trim().toLowerCase();
   if (pref.isEmpty || pref == 'non-vegetarian' || pref == 'non vegetarian') return true;
-  if (meal['is_veg'] == false) return false;
+  if (!mealIsVegetarian(meal)) return false;
   final haystack = mealDietHaystack(meal);
   if (pref == 'vegan') {
     return !_haystackHasAny(haystack, const [
@@ -2550,9 +2572,8 @@ int preOrderedPlatesFromOrders(Iterable<dynamic> orders) {
     if (fromLines > 0) {
       total += fromLines;
     } else if (orderIsPreOrderSlot(order)) {
-      for (final raw in items) {
-        if (raw is! Map) continue;
-        final qty = int.tryParse(raw['quantity']?.toString() ?? '') ?? 1;
+      for (final item in items) {
+        final qty = int.tryParse(item['quantity']?.toString() ?? '') ?? 1;
         total += qty < 1 ? 1 : qty;
       }
     }
@@ -4759,12 +4780,29 @@ bool isCoinLedgerDebit(String? type, double amount) {
       .hasMatch(type ?? '');
 }
 
-bool _looksLikeCheckoutCoinDebit(String title, String type) {
-  final hay = '$title $type'.toLowerCase();
-  return hay.contains('checkout') ||
-      hay.contains('coins applied') ||
-      hay.contains('redeem') ||
-      hay.contains('payment');
+bool _looksLikeStandaloneCoinCredit(String title, String type) {
+  return RegExp(r'streak|referral|signup|welcome', caseSensitive: false)
+      .hasMatch('$title $type');
+}
+
+/// Checkout spends and order-linked credits (not streak/referral) should show Order #.
+bool shouldAttachOrderToCoinRow({
+  required String title,
+  required String type,
+  required bool isDebit,
+}) {
+  if (_looksLikeStandaloneCoinCredit(title, type)) return false;
+  if (isDebit) return true;
+  return RegExp(r'credit|cashback|refund|order', caseSensitive: false)
+      .hasMatch('$title $type');
+}
+
+String coinWalletOrderNumber(String? orderRef) {
+  final ref = (orderRef ?? '').trim();
+  if (ref.isEmpty) return '';
+  final compact = ref.replaceFirst(RegExp(r'^order\s*#?\s*', caseSensitive: false), '');
+  if (compact.isEmpty) return '';
+  return 'Order #$compact';
 }
 
 String? _briefOrderRef(Map<String, dynamic> order) {
@@ -4778,40 +4816,47 @@ Map<String, dynamic>? matchOrderForCoinDebit({
   required DateTime? at,
   required List<Map<String, dynamic>> orders,
   Set<String>? usedOrderIds,
+  bool consume = true,
+  Duration window = const Duration(hours: 24),
 }) {
-  if (amount <= 0 || orders.isEmpty) return null;
+  if (orders.isEmpty) return null;
   final used = usedOrderIds ?? <String>{};
   Map<String, dynamic>? best;
   var bestDelta = const Duration(days: 3650);
 
-  for (final order in orders) {
-    final id = order['id']?.toString() ?? '';
-    if (id.isNotEmpty && used.contains(id)) continue;
-    final coins = (order['coins_applied'] as num?)?.toDouble() ??
-        double.tryParse(order['coins_applied']?.toString() ?? '') ??
-        0.0;
-    if ((coins - amount).abs() > 0.01) continue;
-    final orderAt = DateTime.tryParse(order['created_at']?.toString() ?? '');
-    if (at == null || orderAt == null) {
-      best ??= order;
-      continue;
-    }
-    final delta = at.difference(orderAt).abs();
-    if (delta > const Duration(minutes: 15)) continue;
-    if (delta <= bestDelta) {
-      bestDelta = delta;
-      best = order;
+  bool skipUsed(String id) => consume && id.isNotEmpty && used.contains(id);
+
+  if (amount > 0) {
+    for (final order in orders) {
+      final id = order['id']?.toString() ?? '';
+      if (skipUsed(id)) continue;
+      final coins = (order['coins_applied'] as num?)?.toDouble() ??
+          double.tryParse(order['coins_applied']?.toString() ?? '') ??
+          0.0;
+      if ((coins - amount).abs() > 0.01) continue;
+      final orderAt = DateTime.tryParse(order['created_at']?.toString() ?? '');
+      if (at == null || orderAt == null) {
+        best ??= order;
+        continue;
+      }
+      final delta = at.difference(orderAt).abs();
+      if (delta > window) continue;
+      if (delta <= bestDelta) {
+        bestDelta = delta;
+        best = order;
+      }
     }
   }
 
   if (best == null && at != null) {
+    bestDelta = const Duration(days: 3650);
     for (final order in orders) {
       final id = order['id']?.toString() ?? '';
-      if (id.isNotEmpty && used.contains(id)) continue;
+      if (skipUsed(id)) continue;
       final orderAt = DateTime.tryParse(order['created_at']?.toString() ?? '');
       if (orderAt == null) continue;
       final delta = at.difference(orderAt).abs();
-      if (delta > const Duration(hours: 2)) continue;
+      if (delta > window) continue;
       if (delta <= bestDelta) {
         bestDelta = delta;
         best = order;
@@ -4821,7 +4866,7 @@ Map<String, dynamic>? matchOrderForCoinDebit({
 
   if (best == null) return null;
   final id = best['id']?.toString() ?? '';
-  if (id.isNotEmpty) used.add(id);
+  if (consume && id.isNotEmpty) used.add(id);
   return best;
 }
 
@@ -4885,17 +4930,15 @@ List<CoinLedgerEntry> mergeCoinLedger({
           break;
         }
       }
-    } else if (debit && _looksLikeCheckoutCoinDebit(title, type)) {
+    } else if (shouldAttachOrderToCoinRow(title: title, type: type, isDebit: debit)) {
       matchedOrder = matchOrderForCoinDebit(
         amount: rawAmount.abs(),
         at: DateTime.tryParse(txn['created_at']?.toString() ?? ''),
         orders: orders,
         usedOrderIds: usedOrderIds,
+        consume: debit,
       );
       orderRef = matchedOrder == null ? null : _briefOrderRef(matchedOrder);
-    }
-    if (debit && _looksLikeCheckoutCoinDebit(title, type)) {
-      title = coinCheckoutDebitTitle(base: title, orderRef: orderRef);
     }
     entries.add(CoinLedgerEntry(
       title: title,
@@ -4920,7 +4963,7 @@ List<CoinLedgerEntry> mergeCoinLedger({
     if (coins <= 0) continue;
     final label = _briefOrderRef(order);
     entries.add(CoinLedgerEntry(
-      title: coinCheckoutDebitTitle(base: 'Coins applied at checkout', orderRef: label),
+      title: 'Coins applied at checkout',
       amount: coins,
       at: DateTime.tryParse(order['created_at']?.toString() ?? ''),
       isDebit: true,

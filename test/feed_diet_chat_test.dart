@@ -22,6 +22,11 @@ void main() {
     expect(mealMatchesFeedDiet({'title': 'Ragi dosa', 'is_veg': true}, 'Millet'), isTrue);
     expect(mealMatchesFeedDiet({'title': 'Dal rice', 'health_tags': ['High-protein']}, 'High-protein'), isTrue);
     expect(mealMatchesFeedDiet({'title': 'Gulab jamun', 'is_veg': true}, 'Diabetic'), isFalse);
+    expect(mealIsVegetarian({'title': 'Veg Biryani', 'is_veg': true}), isTrue);
+    expect(mealIsVegetarian({'title': 'Egg Dish', 'is_veg': false}), isFalse);
+    expect(mealIsVegetarian({'title': 'Puran Poli'}), isTrue);
+    expect(mealIsVegetarian({'title': 'Egg bhurji'}), isFalse);
+    expect(mealIsVegetarian({'is_veg': 'true'}), isTrue);
     expect(mealMatchesCuisine({'title': 'Misal pav', 'category': 'Snacks'}, 'Maharashtrian'), isTrue);
     expect(mealMatchesCuisine({'title': 'Idli sambar', 'category': 'South Indian'}, 'Punjabi'), isFalse);
     expect(mealMatchesCuisine({'title': 'Quinoa bowl', 'category': 'Healthy & Salads'}, 'Healthy'), isTrue);

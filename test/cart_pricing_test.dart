@@ -358,6 +358,46 @@ void main() {
     expect(lines.single['addons_unit'], 40.0);
   });
 
+  test('checkout bill lists extras as their own rows', () {
+    final item = CartItemModel(
+      id: '1',
+      mealId: 'm1',
+      chefId: 'c1',
+      title: 'Veg Jumbo Thali',
+      basePrice: 221,
+      quantity: 1,
+      scheduledDate: DateTime.now(),
+      serviceType: ServiceType.deliveryPlatform,
+      selectedAddOns: const [
+        CartItemAddOn(id: 's', title: 'Salad', price: 30),
+        CartItemAddOn(id: 'i', title: 'Ice Cream', price: 20),
+      ],
+      rawMealDetails: const {'price': 221, 'offer_type': 'none'},
+    );
+    final lines = PricingCalculator.checkoutBillFoodLines([item.toCheckoutPayload()]);
+    expect(lines.map((l) => l.label).toList(), ['Veg Jumbo Thali', 'Salad', 'Ice Cream']);
+    expect(lines.map((l) => l.amount).toList(), [221.0, 30.0, 20.0]);
+    expect(lines.where((l) => l.isAddOn), hasLength(2));
+    expect(PricingCalculator.lineFoodGross(item.toCheckoutPayload()), 271.0);
+  });
+
+  test('addon prices stored as strings still appear on checkout', () {
+    final payload = {
+      'title': 'Veg Jumbo Thali',
+      'quantity': 1,
+      'price': 221,
+      'rawMealDetails': {'price': 221},
+      'selectedAddOns': [
+        {'id': 's', 'title': 'Salad', 'price': '30'},
+        {'id': 'i', 'title': 'Ice Cream', 'price': '20'},
+      ],
+    };
+    final lines = PricingCalculator.checkoutBillFoodLines([payload]);
+    expect(lines.where((l) => l.isAddOn).map((l) => l.amount).toList(), [30.0, 20.0]);
+    expect(PricingCalculator.lineFoodGross(payload), 271.0);
+    expect(CartItemAddOn.fromJson({'id': 'i', 'title': 'Ice Cream', 'price': '20'}).price, 20);
+  });
+
   test('cart estimated total includes packaging and a delivery estimate', () {
     final item = _buildItem(quantity: 1, mealDetails: {'price': 200, 'offer_type': 'none'});
     final state = CartState(items: [item]);

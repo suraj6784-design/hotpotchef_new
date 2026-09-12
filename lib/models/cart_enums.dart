@@ -73,10 +73,14 @@ class CartItemAddOn {
   });
 
   factory CartItemAddOn.fromJson(Map<String, dynamic> json) {
+    final rawPrice = json['price'];
+    final price = rawPrice is num
+        ? rawPrice.toDouble()
+        : double.tryParse(rawPrice?.toString() ?? '') ?? 0.0;
     return CartItemAddOn(
       id: json['id']?.toString() ?? '',
       title: json['title']?.toString() ?? '',
-      price: (json['price'] as num?)?.toDouble() ?? 0.0,
+      price: price,
     );
   }
 

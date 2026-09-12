@@ -1170,6 +1170,59 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
+  List<Widget> _checkoutFoodBillRows() {
+    final lines = PricingCalculator.checkoutBillFoodLines(widget.cartItems);
+    final hasAddOns = lines.any((line) => line.isAddOn);
+    if (!hasAddOns) {
+      return [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('Items Total'),
+            Text('₹${_foodTotalBeforePromo.toStringAsFixed(2)}'),
+          ],
+        ),
+      ];
+    }
+
+    final muted = AppTheme.textMuted;
+    return [
+      for (final line in lines) ...[
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                line.isAddOn ? 'Extra · ${line.label}' : line.label,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: line.isAddOn ? muted : AppTheme.onSurfaceOf(context),
+                  fontWeight: line.isAddOn ? FontWeight.w600 : FontWeight.w700,
+                ),
+              ),
+            ),
+            Text(
+              '₹${line.amount.toStringAsFixed(2)}',
+              style: TextStyle(
+                fontSize: 14,
+                color: line.isAddOn ? muted : AppTheme.onSurfaceOf(context),
+                fontWeight: line.isAddOn ? FontWeight.w600 : FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+      ],
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Text('Items Total'),
+          Text('₹${_foodTotalBeforePromo.toStringAsFixed(2)}'),
+        ],
+      ),
+    ];
+  }
+
   Widget _buildPromoCard() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1377,7 +1430,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     scheduled = parseFlexibleDate(rawDate?.toString());
                   }
                   final scheduleLabel = formatCheckoutDeliverySchedule(
-                    slot: timeSlot?.toString(),
+                    slot: timeSlot,
                     scheduledDate: scheduled,
                   );
                   final image = (item['image_url'] ?? rawDetails?['image_url'])?.toString() ?? '';
@@ -1588,13 +1641,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               children: [
                 const Text('Bill Summary', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const Divider(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Items Total'),
-                    Text('₹${_foodTotalBeforePromo.toStringAsFixed(2)}'),
-                  ],
-                ),
+                ..._checkoutFoodBillRows(),
                 if (_promoSavings > 0) ...[
                   const SizedBox(height: 6),
                   Row(
