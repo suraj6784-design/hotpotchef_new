@@ -139,6 +139,17 @@ void main() {
         isTrue,
       );
       expect(
+        isMealAvailableForCart(
+          {'quantity': 4, 'status': 'Available', 'time_slot': 'Sun, 18th Aug at 9:30 AM'},
+          now: now,
+        ),
+        isFalse,
+      );
+      expect(
+        isMealExpired('Sun, 18th Aug at 9:30 AM', now: now),
+        isTrue,
+      );
+      expect(
         isChefMenuActiveMeal({'status': 'Archived', 'time_slot': 'Today (9:00 AM to 5:00 PM)'}, now: now),
         isFalse,
       );

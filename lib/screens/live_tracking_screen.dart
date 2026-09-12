@@ -658,14 +658,28 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
           ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
           : Stack(
               children: [
-                GoogleMap(
-                  initialCameraPosition: CameraPosition(target: _currentPosition!, zoom: 15),
-                  markers: _markers,
-                  polylines: _polylines,
-                  myLocationEnabled: true,
-                  myLocationButtonEnabled: true,
-                  onMapCreated: (controller) => _mapController = controller,
-                ),
+                if (googleMapsApiKeyConfigured())
+                  GoogleMap(
+                    initialCameraPosition: CameraPosition(target: _currentPosition!, zoom: 15),
+                    markers: _markers,
+                    polylines: _polylines,
+                    myLocationEnabled: true,
+                    myLocationButtonEnabled: true,
+                    onMapCreated: (controller) => _mapController = controller,
+                  )
+                else
+                  const ColoredBox(
+                    color: Color(0xFFF7F3EE),
+                    child: Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(28),
+                        child: Text(
+                          'Live map needs a Maps key on this build. Distance and drop-off details still show below.',
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                  ),
                 Positioned(
                   top: 16,
                   left: 16,

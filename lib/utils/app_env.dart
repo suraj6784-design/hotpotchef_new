@@ -51,3 +51,5 @@ String _fromDefine(String key) {
       return '';
   }
 }
+
+bool googleMapsApiKeyConfigured() => appEnv('GOOGLE_MAPS_API_KEY').isNotEmpty;

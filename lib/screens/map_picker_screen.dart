@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/app_theme.dart';
+import '../utils/app_env.dart';
 import '../utils/pinned_address.dart';
 
 class MapPickerScreen extends StatefulWidget {
@@ -167,15 +168,30 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
           : Stack(
               alignment: Alignment.center,
               children: [
-                GoogleMap(
-                  initialCameraPosition: CameraPosition(target: _currentPosition, zoom: 16),
-                  myLocationEnabled: true,
-                  myLocationButtonEnabled: true,
-                  zoomControlsEnabled: false,
-                  onMapCreated: (controller) => _mapController = controller,
-                  onCameraMove: (position) => _currentPosition = position.target,
-                  onCameraIdle: () => _onCameraIdleDebounced(_currentPosition),
-                ),
+                if (googleMapsApiKeyConfigured())
+                  GoogleMap(
+                    initialCameraPosition: CameraPosition(target: _currentPosition, zoom: 16),
+                    myLocationEnabled: true,
+                    myLocationButtonEnabled: true,
+                    zoomControlsEnabled: false,
+                    onMapCreated: (controller) => _mapController = controller,
+                    onCameraMove: (position) => _currentPosition = position.target,
+                    onCameraIdle: () => _onCameraIdleDebounced(_currentPosition),
+                  )
+                else
+                  ColoredBox(
+                    color: AppTheme.canvasOf(context),
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(28),
+                        child: Text(
+                          'Maps is unavailable on this build. You can still confirm the GPS pin below.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: AppTheme.onSurfaceOf(context), height: 1.4),
+                        ),
+                      ),
+                    ),
+                  ),
                 // Center Fixed Pin Marker
                 const Padding(
                   padding: EdgeInsets.only(bottom: 35),

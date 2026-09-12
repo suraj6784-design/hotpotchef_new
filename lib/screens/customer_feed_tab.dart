@@ -295,17 +295,8 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     super.dispose();
   }
 
-  bool _checkIfTimePassed(String? timeSlot) {
-    if (timeSlot == null || timeSlot.isEmpty) return false;
-    final slotLower = timeSlot.toLowerCase();
-
-    if (slotLower.contains('daily')) return false;
-
-    const weekDays = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
-    bool isDaySpecific = weekDays.any((day) => slotLower.contains(day));
-    if (isDaySpecific) return false;
-
-    return isMealExpired(timeSlot);
+  bool _checkIfTimePassed(Map<String, dynamic> meal) {
+    return !isMealAvailableForCart(meal);
   }
 
   Future<void> _performAiSearch(String query) async {
@@ -354,6 +345,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       final qLower = trimmed.toLowerCase();
 
       final localMatches = localMeals.where((m) {
+        if (!isMealAvailableForCart(m)) return false;
         final title = m['title']?.toString().toLowerCase().replaceAll(' ', '') ?? '';
         final desc = m['description']?.toString().toLowerCase().replaceAll(' ', '') ?? '';
         if (title.contains(qClean) || desc.contains(qClean)) return true;
@@ -1417,8 +1409,17 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                 var meals = snapshot.data!.where((m) {
                   final status = m['status']?.toString().toLowerCase() ?? '';
                   final isInventory = (m['customer_name'] == null || m['customer_name'].toString().isEmpty);
-                  return isInventory && status != 'paused' && status != 'cancelled';
+                  if (!isInventory || status == 'paused' || status == 'cancelled') return false;
+                  return isMealAvailableForCart(m);
                 }).toList();
+
+                if (meals.isEmpty) {
+                  return const EmptyState(
+                    icon: Icons.restaurant_menu_rounded,
+                    title: 'No plates on your slot right now',
+                    message: 'Live kitchens will show here when a bookable window is open. Pull to refresh.',
+                  );
+                }
 
                 if (showFavorites) {
                   meals = meals.where((m) => widget.favoriteMeals.contains(m['id'].toString())).toList();
@@ -1720,10 +1721,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     }
 
     meals.sort((a, b) {
-      final aAvailable = !_checkIfTimePassed(a['time_slot']?.toString()) &&
+      final aAvailable = !_checkIfTimePassed(a) &&
           (int.tryParse(a['quantity'].toString()) ?? 0) > 0 &&
           a['status']?.toString().toLowerCase() != 'sold out';
-      final bAvailable = !_checkIfTimePassed(b['time_slot']?.toString()) &&
+      final bAvailable = !_checkIfTimePassed(b) &&
           (int.tryParse(b['quantity'].toString()) ?? 0) > 0 &&
           b['status']?.toString().toLowerCase() != 'sold out';
       if (aAvailable && !bAvailable) return -1;
@@ -1750,7 +1751,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             final meal = meals[index];
             final isFavorite = widget.favoriteMeals.contains(meal['id'].toString());
 
-            final isExpired = _checkIfTimePassed(meal['time_slot']?.toString());
+            final isExpired = _checkIfTimePassed(meal);
             final availableQty = int.tryParse(meal['quantity'].toString()) ?? 0;
             final isSoldOut = availableQty <= 0 || meal['status']?.toString().toLowerCase() == 'sold out';
             final isAvailable = !isExpired && !isSoldOut;

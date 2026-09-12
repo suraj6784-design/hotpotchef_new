@@ -26,4 +26,12 @@ Configure `.env` with `SUPABASE_URL` and `SUPABASE_ANON_KEY`, then:
 flutter run --dart-define-from-file=.env
 ```
 
+Release APK (keeps Razorpay keys from `.env`; does not flip test/live mode):
+
+```bash
+# Windows: powershell -File tool/build_release_apk.ps1
+# macOS/Linux:
+bash tool/build_release_apk.sh
+```
+
 Local `.env` is also read at startup if present. Do not list `.env` as a Flutter asset — that would ship secrets in the APK.

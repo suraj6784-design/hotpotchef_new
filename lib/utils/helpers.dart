@@ -2001,8 +2001,10 @@ bool mealHasSellableStock(Map<String, dynamic> meal) {
   return true;
 }
 
-bool isMealAvailableForCart(Map<String, dynamic> meal) {
-  return mealHasSellableStock(meal) && !isMealExpired(meal['time_slot']?.toString());
+bool isMealAvailableForCart(Map<String, dynamic> meal, {DateTime? now}) {
+  if (!mealHasSellableStock(meal)) return false;
+  if (isChefMealArchived(meal)) return false;
+  return !isPublishedMealExpired(meal, now: now);
 }
 
 bool isCatalogMeal(Map<String, dynamic> meal) {
@@ -2617,7 +2619,11 @@ bool isMealExpired(String? timeSlot, {DateTime? orderDate, DateTime? now}) {
   // Standing weekly kitchens stay preorderable until the chef pauses or archives.
   if (isStandingWeeklyServingWindow(timeSlot)) return false;
   final n = (now ?? DateTime.now()).toLocal();
-  final day = calendarDay(orderDate ?? n);
+  final labeledDay = parseSlotCalendarDay(timeSlot, now: n);
+  if (orderDate == null && labeledDay != null && calendarDay(labeledDay).isBefore(calendarDay(n))) {
+    return true;
+  }
+  final day = calendarDay(orderDate ?? labeledDay ?? n);
   final clocks = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)', caseSensitive: false).allMatches(timeSlot).toList();
   if (clocks.isEmpty) return false;
 
