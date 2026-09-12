@@ -15,6 +15,7 @@ import '../widgets/app_widgets.dart';
 import '../widgets/app_status_badge.dart';
 import '../widgets/meal_review_dialog.dart';
 import '../services/chef_directory.dart';
+import '../services/order_lifecycle.dart';
 import '../services/reorder_service.dart';
 import '../services/invoice_pdf_service.dart';
 import '../providers/cart_provider.dart';
@@ -540,7 +541,7 @@ class _HistoryOrdersListState extends ConsumerState<_HistoryOrdersList> {
   Widget build(BuildContext context) {
     final filtered = widget.pastOrders.where((order) {
       final status = order['status']?.toString().toLowerCase() ?? '';
-      if (_filter == 'Delivered' && !(status.contains('deliver') || status.contains('complet'))) return false;
+      if (_filter == 'Delivered' && !OrderLifecycle.isFulfilled(status)) return false;
       if (_filter == 'Cancelled' && !(status.contains('cancel') || status.contains('reject'))) return false;
 
       if (_query.trim().isEmpty) return true;
@@ -622,7 +623,7 @@ class _HistoryOrdersListState extends ConsumerState<_HistoryOrdersList> {
             0.0;
 
         final dateStr = formatOrderDate(order['created_at']?.toString());
-        final isSuccessful = status.toLowerCase().contains('deliver') || status.toLowerCase().contains('complet');
+        final isSuccessful = OrderLifecycle.isFulfilled(status);
 
         return AppCard(
           margin: const EdgeInsets.only(bottom: 14),

@@ -308,12 +308,12 @@ class WatermarkedMealImage extends StatelessWidget {
 Widget buildStatusBadge(String status) {
   Color color = Colors.orange;
   final s = status.toLowerCase();
-  if (s.contains('deliver') || s.contains('complet') || s.contains('confirm')) {
+  if (s.contains('out for delivery') || s.contains('ready') || s.contains('assigned')) {
+    color = Colors.teal;
+  } else if (s.contains('delivered') || s.contains('completed') || s.contains('confirm')) {
     color = Colors.green;
   } else if (s.contains('cancel') || s.contains('reject')) {
     color = Colors.redAccent;
-  } else if (s.contains('out') || s.contains('ready')) {
-    color = Colors.teal;
   }
   return Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

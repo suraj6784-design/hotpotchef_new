@@ -26,7 +26,7 @@ class AppStatusBadge extends StatelessWidget {
     } else if (lowerStatus.contains('ready') || lowerStatus.contains('out for delivery')) {
       baseColor = AppTheme.primary;
       iconData = Icons.local_shipping_rounded;
-    } else if (lowerStatus.contains('deliver') || lowerStatus.contains('complet')) {
+    } else if (lowerStatus.contains('delivered') || lowerStatus.contains('complet')) {
       baseColor = AppTheme.success;
       iconData = Icons.check_circle_rounded;
     } else if (lowerStatus.contains('cancel') || lowerStatus.contains('reject')) {

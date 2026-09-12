@@ -42,6 +42,9 @@ String networkErrorMessage(Object? error) {
   return 'Something went wrong. Please try again.';
 }
 
+bool isGenericNetworkFallback(String message) =>
+    message == 'Something went wrong. Please try again.';
+
 extension WithNetworkTimeout<T> on Future<T> {
   Future<T> withTimeout([Duration duration = NetworkTimeouts.standard]) {
     return timeout(

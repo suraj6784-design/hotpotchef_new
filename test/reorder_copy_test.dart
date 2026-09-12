@@ -19,6 +19,20 @@ void main() {
     expect(reorderMealSummary(orderItemsForReorder(last)), 'Dal rice + 1 more');
   });
 
+  test('out for delivery is not a successful past order', () {
+    expect(
+      isSuccessfulPastOrder({'id': 'ofd', 'status': 'Out for Delivery', 'items': [{'title': 'Dal'}]}),
+      isFalse,
+    );
+    expect(
+      lastSuccessfulOrder([
+        {'id': 'ofd', 'status': 'Out for Delivery', 'items': [{'title': 'Dal', 'meal_id': 'm1'}]},
+        {'id': 'done', 'status': 'Delivered', 'items': [{'title': 'Dal', 'meal_id': 'm1'}]},
+      ])?['id'],
+      'done',
+    );
+  });
+
   test('same-as-last copy uses the weekday inside one week', () {
     final wednesday = DateTime(2026, 9, 2, 13);
     expect(sameAsLastLabel(wednesday, now: DateTime(2026, 9, 2, 20)), 'Same as earlier today');

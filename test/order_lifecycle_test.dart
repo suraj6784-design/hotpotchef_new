@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:hotpotchef_new/models/app_role.dart';
 import 'package:hotpotchef_new/models/cart_enums.dart';
+import 'package:hotpotchef_new/services/auth_session.dart';
 import 'package:hotpotchef_new/services/order_lifecycle.dart';
 
 void main() {
@@ -13,6 +14,23 @@ void main() {
       expect(AppRole.parse(null), AppRole.customer);
       expect(AppRole.chef.hubPath, '/chef-hub');
       expect(AppRole.admin.hubPath, '/platform-ops');
+    });
+  });
+
+  group('AuthSession role sources', () {
+    test('prefers public.users.role over a stale JWT claim', () {
+      expect(
+        AuthSession.resolveRoleFromSources(jwtRole: 'Customer', tableRole: 'Chef'),
+        AppRole.chef,
+      );
+      expect(
+        AuthSession.resolveRoleFromSources(jwtRole: 'Chef', tableRole: 'Driver'),
+        AppRole.driver,
+      );
+      expect(
+        AuthSession.resolveRoleFromSources(jwtRole: 'Chef', tableRole: null),
+        AppRole.chef,
+      );
     });
   });
 
@@ -119,7 +137,10 @@ void main() {
       expect(OrderLifecycle.isUnfulfilledKitchenWork('Confirmed'), isTrue);
       expect(OrderLifecycle.isUnfulfilledKitchenWork('Preparing'), isTrue);
       expect(OrderLifecycle.isUnfulfilledKitchenWork('Driver Assigned'), isTrue);
+      expect(OrderLifecycle.isUnfulfilledKitchenWork('Out for Delivery'), isTrue);
       expect(OrderLifecycle.isUnfulfilledKitchenWork('Delivered'), isFalse);
+      expect(OrderLifecycle.isFulfilled('Out for Delivery'), isFalse);
+      expect(OrderLifecycle.isFulfilled('Delivered'), isTrue);
       expect(
         OrderLifecycle.chefHasUnfulfilledOrders([
           {'status': 'Confirmed'},

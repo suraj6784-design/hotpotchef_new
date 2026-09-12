@@ -216,7 +216,13 @@ _ParsedFields _parseTwoColumnCard(List<String> lines) {
     if (key == 'address' && addressIndex >= 0) {
       final keysAfter = keys.length - (addressIndex + 1);
       final end = (values.length - keysAfter).clamp(addressIndex + 1, values.length);
-      return values.sublist(addressIndex, end).join(', ');
+      final chunk = values.sublist(addressIndex, end);
+      final kept = <String>[];
+      for (final line in chunk) {
+        if (_isKobLabelOrValue(line)) break;
+        kept.add(line);
+      }
+      return kept.isEmpty ? null : kept.join(', ');
     }
     var valueIndex = index;
     if (addressIndex >= 0 && index > addressIndex) {
@@ -273,7 +279,7 @@ _ParsedFields _parseWithRegex(String text) {
   ).firstMatch(text)?.group(1);
 
   final address = RegExp(
-    r'address\s*:?\s*(.+?)(?=\s*(?:\nkob\b|\ngovt\b|\nissuing\b|\nissued\b|\ndisclaimer\b|$))',
+    r'address(?:\s+of\s+premises)?\s*:?\s*(.+?)(?=\s*(?:kob\b|k[\s.\-]*0?[\s.\-]*b\b|kind\s+of\s+business|\ngovt\b|\nissuing\b|\nissued\b|\ndisclaimer\b|$))',
     caseSensitive: false,
     dotAll: true,
   ).firstMatch(text)?.group(1);
@@ -298,6 +304,7 @@ const _kFieldStops = [
   'name',
   'address',
   'kob',
+  'kind of business',
   'govt id',
   'issuing authority',
   'issued on',
@@ -311,7 +318,11 @@ String? _bareFieldKey(String line) {
   if (lower.startsWith('valid')) return 'valid';
   if (lower.startsWith('name')) return 'name';
   if (lower.startsWith('address') || lower.startsWith('premises')) return 'address';
-  if (lower.startsWith('kob') || lower.startsWith('kind of business')) return 'kob';
+  if (lower.startsWith('kob') ||
+      lower.startsWith('kind of business') ||
+      RegExp(r'^k[\s.\-]*0?[\s.\-]*b\b').hasMatch(lower)) {
+    return 'kob';
+  }
   if (lower.startsWith('govt')) return 'govt';
   if (lower.startsWith('issuing')) return 'issuing';
   if (lower.startsWith('issued')) return 'issued';
@@ -366,7 +377,11 @@ String? _labeledBlock(
       if (afterColon.isNotEmpty && _bareFieldKey(afterColon) == null) buf.add(afterColon);
       for (var j = i + 1; j < lines.length; j++) {
         final next = lines[j];
-        if (_startsWithAnyLabel(next, stopLabels) || _bareFieldKey(next) != null) break;
+        if (_startsWithAnyLabel(next, stopLabels) ||
+            _bareFieldKey(next) != null ||
+            _isKobLabelOrValue(next)) {
+          break;
+        }
         buf.add(next);
       }
       final joined = buf.join(', ').trim();
@@ -396,13 +411,67 @@ String? _cleanPersonName(String? raw) {
   return value;
 }
 
+final _kobCutPattern = RegExp(
+  r'(?:^|[\s,;:|/]+)(?:k[\s.\-]*0?[\s.\-]*b|kind\s+of\s+business)\b.*$',
+  caseSensitive: false,
+);
+
+const _kKobBusinessPhrases = [
+  'general manufacturing',
+  'petty manufacturer',
+  'manufacturer of food',
+  'permanent / temporary stall',
+  'permanent/temporary stall',
+  'temporary stall holder',
+  'stall holder',
+  'food vending',
+  'trade/retail',
+  'trade / retail',
+  'kind of business',
+];
+
+bool _isKobLabelOrValue(String? raw) {
+  final value = (raw ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (value.isEmpty) return false;
+  final lower = value.toLowerCase();
+  if (_bareFieldKey(value) == 'kob') return true;
+  if (RegExp(r'^k[\s.\-]*0?[\s.\-]*b\b').hasMatch(lower)) return true;
+  if (lower.startsWith('kind of business')) return true;
+  if (RegExp(r'\d{6}').hasMatch(value) || _looksLikeAddress(value)) return false;
+  return _kKobBusinessPhrases.any(lower.contains);
+}
+
+String _stripTrailingKobPhrase(String raw) {
+  var value = raw.trim();
+  final lower = value.toLowerCase();
+  for (final phrase in _kKobBusinessPhrases) {
+    final idx = lower.indexOf(phrase);
+    if (idx >= 0) {
+      value = value.substring(0, idx).trim();
+      break;
+    }
+  }
+  return value.replaceAll(RegExp(r'[\s,;:|/]+$'), '').trim();
+}
+
 String? _cleanAddress(String? raw) {
-  var value = (raw ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();
+  var value = (raw ?? '').replaceAll(RegExp(r'[\r\n]+'), ', ').replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (value.isEmpty) return null;
+  value = value.replaceFirst(_kobCutPattern, '').trim();
+  value = value.replaceAll(RegExp(r'^[\s,;:|/]+|[\s,;:|/]+$'), '').trim();
   if (value.isEmpty) return null;
   if (_bareFieldKey(value) != null) return null;
   if (_isLabelResidue(value)) return null;
-  value = value.split(RegExp(r'\s+KOB\b', caseSensitive: false)).first.trim();
-  return value.isEmpty ? null : value;
+  final parts = value.split(RegExp(r'\s*,\s*')).where((part) => part.trim().isNotEmpty).toList();
+  final kept = <String>[];
+  for (final part in parts) {
+    if (_isKobLabelOrValue(part)) break;
+    final stripped = _stripTrailingKobPhrase(part);
+    if (stripped.isEmpty || _isKobLabelOrValue(stripped)) break;
+    kept.add(stripped);
+  }
+  final joined = kept.join(', ').trim();
+  return joined.isEmpty ? null : joined;
 }
 
 bool _isLabelResidue(String raw) {
@@ -490,12 +559,27 @@ String? _bestPersonName(List<String?> candidates) {
   return null;
 }
 
+int _addressScore(String value) {
+  var score = 0;
+  if (RegExp(r'\d{6}').hasMatch(value)) score += 8;
+  if (_looksLikeAddress(value)) score += 4;
+  if (_isKobLabelOrValue(value)) score -= 20;
+  if (RegExp(r'\bkob\b', caseSensitive: false).hasMatch(value)) score -= 20;
+  score += (value.length / 40).clamp(0, 3).floor();
+  return score;
+}
+
 String? _bestAddress(List<String?> candidates) {
   String? best;
+  var bestScore = -999;
   for (final candidate in candidates) {
     final cleaned = _cleanAddress(candidate);
     if (cleaned == null) continue;
-    if (best == null || cleaned.length > best.length) best = cleaned;
+    final score = _addressScore(cleaned);
+    if (best == null || score > bestScore || (score == bestScore && cleaned.length < best.length)) {
+      best = cleaned;
+      bestScore = score;
+    }
   }
   return best;
 }

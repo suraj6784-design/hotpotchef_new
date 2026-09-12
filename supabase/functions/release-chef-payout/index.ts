@@ -80,7 +80,7 @@ serve(async (req) => {
 
     const items = parseOrderItems(order.items ?? order.cart_items)
     const itemsTotal = itemsTotalFromLines(items)
-    const packagingFee = asNumber(order.packaging_fee, 20)
+    const packagingFee = asNumber(order.packaging_fee, 0)
     const marginRate = asNumber(Deno.env.get('PLATFORM_MARGIN_RATE'), DEFAULT_PLATFORM_MARGIN_RATE)
     const payout = chefPayoutBreakdown(itemsTotal, packagingFee, marginRate)
     const amountPaise = Math.round(payout.chefPayout * 100)

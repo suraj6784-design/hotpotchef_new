@@ -98,6 +98,13 @@ void main() {
       expect(kitchenFacingOrderNotes(raw), contains('No onion'));
       expect(driverFacingOrderNotes(raw), isNot(contains('Delivery PIN')));
       expect(isDeliveryPinInstructionLine('Delivery PIN: 4821'), isTrue);
+      final chefRow = chefFacingOrderRow({
+        'id': 'o1',
+        'delivery_otp': '4821',
+        'special_instructions': raw,
+      });
+      expect(chefRow.containsKey('delivery_otp'), isFalse);
+      expect(chefRow['special_instructions'], isNot(contains('4821')));
     });
 
     test('packaging supply helpers still resolve', () {

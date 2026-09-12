@@ -58,6 +58,13 @@ class OrderLifecycle {
         s.contains('out_for_delivery');
   }
 
+  /// Handed to the diner — not "out for delivery".
+  static bool isFulfilled(String? status) {
+    final s = normalize(status);
+    if (s.contains('out for delivery') || s.contains('out_for_delivery')) return false;
+    return s.contains('delivered') || s.contains('completed');
+  }
+
   static bool isTrackable(String? status) {
     final s = normalize(status);
     if (s.contains('cancel') || s.contains('reject') || s.contains('delivered') || s.contains('completed')) {

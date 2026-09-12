@@ -34,7 +34,6 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
   int _selectedIndex = 0;
   bool _isOnline = true;
   String? _busyOrderId;
-  final Set<String> _warnedMissingOtpOrderIds = {};
 
   @override
   void initState() {
@@ -705,15 +704,24 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
   Future<bool> _confirmMarkDelivered(DriverDeliveryModel delivery) async {
     final expected = delivery.deliveryOtp?.trim() ?? '';
     if (expected.isEmpty) {
-      if (_warnedMissingOtpOrderIds.add(delivery.orderId) && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No delivery PIN on this order — marking delivered without PIN check.'),
-            backgroundColor: Colors.orange,
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: AppTheme.dialogShape,
+          title: const Text('No delivery PIN on this order'),
+          content: const Text(
+            'Ask the customer to confirm the drop in person. Complete only if you have verified the diner at the door.',
           ),
-        );
-      }
-      return true;
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Complete without PIN'),
+            ),
+          ],
+        ),
+      );
+      return proceed == true;
     }
 
     final controller = TextEditingController();

@@ -142,6 +142,8 @@ void main() {
         unitPrice: 300,
       );
       expect(isOpenPackagingSupplyRequest(open), isTrue);
+      expect(isOpenPackagingSupplyRequest({...open, 'status': 'Out for Delivery'}), isTrue);
+      expect(isOpenPackagingSupplyRequest({...open, 'status': 'Fulfilled'}), isFalse);
       expect(
         packagingCatalogItemRequested([open], {'id': 'm4', 'title': 'Branded Paper Carry Bags'}),
         isTrue,

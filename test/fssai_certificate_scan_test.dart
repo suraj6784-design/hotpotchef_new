@@ -22,6 +22,9 @@ Issued On: 10-09-26
     expect(scan.legalName, 'Arushi Thakare');
     expect(scan.address, contains('Gurukrupa Complex'));
     expect(scan.address, contains('Thergaon Pune 411033'));
+    expect(scan.address, isNot(contains('KOB')));
+    expect(scan.address, isNot(contains('Manufacturing')));
+    expect(scan.address, isNot(contains('Stall Holder')));
     expect(scan.validUntil, DateTime(2027, 9, 10));
     expect(fssaiLicenceIsExpired(scan.validUntil, now: DateTime(2026, 9, 12)), isFalse);
     expect(fssaiLicenceIsExpired(scan.validUntil, now: DateTime(2027, 9, 11)), isTrue);
@@ -46,6 +49,8 @@ General Manufacturing
     expect(scan.registrationNumber, '12345678912345');
     expect(scan.legalName, 'Arushi Thakare');
     expect(scan.address, contains('Gurukrupa Complex'));
+    expect(scan.address, isNot(contains('KOB')));
+    expect(scan.address, isNot(contains('General Manufacturing')));
     expect(scan.validUntil, DateTime(2027, 9, 10));
     expect(scan.hasCoreFields, isTrue);
   });
@@ -75,6 +80,8 @@ Issued On
     expect(scan.legalName, isNot(contains('Gurukrupa')));
     expect(scan.address, contains('Gurukrupa Complex'));
     expect(scan.address, contains('411033'));
+    expect(scan.address, isNot(contains('KOB')));
+    expect(scan.address, isNot(contains('General Manufacturing')));
     expect(scan.validUntil, DateTime(2027, 9, 10));
   });
 
@@ -93,6 +100,21 @@ Issued On
     expect(scan.registrationNumber, '12345678912345');
     expect(scan.validUntil, DateTime(2027, 9, 10));
     expect(scan.legalName, contains('Arushi'));
+    expect(scan.address, contains('Gurukrupa Complex'));
+    expect(scan.address, isNot(contains('KOB')));
+    expect(scan.address, isNot(contains('Petty')));
+  });
+
+  test('drops Kind of Business when OCR glues it onto the premises line', () {
+    final scan = parseFssaiCertificateText(
+      'Registration ID: 12345678912345 Valid Upto: 10-09-27 Name: Arushi Thakare '
+      'Address of Premises: Gurukrupa Complex, Dange Chowk, Thergaon Pune 411033 '
+      'Kind of Business Petty Manufacturer of food items, Permanent / Temporary Stall Holder',
+    );
+    expect(scan.address, contains('Thergaon Pune 411033'));
+    expect(scan.address, isNot(contains('Kind of Business')));
+    expect(scan.address, isNot(contains('Petty Manufacturer')));
+    expect(scan.address, isNot(contains('Stall Holder')));
   });
 
   test('publish blocks when the scanned licence date has lapsed', () {

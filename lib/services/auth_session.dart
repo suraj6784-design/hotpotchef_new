@@ -25,6 +25,8 @@ class AuthSession {
   static bool _opsOwnerCache = false;
   static bool _opsSeatCache = false;
   static String? _opsCacheUserId;
+  static String? _roleCacheUserId;
+  static AppRole? _tableRoleCache;
 
   static void clearOpsCache() {
     _opsPermissionsCache = const [];
@@ -33,16 +35,40 @@ class AuthSession {
     _opsCacheUserId = null;
   }
 
+  static void clearRoleCache() {
+    _roleCacheUserId = null;
+    _tableRoleCache = null;
+  }
+
+  /// Router and hubs prefer `public.users.role` over a stale JWT claim.
+  static AppRole resolveRoleFromSources({
+    String? email,
+    String? jwtRole,
+    String? tableRole,
+  }) {
+    if (isPlatformOwnerEmail(email)) return AppRole.admin;
+    final table = tableRole?.trim() ?? '';
+    if (table.isNotEmpty) return AppRole.parse(table);
+    return AppRole.parse(jwtRole);
+  }
+
   static AppRole roleFromSession({String? tableRole}) {
     final user = currentUser;
-    if (isPlatformOwnerEmail(user?.email)) return AppRole.admin;
-    final metadataRole = user?.userMetadata?['role']?.toString();
-    return AppRole.parse(tableRole ?? metadataRole);
+    return resolveRoleFromSources(
+      email: user?.email,
+      jwtRole: user?.userMetadata?['role']?.toString(),
+      tableRole: tableRole ??
+          (_roleCacheUserId == user?.id ? _tableRoleCache?.storageValue : null),
+    );
   }
 
   static AppRole roleForUser(User? user, {String? tableRole}) {
-    if (isPlatformOwnerEmail(user?.email)) return AppRole.admin;
-    return AppRole.parse(tableRole ?? user?.userMetadata?['role']?.toString());
+    return resolveRoleFromSources(
+      email: user?.email,
+      jwtRole: user?.userMetadata?['role']?.toString(),
+      tableRole: tableRole ??
+          (_roleCacheUserId == user?.id ? _tableRoleCache?.storageValue : null),
+    );
   }
 
   /// Keep JWT + public.users aligned when the owner still has a leftover Chef session.
@@ -82,13 +108,32 @@ class AuthSession {
           .timeout(NetworkTimeouts.short);
       final tableRole = row?['role']?.toString();
       if (tableRole != null && tableRole.isNotEmpty) {
-        return AppRole.parse(tableRole);
+        final parsed = AppRole.parse(tableRole);
+        _roleCacheUserId = user.id;
+        _tableRoleCache = parsed;
+        await _syncJwtRoleIfNeeded(parsed);
+        return parsed;
       }
     } catch (e, st) {
       FirebaseCrashlytics.instance.recordError(e, st, reason: 'AuthSession role lookup failed');
     }
 
     return roleFromSession();
+  }
+
+  static Future<void> _syncJwtRoleIfNeeded(AppRole tableRole) async {
+    final user = currentUser;
+    if (user == null) return;
+    final jwtRole = resolveRoleFromSources(
+      email: user.email,
+      jwtRole: user.userMetadata?['role']?.toString(),
+    );
+    if (jwtRole == tableRole) return;
+    try {
+      await _client.auth.updateUser(UserAttributes(data: {'role': tableRole.storageValue}));
+    } catch (e, st) {
+      FirebaseCrashlytics.instance.recordError(e, st, reason: 'AuthSession JWT role sync failed');
+    }
   }
 
   static Future<Map<String, dynamic>?> _loadOpsSeat() async {
@@ -207,6 +252,7 @@ class AuthSession {
     Future<void> Function()? beforeNavigate,
   }) async {
     clearOpsCache();
+    clearRoleCache();
     try {
       await PushNotificationService.clearTokenOnLogout();
     } catch (e, st) {
@@ -232,10 +278,20 @@ class AuthSession {
 /// Notifies [GoRouter] when the Supabase session changes so redirects re-run.
 class AuthRefreshNotifier extends ChangeNotifier {
   AuthRefreshNotifier() {
-    _sub = Supabase.instance.client.auth.onAuthStateChange.listen((_) {
+    _sub = Supabase.instance.client.auth.onAuthStateChange.listen((event) async {
       AuthSession.clearOpsCache();
+      if (event.session == null) {
+        AuthSession.clearRoleCache();
+        notifyListeners();
+        return;
+      }
+      notifyListeners();
+      await AuthSession.resolveRole();
       notifyListeners();
     });
+    if (AuthSession.currentUser != null) {
+      unawaited(AuthSession.resolveRole().then((_) => notifyListeners()));
+    }
   }
 
   late final StreamSubscription<AuthState> _sub;

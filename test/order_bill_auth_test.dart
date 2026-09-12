@@ -4,7 +4,7 @@ import 'package:hotpotchef_new/utils/network.dart';
 
 void main() {
   group('orderBillBreakdown', () {
-    test('reconstructs a ₹30 delivery fee from the paid total', () {
+    test('does not invent a ₹20 packaging fee when the column is missing', () {
       final bill = orderBillBreakdown(
         items: [
           {'title': 'Veg Biryani', 'price': 150, 'quantity': 1},
@@ -13,8 +13,8 @@ void main() {
         hasDelivery: true,
       );
       expect(bill.itemsTotal, 150);
-      expect(bill.packagingFee, 20);
-      expect(bill.deliveryFee, 30);
+      expect(bill.packagingFee, 0);
+      expect(bill.deliveryFee, 50);
       expect(bill.grandTotal, 200);
     });
 
@@ -39,8 +39,8 @@ void main() {
         hasDelivery: true,
       );
       expect(bill.itemsTotal, 151);
-      expect(bill.packagingFee, 20);
-      expect(bill.deliveryFee, 40);
+      expect(bill.packagingFee, 0);
+      expect(bill.deliveryFee, 60);
       expect(bill.grandTotal, 211);
     });
 
@@ -191,7 +191,25 @@ void main() {
         hasDelivery: false,
       );
       expect(bill.deliveryFee, 0);
+      expect(bill.packagingFee, 20);
       expect(bill.grandTotal, 170);
+    });
+
+    test('treats leftover after a stored delivery fee as packaging, not a hardcoded ₹20', () {
+      final bill = orderBillBreakdown(
+        items: [
+          {'price': 150, 'quantity': 1},
+        ],
+        order: {
+          'total_price': 200,
+          'delivery_fee': 30,
+          'order_type': 'Delivery Partner',
+        },
+        hasDelivery: true,
+      );
+      expect(bill.packagingFee, 20);
+      expect(bill.deliveryFee, 30);
+      expect(bill.grandTotal, 200);
     });
   });
 

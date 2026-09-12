@@ -455,6 +455,17 @@ String driverFacingOrderNotes(String? raw) {
   return _notesWithoutDeliveryPin(raw);
 }
 
+/// Realtime `orders` rows include `delivery_otp`; kitchens must not see the PIN.
+Map<String, dynamic> chefFacingOrderRow(Map<String, dynamic> order) {
+  final copy = Map<String, dynamic>.from(order);
+  copy.remove('delivery_otp');
+  final notes = copy['special_instructions']?.toString();
+  if (notes != null && notes.isNotEmpty) {
+    copy['special_instructions'] = kitchenFacingOrderNotes(notes);
+  }
+  return copy;
+}
+
 String _notesWithoutDeliveryPin(String? raw) {
   final text = (raw ?? '').trim();
   if (text.isEmpty) return '';
@@ -2862,10 +2873,13 @@ String soldOutCheckoutMessage({required bool charged, bool refunded = false}) {
 }
 
 String checkoutErrorMessage(Object error) {
-  var text = networkErrorMessage(error).trim();
+  final networked = networkErrorMessage(error).trim();
+  if (!isGenericNetworkFallback(networked)) return networked;
+  var text = error.toString().trim();
   if (text.startsWith('Exception: ')) {
-    text = text.substring('Exception: '.length);
+    text = text.substring('Exception: '.length).trim();
   }
+  if (text.isEmpty) return networked;
   return text;
 }
 
@@ -3039,7 +3053,14 @@ List<Map<String, dynamic>> checkoutCartPayload(
 }
 
 double parseMoney(dynamic value, [double fallback = 0]) {
-  return double.tryParse(value?.toString() ?? '') ?? fallback;
+  return tryParseMoney(value) ?? fallback;
+}
+
+double? tryParseMoney(dynamic value) {
+  if (value == null) return null;
+  final text = value.toString().trim();
+  if (text.isEmpty) return null;
+  return double.tryParse(text);
 }
 
 double packagingOrderTotal(double unitPrice, int quantity) {
@@ -3063,9 +3084,10 @@ bool isOpenPackagingSupplyRequest(Map<String, dynamic>? request) {
   if (status.contains('cancel') ||
       status.contains('close') ||
       status.contains('reject') ||
-      status.contains('deliver') ||
       status.contains('fulfill') ||
-      status.contains('complete')) {
+      status.contains('fulfilled') ||
+      status == 'completed' ||
+      status.contains('completed')) {
     return false;
   }
   return true;
@@ -3573,7 +3595,17 @@ int cookedMealCountFromOrders(Iterable<dynamic> rows) {
   for (final row in rows) {
     if (row is! Map) continue;
     final status = row['status']?.toString().toLowerCase() ?? '';
-    if (status.contains('deliver') || status.contains('complet')) count++;
+    if (status.contains('cancel') || status.contains('reject')) continue;
+    if (status.contains('out for delivery') || status.contains('out_for_delivery')) {
+      count++;
+      continue;
+    }
+    if (status.contains('delivered') ||
+        status.contains('completed') ||
+        status.contains('ready') ||
+        status.contains('assigned')) {
+      count++;
+    }
   }
   return count;
 }
@@ -4051,10 +4083,11 @@ OrderBillBreakdown orderBillBreakdown({
       : null;
 
   final paidTotal = parseMoney(source['total_price'] ?? source['total_amount'] ?? source['grand_total']);
-  final packaging = parseMoney(source['packaging_fee'], 20);
+  final storedPackaging = tryParseMoney(source['packaging_fee']);
+  var packaging = storedPackaging ?? 0;
   final tip = parseMoney(source['tip_amount'] ?? source['tip']);
   var coins = parseMoney(source['coins_applied']);
-  final storedDelivery = double.tryParse(source['delivery_fee']?.toString() ?? '');
+  final storedDelivery = tryParseMoney(source['delivery_fee']);
 
   final service = (source['order_type'] ?? source['service_type'] ?? '').toString().toLowerCase();
   final deliveryExpected = hasDelivery || service.contains('delivery');
@@ -4068,7 +4101,12 @@ OrderBillBreakdown orderBillBreakdown({
     delivery = paidTotal - itemsTotal - packaging - tip + coins;
     if (delivery < 0) delivery = 0;
   } else {
-    delivery = 30;
+    delivery = 0;
+  }
+
+  if (storedPackaging == null && paidTotal > 0) {
+    final remainder = paidTotal - itemsTotal - delivery - tip + coins;
+    if (remainder > 0.5) packaging = remainder;
   }
 
   final extras = packaging + delivery + tip;

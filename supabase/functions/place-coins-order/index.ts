@@ -60,7 +60,7 @@ serve(async (req) => {
       }, 400)
     }
     const foodOnly = asNumber(pricing?.items_total ?? pricing?.item_total, 0)
-    const packaging = asNumber(pricing?.packaging_fee, 20)
+    const packaging = asNumber(pricing?.packaging_fee, 0)
     const billBeforeCoins = foodOnly + packaging + deliveryFee + tipAmount
     if (foodOnly <= 0) {
       return jsonResponse({ success: false, error: 'Cart prices could not be verified' }, 400)

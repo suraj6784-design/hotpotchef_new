@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/cart_enums.dart';
 import '../providers/cart_provider.dart';
 import '../utils/helpers.dart';
+import 'order_lifecycle.dart';
 
 class ReorderResult {
   final int added;
@@ -29,8 +30,7 @@ const List<String> kWeekdayFull = [
 ];
 
 bool isSuccessfulPastOrder(Map<String, dynamic>? order) {
-  final status = order?['status']?.toString().toLowerCase() ?? '';
-  return status.contains('deliver') || status.contains('complet');
+  return OrderLifecycle.isFulfilled(order?['status']?.toString());
 }
 
 List<Map<String, dynamic>> orderItemsForReorder(Map<String, dynamic>? order) {

@@ -19,7 +19,7 @@ enum DeliveryStatus {
     final s = val?.toLowerCase().trim() ?? '';
     if (s.contains('cancel')) return DeliveryStatus.cancelled;
     if (s.contains('out')) return DeliveryStatus.outForDelivery;
-    if (s.contains('deliver') || s.contains('completed')) return DeliveryStatus.delivered;
+    if (s.contains('delivered') || s.contains('completed')) return DeliveryStatus.delivered;
     if (s.contains('assigned') || s == 'accepted') return DeliveryStatus.accepted;
     if (s.contains('ready')) return DeliveryStatus.readyForPickup;
     if (s.contains('pickup') || s.contains('picked')) return DeliveryStatus.pickedUp;

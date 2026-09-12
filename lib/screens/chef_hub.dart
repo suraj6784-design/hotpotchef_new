@@ -95,7 +95,11 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   void _ensureHubStreams() {
     final uid = _currentUserId;
     if (uid.isEmpty || _ordersStream != null) return;
-    _ordersStream = _supabase.from('orders').stream(primaryKey: ['id']).eq('chef_id', uid);
+    _ordersStream = _supabase
+        .from('orders')
+        .stream(primaryKey: ['id'])
+        .eq('chef_id', uid)
+        .map((rows) => rows.map(chefFacingOrderRow).toList());
     _requestsStream = _supabase.from('customer_requests').stream(primaryKey: ['id']);
     _myQuotesStream =
         _supabase.from('customer_request_quotes').stream(primaryKey: ['id']).eq('chef_id', uid);

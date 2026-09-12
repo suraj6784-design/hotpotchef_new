@@ -18,6 +18,7 @@ Map<String, dynamic> _live(Map<String, dynamic> extra) {
 void main() {
   group('flashableOfferMeals', () {
     test('keeps live catalog offers and promo codes, skips sold-out and private rows', () {
+      final now = DateTime(2026, 9, 12, 19, 0);
       final offers = flashableOfferMeals([
         _live({
           'id': '1',
@@ -43,7 +44,7 @@ void main() {
           'quantity': 2,
           'promo_code': 'HOME20',
         }),
-      ]);
+      ], now: now);
 
       expect(offers, hasLength(1));
       expect(offers.single['id'], '1');

@@ -32,5 +32,13 @@ void main() {
     expect(cookedMealsLabel(0), 'New kitchen');
     expect(cookedMealsLabel(1), 'Cooked 1 meal');
     expect(cookedMealsLabel(12), 'Cooked 12 meals');
+    expect(
+      cookedMealCountFromOrders([
+        {'status': 'Out for Delivery'},
+        {'status': 'Delivered'},
+        {'status': 'Pending Chef Approval'},
+      ]),
+      2,
+    );
   });
 }

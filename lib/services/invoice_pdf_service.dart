@@ -103,6 +103,17 @@ class InvoicePdfService {
         date: date,
         items: items,
         bill: bill,
+        orderBill: orderBillBreakdown(
+          items: items,
+          order: {
+            'packaging_fee': packagingFee,
+            'delivery_fee': deliveryFee,
+            'tip_amount': tipAmount,
+            'coins_applied': coinsApplied,
+            'total_price': itemsTotal + packagingFee + deliveryFee + tipAmount - coinsApplied,
+            'order_type': deliveryFee > 0 ? 'Delivery' : 'Pickup',
+          },
+        ),
         logo: await _logoImage(),
       );
       final dir = await getTemporaryDirectory();
@@ -173,9 +184,9 @@ class InvoicePdfService {
     required String date,
     required List<Map<String, dynamic>> items,
     required GstInvoiceBreakdown bill,
+    required OrderBillBreakdown orderBill,
     pw.MemoryImage? logo,
   }) async {
-    final orderBill = orderBillBreakdown(items: items);
     final pdf = pw.Document();
     pdf.addPage(
       pw.Page(
