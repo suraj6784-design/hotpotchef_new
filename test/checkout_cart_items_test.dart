@@ -108,4 +108,13 @@ void main() {
       expect(resolveCustomerEmail(authEmail: null), isNull);
     });
   });
+
+  group('mealDisplayTitle', () {
+    test('prefers catalog title over name, then generic fallback', () {
+      expect(mealDisplayTitle({'title': 'Puran Poli', 'name': 'legacy'}), 'Puran Poli');
+      expect(mealDisplayTitle({'name': 'Legacy Thali'}), 'Legacy Thali');
+      expect(mealDisplayTitle({'title': '  ', 'name': null}), 'Meal Item');
+      expect(mealDisplayTitle({}), 'Meal Item');
+    });
+  });
 }
