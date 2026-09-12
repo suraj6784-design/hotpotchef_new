@@ -25,6 +25,7 @@ import '../widgets/avatar_upload.dart';
 import '../widgets/loyalty_badge_card.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/change_password_dialog.dart';
+import '../widgets/premium_profile_template.dart';
 
 class CustomerProfileScreen extends ConsumerStatefulWidget {
   final VoidCallback? onLogout;
@@ -598,7 +599,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
             .select()
             .eq('user_id', user.id)
             .order('created_at', ascending: false)
-            .limit(40) as List,
+            .limit(80) as List,
       );
     } catch (_) {}
 
@@ -616,7 +617,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
               .select(columns)
               .eq('customer_id', user.id)
               .order('created_at', ascending: false)
-              .limit(40) as List,
+              .limit(80) as List,
         );
         break;
       } catch (_) {}
@@ -812,17 +813,17 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
+                                    if ((entry.orderRef ?? '').isNotEmpty)
+                                      Text(
+                                        coinWalletOrderNumber(entry.orderRef),
+                                        style: TextStyle(color: muted, fontSize: 11, fontWeight: FontWeight.w800),
+                                      ),
                                     if ((entry.detail ?? '').isNotEmpty)
                                       Text(
                                         entry.detail!,
                                         style: TextStyle(color: muted, fontSize: 11, fontWeight: FontWeight.w600),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
-                                      )
-                                    else if ((entry.orderRef ?? '').isNotEmpty)
-                                      Text(
-                                        'Order ${entry.orderRef}',
-                                        style: TextStyle(color: muted, fontSize: 11, fontWeight: FontWeight.w700),
                                       ),
                                     Text(
                                       formatOrderDate(entry.at?.toIso8601String()),
@@ -1114,8 +1115,6 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     if (_supabase.auth.currentUser == null) {
       return Scaffold(
         appBar: AppBar(
@@ -1148,279 +1147,182 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
         if (didPop) return;
         _handleSafeBack();
       },
-      child: Scaffold(
-        backgroundColor: AppTheme.canvasOf(context),
-        appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: _handleSafeBack,
-          ),
-          title: Row(
-            mainAxisSize: MainAxisSize.min,
+      child: PremiumProfileScaffold(
+        workspace: ProfileWorkspace.diner,
+        displayName: _nameController.text.isEmpty ? 'Valued diner' : _nameController.text,
+        avatar: AvatarUploadWidget(
+          initialAvatarUrl: _avatarUrl,
+          isEditing: false,
+          onUploadComplete: (newUrl) => setState(() => _avatarUrl = newUrl),
+        ),
+        loading: _isLoading,
+        onBack: _handleSafeBack,
+        onLogout: _handleLogout,
+        body: SingleChildScrollView(
+          child: Column(
             children: [
-              const AppLogo(size: 24),
-              const SizedBox(width: 8),
-              const Text('Account'),
+              PremiumProfileHero(
+                workspace: ProfileWorkspace.diner,
+                displayName: _nameController.text.isEmpty ? 'Valued diner' : _nameController.text,
+                subtitle: _phoneController.text.isEmpty ? 'Add a phone number' : _phoneController.text,
+                meta: _email,
+                avatar: AvatarUploadWidget(
+                  initialAvatarUrl: _avatarUrl,
+                  isEditing: false,
+                  onUploadComplete: (newUrl) => setState(() => _avatarUrl = newUrl),
+                ),
+                onEdit: _showEditProfileSheet,
+                editLabel: 'Edit profile & diet',
+              ),
+              PremiumProfileStatsRow(
+                stats: [
+                  PremiumProfileStat(label: 'Orders', value: '$_orderCount'),
+                  PremiumProfileStat(label: 'Coins', value: '₹${_hotpotCoins.toInt()}'),
+                  PremiumProfileStat(label: 'Saved drops', value: '${_addresses.length}'),
+                ],
+              ),
+              const LoyaltyBadgeCard(),
+              PremiumProfileSection(
+                title: 'Dining',
+                caption: 'Orders, coins, and your table preferences.',
+                children: [
+                  PremiumProfileTile(
+                    icon: Icons.card_giftcard_outlined,
+                    title: 'Refer & earn',
+                    subtitle: 'Invite friends and earn HotPot Coins',
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReferralScreen())),
+                  ),
+                  PremiumProfileTile(
+                    icon: Icons.tune_rounded,
+                    title: 'Personalise your plate',
+                    subtitle:
+                        '$_dietaryPref • ${_allergiesController.text.isEmpty ? 'No allergies noted' : _allergiesController.text}',
+                    onTap: _showEditProfileSheet,
+                  ),
+                  PremiumProfileTile(
+                    icon: Icons.shopping_bag_outlined,
+                    title: 'Order history',
+                    subtitle: 'Completed & past orders: $_orderCount',
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const CustomerOrderHistoryScreen()),
+                    ),
+                  ),
+                  PremiumProfileTile(
+                    icon: Icons.event_repeat_outlined,
+                    title: 'Weekly plans',
+                    subtitle: 'Standing tiffin days',
+                    onTap: () => context.push('/customer-plans'),
+                  ),
+                  PremiumProfileTile(
+                    icon: Icons.forum_outlined,
+                    title: 'Order chats',
+                    subtitle: 'Reopen an Order# group',
+                    onTap: () => context.push('/chats'),
+                  ),
+                  PremiumProfileTile(
+                    icon: Icons.campaign_outlined,
+                    title: 'Bulk / catering',
+                    subtitle: 'Broadcast a larger order nearby',
+                    onTap: () => context.push('/bulk-request'),
+                  ),
+                  PremiumProfileTile(
+                    icon: Icons.confirmation_number_outlined,
+                    title: 'Support tickets',
+                    subtitle: _supportTicketsSubtitle,
+                    onTap: () => context.push('/support-tickets'),
+                    showDivider: false,
+                  ),
+                ],
+              ),
+              PremiumProfileSection(
+                title: 'Wallet & delivery',
+                children: [
+                  PremiumProfileTile(
+                    icon: Icons.account_balance_wallet_outlined,
+                    title: 'HotPot Wallet',
+                    subtitle: '₹${_hotpotCoins.toInt()} coins · tap for Order # history',
+                    onTap: _showWalletDialog,
+                  ),
+                  PremiumProfileTile(
+                    icon: Icons.payments_outlined,
+                    title: 'Payment options',
+                    subtitle: '${customerPayMethodLabel(_preferredPayMethod)} · Razorpay',
+                    onTap: _showPaymentOptionsSheet,
+                  ),
+                  PremiumProfileTile(
+                    icon: Icons.location_on_outlined,
+                    title: 'Addresses',
+                    subtitle: '${_addresses.length} saved drops',
+                    onTap: _showAddressesSheet,
+                    showDivider: false,
+                  ),
+                ],
+              ),
+              PremiumProfileSection(
+                title: 'Trust & help',
+                children: [
+                  PremiumProfileTile(
+                    icon: Icons.lock_outline_rounded,
+                    title: 'Change password',
+                    onTap: _showChangePasswordDialog,
+                  ),
+                  PremiumProfileTile(
+                    icon: Icons.article_outlined,
+                    title: 'Terms & conditions',
+                    onTap: () => openLegalDocument(context, LegalDocumentType.terms),
+                  ),
+                  PremiumProfileTile(
+                    icon: Icons.help_outline_rounded,
+                    title: 'FAQs',
+                    onTap: () => openLegalDocument(context, LegalDocumentType.faq),
+                  ),
+                  PremiumProfileTile(
+                    icon: Icons.privacy_tip_outlined,
+                    title: 'Privacy policy',
+                    onTap: () => openLegalDocument(context, LegalDocumentType.privacy),
+                  ),
+                  if (_isPlatformOps)
+                    PremiumProfileTile(
+                      icon: Icons.admin_panel_settings_outlined,
+                      title: 'Admin desk',
+                      subtitle: 'Catalog, accounts, tickets',
+                      onTap: () => context.push('/platform-ops'),
+                    ),
+                  PremiumProfileTile(
+                    icon: Icons.chat_bubble_outline_rounded,
+                    title: 'Contact us',
+                    onTap: () => showContactSupportSheet(context),
+                  ),
+                  PremiumProfileTile(
+                    icon: Icons.download_outlined,
+                    title: 'Request data export',
+                    subtitle: 'Ask ops for a copy of your account',
+                    onTap: _requestDataExport,
+                  ),
+                  PremiumProfileTile(
+                    icon: Icons.person_off_outlined,
+                    title: 'Request account deletion',
+                    onTap: _requestAccountDeletion,
+                  ),
+                  PremiumProfileTile(
+                    icon: Icons.event_busy_outlined,
+                    title: 'Cancellation policy',
+                    onTap: () => openLegalDocument(context, LegalDocumentType.cancellation),
+                  ),
+                  PremiumProfileTile(
+                    icon: Icons.star_outline_rounded,
+                    title: 'Rate us on Play Store',
+                    onTap: launchPlayStore,
+                    showDivider: false,
+                  ),
+                ],
+              ),
+              PremiumProfileLogoutButton(onPressed: _handleLogout),
+              const PremiumProfileVersionFooter(),
             ],
           ),
-          centerTitle: true,
-          actions: [
-            IconButton(
-              tooltip: 'Log out',
-              icon: const Icon(Icons.logout, color: AppTheme.textMuted),
-              onPressed: _handleLogout,
-            ),
-          ],
         ),
-        body: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
-            : SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          AvatarUploadWidget(
-                            initialAvatarUrl: _avatarUrl,
-                            isEditing: false,
-                            onUploadComplete: (newUrl) {
-                              setState(() => _avatarUrl = newUrl);
-                            },
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _nameController.text.isEmpty ? 'Valued Customer' : _nameController.text,
-                                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: isDark ? Colors.white : AppTheme.textMain),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  _phoneController.text.isEmpty ? 'Add phone number' : _phoneController.text,
-                                  style: TextStyle(fontSize: 13, color: AppTheme.textMuted),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(_email,
-                                    style: TextStyle(fontSize: 12, color: isDark ? AppTheme.textMuted : AppTheme.textMuted),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis),
-                                const SizedBox(height: 8),
-                                GestureDetector(
-                                  onTap: _showEditProfileSheet,
-                                  child: const Text('Edit Profile & Dietary Info',
-                                      style: TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 13)),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const LoyaltyBadgeCard(),
-
-                    _buildListTile(
-                      icon: Icons.card_giftcard,
-                      title: 'Refer & Earn',
-                      subtitle: 'Invite friends and earn HotPot Coins',
-                      isDark: isDark,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const ReferralScreen()),
-                        );
-                      },
-                    ),
-                    Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
-
-                    _buildListTile(
-                      icon: Icons.tune,
-                      title: 'Personalise Your Experience',
-                      subtitle: '$_dietaryPref • ${_allergiesController.text.isEmpty ? 'No Allergies Noted' : _allergiesController.text}',
-                      isDark: isDark,
-                      onTap: _showEditProfileSheet,
-                    ),
-                    Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
-
-                    _buildListTile(
-                      icon: Icons.shopping_bag_outlined,
-                      title: 'Order History',
-                      subtitle: 'Total completed / past orders: $_orderCount',
-                      isDark: isDark,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const CustomerOrderHistoryScreen()),
-                        );
-                      },
-                    ),
-                    Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
-                    _buildListTile(
-                      icon: Icons.event_repeat,
-                      title: 'My weekly plans',
-                      subtitle: 'Standing tiffin days — add today\'s box when you want it',
-                      isDark: isDark,
-                      onTap: () => context.push('/customer-plans'),
-                    ),
-                    Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
-                    _buildListTile(
-                      icon: Icons.forum_outlined,
-                      title: 'Order chats',
-                      subtitle: 'Reopen an Order# group without hunting through history',
-                      isDark: isDark,
-                      onTap: () => context.push('/chats'),
-                    ),
-                    Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
-                    _buildListTile(
-                      icon: Icons.campaign_outlined,
-                      title: 'Bulk / catering request',
-                      subtitle: 'Broadcast a larger order to nearby kitchens',
-                      isDark: isDark,
-                      onTap: () => context.push('/bulk-request'),
-                    ),
-                    Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
-                    _buildListTile(
-                      icon: Icons.confirmation_number_outlined,
-                      title: 'My support tickets',
-                      subtitle: _supportTicketsSubtitle,
-                      isDark: isDark,
-                      onTap: () => context.push('/support-tickets'),
-                    ),
-                    Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
-
-                    _buildListTile(
-                      icon: Icons.account_balance_wallet_outlined,
-                      title: 'HotPot Wallet',
-                      subtitle: 'HotPot Coins Available: ₹${_hotpotCoins.toInt()} (Tap for history)',
-                      isDark: isDark,
-                      onTap: _showWalletDialog,
-                    ),
-                    Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
-
-                    _buildListTile(
-                      icon: Icons.payments_outlined,
-                      title: 'Payment options',
-                      subtitle:
-                          '${customerPayMethodLabel(_preferredPayMethod)} · UPI, card & net banking via Razorpay',
-                      isDark: isDark,
-                      onTap: _showPaymentOptionsSheet,
-                    ),
-                    Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
-
-                    _buildListTile(
-                      icon: Icons.location_on_outlined,
-                      title: 'Addresses',
-                      subtitle: '${_addresses.length} Saved Addresses',
-                      isDark: isDark,
-                      onTap: _showAddressesSheet,
-                    ),
-
-                    Container(height: 8, color: isDark ? const Color(0xFF1A1A1A) : Colors.grey.shade100, margin: const EdgeInsets.symmetric(vertical: 16)),
-
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                      child: Text('Settings & Help', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : AppTheme.textMain)),
-                    ),
-                    _buildListTile(icon: Icons.lock_outline, title: 'Change Password', onTap: _showChangePasswordDialog, isDark: isDark),
-                    Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
-                    _buildListTile(
-                      icon: Icons.article_outlined,
-                      title: 'Terms & conditions',
-                      onTap: () => openLegalDocument(context, LegalDocumentType.terms),
-                      isDark: isDark,
-                    ),
-                    Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
-                    _buildListTile(
-                      icon: Icons.help_outline,
-                      title: 'FAQs',
-                      onTap: () => openLegalDocument(context, LegalDocumentType.faq),
-                      isDark: isDark,
-                    ),
-                    Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
-                    _buildListTile(
-                      icon: Icons.privacy_tip_outlined,
-                      title: 'Privacy policy',
-                      onTap: () => openLegalDocument(context, LegalDocumentType.privacy),
-                      isDark: isDark,
-                    ),
-                    Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
-                    if (_isPlatformOps) ...[
-                      _buildListTile(
-                        icon: Icons.admin_panel_settings_outlined,
-                        title: 'Admin desk',
-                        subtitle: 'Catalog, accounts, tickets, and dashboard',
-                        isDark: isDark,
-                        onTap: () => context.push('/platform-ops'),
-                      ),
-                      Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
-                    ],
-                    _buildListTile(
-                      icon: Icons.chat_bubble_outline,
-                      title: 'Contact Us',
-                      onTap: () => showContactSupportSheet(context),
-                      isDark: isDark,
-                    ),
-                    Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
-                    _buildListTile(
-                      icon: Icons.download_outlined,
-                      title: 'Request data export',
-                      subtitle: 'Ask ops for a copy of your account data',
-                      isDark: isDark,
-                      onTap: _requestDataExport,
-                    ),
-                    Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
-                    _buildListTile(
-                      icon: Icons.person_off_outlined,
-                      title: 'Request account deletion',
-                      subtitle: 'Marks your account for removal review',
-                      isDark: isDark,
-                      onTap: _requestAccountDeletion,
-                    ),
-                    Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
-                    _buildListTile(
-                      icon: Icons.notifications_none,
-                      title: 'Cancellation & Reschedule Policy',
-                      onTap: () => openLegalDocument(context, LegalDocumentType.cancellation),
-                      isDark: isDark,
-                    ),
-                    Divider(color: isDark ? Colors.white10 : Colors.grey.shade200, height: 1, indent: 64),
-                    _buildListTile(
-                      icon: Icons.star_outline,
-                      title: 'Rate us on Play Store',
-                      onTap: launchPlayStore,
-                      isDark: isDark,
-                    ),
-
-                    Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.redAccent,
-                          side: const BorderSide(color: Colors.redAccent, width: 1.5),
-                          minimumSize: const Size(double.infinity, 54),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        ),
-                        icon: const Icon(Icons.logout),
-                        label: const Text('Log Out of Account', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                        onPressed: _handleLogout,
-                      ),
-                    ),
-
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8),
-                      child: Center(
-                        child: Text('App Version: 1.0.0 (Build 12)', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
-                      ),
-                    ),
-                    const SizedBox(height: 40),
-                  ],
-                ),
-              ),
       ),
     );
   }

@@ -15,6 +15,7 @@ import '../utils/pinned_address.dart';
 import '../utils/gst_invoice.dart';
 import '../widgets/avatar_upload.dart';
 import '../widgets/change_password_dialog.dart';
+import '../widgets/premium_profile_template.dart';
 
 class DriverProfileScreen extends StatefulWidget {
   const DriverProfileScreen({super.key});
@@ -314,119 +315,93 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? AppTheme.backgroundDark : AppTheme.background;
-    final surface = isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight;
     final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
     final muted = isDark ? AppTheme.textMuted : AppTheme.textMuted;
     final fill = isDark ? AppTheme.surfaceMutedDark : Colors.white;
-    final divider = isDark ? Colors.white24 : Colors.black12;
-    final verified = isDark ? Colors.lightBlueAccent : Colors.blue.shade700;
 
-    return Scaffold(
-      backgroundColor: bg,
-      appBar: AppBar(
-        title: Text('Driver Profile', style: TextStyle(fontWeight: FontWeight.bold, color: titleColor)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        iconTheme: IconThemeData(color: titleColor),
-        actions: [
-          TextButton.icon(
-            icon: Icon(_isEditing ? Icons.close : Icons.edit, color: AppTheme.primary, size: 18),
-            label: Text(_isEditing ? 'Cancel' : 'Edit', style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold)),
-            onPressed: () => setState(() => _isEditing = !_isEditing),
-          ),
-        ],
+    return PremiumProfileScaffold(
+      workspace: ProfileWorkspace.driver,
+      displayName: _nameController.text.isEmpty ? 'Delivery partner' : _nameController.text,
+      avatar: AvatarUploadWidget(
+        initialAvatarUrl: _avatarUrl,
+        isEditing: _isEditing,
+        onUploadComplete: (newUrl) => setState(() => _avatarUrl = newUrl),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
-          : Form(
-              key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  Card(
-                    color: surface,
-                    elevation: isDark ? 0 : 1,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        children: [
-                          Row(
-                            children: [
-                              AvatarUploadWidget(
-                                initialAvatarUrl: _avatarUrl,
-                                isEditing: _isEditing,
-                                onUploadComplete: (newUrl) => setState(() => _avatarUrl = newUrl),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      _nameController.text.isEmpty ? 'Delivery Partner' : _nameController.text,
-                                      style: TextStyle(color: titleColor, fontSize: 18, fontWeight: FontWeight.bold),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      _phoneController.text.isEmpty ? 'Contact pending' : _phoneController.text,
-                                      style: TextStyle(color: muted, fontSize: 13),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                      decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(6)),
-                                      child: Text('Verified Driver',
-                                          style: TextStyle(color: verified, fontSize: 10, fontWeight: FontWeight.bold)),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+      loading: _isLoading,
+      headerActions: [
+        TextButton(
+          onPressed: () => setState(() => _isEditing = !_isEditing),
+          child: Text(_isEditing ? 'Cancel' : 'Edit', style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.w800)),
+        ),
+      ],
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.only(bottom: 28),
+          children: [
+            PremiumProfileHero(
+              workspace: ProfileWorkspace.driver,
+              displayName: _nameController.text.isEmpty ? 'Delivery partner' : _nameController.text,
+              subtitle: _phoneController.text.isEmpty ? 'Contact pending' : _phoneController.text,
+              badgeLabel: 'Verified partner',
+              avatar: AvatarUploadWidget(
+                initialAvatarUrl: _avatarUrl,
+                isEditing: _isEditing,
+                onUploadComplete: (newUrl) => setState(() => _avatarUrl = newUrl),
+              ),
+              onEdit: () => setState(() => _isEditing = !_isEditing),
+              editLabel: _isEditing ? 'Stop editing' : 'Edit partner profile',
+            ),
+            PremiumProfileStatsRow(
+              stats: [
+                PremiumProfileStat(label: 'Home pin', value: _latitude != null ? 'Pinned' : 'Needed'),
+                PremiumProfileStat(label: 'Vehicle', value: _vehicleType.contains('Electric') ? 'EV' : (_vehicleType.contains('Bicycle') ? 'Cycle' : '2W')),
+                PremiumProfileStat(label: 'Blood', value: _bloodGroup),
+              ],
+            ),
+            PremiumProfileSection(
+              title: 'Partner tools',
+              caption: 'Show your Digital ID at hubs. Keep the account password current.',
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primary,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: AppTheme.radiusMd),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
                           ),
-                          const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.blue.shade600,
-                                    foregroundColor: Colors.white,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                  ),
-                                  icon: const Icon(Icons.badge_outlined, size: 18),
-                                  label: const Text('Digital ID', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                                  onPressed: _showDigitalIDCard,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: isDark ? Colors.grey.shade800 : AppTheme.surfaceMutedLight,
-                                    foregroundColor: isDark ? Colors.white : AppTheme.textMain,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                  ),
-                                  icon: const Icon(Icons.lock_reset, size: 18),
-                                  label: const Text('Password', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                                  onPressed: _showChangePasswordDialog,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
+                          icon: const Icon(Icons.badge_outlined, size: 18),
+                          label: const Text('Digital ID', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                          onPressed: _showDigitalIDCard,
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppTheme.onSurfaceOf(context),
+                            shape: RoundedRectangleBorder(borderRadius: AppTheme.radiusMd),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          icon: const Icon(Icons.lock_reset, size: 18),
+                          label: const Text('Password', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                          onPressed: _showChangePasswordDialog,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 20),
-
-                  // Personal Info
-                  const Text('Personal & Identity Info (Govt. Compliance)',
-                      style: TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 15)),
-                  const SizedBox(height: 12),
+                ),
+              ],
+            ),
+            PremiumProfileFormSection(
+              title: 'Identity',
+              caption: 'Name and contacts must match government ID for partner verification.',
+              children: [
                   _buildTextField(
                     controller: _nameController,
                     label: 'Full Name (as per Govt ID) *',
@@ -506,32 +481,14 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                       return null;
                     },
                   ),
-                  Divider(height: 32, color: divider),
-
-                  // Residential Address
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Permanent / Residential Address',
-                          style: TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 15)),
-                      Row(
-                        children: [
-                          Icon(_latitude != null ? Icons.check_circle : Icons.warning_amber_rounded,
-                              size: 14, color: _latitude != null ? Colors.green : Colors.orange),
-                          const SizedBox(width: 4),
-                          Text(
-                            _latitude != null ? 'Geo-Pinned' : 'Missing Pin',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _latitude != null ? Colors.green : Colors.orange),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text('Required for background verification and local RTO compliance.',
-                      style: TextStyle(color: muted, fontSize: 12)),
-                  const SizedBox(height: 16),
-
+              ],
+            ),
+            PremiumProfileFormSection(
+              title: 'Home address',
+              caption: _latitude != null
+                  ? 'Pinned for background checks and local compliance.'
+                  : 'Pin your home so verification and RTO checks can complete.',
+              children: [
                   if (_isEditing)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 16),
@@ -603,12 +560,12 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                       ),
                     ],
                   ),
-                  Divider(height: 32, color: divider),
-
-                  // Vehicle & License Details
-                  const Text('Vehicle & License Details (MoRTH / RTO)',
-                      style: TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 15)),
-                  const SizedBox(height: 12),
+              ],
+            ),
+            PremiumProfileFormSection(
+              title: 'Vehicle & licence',
+              caption: 'Registration and DL stay on your partner card.',
+              children: [
                   DropdownButtonFormField<String>(
                     value: _vehicleType,
                     dropdownColor: fill,
@@ -649,21 +606,25 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                     label: 'Vehicle Insurance Policy Number',
                     prefixIcon: Icons.security,
                   ),
-                  const SizedBox(height: 32),
-
-                  if (_isPlatformOps) ...[
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.admin_panel_settings_outlined, color: AppTheme.primary),
-                      title: const Text('Admin desk', style: TextStyle(fontWeight: FontWeight.w700)),
-                      subtitle: const Text('Catalog, accounts, tickets, and dashboard'),
-                      onTap: () => context.push('/platform-ops'),
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-
-                  if (_isEditing)
-                    ElevatedButton.icon(
+              ],
+            ),
+            if (_isPlatformOps)
+              PremiumProfileSection(
+                title: 'Platform',
+                children: [
+                  PremiumProfileTile(
+                    icon: Icons.admin_panel_settings_outlined,
+                    title: 'Admin desk',
+                    subtitle: 'Catalog, accounts, tickets, and dashboard',
+                    onTap: () => context.push('/platform-ops'),
+                    showDivider: false,
+                  ),
+                ],
+              ),
+            if (_isEditing)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppTheme.primary,
                         foregroundColor: Colors.white,
@@ -673,12 +634,14 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                       icon: const Icon(Icons.save),
                       label: _isSaving
                           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : const Text('Save Driver Compliance Details', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          : const Text('Save partner profile', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                       onPressed: _isSaving ? null : _saveProfile,
                     ),
-                ],
               ),
-            ),
+            const PremiumProfileVersionFooter(),
+          ],
+        ),
+      ),
     );
   }
 

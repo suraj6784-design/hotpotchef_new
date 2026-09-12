@@ -15,6 +15,7 @@ import '../utils/gst_invoice.dart';
 import '../utils/network.dart';
 import '../widgets/avatar_upload.dart';
 import '../widgets/change_password_dialog.dart';
+import '../widgets/premium_profile_template.dart';
 import '../services/kitchen_media.dart';
 import '../services/auth_session.dart';
 import 'package:go_router/go_router.dart';
@@ -540,90 +541,66 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     final user = _supabase.auth.currentUser;
     final email = user?.email ?? 'No Email';
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? AppTheme.backgroundDark : AppTheme.background;
     final surface = isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight;
     final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
     final muted = isDark ? AppTheme.textMuted : AppTheme.textMuted;
     final divider = isDark ? Colors.white24 : Colors.black12;
-    final verified = isDark ? Colors.greenAccent : Colors.green.shade700;
+    final avgRating = _reviews.isEmpty
+        ? '—'
+        : (_reviews.map((r) => r.rating).reduce((a, b) => a + b) / _reviews.length).toStringAsFixed(1);
 
-    return Scaffold(
-      backgroundColor: bg,
-      appBar: AppBar(
-        title: Text('Chef Profile & Settings', style: TextStyle(color: titleColor, fontWeight: FontWeight.bold)),
-        backgroundColor: surface,
-        elevation: 0,
-        iconTheme: IconThemeData(color: titleColor),
-        actions: [
-          TextButton.icon(
-            icon: Icon(_isEditing ? Icons.close : Icons.edit, color: AppTheme.primary, size: 18),
-            label: Text(_isEditing ? 'Cancel' : 'Edit', style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold)),
-            onPressed: () => setState(() => _isEditing = !_isEditing),
-          ),
-        ],
+    return PremiumProfileScaffold(
+      workspace: ProfileWorkspace.chef,
+      displayName: _nameController.text.isEmpty ? 'Home kitchen partner' : _nameController.text,
+      avatar: AvatarUploadWidget(
+        initialAvatarUrl: _avatarUrl,
+        isEditing: _isEditing,
+        onUploadComplete: (newUrl) => setState(() => _avatarUrl = newUrl),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
-          : Form(
-              key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  // Profile Identity Header Card
-                  Card(
-                    color: surface,
-                    elevation: isDark ? 0 : 1,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Row(
-                        children: [
-                          AvatarUploadWidget(
-                            initialAvatarUrl: _avatarUrl,
-                            isEditing: _isEditing,
-                            onUploadComplete: (newUrl) => setState(() => _avatarUrl = newUrl),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _nameController.text.isEmpty ? 'Home Kitchen Partner' : _nameController.text,
-                                  style: TextStyle(color: titleColor, fontSize: 18, fontWeight: FontWeight.bold),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(email, style: TextStyle(color: muted, fontSize: 13)),
-                                const SizedBox(height: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: Colors.green.withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    fssaiVerificationLabel(_fssaiVerificationStatus),
-                                    style: TextStyle(color: verified, fontSize: 11, fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Personal Information Section
-                  const Text('Kitchen & Business Credentials',
-                      style: TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 15)),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Diners see your FSSAI number on the kitchen card. Upload a clear photo of the licence for platform verification before publishing meals.',
-                    style: TextStyle(color: muted, fontSize: 12, height: 1.35),
-                  ),
-                  const SizedBox(height: 12),
+      loading: _isLoading,
+      headerActions: [
+        TextButton(
+          onPressed: () => setState(() => _isEditing = !_isEditing),
+          child: Text(_isEditing ? 'Cancel' : 'Edit', style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.w800)),
+        ),
+      ],
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.only(bottom: 28),
+          children: [
+            PremiumProfileHero(
+              workspace: ProfileWorkspace.chef,
+              displayName: _nameController.text.isEmpty ? 'Home kitchen partner' : _nameController.text,
+              subtitle: email,
+              badgeLabel: fssaiVerificationLabel(_fssaiVerificationStatus),
+              avatar: AvatarUploadWidget(
+                initialAvatarUrl: _avatarUrl,
+                isEditing: _isEditing,
+                onUploadComplete: (newUrl) => setState(() => _avatarUrl = newUrl),
+              ),
+              onEdit: () => setState(() => _isEditing = !_isEditing),
+              editLabel: _isEditing ? 'Stop editing' : 'Edit kitchen card',
+            ),
+            PremiumProfileStatsRow(
+              stats: [
+                PremiumProfileStat(
+                  label: 'FSSAI',
+                  value: switch (normalizeFssaiVerificationStatus(_fssaiVerificationStatus)) {
+                    'verified' => 'Verified',
+                    'pending' => 'Review',
+                    'rejected' => 'Retry',
+                    _ => 'Needed',
+                  },
+                ),
+                PremiumProfileStat(label: 'Rating', value: avgRating),
+                PremiumProfileStat(label: 'Pickup', value: _latitude != null ? 'Pinned' : 'Needed'),
+              ],
+            ),
+            PremiumProfileFormSection(
+              title: 'Kitchen credentials',
+              caption: 'Diners see your FSSAI number on the kitchen card. Upload a clear licence photo before publishing meals.',
+              children: [
                   _buildValidatedTextField(
                     controller: _nameController,
                     label: 'Kitchen / Display Name *',
@@ -737,15 +714,12 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                       return null;
                     },
                   ),
-                  Divider(height: 32, color: divider),
-                  const Text('Kitchen story',
-                      style: TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 15)),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Diners see this on your kitchen card. Keep it short and true.',
-                    style: TextStyle(color: muted, fontSize: 12),
-                  ),
-                  const SizedBox(height: 12),
+              ],
+            ),
+            PremiumProfileFormSection(
+              title: 'Kitchen story',
+              caption: 'Diners see this on your kitchen card. Keep it short and true.',
+              children: [
                   Text('Card language (Pune-first)', style: TextStyle(color: muted, fontSize: 12, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 8),
                   Wrap(
@@ -836,31 +810,14 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                       ),
                     ),
                   ],
-                  Divider(height: 32, color: divider),
-
-                  // Kitchen Dispatch Address Section
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Kitchen Pickup Address',
-                          style: TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 15)),
-                      Row(
-                        children: [
-                          Icon(_latitude != null ? Icons.check_circle : Icons.warning_amber_rounded,
-                              size: 14, color: _latitude != null ? Colors.green : Colors.orange),
-                          const SizedBox(width: 4),
-                          Text(
-                            _latitude != null ? 'Coordinates Pinned' : 'Coordinates Missing',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _latitude != null ? Colors.green : Colors.orange),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text('Drivers navigate to these coordinates for food collection.', style: TextStyle(color: muted, fontSize: 12)),
-                  const SizedBox(height: 12),
-
+              ],
+            ),
+            PremiumProfileFormSection(
+              title: 'Kitchen pickup',
+              caption: _latitude != null
+                  ? 'Coordinates pinned — drivers navigate here for collection.'
+                  : 'Pin the kitchen so drivers can collect without calling around.',
+              children: [
                   if (_isEditing)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
@@ -927,20 +884,12 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                       ),
                     ],
                   ),
-                  Divider(height: 36, color: divider),
-
-                  // Automated Settlements & Payout Section
-                  const Text('Automated Bank Payout Routing',
-                      style: TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 15)),
-                  const SizedBox(height: 12),
-                  Card(
-                    color: surface,
-                    elevation: isDark ? 0 : 1,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        children: [
+              ],
+            ),
+            PremiumProfileFormSection(
+              title: 'Payouts',
+              caption: 'Earnings settle to your linked bank account.',
+              children: [
                           ListTile(
                             contentPadding: EdgeInsets.zero,
                             leading: Icon(
@@ -978,35 +927,28 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                             maxLength: 11,
                             inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]'))],
                           ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Account Security Card
-                  Card(
-                    color: surface,
-                    elevation: isDark ? 0 : 1,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    child: ListTile(
-                      leading: Icon(Icons.security, color: muted),
-                      title: Text('Security & Credentials', style: TextStyle(color: titleColor, fontSize: 14, fontWeight: FontWeight.bold)),
-                      subtitle: Text('Update login password', style: TextStyle(color: muted, fontSize: 12)),
-                      trailing: Icon(Icons.chevron_right, color: muted),
-                      onTap: _showChangePasswordDialog,
-                    ),
-                  ),
-                  const SizedBox(height: 28),
-
-                  // Customer Reviews Section
-                  const Text('Customer Reviews & Ratings',
-                      style: TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 15)),
-                  const SizedBox(height: 12),
+              ],
+            ),
+            PremiumProfileSection(
+              title: 'Trust & access',
+              children: [
+                PremiumProfileTile(
+                  icon: Icons.lock_reset_rounded,
+                  title: 'Change password',
+                  subtitle: 'Update login credentials',
+                  onTap: _showChangePasswordDialog,
+                  showDivider: false,
+                ),
+              ],
+            ),
+            PremiumProfileFormSection(
+              title: 'Diner reviews',
+              caption: _reviews.isEmpty ? 'New kitchens earn trust with the first plated reviews.' : null,
+              children: [
                   if (_reviews.isEmpty)
                     Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      child: Center(child: Text('No reviews received yet.', style: TextStyle(color: muted, fontSize: 13))),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text('No reviews received yet.', style: TextStyle(color: muted, fontSize: 13)),
                     )
                   else
                     ListView.builder(
@@ -1052,11 +994,12 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                         );
                       },
                     ),
-
-                  const SizedBox(height: 24),
-
-                  if (_isEditing)
-                    ElevatedButton.icon(
+              ],
+            ),
+            if (_isEditing)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppTheme.primary,
                         foregroundColor: Colors.white,
@@ -1066,13 +1009,14 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                       icon: const Icon(Icons.save_outlined),
                       label: _isSaving
                           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : const Text('Save Profile Changes', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          : const Text('Save kitchen profile', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                       onPressed: _isSaving ? null : _saveProfile,
                     ),
-                  const SizedBox(height: 20),
-                ],
               ),
-            ),
+            const PremiumProfileVersionFooter(),
+          ],
+        ),
+      ),
     );
   }
 
