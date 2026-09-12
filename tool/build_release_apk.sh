@@ -4,11 +4,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 if [[ ! -f .env ]]; then
-  echo "Missing .env — release builds must use --dart-define-from-file=.env" >&2
+  echo "Missing .env - release builds must use --dart-define-from-file=.env" >&2
   exit 1
 fi
 if [[ ! -f android/key.properties ]]; then
-  echo "Missing android/key.properties — debug signing is not allowed for release APKs" >&2
+  echo "Missing android/key.properties - debug signing is not allowed for release APKs" >&2
   exit 1
 fi
 
