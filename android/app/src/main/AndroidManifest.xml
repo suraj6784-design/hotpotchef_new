@@ -30,6 +30,20 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Marketing cart: hotpotchef://app/cart -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="hotpotchef" android:host="app"/>
+            </intent-filter>
+            <!-- Supabase password-reset callback used by auth_screen.dart -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="io.supabase.hotpotchef" android:host="reset-callback"/>
+            </intent-filter>
         </activity>
 
         <meta-data android:name="flutterEmbedding" android:value="2"/>

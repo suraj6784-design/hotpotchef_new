@@ -13,16 +13,35 @@
     return total > 0 ? api.money(total) : '';
   }
 
+  function configuredPlayStoreUrl() {
+    if (window.HOTPOT_PLAY_STORE_URL) return String(window.HOTPOT_PLAY_STORE_URL);
+    if (api && typeof api.playStoreUrl === 'function') {
+      return api.playStoreUrl() || '';
+    }
+    return '';
+  }
+
   function showAppHint(text, showDownload) {
     var hint = document.getElementById('app-open-hint');
     var download = document.getElementById('app-download');
     var getApp = document.getElementById('get-app');
-    if (getApp && api.playStoreUrl) getApp.href = api.playStoreUrl();
+    var playUrl = configuredPlayStoreUrl();
+    if (getApp) {
+      if (playUrl) {
+        getApp.href = playUrl;
+        getApp.hidden = false;
+        getApp.removeAttribute('aria-disabled');
+      } else {
+        getApp.href = '#';
+        getApp.hidden = true;
+        getApp.setAttribute('aria-disabled', 'true');
+      }
+    }
     if (hint) {
       hint.hidden = !text;
       hint.textContent = text || '';
     }
-    if (download) download.hidden = !showDownload;
+    if (download) download.hidden = !showDownload || !playUrl;
   }
 
   function isPhone() {

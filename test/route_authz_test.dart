@@ -36,6 +36,8 @@ void main() {
       expect(RouteAuthz.classify('/chef-publish-meal'), RouteAccess.chef);
       expect(RouteAuthz.classify('/driver-hub'), RouteAccess.driver);
       expect(RouteAuthz.classify('/driver-profile'), RouteAccess.driver);
+      expect(RouteAuthz.classify('/cart'), RouteAccess.guestOrCustomer);
+      expect(RouteAuthz.classify('/app/cart'), RouteAccess.guestOrCustomer);
       expect(RouteAuthz.classify('/chat/meal-1'), RouteAccess.shared);
       expect(RouteAuthz.classify('/tracking'), RouteAccess.shared);
     });
@@ -71,8 +73,10 @@ void main() {
       expect(guest('/customer-profile'), '/auth');
     });
 
-    test('allows guest access to customer hub and auth', () {
+    test('allows guest access to customer hub, cart deep link, and auth', () {
       expect(guest('/customer-hub'), isNull);
+      expect(guest('/cart'), isNull);
+      expect(guest('/app/cart'), isNull);
       expect(guest('/auth'), isNull);
     });
 
@@ -163,6 +167,10 @@ void main() {
       );
       expect(
         RouteAuthz.resolveRedirect(isAuthenticated: true, rawRole: 'chef', path: '/customer-hub'),
+        '/chef-hub',
+      );
+      expect(
+        RouteAuthz.resolveRedirect(isAuthenticated: true, rawRole: 'chef', path: '/cart'),
         '/chef-hub',
       );
       expect(

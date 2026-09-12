@@ -70,6 +70,14 @@ class AppRouter {
         builder: (context, state) => const CustomerHubScreen(),
       ),
       GoRoute(
+        path: '/cart',
+        builder: (context, state) => const CustomerHubScreen(initialTab: 1),
+      ),
+      GoRoute(
+        path: '/app/cart',
+        builder: (context, state) => const CustomerHubScreen(initialTab: 1),
+      ),
+      GoRoute(
         path: '/chef-hub',
         builder: (context, state) => const ChefDashboardScreen(),
       ),
