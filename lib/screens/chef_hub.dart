@@ -9,9 +9,11 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
+import '../utils/chat_ids.dart';
 import '../models/cart_enums.dart';
 import '../widgets/customer_ui_components.dart';
 import '../services/order_repository.dart';
+import '../services/push_notification_service.dart';
 import 'packaging_store_screen.dart';
 
 class ChefDashboardScreen extends StatefulWidget {
@@ -162,6 +164,31 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
       }
     }
+  }
+
+  void _openMealChat(Map<String, dynamic> order, {String? roomName}) {
+    final roomId = ChatIds.mealRoomId(order);
+    if (roomId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Chat is unavailable for this order.')),
+      );
+      return;
+    }
+    final label = roomName ??
+        'Order ${formatOrderId(order['order_id']?.toString(), order['id'].toString())}';
+    context.push(ChatIds.location(roomId, roomName: label));
+  }
+
+  void _openRequestChat(Map<String, dynamic> req) {
+    final roomId = ChatIds.bulkRequestRoomId(req['id']);
+    if (roomId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Chat is unavailable for this lead.')),
+      );
+      return;
+    }
+    final label = req['title']?.toString() ?? 'Catering chat';
+    context.push(ChatIds.location(roomId, roomName: label));
   }
 
   Future<void> _advanceOrderStatus(Map<String, dynamic> order, String nextStatus) async {
@@ -373,6 +400,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 icon: const Icon(Icons.logout, color: Colors.white),
                 tooltip: 'Log Out',
                 onPressed: () async {
+                  await PushNotificationService.clearTokenOnLogout();
                   await _supabase.auth.signOut();
                   if (mounted) context.go('/auth');
                 },
@@ -476,6 +504,15 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             ),
           ],
           const SizedBox(height: 14),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () => _openMealChat(order),
+              icon: const Icon(Icons.chat_bubble_outline, size: 16),
+              label: const Text('Coordinate via chat'),
+            ),
+          ),
+          const SizedBox(height: 4),
           Row(
             children: [
               if (isPending) ...[
@@ -556,6 +593,11 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               const SizedBox(height: 4),
               Text('Method: ${svc.toDisplayString()}', style: const TextStyle(fontSize: 12, color: AppTheme.primary, fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
+              TextButton.icon(
+                onPressed: () => _openMealChat(order),
+                icon: const Icon(Icons.chat_bubble_outline, size: 16),
+                label: const Text('Coordinate via chat'),
+              ),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -704,7 +746,10 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                       if (res.isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lead was already claimed.')));
                       } else {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lead claimed! Coordinate via chat.')));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Lead claimed! Opening chat…')),
+                        );
+                        _openRequestChat(req);
                       }
                     }
                   },

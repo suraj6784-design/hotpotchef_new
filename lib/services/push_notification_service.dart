@@ -47,21 +47,36 @@ class PushNotificationService {
       // 3. Fetch and save the FCM Token to Supabase for the current user
       await _syncFCMTokenToDatabase();
 
-      // 4. Listen for token refreshes
+      // 4. Re-sync when auth state changes (login after cold start, token refresh)
+      _supabase.auth.onAuthStateChange.listen((data) {
+        switch (data.event) {
+          case AuthChangeEvent.signedIn:
+          case AuthChangeEvent.initialSession:
+          case AuthChangeEvent.userUpdated:
+            _syncFCMTokenToDatabase();
+            break;
+          default:
+            break;
+        }
+      });
+
+      // 5. Listen for token refreshes
       _messaging.onTokenRefresh.listen((newToken) {
         _updateTokenInDatabase(newToken);
       });
 
-      // 5. Handle foreground messages
+      // 6. Handle foreground messages
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
         debugPrint('Received foreground message: ${message.notification?.title}');
       });
-
     } catch (e, stack) {
       _recordNonFatal(e, stack, 'Error initializing PushNotifications service');
       debugPrint('Error initializing PushNotifications: $e');
     }
   }
+
+  /// Public hook for login / session-sync callers.
+  static Future<void> syncTokenForCurrentUser() => _syncFCMTokenToDatabase();
 
   static void _recordNonFatal(Object error, StackTrace stack, String reason) {
     if (!FirebaseBootstrap.isCrashlyticsSupported(

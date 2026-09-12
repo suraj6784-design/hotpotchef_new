@@ -14,6 +14,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'dart:convert';
 import '../utils/helpers.dart';
 import '../utils/app_theme.dart';
+import '../utils/chat_ids.dart';
 import '../widgets/customer_ui_components.dart';
 
 class CustomerOrdersTab extends StatefulWidget {
@@ -297,7 +298,7 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                           if (user == null) throw Exception('Please log in to rate meals.');
 
                           await supabase.from('reviews').insert({
-                            'meal_id': order['source_meal_id'] ?? order['id'],
+                            'meal_id': ChatIds.mealRoomId(Map<String, dynamic>.from(order)),
                             'customer_id': user.id,
                             'chef_id': order['chef_id'],
                             'rating': selectedRating,
@@ -637,7 +638,16 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                               Row(
                                 children: [
                                   GestureDetector(
-                                    onTap: () => context.push('/chat/${items.first['id']}?roomName=Order%20$displayOrderIdStr'),
+                                    onTap: () {
+                                      final roomId = ChatIds.mealRoomId(items.first);
+                                      if (roomId.isEmpty) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('Chat is unavailable for this order.')),
+                                        );
+                                        return;
+                                      }
+                                      context.push(ChatIds.location(roomId, roomName: 'Order $displayOrderIdStr'));
+                                    },
                                     child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.grey.shade300)), child: const Icon(Icons.chat_bubble_outline, color: AppTheme.primary, size: 18)),
                                   ),
                                   const SizedBox(width: 8),
@@ -746,7 +756,7 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                           future: Supabase.instance.client
                               .from('reviews')
                               .select()
-                              .eq('meal_id', items.first['id'])
+                              .eq('meal_id', ChatIds.mealRoomId(items.first))
                               .eq('customer_id', Supabase.instance.client.auth.currentUser?.id ?? '')
                               .maybeSingle(),
                           builder: (context, reviewSnap) {
@@ -869,7 +879,11 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                     ),
                     const SizedBox(width: 8),
                     GestureDetector(
-                      onTap: () => context.push('/chat/${req['id']}?roomName=${Uri.encodeComponent(chefName)}'),
+                      onTap: () {
+                        final roomId = ChatIds.bulkRequestRoomId(req['id']);
+                        if (roomId.isEmpty) return;
+                        context.push(ChatIds.location(roomId, roomName: chefName.toString()));
+                      },
                       child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.15), shape: BoxShape.circle), child: const Icon(Icons.chat_bubble, color: Colors.blue, size: 16)),
                     ),
                   ],
@@ -975,6 +989,8 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
             'delivery_address': order['delivery_address'],
             'driver_id': order['delivery_partner_id'],
             'created_at': order['created_at'] ?? DateTime.now().toIso8601String(),
+            'source_meal_id': item['source_meal_id'] ?? item['mealId'] ?? item['meal_id'] ?? order['source_meal_id'],
+            'mealId': item['mealId'] ?? item['meal_id'] ?? item['source_meal_id'] ?? order['source_meal_id'],
           });
         }
       }
@@ -991,6 +1007,8 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
           'title': order['title'] ?? 'Custom Order',
           'quantity': 1,
           'price': order['total_price'] ?? order['price'] ?? 0,
+          'source_meal_id': order['source_meal_id'],
+          'mealId': order['source_meal_id'] ?? order['meal_id'],
         });
       }
 
