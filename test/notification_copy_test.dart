@@ -218,7 +218,8 @@ void main() {
     expect(chef.body, contains('FSSAI number'));
     expect(chef.body, contains('kitchen'));
 
-    final driver = kycReminderCopy(role: 'Driver', missing: const []);
-    expect(driver.body, contains('delivery-partner'));
+    final diner = kycReminderCopy(role: 'Customer', missing: ['FSSAI number']);
+    expect(diner.body, contains('do not submit FSSAI'));
+    expect(diner.body, isNot(contains('kitchen KYC')));
   });
 }

@@ -24,6 +24,12 @@ enum AppRole {
   /// Kitchen supply requests are chef-only. Diners and drivers never use this store.
   bool get canUsePackagingStore => this == AppRole.chef;
 
+  /// FSSAI licence + proof is a kitchen publish gate. Diners, drivers, and ops seats do not hold it.
+  bool get requiresKitchenFssai => this == AppRole.chef;
+
+  /// Aadhaar / vehicle KYC is delivery-partner only.
+  bool get requiresDriverKyc => this == AppRole.driver;
+
   String get hubPath {
     switch (this) {
       case AppRole.customer:

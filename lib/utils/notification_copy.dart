@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../models/app_role.dart';
+
 class OrderAlertCopy {
   const OrderAlertCopy({
     required this.title,
@@ -209,8 +211,15 @@ KycReminderCopy kycReminderCopy({
   required String role,
   List<String> missing = const [],
 }) {
-  final isDriver = role.trim().toLowerCase().contains('driver');
+  final parsed = AppRole.parse(role);
   final needed = missing.map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+  if (!parsed.requiresKitchenFssai && !parsed.requiresDriverKyc) {
+    return const KycReminderCopy(
+      title: 'Your diner profile',
+      body: 'Diners do not submit FSSAI. Open Profile for addresses, coins, and dietary preferences.',
+    );
+  }
+  final isDriver = parsed.requiresDriverKyc;
   if (needed.isEmpty) {
     return KycReminderCopy(
       title: 'Complete your KYC',

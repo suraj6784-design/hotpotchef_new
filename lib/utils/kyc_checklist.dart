@@ -1,3 +1,4 @@
+import '../models/app_role.dart';
 import 'helpers.dart';
 
 class KycChecklist {
@@ -19,10 +20,12 @@ class KycChecklist {
 
 /// Fields chefs can complete in-app that block publish, plus payout extras.
 KycChecklist kycChecklistFor(Map<String, dynamic> row) {
-  final role = (row['role']?.toString() ?? '').toLowerCase();
-  final isDriver = role == 'driver';
+  final parsed = AppRole.parse(row['role']?.toString());
+  if (!parsed.requiresKitchenFssai && !parsed.requiresDriverKyc) {
+    return const KycChecklist(done: 1, total: 1, missing: []);
+  }
 
-  if (isDriver) {
+  if (parsed.requiresDriverKyc) {
     final checks = <String, String>{
       'Name': row['name']?.toString() ?? row['full_name']?.toString() ?? '',
       'Phone': row['phone']?.toString() ?? '',

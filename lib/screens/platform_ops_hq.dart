@@ -172,7 +172,7 @@ class _OpsDashListState extends State<_OpsDashList> {
         ),
         _OpsQueueTile(
           icon: Icons.badge_outlined,
-          title: 'KYC / FSSAI pending',
+          title: 'Chef / driver KYC pending',
           value: '${hq.pendingKyc}',
           onTap: () => _open(kOpsPermissionKyc),
         ),
@@ -491,14 +491,13 @@ class _OpsCrmListState extends State<_OpsCrmList> {
             children: [
               Text(row.name, style: Theme.of(ctx).textTheme.titleLarge),
               const SizedBox(height: 4),
-              Text(
-                '${row.role} · ${row.accountStatus}${row.kitchenName.isEmpty ? '' : ' · ${row.kitchenName}'}',
-                style: AppTheme.caption,
-              ),
+              Text(opsCrmSheetSubtitle(row), style: AppTheme.caption),
               const SizedBox(height: 12),
-              Text('Paid orders ${row.orderCount} · ₹${row.gmv.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w700)),
-              if (row.lastOrderAt.isNotEmpty) Text('Last order ${_opsShortDate(row.lastOrderAt)}', style: AppTheme.caption),
-              if (row.fssaiStatus.isNotEmpty) Text('FSSAI ${row.fssaiStatus}', style: AppTheme.caption),
+              Text(opsCrmSpendLabel(row), style: const TextStyle(fontWeight: FontWeight.w700)),
+              if (row.lastOrderAt.isNotEmpty && AppRole.parse(row.role) != AppRole.driver)
+                Text('Last order ${_opsShortDate(row.lastOrderAt)}', style: AppTheme.caption),
+              if (opsCrmComplianceLine(row) case final compliance?)
+                Text(compliance, style: AppTheme.caption),
               if (row.openTickets > 0) Text('${row.openTickets} open tickets', style: AppTheme.caption),
               if (row.lastNote.isNotEmpty) ...[
                 const SizedBox(height: 8),
@@ -610,7 +609,7 @@ class _OpsCrmListState extends State<_OpsCrmList> {
                             runSpacing: 10,
                             children: [
                               _OpsMiniStat(label: 'Pipeline tickets', value: '${hq.openTickets}'),
-                              _OpsMiniStat(label: 'KYC pending', value: '${hq.pendingKyc}'),
+                              _OpsMiniStat(label: 'Chef/driver KYC', value: '${hq.pendingKyc}'),
                               _OpsMiniStat(label: 'New this week', value: '${hq.newUsers}'),
                               _OpsMiniStat(label: 'Disputes', value: '${hq.openDisputes}'),
                             ],
@@ -642,12 +641,7 @@ class _OpsCrmListState extends State<_OpsCrmList> {
                                       children: [
                                         Text(row.name, style: const TextStyle(fontWeight: FontWeight.w800)),
                                         Text(
-                                          [
-                                            row.role,
-                                            if (row.phone.isNotEmpty) row.phone,
-                                            '${row.orderCount} orders',
-                                            if (row.openTickets > 0) '${row.openTickets} tickets',
-                                          ].join(' · '),
+                                          opsCrmDirectoryMeta(row),
                                           style: AppTheme.caption,
                                         ),
                                       ],

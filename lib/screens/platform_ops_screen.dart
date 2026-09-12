@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/auth_session.dart';
 import '../services/alert_service.dart';
+import '../models/app_role.dart';
 import '../utils/helpers.dart';
 import '../utils/kyc_checklist.dart';
 import '../utils/network.dart';
@@ -907,12 +908,14 @@ class _FssaiOpsList extends StatelessWidget {
         final rows = await client
             .from('users')
             .select(
-              'id, name, full_name, phone, email, fssai_number, fssai_proof_url, fssai_verification_status, fssai_review_note',
+              'id, name, full_name, phone, email, role, fssai_number, fssai_proof_url, fssai_verification_status, fssai_review_note',
             )
             .neq('fssai_verification_status', 'unsubmitted')
             .order('updated_at', ascending: false)
             .limit(80);
-        return List<Map<String, dynamic>>.from(rows as List);
+        return List<Map<String, dynamic>>.from(rows as List)
+            .where((row) => AppRole.parse(row['role']?.toString()).requiresKitchenFssai)
+            .toList();
       }(),
       builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) {
@@ -1511,8 +1514,11 @@ class _TicketsOpsList extends StatelessWidget {
 class _KycOpsList extends StatelessWidget {
   const _KycOpsList({super.key});
 
-  bool _isRole(Map<String, dynamic> row, String role) =>
-      (row['role']?.toString() ?? '').trim().toLowerCase() == role;
+  bool _isChef(Map<String, dynamic> row) =>
+      AppRole.parse(row['role']?.toString()).requiresKitchenFssai;
+
+  bool _isDriver(Map<String, dynamic> row) =>
+      AppRole.parse(row['role']?.toString()).requiresDriverKyc;
 
   Future<List<Map<String, dynamic>>> _loadRows(SupabaseClient client) async {
     final raw = await client.rpc('ops_list_kyc_queue').withTimeout(NetworkTimeouts.standard);
@@ -1545,8 +1551,8 @@ class _KycOpsList extends StatelessWidget {
           );
         }
         final rows = snap.data ?? const [];
-        final chefs = rows.where((row) => _isRole(row, 'chef')).toList();
-        final drivers = rows.where((row) => _isRole(row, 'driver')).toList();
+        final chefs = rows.where(_isChef).toList();
+        final drivers = rows.where(_isDriver).toList();
         return DefaultTabController(
           length: 2,
           child: Column(
@@ -1766,8 +1772,8 @@ class _KycPartnerTileState extends State<_KycPartnerTile> {
           const SizedBox(height: 4),
           Text(
             [
-              role,
-              if (kitchen.isNotEmpty) kitchen,
+              opsDirectoryRoleLabel(role),
+              if (AppRole.parse(role).requiresKitchenFssai && kitchen.isNotEmpty) kitchen,
               row['email']?.toString() ?? '',
             ].where((s) => s.trim().isNotEmpty).join(' · '),
             style: AppTheme.caption,

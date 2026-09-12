@@ -1,6 +1,7 @@
 /// Platform Ops permission keys and helpers (owner + scoped seats).
 library;
 
+import '../models/app_role.dart';
 import 'app_env.dart';
 import 'helpers.dart';
 
@@ -501,4 +502,87 @@ List<OpsCrmContact> parseOpsCrmDirectory(dynamic raw) {
     return parseOpsCrmDirectory(inner);
   }
   return const [];
+}
+
+String opsDirectoryRoleLabel(String? role) {
+  switch (AppRole.parse(role)) {
+    case AppRole.chef:
+      return 'Chef';
+    case AppRole.driver:
+      return 'Driver';
+    case AppRole.admin:
+      return 'Admin';
+    case AppRole.customer:
+      return 'Diner';
+  }
+}
+
+String opsCrmSheetSubtitle(OpsCrmContact row) {
+  final parts = <String>[
+    opsDirectoryRoleLabel(row.role),
+    if (row.accountStatus.isNotEmpty) row.accountStatus,
+  ];
+  if (AppRole.parse(row.role).requiresKitchenFssai && row.kitchenName.isNotEmpty) {
+    parts.add(row.kitchenName);
+  }
+  return parts.join(' · ');
+}
+
+String opsCrmSpendLabel(OpsCrmContact row) {
+  final gmv = '₹${row.gmv.toStringAsFixed(0)}';
+  switch (AppRole.parse(row.role)) {
+    case AppRole.chef:
+      return 'Kitchen orders ${row.orderCount} · $gmv';
+    case AppRole.driver:
+      return 'Delivery partner — diner spend does not apply';
+    case AppRole.admin:
+      return row.orderCount > 0 ? 'Personal orders ${row.orderCount} · $gmv' : 'Ops account';
+    case AppRole.customer:
+      return 'Paid orders ${row.orderCount} · $gmv';
+  }
+}
+
+/// Kitchen FSSAI on chefs only. Drivers use Aadhaar/vehicle. Diners never show a licence line.
+String? opsCrmComplianceLine(OpsCrmContact row) {
+  switch (AppRole.parse(row.role)) {
+    case AppRole.chef:
+      final status = row.fssaiStatus.trim();
+      if (status.isEmpty) return null;
+      return 'FSSAI $status';
+    case AppRole.driver:
+      return 'Partner KYC: Aadhaar + vehicle (not FSSAI)';
+    case AppRole.customer:
+    case AppRole.admin:
+      return null;
+  }
+}
+
+String opsCrmDirectoryMeta(OpsCrmContact row) {
+  switch (AppRole.parse(row.role)) {
+    case AppRole.chef:
+      return [
+        'Chef',
+        if (row.phone.isNotEmpty) row.phone,
+        '${row.orderCount} kitchen orders',
+        if (row.openTickets > 0) '${row.openTickets} tickets',
+      ].join(' · ');
+    case AppRole.driver:
+      return [
+        'Driver',
+        if (row.phone.isNotEmpty) row.phone,
+        if (row.openTickets > 0) '${row.openTickets} tickets',
+      ].join(' · ');
+    case AppRole.admin:
+      return [
+        'Admin',
+        if (row.phone.isNotEmpty) row.phone,
+      ].join(' · ');
+    case AppRole.customer:
+      return [
+        'Diner',
+        if (row.phone.isNotEmpty) row.phone,
+        '${row.orderCount} orders',
+        if (row.openTickets > 0) '${row.openTickets} tickets',
+      ].join(' · ');
+  }
 }

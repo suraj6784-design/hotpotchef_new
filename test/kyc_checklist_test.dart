@@ -42,6 +42,19 @@ void main() {
       'phone': '9999999999',
     });
     expect(row.missing, containsAll(['PAN', 'Aadhaar', 'Vehicle type', 'Vehicle number']));
+    expect(row.missing, isNot(contains('FSSAI number')));
+  });
+
+  test('diners and admins are not scored on kitchen FSSAI', () {
+    for (final role in ['customer', 'admin']) {
+      final row = kycChecklistFor({
+        'role': role,
+        'name': 'Arushi',
+        'fssai_verification_status': 'unsubmitted',
+      });
+      expect(row.incomplete, isFalse, reason: role);
+      expect(row.missing, isEmpty);
+    }
   });
 
   test('setup strip asks for FSSAI before publish', () {

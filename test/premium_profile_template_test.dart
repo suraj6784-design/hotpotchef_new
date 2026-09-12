@@ -8,6 +8,7 @@ void main() {
     expect(profileWorkspaceTitle(ProfileWorkspace.chef), 'Your kitchen');
     expect(profileWorkspaceTitle(ProfileWorkspace.driver), 'Your run');
     expect(profileWorkspaceRoleLabel(ProfileWorkspace.diner), 'Diner');
+    expect(profileWorkspaceTrustLine(ProfileWorkspace.diner), isNot(contains('FSSAI')));
     expect(profileWorkspaceTrustLine(ProfileWorkspace.chef), contains('FSSAI'));
     expect(profileWorkspaceTrustLine(ProfileWorkspace.driver), contains('Verified'));
   });

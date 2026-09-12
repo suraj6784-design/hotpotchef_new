@@ -31,7 +31,7 @@ String profileWorkspaceRoleLabel(ProfileWorkspace workspace) {
 String profileWorkspaceTrustLine(ProfileWorkspace workspace) {
   switch (workspace) {
     case ProfileWorkspace.diner:
-      return 'Secure checkout · FSSAI kitchens · HotPot Coins';
+      return 'Secure checkout · Nearby home kitchens · HotPot Coins';
     case ProfileWorkspace.chef:
       return 'FSSAI-first kitchen · Clear payouts · Diner-ready card';
     case ProfileWorkspace.driver:

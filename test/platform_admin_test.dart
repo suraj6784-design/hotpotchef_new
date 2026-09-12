@@ -149,6 +149,52 @@ void main() {
       expect(rows.single.lastNote, 'Call back');
     });
 
+    test('CRM sheet copy is scoped by role', () {
+      OpsCrmContact contact({
+        required String role,
+        String fssai = 'unsubmitted',
+        int orders = 2,
+        double gmv = 215,
+        String kitchen = 'Nani Kitchen',
+      }) {
+        return OpsCrmContact.fromJson({
+          'id': role,
+          'role': role,
+          'name': 'Pat',
+          'phone': '1234567890',
+          'account_status': 'active',
+          'fssai_verification_status': fssai,
+          'kitchen_name': kitchen,
+          'order_count': orders,
+          'gmv': gmv,
+        });
+      }
+
+      final diner = contact(role: 'customer');
+      expect(opsDirectoryRoleLabel(diner.role), 'Diner');
+      expect(opsCrmSheetSubtitle(diner), 'Diner · active');
+      expect(opsCrmSpendLabel(diner), 'Paid orders 2 · ₹215');
+      expect(opsCrmComplianceLine(diner), isNull);
+      expect(opsCrmDirectoryMeta(diner), contains('Diner'));
+      expect(opsCrmDirectoryMeta(diner), contains('orders'));
+
+      final chef = contact(role: 'chef', fssai: 'pending');
+      expect(opsCrmSheetSubtitle(chef), contains('Chef'));
+      expect(opsCrmSheetSubtitle(chef), contains('Nani Kitchen'));
+      expect(opsCrmSpendLabel(chef), 'Kitchen orders 2 · ₹215');
+      expect(opsCrmComplianceLine(chef), 'FSSAI pending');
+
+      final driver = contact(role: 'driver');
+      expect(opsCrmSheetSubtitle(driver), isNot(contains('Nani Kitchen')));
+      expect(opsCrmSpendLabel(driver), contains('diner spend does not apply'));
+      expect(opsCrmComplianceLine(driver), contains('not FSSAI'));
+      expect(opsCrmDirectoryMeta(driver), isNot(contains('orders')));
+
+      final admin = contact(role: 'admin');
+      expect(opsCrmComplianceLine(admin), isNull);
+      expect(opsCrmSheetSubtitle(admin), startsWith('Admin'));
+    });
+
     test('snapshot treats a zero platform_margin_sum as unset and estimates 15%', () {
       final snap = OpsTransactionSnapshot.fromJson({
         'gmv': 1000,
