@@ -46,10 +46,16 @@ export async function handleCreateChefAccount(req, deps) {
   }
 
   if (userData?.gateway_account_id) {
-    return jsonResponse({ success: true, account_id: userData.gateway_account_id })
+    const existing = String(userData.gateway_account_id)
+    return jsonResponse({
+      success: true,
+      account_id: existing,
+      mock: existing.startsWith('acc_mock_'),
+    })
   }
 
+  // Bank details are accepted but not sent to Razorpay Route yet.
   const mockAccountId = `acc_mock_${(deps.now ?? Date.now)()}`
   await deps.enablePayout(decision.chefId, mockAccountId)
-  return jsonResponse({ success: true, account_id: mockAccountId })
+  return jsonResponse({ success: true, account_id: mockAccountId, mock: true })
 }
