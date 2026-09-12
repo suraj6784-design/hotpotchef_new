@@ -1,6 +1,7 @@
 // lib/screens/checkout_screen.dart
 
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:geolocator/geolocator.dart';
@@ -83,12 +84,24 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             .select()
             .eq('user_id', user.id)
             .order('is_default', ascending: false),
-        _supabase.rpc('calculate_cart_total', params: {'p_items': widget.cartItems}),
+        _supabase
+            .rpc('calculate_cart_total', params: {'p_items': widget.cartItems})
+            .then<dynamic>((value) => value)
+            .catchError((Object e, StackTrace stack) {
+          FirebaseCrashlytics.instance.recordError(
+            e,
+            stack,
+            reason: 'calculate_cart_total unavailable; using client totals',
+          );
+          return null;
+        }),
       ]);
 
       final userData = futures[0] as Map<String, dynamic>?;
       final addressResponse = futures[1] as List<dynamic>;
-      final pricingRes = futures[2] as Map<String, dynamic>?;
+      final pricingRes = futures[2] is Map
+          ? Map<String, dynamic>.from(futures[2] as Map)
+          : null;
 
       if (!mounted) return;
 
@@ -225,6 +238,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
     if (_hasDelivery && _selectedAddressData == null) {
       _showSnackBar('Please select a delivery address', isError: true);
+      return;
+    }
+
+    if (kIsWeb) {
+      _showSnackBar(
+        'Card checkout runs in the HotPotChef Android/iOS app. Razorpay is not available on web.',
+        isError: true,
+      );
       return;
     }
 
