@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../services/create_split_order_contract.dart';
+import '../utils/checkout_cart_items.dart';
 import 'address_form_screen.dart';
 
 class CheckoutScreen extends StatefulWidget {
@@ -40,6 +41,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   int _selectedTip = 0;
 
   Map<String, dynamic>? _serverPricing;
+  String? _profileEmail;
 
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _instructionsController = TextEditingController();
@@ -100,6 +102,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             '';
         _userCoinBalance =
             double.tryParse(userData?['hotpot_coins']?.toString() ?? '0') ?? 0.0;
+        _profileEmail = userData?['email']?.toString();
         _serverPricing = pricingRes;
         _isLoading = false;
       });
@@ -111,8 +114,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
-  bool get _hasDelivery => widget.cartItems.any((item) =>
-      (item['selected_service_type'] ?? item['serviceType'] ?? '').toString().toLowerCase().contains('delivery'));
+  bool get _hasDelivery => cartItemsHaveDelivery(widget.cartItems);
 
   // --- Batch Distance & Delivery Calculation ---
 
@@ -192,16 +194,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return serverVal;
     }
 
-    // Robust client-side fallback calculation from cart items to prevent ₹0.00 bug
+    // Robust client-side fallback from camelCase cart JSON or legacy keys.
     double sum = 0.0;
     for (final item in widget.cartItems) {
-      final price = double.tryParse(
-            item['discounted_price']?.toString() ??
-            item['price']?.toString() ??
-            item['base_price']?.toString() ?? '0',
-          ) ?? 0.0;
       final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
-      sum += price * qty;
+      sum += cartItemUnitPrice(item) * qty;
     }
     return sum;
   }
@@ -327,7 +324,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           }
         }
 
-        final rawDetails = item['rawMealDetails'] as Map<String, dynamic>?;
+        final rawDetails = cartItemMealDetails(item);
         final finalTimeSlot = item['timeSlot'] ?? item['time_slot'] ?? rawDetails?['exact_time'] ?? item['exact_time'] ?? 'ASAP';
 
         return {
@@ -339,8 +336,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       }).toList();
 
       // ATOMIC TRANSACTION: Both order placement & coin updates happen inside the RPC
+      final customerEmail = resolveCustomerEmail(
+        authEmail: user.email,
+        metadataEmail: user.userMetadata?['email']?.toString(),
+        profileEmail: _profileEmail,
+      );
+      if (customerEmail == null) {
+        throw Exception(
+          'Your account has no email, so the order could not be recorded. '
+          'If you were charged, reference ID: ${response.paymentId}',
+        );
+      }
+
       final rpcResponse = await _supabase.rpc('place_customer_order', params: {
-        'p_customer_email': user.email!,
+        'p_customer_email': customerEmail,
         'p_customer_phone': _phoneController.text.trim(),
         'p_delivery_address': formattedAddress,
         'p_instructions': _instructionsController.text.trim(),
