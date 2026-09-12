@@ -97,29 +97,26 @@ serve(async (req) => {
       .eq('razorpay_order_id', razorpayOrderId)
       .maybeSingle()
 
-    const snapshot: PendingCheckout = pending
-      ? {
-          user_id: pending.user_id,
-          cart_items: pending.cart_items,
-          delivery_address: pending.delivery_address,
-          instructions: pending.instructions,
-          phone: pending.phone,
-          email: pending.email,
-          apply_coins: pending.apply_coins,
-          tip_amount: Number(pending.tip_amount ?? 0),
-          delivery_fee: Number(pending.delivery_fee ?? 0),
-        }
-      : {
-          user_id: userData.user.id,
-          cart_items: body.cart_items,
-          delivery_address: body.delivery_address ?? null,
-          instructions: body.instructions ?? null,
-          phone: body.customer_phone ?? null,
-          email: userData.user.email ?? null,
-          apply_coins: Boolean(body.apply_coins),
-          tip_amount: Number(body.tip_amount ?? 0),
-          delivery_fee: Number(body.delivery_fee ?? 0),
-        }
+    if (!pending) {
+      return jsonResponse({ success: false, error: 'No verified checkout for this payment' }, 400)
+    }
+
+    const expectedPaise = Number(pending.amount_paise ?? 0)
+    if (expectedPaise > 0 && Number(payment.amount) !== expectedPaise) {
+      return jsonResponse({ success: false, error: 'Payment amount does not match this checkout' }, 400)
+    }
+
+    const snapshot: PendingCheckout = {
+      user_id: pending.user_id,
+      cart_items: pending.cart_items,
+      delivery_address: pending.delivery_address,
+      instructions: pending.instructions,
+      phone: pending.phone,
+      email: pending.email,
+      apply_coins: pending.apply_coins,
+      tip_amount: Number(pending.tip_amount ?? 0),
+      delivery_fee: Number(pending.delivery_fee ?? 0),
+    }
 
     if (snapshot.user_id !== userData.user.id) {
       return jsonResponse({ success: false, error: 'This payment does not belong to you' }, 403)

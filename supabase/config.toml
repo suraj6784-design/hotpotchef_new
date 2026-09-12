@@ -419,7 +419,7 @@ enabled = true
 
 [functions.ai-craving-matcher]
 enabled = true
-verify_jwt = false
+verify_jwt = true
 import_map = "./functions/ai-craving-matcher/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
@@ -430,7 +430,7 @@ entrypoint = "./functions/ai-craving-matcher/index.ts"
 
 [functions.push-notifier]
 enabled = true
-verify_jwt = false
+verify_jwt = true
 import_map = "./functions/push-notifier/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
@@ -441,7 +441,7 @@ entrypoint = "./functions/push-notifier/index.ts"
 
 [functions.send-push-notification]
 enabled = true
-verify_jwt = false
+verify_jwt = true
 import_map = "./functions/send-push-notification/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
@@ -507,5 +507,15 @@ entrypoint = "./functions/ops-cron/index.ts"
 
 [functions.retry-failed-refunds]
 enabled = true
-verify_jwt = false
+verify_jwt = true
 entrypoint = "./functions/retry-failed-refunds/index.ts"
+
+[functions.place-coins-order]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/place-coins-order/index.ts"
+
+[functions.set-ad-campaign-status]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/set-ad-campaign-status/index.ts"

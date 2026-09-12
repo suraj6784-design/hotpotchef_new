@@ -12,6 +12,26 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Unauthorized' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 },
+      )
+    }
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+    const gateUrl = Deno.env.get('SUPABASE_URL') ?? ''
+    const userClient = createClient(gateUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+    })
+    const { data: userData, error: userError } = await userClient.auth.getUser()
+    if (userError || !userData.user) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Unauthorized' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 },
+      )
+    }
+
     const { prompt } = await req.json()
     if (!prompt) {
       throw new Error('Search prompt is required')

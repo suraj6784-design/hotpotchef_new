@@ -1,7 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts'
-import { createRazorpayOrder, verifyCheckoutSignature } from '../_shared/razorpay.ts'
+import { createRazorpayOrder, fetchPayment, verifyCheckoutSignature } from '../_shared/razorpay.ts'
 
 const BOOST_PAISE = 9900
 
@@ -48,6 +48,13 @@ serve(async (req) => {
       }
       const ok = await verifyCheckoutSignature(orderId, paymentId, signature)
       if (!ok) return jsonResponse({ success: false, error: 'Payment signature did not match' }, 400)
+      const payment = await fetchPayment(paymentId)
+      if (payment.status !== 'captured' && payment.status !== 'authorized') {
+        return jsonResponse({ success: false, error: `Payment is ${payment.status}` }, 400)
+      }
+      if (Number(payment.amount) !== BOOST_PAISE) {
+        return jsonResponse({ success: false, error: 'Payment amount does not match this boost' }, 400)
+      }
 
       const { data: boost, error: boostError } = await admin
         .from('meal_boosts')

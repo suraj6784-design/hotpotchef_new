@@ -774,7 +774,19 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                                 children: [
                                   ClipRRect(
                                     borderRadius: BorderRadius.circular(10),
-                                    child: Image.network(entry.value, width: 72, height: 72, fit: BoxFit.cover),
+                                    child: Image.network(
+                                      entry.value,
+                                      width: 72,
+                                      height: 72,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, _, _) => Container(
+                                        width: 72,
+                                        height: 72,
+                                        color: AppTheme.photoFallback,
+                                        alignment: Alignment.center,
+                                        child: const Icon(Icons.photo_outlined, size: 22),
+                                      ),
+                                    ),
                                   ),
                                   if (_isEditing)
                                     Positioned(

@@ -2,13 +2,13 @@
 
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/helpers.dart';
 import '../utils/app_env.dart';
+import '../utils/delivery_fee.dart';
 import '../utils/network.dart';
 import '../utils/payment_preferences.dart';
 import '../utils/pricing_calculator.dart';
@@ -291,58 +291,50 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final custLat = addressCoordinate(_selectedAddressData, latitude: true);
     final custLng = addressCoordinate(_selectedAddressData, latitude: false);
     if (custLat == null || custLng == null) {
-      setState(() => _deliveryFee = 30.0);
+      setState(() => _deliveryFee = quoteCheckoutDeliveryFee(cartItems: widget.cartItems));
       return;
     }
 
     setState(() => _isCalculatingFee = true);
 
     try {
-
       final chefIds = widget.cartItems
           .map((e) => e['chef_id']?.toString() ?? e['chefId']?.toString())
           .whereType<String>()
           .toSet()
           .toList();
 
-      // Batch query all chef locations in a single round-trip
       final chefsData = await _supabase
           .from('users')
           .select('id, lat, lng')
           .inFilter('id', chefIds)
           .withTimeout(NetworkTimeouts.short);
 
-      double calculatedTotal = 0.0;
-      final chefLocations = {for (var c in chefsData) c['id'].toString(): c};
+      final chefLocations = <String, ({double? lat, double? lng})>{
+        for (final c in chefsData)
+          c['id'].toString(): (
+            lat: double.tryParse(c['lat']?.toString() ?? ''),
+            lng: double.tryParse(c['lng']?.toString() ?? ''),
+          ),
+      };
 
-      for (final chefId in chefIds) {
-        final chef = chefLocations[chefId];
-        if (chef != null && chef['lat'] != null && chef['lng'] != null) {
-          final chefLat = double.parse(chef['lat'].toString());
-          final chefLng = double.parse(chef['lng'].toString());
-
-          final distanceInKm = Geolocator.distanceBetween(
-                chefLat,
-                chefLng,
-                custLat,
-                custLng,
-              ) /
-              1000.0;
-
-          double feeForChef = 30.0;
-          if (distanceInKm > 3.0) {
-            feeForChef += (distanceInKm - 3.0).ceil() * 10.0;
-          }
-          calculatedTotal += feeForChef;
-        } else {
-          calculatedTotal += 30.0;
-        }
+      if (mounted) {
+        setState(() {
+          _deliveryFee = quoteCheckoutDeliveryFee(
+            cartItems: widget.cartItems,
+            dropLat: custLat,
+            dropLng: custLng,
+            chefLocations: chefLocations,
+          );
+        });
       }
-
-      if (mounted) setState(() => _deliveryFee = calculatedTotal);
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Delivery fee calculation error');
-      if (mounted) setState(() => _deliveryFee = 30.0);
+      if (mounted) {
+        setState(() {
+          _deliveryFee = quoteCheckoutDeliveryFee(cartItems: widget.cartItems);
+        });
+      }
     } finally {
       if (mounted) setState(() => _isCalculatingFee = false);
     }
@@ -480,8 +472,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           'customer_phone': phone,
           'delivery_address': _formattedDeliveryAddress(),
           'instructions': _orderInstructions(),
-          'delivery_fee': _deliveryFee,
-          'tip_amount': _selectedTip,
+          'dropoff_lat': addressCoordinate(_selectedAddressData, latitude: true),
+          'dropoff_lng': addressCoordinate(_selectedAddressData, latitude: false),
+          'tip_amount': clampCheckoutTip(_selectedTip),
           'apply_coins': _applyCoins && _coinsAccepted,
         },
       ).withTimeout(NetworkTimeouts.payment);
@@ -651,26 +644,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     });
   }
 
-  Map<String, dynamic> _placeOrderParams({
+  Map<String, dynamic> _verifiedPaymentBody({
     required String paymentId,
     required String? razorpayOrderId,
     required String? signature,
   }) {
-    final user = _supabase.auth.currentUser!;
     return {
-      'p_customer_email': user.email!,
-      'p_customer_phone': _phoneController.text.trim(),
-      'p_delivery_address': _formattedDeliveryAddress(),
-      'p_instructions': _orderInstructions(),
-      'p_cart_items': _checkoutCartItems(),
-      'p_apply_coins': _applyCoins && _coinsAccepted,
-      'p_tip_amount': _selectedTip,
-      'p_delivery_fee': _deliveryFee,
-      'p_payment_id': paymentId,
-      'p_razorpay_order_id': razorpayOrderId,
-      'p_razorpay_signature': signature,
-      'p_idempotency_key': paymentId,
-      'p_user_id': user.id,
+      'payment_id': paymentId,
+      'razorpay_order_id': razorpayOrderId,
+      'razorpay_signature': signature,
+      'customer_phone': _phoneController.text.trim(),
+      'delivery_address': _formattedDeliveryAddress(),
+      'instructions': _orderInstructions(),
     };
   }
 
@@ -678,44 +663,22 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final user = _supabase.auth.currentUser;
     if (user == null) throw Exception('Authentication session expired');
     _placingOrder = true;
-    final paymentId = 'coins_${user.id}_${DateTime.now().millisecondsSinceEpoch}';
-    var holdCreated = false;
     try {
-      try {
-        await _supabase.rpc('expire_checkout_holds');
-        final reserved = await _supabase.rpc(
-          'reserve_checkout_inventory',
-          params: {
-            'p_razorpay_order_id': paymentId,
-            'p_cart_items': _checkoutCartItems(),
-            'p_user_id': user.id,
-            'p_ttl_minutes': 15,
-          },
-        ).withTimeout(NetworkTimeouts.payment);
-        if (reserved is Map && reserved['success'] == true) {
-          holdCreated = true;
-        } else if (isSoldOutCheckoutError(reserved is Map ? reserved['error'] : reserved, reserved is Map ? Map<String, dynamic>.from(reserved) : null)) {
-          throw Exception(soldOutCheckoutMessage(charged: false));
-        }
-      } catch (e) {
-        if (isSoldOutCheckoutError(e) || isKitchenClosedCheckoutError(e)) rethrow;
-        // Fall through — place_customer_order still decrements when no hold.
-      }
-
-      final placed = await _placeOrderRpc(
-        paymentId: paymentId,
-        razorpayOrderId: holdCreated ? paymentId : null,
-        signature: null,
-      );
-      if (placed == null || placed['success'] != true) {
-        if (holdCreated) {
-          try {
-            await _supabase.rpc('release_checkout_inventory', params: {
-              'p_razorpay_order_id': paymentId,
-              'p_force': true,
-            });
-          } catch (_) {}
-        }
+      final response = await _supabase.functions.invoke(
+        'place-coins-order',
+        body: {
+          'cart_items': _checkoutCartItems(),
+          'customer_email': user.email,
+          'customer_phone': _phoneController.text.trim(),
+          'delivery_address': _formattedDeliveryAddress(),
+          'instructions': _orderInstructions(),
+          'dropoff_lat': addressCoordinate(_selectedAddressData, latitude: true),
+          'dropoff_lng': addressCoordinate(_selectedAddressData, latitude: false),
+          'tip_amount': clampCheckoutTip(_selectedTip),
+        },
+      ).withTimeout(NetworkTimeouts.payment);
+      final placed = response.data is Map ? Map<String, dynamic>.from(response.data as Map) : null;
+      if (response.status != 200 || placed == null || placed['success'] != true) {
         if (isKitchenClosedCheckoutError(placed?['error'], placed)) {
           throw Exception(kitchenClosedCheckoutMessage(charged: false));
         }
@@ -816,168 +779,86 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
-  Future<Map<String, dynamic>?> _placeOrderRpc({
+  Future<Map<String, dynamic>?> _placeOrderWithRetries({
     required String paymentId,
     required String? razorpayOrderId,
     required String? signature,
   }) async {
+    if (razorpayOrderId == null || razorpayOrderId.isEmpty) {
+      throw Exception('Missing payment order. If you were charged, contact support with this payment id.');
+    }
+    if (signature == null || signature.isEmpty) {
+      throw Exception('Missing payment signature. If you were charged, contact support with this payment id.');
+    }
+
     Object? lastError;
     for (var attempt = 0; attempt < 3; attempt++) {
       try {
-        final rpcResponse = await _supabase.rpc(
-          'place_customer_order',
-          params: _placeOrderParams(
+        final recover = await _supabase.functions.invoke(
+          'recover-payment',
+          body: _verifiedPaymentBody(
             paymentId: paymentId,
             razorpayOrderId: razorpayOrderId,
             signature: signature,
           ),
         ).withTimeout(NetworkTimeouts.payment);
-        if (rpcResponse is Map && rpcResponse['success'] == true) {
-          return Map<String, dynamic>.from(rpcResponse);
+        final data = recover.data is Map ? Map<String, dynamic>.from(recover.data as Map) : null;
+        if (data != null && data['success'] == true) return data;
+        lastError = data?['error'];
+        if (isSoldOutCheckoutError(data?['error'], data)) {
+          throw Exception(soldOutCheckoutMessage(
+            charged: true,
+            refunded: data?['refunded'] == true,
+          ));
         }
-        lastError = rpcResponse is Map ? rpcResponse['error'] : rpcResponse;
-        if (rpcResponse is Map) {
-          final data = Map<String, dynamic>.from(rpcResponse);
-          if (isSoldOutCheckoutError(data['error'], data) ||
-              isKitchenClosedCheckoutError(data['error'], data)) {
-            return data;
-          }
+        if (isKitchenClosedCheckoutError(data?['error'], data)) {
+          throw Exception(kitchenClosedCheckoutMessage(
+            charged: true,
+            refunded: data?['refunded'] == true,
+          ));
         }
+        if (data != null && data['refunded'] == true) {
+          final detail = data['error']?.toString().trim();
+          throw Exception(
+            (detail != null &&
+                    detail.isNotEmpty &&
+                    !detail.toLowerCase().contains('could not record'))
+                ? 'We could not record this order ($detail), so the payment was refunded. It should return in 5–7 business days.'
+                : 'We could not record this order, so the payment was refunded. It should return in 5–7 business days.',
+          );
+        }
+      } on FunctionException catch (e) {
+        final details = e.details is Map ? Map<String, dynamic>.from(e.details as Map) : null;
+        if (isSoldOutCheckoutError(details?['error'] ?? e, details)) {
+          throw Exception(soldOutCheckoutMessage(
+            charged: true,
+            refunded: details?['refunded'] == true,
+          ));
+        }
+        if (details?['refunded'] == true) {
+          final detail = details?['error']?.toString().trim();
+          throw Exception(
+            (detail != null &&
+                    detail.isNotEmpty &&
+                    !detail.toLowerCase().contains('could not record'))
+                ? 'We could not record this order ($detail), so the payment was refunded. It should return in 5–7 business days.'
+                : 'We could not record this order, so the payment was refunded. It should return in 5–7 business days.',
+          );
+        }
+        lastError = details?['error'] ?? e.reasonPhrase ?? e;
       } catch (e) {
+        if (e is Exception &&
+            (e.toString().contains('refunded') ||
+                e.toString().contains('sold out') ||
+                e.toString().contains('went offline'))) {
+          rethrow;
+        }
         lastError = e;
       }
       await Future<void>.delayed(Duration(milliseconds: 400 * (attempt + 1)));
     }
     if (lastError != null) throw lastError;
     return null;
-  }
-
-  Future<Map<String, dynamic>?> _placeOrderWithRetries({
-    required String paymentId,
-    required String? razorpayOrderId,
-    required String? signature,
-  }) async {
-    Object? lastError;
-    try {
-      final recover = await _supabase.functions.invoke(
-        'recover-payment',
-        body: {
-          'payment_id': paymentId,
-          'razorpay_order_id': razorpayOrderId,
-          'razorpay_signature': signature,
-          'customer_phone': _phoneController.text.trim(),
-          'delivery_address': _formattedDeliveryAddress(),
-          'instructions': _orderInstructions(),
-          'cart_items': _checkoutCartItems(),
-          'apply_coins': _applyCoins && _coinsAccepted,
-          'tip_amount': _selectedTip,
-          'delivery_fee': _deliveryFee,
-        },
-      ).withTimeout(NetworkTimeouts.payment);
-      final data = recover.data is Map ? Map<String, dynamic>.from(recover.data as Map) : null;
-      if (data != null && data['success'] == true) return data;
-      lastError = data?['error'];
-      if (isSoldOutCheckoutError(data?['error'], data)) {
-        throw Exception(soldOutCheckoutMessage(
-          charged: true,
-          refunded: data?['refunded'] == true,
-        ));
-      }
-      if (data != null && data['refunded'] == true) {
-        final detail = data['error']?.toString().trim();
-        throw Exception(
-          (detail != null &&
-                  detail.isNotEmpty &&
-                  !detail.toLowerCase().contains('could not record'))
-              ? 'We could not record this order ($detail), so the payment was refunded. It should return in 5–7 business days.'
-              : 'We could not record this order, so the payment was refunded. It should return in 5–7 business days.',
-        );
-      }
-    } on FunctionException catch (e) {
-      final details = e.details is Map ? Map<String, dynamic>.from(e.details as Map) : null;
-      if (isSoldOutCheckoutError(details?['error'] ?? e, details)) {
-        throw Exception(soldOutCheckoutMessage(
-          charged: true,
-          refunded: details?['refunded'] == true,
-        ));
-      }
-      if (details?['refunded'] == true) {
-        final detail = details?['error']?.toString().trim();
-        throw Exception(
-          (detail != null &&
-                  detail.isNotEmpty &&
-                  !detail.toLowerCase().contains('could not record'))
-              ? 'We could not record this order ($detail), so the payment was refunded. It should return in 5–7 business days.'
-              : 'We could not record this order, so the payment was refunded. It should return in 5–7 business days.',
-        );
-      }
-      lastError = details?['error'] ?? e.reasonPhrase ?? e;
-    } catch (e) {
-      if (e is Exception && e.toString().contains('refunded')) rethrow;
-      lastError = e;
-    }
-
-    try {
-      final placed = await _placeOrderRpc(
-        paymentId: paymentId,
-        razorpayOrderId: razorpayOrderId,
-        signature: signature,
-      );
-      if (placed != null && placed['success'] == true) return placed;
-
-      // Paid path: kitchen closed / sold out after charge must refund via recover-payment.
-      if (placed != null &&
-          (isSoldOutCheckoutError(placed['error'], placed) ||
-              isKitchenClosedCheckoutError(placed['error'], placed))) {
-        try {
-          final recover = await _supabase.functions.invoke(
-            'recover-payment',
-            body: {
-              'payment_id': paymentId,
-              'razorpay_order_id': razorpayOrderId,
-              'razorpay_signature': signature,
-              'customer_phone': _phoneController.text.trim(),
-              'delivery_address': _formattedDeliveryAddress(),
-              'instructions': _orderInstructions(),
-              'cart_items': _checkoutCartItems(),
-              'apply_coins': _applyCoins && _coinsAccepted,
-              'tip_amount': _selectedTip,
-              'delivery_fee': _deliveryFee,
-            },
-          ).withTimeout(NetworkTimeouts.payment);
-          final data = recover.data is Map ? Map<String, dynamic>.from(recover.data as Map) : null;
-          if (data != null && data['success'] == true) return data;
-          final refunded = data?['refunded'] == true;
-          if (isSoldOutCheckoutError(data?['error'] ?? placed['error'], data ?? placed)) {
-            throw Exception(soldOutCheckoutMessage(charged: true, refunded: refunded));
-          }
-          if (isKitchenClosedCheckoutError(data?['error'] ?? placed['error'], data ?? placed)) {
-            throw Exception(kitchenClosedCheckoutMessage(charged: true, refunded: refunded));
-          }
-          if (refunded) {
-            throw Exception(
-              'We could not record this order, so the payment was refunded. It should return in 5–7 business days.',
-            );
-          }
-        } catch (e) {
-          if (e is Exception &&
-              (e.toString().contains('refunded') ||
-                  e.toString().contains('sold out') ||
-                  e.toString().contains('went offline'))) {
-            rethrow;
-          }
-        }
-        if (isSoldOutCheckoutError(placed['error'], placed)) {
-          throw Exception(soldOutCheckoutMessage(charged: true, refunded: false));
-        }
-        if (isKitchenClosedCheckoutError(placed['error'], placed)) {
-          throw Exception(kitchenClosedCheckoutMessage(charged: true, refunded: false));
-        }
-      }
-      return placed;
-    } catch (e) {
-      throw Exception(lastError ?? e.toString());
-    }
   }
 
   Future<void> _handlePaymentSuccess(PaymentSuccessResponse response) async {

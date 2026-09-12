@@ -31,6 +31,7 @@ import '../widgets/society_nights_banner.dart';
 import '../widgets/ai_recommendations_section.dart';
 import '../widgets/sponsored_placement_banner.dart';
 import '../services/delivery_estimator_service.dart';
+import '../utils/delivery_fee.dart';
 import 'address_form_screen.dart';
 
 class CustomerFeedTab extends ConsumerStatefulWidget {
@@ -121,7 +122,9 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     _mealsStream = Supabase.instance.client
         .from('meals')
         .stream(primaryKey: ['id'])
-        .eq('status', 'Available');
+        .eq('status', 'Available')
+        .order('created_at', ascending: false)
+        .limit(kHomeMealStreamLimit);
     _bootstrapDeliveryPin();
     _fetchDietaryPrefs();
     _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
@@ -339,6 +342,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           .from('meals')
           .select()
           .eq('status', 'Available')
+          .limit(kHomeMealStreamLimit)
           .withTimeout(NetworkTimeouts.standard);
       final localMeals = List<Map<String, dynamic>>.from(localResponse);
       final qClean = trimmed.toLowerCase().replaceAll(' ', '');
@@ -513,6 +517,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           .select()
           .eq('status', 'Available')
           .eq('chef_id', id)
+          .limit(kHomeMealStreamLimit)
           .withTimeout(NetworkTimeouts.standard);
       final meals = List<Map<String, dynamic>>.from(rows as List).where((m) {
         final status = m['status']?.toString().toLowerCase() ?? '';
@@ -568,6 +573,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           .from('meals')
           .select()
           .eq('status', 'Available')
+          .limit(kHomeMealStreamLimit)
           .withTimeout(NetworkTimeouts.standard);
       final destLat = addressCoordinate(_selectedAddressMap, latitude: true);
       final destLng = addressCoordinate(_selectedAddressMap, latitude: false);

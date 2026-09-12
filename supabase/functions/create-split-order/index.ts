@@ -45,9 +45,10 @@ serve(async (req) => {
 
     const body = await req.json()
     const cartItems = normalizeCartItems(body.cart_items)
-    const deliveryFee = Math.max(0, Math.min(500, asNumber(body.delivery_fee, 0)))
     const tipAmount = Math.max(0, Math.min(500, asNumber(body.tip_amount, 0)))
     const applyCoins = Boolean(body.apply_coins)
+    const dropLat = body.dropoff_lat == null ? null : asNumber(body.dropoff_lat, NaN)
+    const dropLng = body.dropoff_lng == null ? null : asNumber(body.dropoff_lng, NaN)
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
@@ -95,6 +96,16 @@ serve(async (req) => {
         }, 400)
       }
     }
+
+    const { data: quotedFee, error: feeError } = await admin.rpc('quote_checkout_delivery_fee', {
+      p_items: cartItems,
+      p_drop_lat: Number.isFinite(dropLat) ? dropLat : null,
+      p_drop_lng: Number.isFinite(dropLng) ? dropLng : null,
+    })
+    if (feeError) {
+      return jsonResponse({ success: false, error: feeError.message || 'Could not quote delivery' }, 400)
+    }
+    const deliveryFee = asNumber(quotedFee, 0)
 
     const { data: gam } = await admin
       .from('user_gamification')
@@ -168,6 +179,8 @@ serve(async (req) => {
       tip_amount: tipAmount,
       delivery_fee: deliveryFee,
       amount_paise: amountPaise,
+      dropoff_lat: Number.isFinite(dropLat) ? dropLat : null,
+      dropoff_lng: Number.isFinite(dropLng) ? dropLng : null,
     })
     if (pendingError) {
       await admin.rpc('release_checkout_inventory', {
