@@ -854,19 +854,6 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
     );
   }
 
-  Widget _buildTxItem(String title, String amount, Color color, bool isDark) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(title, style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 13)),
-          Text(amount, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13)),
-        ],
-      ),
-    );
-  }
-
   Future<void> _markDefaultAddress(Map<String, dynamic> addr) async {
     final id = addr['id'];
     final user = _supabase.auth.currentUser;
@@ -1092,24 +1079,6 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
         ),
         ),
       ),
-    );
-  }
-
-  Widget _buildListTile({required IconData icon, required String title, String? subtitle, required VoidCallback onTap, required bool isDark}) {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-      leading: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: AppTheme.primary.withValues(alpha: 0.15),
-          shape: BoxShape.circle,
-        ),
-        child: Icon(icon, color: AppTheme.primary, size: 20),
-      ),
-      title: Text(title, style: AppTheme.listTitleOf(context)),
-      subtitle: subtitle != null ? Text(subtitle, style: AppTheme.caption) : null,
-      trailing: const Icon(Icons.chevron_right, color: AppTheme.textMuted, size: 20),
-      onTap: onTap,
     );
   }
 

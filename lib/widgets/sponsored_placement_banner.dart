@@ -345,14 +345,14 @@ class _SponsoredMedia extends StatefulWidget {
   const _SponsoredMedia({
     required this.imageUrl,
     required this.videoUrl,
-    this.size = 72,
     this.playing = true,
     this.fill = false,
   });
 
+  static const double thumbSize = 72;
+
   final String imageUrl;
   final String videoUrl;
-  final double size;
   final bool playing;
   final bool fill;
 
@@ -424,7 +424,7 @@ class _SponsoredMediaState extends State<_SponsoredMedia> {
 
   Widget _frame(Widget child) {
     if (widget.fill) return SizedBox.expand(child: child);
-    return SizedBox(width: widget.size, height: widget.size, child: child);
+    return SizedBox(width: _SponsoredMedia.thumbSize, height: _SponsoredMedia.thumbSize, child: child);
   }
 
   @override
@@ -448,14 +448,14 @@ class _SponsoredMediaState extends State<_SponsoredMedia> {
         CachedNetworkImage(
           imageUrl: widget.imageUrl,
           fit: BoxFit.cover,
-          width: widget.fill ? double.infinity : widget.size,
-          height: widget.fill ? double.infinity : widget.size,
-          errorWidget: (_, error, stack) => _placeholderThumb(widget.fill ? 72 : widget.size),
-          placeholder: (_, url) => _placeholderThumb(widget.fill ? 72 : widget.size),
+          width: widget.fill ? double.infinity : _SponsoredMedia.thumbSize,
+          height: widget.fill ? double.infinity : _SponsoredMedia.thumbSize,
+          errorWidget: (_, error, stack) => _placeholderThumb(widget.fill ? 72 : _SponsoredMedia.thumbSize),
+          placeholder: (_, url) => _placeholderThumb(widget.fill ? 72 : _SponsoredMedia.thumbSize),
         ),
       );
     }
-    return _frame(_placeholderThumb(widget.fill ? 72 : widget.size));
+    return _frame(_placeholderThumb(widget.fill ? 72 : _SponsoredMedia.thumbSize));
   }
 }
 

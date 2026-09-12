@@ -2,7 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:hotpotchef_new/models/app_role.dart';
 import 'package:hotpotchef_new/models/cart_enums.dart';
-import 'package:hotpotchef_new/models/order_status.dart';
 import 'package:hotpotchef_new/services/order_lifecycle.dart';
 
 void main() {

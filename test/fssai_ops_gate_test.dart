@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hotpotchef_new/utils/helpers.dart';
-import 'package:hotpotchef_new/utils/support.dart';
 
 void main() {
   group('FSSAI verification gate', () {
