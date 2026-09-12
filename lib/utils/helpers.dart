@@ -437,6 +437,35 @@ bool deliveryOtpMatches(String? expected, String? entered) {
   return a == b;
 }
 
+final _deliveryPinLine = RegExp(
+  r'^(?:delivery\s*pin|otp)\s*:\s*\d{4}\b',
+  caseSensitive: false,
+);
+
+bool isDeliveryPinInstructionLine(String line) {
+  return _deliveryPinLine.hasMatch(line.trim());
+}
+
+/// Kitchen and driver notes must not include the diner dropoff PIN.
+String kitchenFacingOrderNotes(String? raw) {
+  return _notesWithoutDeliveryPin(raw);
+}
+
+String driverFacingOrderNotes(String? raw) {
+  return _notesWithoutDeliveryPin(raw);
+}
+
+String _notesWithoutDeliveryPin(String? raw) {
+  final text = (raw ?? '').trim();
+  if (text.isEmpty) return '';
+  final kept = text
+      .split(RegExp(r'\n| · '))
+      .map((line) => line.trim())
+      .where((line) => line.isNotEmpty && !isDeliveryPinInstructionLine(line))
+      .toList();
+  return kept.join('\n').trim();
+}
+
 const kPackagingOpsStatuses = <String>[
   'Open',
   'Confirmed',
@@ -4046,11 +4075,6 @@ OrderBillBreakdown orderBillBreakdown({
   // Older rows stored food-only in total_price (e.g. ₹221) while packaging still applies.
   final paidLooksLikeItemsOnly =
       paidTotal > 0 && (paidTotal - itemsTotal).abs() < 0.5 && extras >= 0.5;
-
-  if (!paidLooksLikeItemsOnly && coins <= 0 && paidTotal > 0) {
-    final implied = itemsTotal + packaging + delivery + tip - paidTotal;
-    if (implied >= 0.5) coins = implied;
-  }
 
   final computed = (itemsTotal + packaging + delivery + tip - coins).clamp(0, double.infinity);
   final grand = (paidTotal > 0 && !paidLooksLikeItemsOnly) ? paidTotal : computed;

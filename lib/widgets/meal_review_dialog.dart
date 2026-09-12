@@ -2,6 +2,43 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../utils/helpers.dart';
+import '../utils/network.dart';
+
+Future<void> submitMealReview({
+  required Map<String, dynamic> item,
+  required String customerId,
+  String? chefId,
+  String? orderId,
+  required int rating,
+  required String comment,
+}) async {
+  final mealId = mealIdFromOrderItem(item) ?? item['id']?.toString();
+  if (mealId == null || mealId.isEmpty) {
+    throw Exception('This plate cannot be rated.');
+  }
+  final row = <String, dynamic>{
+    'meal_id': mealId,
+    'customer_id': customerId,
+    'chef_id': chefId ?? item['chef_id'],
+    'rating': rating,
+    'comment': comment,
+    if ((orderId ?? '').isNotEmpty) 'order_id': orderId,
+  };
+  try {
+    await Supabase.instance.client.from('reviews').upsert(
+          row,
+          onConflict: 'customer_id,order_id,meal_id',
+        );
+  } on PostgrestException catch (e) {
+    if (e.code == '23505') return;
+    try {
+      await Supabase.instance.client.from('reviews').insert(row);
+    } on PostgrestException catch (insertError) {
+      if (insertError.code == '23505') return;
+      throw Exception(networkErrorMessage(insertError));
+    }
+  }
+}
 
 /// Theme-following meal review sheet. Returns `true` when a review is submitted.
 class MealReviewDialog extends StatefulWidget {
@@ -121,10 +158,12 @@ class OrderItemReviewButtons extends StatelessWidget {
     super.key,
     required this.items,
     required this.onRate,
+    this.orderId,
   });
 
   final List<Map<String, dynamic>> items;
   final void Function(Map<String, dynamic> item) onRate;
+  final String? orderId;
 
   @override
   Widget build(BuildContext context) {
@@ -141,7 +180,7 @@ class OrderItemReviewButtons extends StatelessWidget {
           ? Future.value(const [])
           : Supabase.instance.client
               .from('reviews')
-              .select('meal_id, rating')
+              .select('meal_id, rating, order_id')
               .eq('customer_id', uid)
               .inFilter('meal_id', ids)
               .then((rows) => List<Map<String, dynamic>>.from(rows as List)),
@@ -149,10 +188,15 @@ class OrderItemReviewButtons extends StatelessWidget {
         if (snap.connectionState == ConnectionState.waiting) {
           return const SizedBox();
         }
-        final rated = <String, Map<String, dynamic>>{
-          for (final row in snap.data ?? const <Map<String, dynamic>>[])
-            if ((row['meal_id']?.toString() ?? '').isNotEmpty) row['meal_id'].toString(): row,
-        };
+        final orderKey = (orderId ?? '').trim();
+        final rated = <String, Map<String, dynamic>>{};
+        for (final row in snap.data ?? const <Map<String, dynamic>>[]) {
+          final mealId = row['meal_id']?.toString() ?? '';
+          if (mealId.isEmpty) continue;
+          final rowOrder = row['order_id']?.toString() ?? '';
+          if (orderKey.isNotEmpty && rowOrder.isNotEmpty && rowOrder != orderKey) continue;
+          rated[mealId] = row;
+        }
         return Column(
           children: [
             for (final item in meals)

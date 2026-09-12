@@ -11,6 +11,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'utils/app_env.dart';
+import 'utils/app_flavor.dart';
 import 'utils/helpers.dart';
 import 'utils/app_theme.dart';
 import 'utils/app_router.dart';
@@ -135,7 +136,7 @@ class _HotPotChefAppState extends State<HotPotChefApp> {
       splitScreenMode: true,
       builder: (context, child) {
         return MaterialApp.router(
-          title: 'HotPotChef',
+          title: kAppStorefront.appName,
           scaffoldMessengerKey: globalMessengerKey,
           debugShowCheckedModeBanner: false,
           theme: AppTheme.lightTheme,

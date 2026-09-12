@@ -250,7 +250,7 @@ class DriverDeliveryModel {
       deliveryLng: dropLng,
       gateInstructions: gate,
       deliveryOtp: otp,
-      specialInstructions: special,
+      specialInstructions: kitchenFacingOrderNotes(special),
     );
   }
 

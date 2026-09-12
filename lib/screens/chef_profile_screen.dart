@@ -281,7 +281,13 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     if (source == null || !mounted) return;
     setState(() => _uploadingFssaiProof = true);
     try {
-      final uploaded = await pickAndUploadKitchenImage(source: source, folder: 'fssai', fileKey: 'licence');
+      final uploaded = await pickAndUploadKitchenImage(
+        source: source,
+        folder: 'fssai',
+        fileKey: 'licence',
+        imageQuality: 98,
+        maxWidth: 4096,
+      );
       if (uploaded == null || !mounted) return;
       var scan = const FssaiCertificateScan();
       try {
@@ -314,6 +320,10 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
       if (!scan.hasAnyField) {
         _showSnackBar(
           'Certificate uploaded. We could not read the card — type Reg No, name, address, and validity, then Save.',
+        );
+      } else if (!scan.hasCoreFields) {
+        _showSnackBar(
+          'Certificate uploaded. Fill any blank FSSAI fields from the photo, then Save.',
         );
       } else if (fssaiLicenceIsExpired(scan.validUntil)) {
         _showSnackBar(

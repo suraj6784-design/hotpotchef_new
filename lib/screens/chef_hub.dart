@@ -983,7 +983,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     final title = _orderTitle(order);
     final quantity = _orderQuantity(order);
     final totalAmount = _orderTotal(order);
-    final instructions = order['special_instructions']?.toString() ?? '';
+    final instructions = kitchenFacingOrderNotes(order['special_instructions']?.toString());
     final customer = _customerName(order);
     final initial = customer.isNotEmpty ? customer[0].toUpperCase() : 'C';
     final svc = _orderService(order);

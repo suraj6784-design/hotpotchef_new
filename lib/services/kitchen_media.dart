@@ -164,12 +164,14 @@ Future<UploadedKitchenImage?> pickAndUploadKitchenImage({
   ImageSource source = ImageSource.camera,
   String folder = 'kitchen',
   String? fileKey,
+  int imageQuality = 72,
+  double maxWidth = 1600,
 }) async {
   final picker = ImagePicker();
   final image = await picker.pickImage(
     source: source,
-    imageQuality: 72,
-    maxWidth: 1600,
+    imageQuality: imageQuality,
+    maxWidth: maxWidth,
   );
   if (image == null) return null;
 

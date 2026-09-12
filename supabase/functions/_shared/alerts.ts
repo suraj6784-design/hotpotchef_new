@@ -26,18 +26,33 @@ function mealTitleFromItems(items: unknown): string {
   return 'your order'
 }
 
+export function orderAlertStage(status?: string | null): string {
+  const current = (status || '').trim().toLowerCase()
+  if (current.includes('cancel') || current.includes('reject')) return 'cancelled'
+  if (current.includes('out for delivery') || current.includes('out_for_delivery') || (current.includes('out') && current.includes('deliver') && !current.includes('delivered'))) {
+    return 'out'
+  }
+  if (current.includes('deliver') || current.includes('complet')) return 'delivered'
+  if (current.includes('assign')) return 'assigned'
+  if (current.includes('ready') || current.includes('pack')) return 'ready'
+  if (current.includes('prepar')) return 'preparing'
+  if (current.includes('confirm')) return 'confirmed'
+  if (current.includes('pending') || current === 'placed' || current === 'new' || current === '') return 'new'
+  return current
+}
+
 export function orderAlertCopy(opts: {
   status: string
   isInsert: boolean
   previousStatus?: string | null
   mealTitle?: string
 }): OrderAlert | null {
-  const current = (opts.status || '').trim().toLowerCase()
-  const previous = (opts.previousStatus || '').trim().toLowerCase()
-  if (!opts.isInsert && current === previous) return null
+  const stage = orderAlertStage(opts.status)
+  const previous = orderAlertStage(opts.previousStatus)
+  if (!opts.isInsert && stage === previous) return null
   const mealTitle = opts.mealTitle || 'your order'
 
-  if (opts.isInsert || current.includes('pending')) {
+  if (stage === 'new') {
     return {
       title: 'New order',
       body: `You have a new order for ${mealTitle}.`,
@@ -46,7 +61,7 @@ export function orderAlertCopy(opts: {
       notifyDriver: false,
     }
   }
-  if (current.includes('cancel')) {
+  if (stage === 'cancelled') {
     return {
       title: 'Order cancelled',
       body: `The order for ${mealTitle} was cancelled. A refund is issued if you paid online.`,
@@ -55,7 +70,7 @@ export function orderAlertCopy(opts: {
       notifyDriver: false,
     }
   }
-  if (current.includes('deliver') || current.includes('complet')) {
+  if (stage === 'delivered') {
     return {
       title: 'Order delivered',
       body: 'Your order has arrived. Rate the kitchen when you can.',
@@ -64,7 +79,7 @@ export function orderAlertCopy(opts: {
       notifyDriver: false,
     }
   }
-  if (current.includes('out for delivery') || current.includes('out_for_delivery')) {
+  if (stage === 'out') {
     return {
       title: 'On the way',
       body: `${mealTitle} is out for delivery. Track it from Orders.`,
@@ -73,16 +88,16 @@ export function orderAlertCopy(opts: {
       notifyDriver: false,
     }
   }
-  if (current.includes('assign')) {
+  if (stage === 'assigned') {
     return {
       title: 'Delivery partner assigned',
       body: 'A delivery partner is on the way to the kitchen.',
       notifyChef: false,
       notifyCustomer: true,
-      notifyDriver: true,
+      notifyDriver: false,
     }
   }
-  if (current.includes('ready')) {
+  if (stage === 'ready') {
     return {
       title: 'Order ready',
       body: `${mealTitle} is ready for pickup.`,
@@ -91,7 +106,7 @@ export function orderAlertCopy(opts: {
       notifyDriver: true,
     }
   }
-  if (current.includes('prepar') || current.includes('confirm')) {
+  if (stage === 'confirmed') {
     return {
       title: 'Order confirmed',
       body: `Your order for ${mealTitle} is being prepared.`,
@@ -127,6 +142,13 @@ async function sendFcm(token: string, title: string, body: string, data: Record<
         token,
         notification: { title, body },
         data,
+        android: {
+          collapseKey: data.alert_id || 'hotpotchef',
+          notification: { tag: data.alert_id || 'hotpotchef' },
+        },
+        apns: {
+          headers: { 'apns-collapse-id': data.alert_id || 'hotpotchef' },
+        },
       },
     }),
   })
@@ -207,7 +229,12 @@ export async function dispatchOrderAlert(
   })
   if (!copy) return { sent: 0 }
 
-  const data = { order_id: String(order.id), status: String(order.status ?? ''), alert_id: `${order.id}-${order.status}` }
+  const stage = orderAlertStage(String(order.status ?? ''))
+  const data = {
+    order_id: String(order.id),
+    status: String(order.status ?? ''),
+    alert_id: `${order.id}-${stage}`,
+  }
   const targets: string[] = []
   if (copy.notifyChef && order.chef_id) targets.push(String(order.chef_id))
   if (copy.notifyCustomer && order.customer_id) targets.push(String(order.customer_id))

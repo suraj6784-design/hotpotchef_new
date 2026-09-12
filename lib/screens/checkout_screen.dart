@@ -15,7 +15,6 @@ import '../utils/pricing_calculator.dart';
 import '../utils/legal_content.dart';
 import '../utils/support.dart';
 import '../models/cart_enums.dart';
-import '../services/alert_service.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/customer_ui_components.dart';
 import 'address_form_screen.dart';
@@ -97,15 +96,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     return otp;
   }
 
-  String _gateAndOtpInstructionLine() {
+  String _gateInstructionLine() {
     if (!_hasDelivery || _selectedAddressData == null) return '';
     final gate = _selectedAddressData!['gate_instructions']?.toString().trim() ?? '';
-    final otp = _ensureDeliveryOtp();
-    final parts = <String>[
-      if (gate.isNotEmpty) 'Gate: $gate',
-      'Delivery PIN: $otp',
-    ];
-    return parts.join(' · ');
+    if (gate.isEmpty) return '';
+    return 'Gate: $gate';
   }
 
   String _orderInstructions([String? checkoutNote]) {
@@ -114,7 +109,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       checkoutNote ?? _instructionsController.text,
       _societyGroupMeta,
     );
-    final gateLine = _gateAndOtpInstructionLine();
+    final gateLine = _gateInstructionLine();
     if (gateLine.isEmpty) return base;
     if (base.isEmpty) return gateLine;
     if (base.contains(gateLine)) return base;
@@ -689,9 +684,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       }
       _orderRecorded = true;
       final orderId = placed['order_id']?.toString();
-      if (orderId != null && orderId.isNotEmpty) {
-        AlertService.notifyOrder(orderId: orderId, type: 'INSERT');
-      }
       await _persistOrderDropoff(orderId);
       await _markSourceRequestOrdered(orderId);
       if (mounted) {
@@ -885,9 +877,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _orderRecorded = true;
       _heldRazorpayOrderId = null;
       final orderId = placed['order_id']?.toString();
-      if (orderId != null && orderId.isNotEmpty) {
-        AlertService.notifyOrder(orderId: orderId, type: 'INSERT');
-      }
       await _persistOrderDropoff(orderId);
       await _markSourceRequestOrdered(orderId);
 

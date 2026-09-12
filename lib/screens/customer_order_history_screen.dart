@@ -47,24 +47,25 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _showReviewDialog(BuildContext context, Map order) async {
+  Future<void> _showReviewDialog(BuildContext context, Map item, {String? orderId, String? chefId}) async {
     final submitted = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => MealReviewDialog(
-        mealTitle: order['title']?.toString() ?? 'this meal',
+        mealTitle: item['title']?.toString() ?? item['name']?.toString() ?? 'this meal',
         onSubmit: (rating, comment) async {
           final supabase = Supabase.instance.client;
           final user = supabase.auth.currentUser;
           if (user == null) throw Exception('Please log in to rate meals.');
 
           try {
-            await supabase.from('reviews').insert({
-              'meal_id': mealIdFromOrderItem(Map<String, dynamic>.from(order)) ?? order['id'],
-              'customer_id': user.id,
-              'chef_id': order['chef_id'],
-              'rating': rating,
-              'comment': comment,
-            });
+            await submitMealReview(
+              item: Map<String, dynamic>.from(item),
+              customerId: user.id,
+              chefId: chefId ?? item['chef_id']?.toString(),
+              orderId: orderId ?? item['order_id']?.toString(),
+              rating: rating,
+              comment: comment,
+            );
           } catch (e) {
             if (context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -435,9 +436,15 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         child: OrderItemReviewButtons(
                           items: items,
+                          orderId: orderRecord['id']?.toString(),
                           onRate: (item) {
                             Navigator.pop(ctx);
-                            _showReviewDialog(context, item);
+                            _showReviewDialog(
+                              context,
+                              item,
+                              orderId: orderRecord['id']?.toString(),
+                              chefId: chefId,
+                            );
                           },
                         ),
                       ),
@@ -703,7 +710,13 @@ class _HistoryOrdersListState extends ConsumerState<_HistoryOrdersList> {
                                   ? null
                                   : () => widget.host._showReviewDialog(
                                         context,
-                                        uniqueReviewableOrderItems(items).first,
+                                        {
+                                          ...uniqueReviewableOrderItems(items).first,
+                                          'chef_id': order['chef_id'],
+                                          'order_id': order['id'],
+                                        },
+                                        orderId: order['id']?.toString(),
+                                        chefId: order['chef_id']?.toString(),
                                       ),
                               icon: const Icon(Icons.star_border, size: 18),
                             ),

@@ -8,7 +8,6 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../models/order_status.dart';
 import '../utils/network.dart';
-import 'alert_service.dart';
 
 Map<String, dynamic>? _functionData(dynamic data) {
   if (data is Map<String, dynamic>) return data;
@@ -47,7 +46,6 @@ class OrderRepository {
         try {
           final done = await _supabase.rpc('complete_delivery_order', params: {'p_order_id': orderId});
           if (done == true) {
-            AlertService.notifyOrder(orderId: orderId, type: 'UPDATE');
             unawaited(_releaseChefPayout(orderId));
             return;
           }
@@ -84,8 +82,6 @@ class OrderRepository {
         } catch (_) {}
         unawaited(_releaseChefPayout(orderId));
       }
-
-      AlertService.notifyOrder(orderId: orderId, type: 'UPDATE');
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to update order status to $newStatus');
       if (kDebugMode) debugPrint('Order update error: $e');
@@ -99,7 +95,6 @@ class OrderRepository {
       try {
         final viaRpc = await _supabase.rpc('accept_delivery_order', params: {'p_order_id': orderId});
         if (viaRpc == true) {
-          AlertService.notifyOrder(orderId: orderId, type: 'UPDATE');
           return true;
         }
         if (viaRpc == false) return false;
@@ -123,7 +118,6 @@ class OrderRepository {
           .select('id');
 
       final claimed = List<dynamic>.from(response).isNotEmpty;
-      if (claimed) AlertService.notifyOrder(orderId: orderId, type: 'UPDATE');
       return claimed;
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Driver order acceptance race condition loss');

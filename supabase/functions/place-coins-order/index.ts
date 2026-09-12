@@ -1,7 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts'
 import { adminClient, requireUser } from '../_shared/guard.ts'
-import { fireAndForgetAlert } from '../_shared/fire_alert.ts'
 
 function asNumber(value: unknown, fallback = 0) {
   const n = Number(value)
@@ -141,11 +140,6 @@ serve(async (req) => {
       }, 400)
     }
 
-    fireAndForgetAlert({
-      table: 'orders',
-      type: 'INSERT',
-      record: { id: placed.order_id },
-    })
     return jsonResponse({ success: true, order_id: placed.order_id })
   } catch (err) {
     return jsonResponse({ success: false, error: err.message ?? 'Could not place coin order' }, 400)

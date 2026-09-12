@@ -53,17 +53,38 @@ String orderGroupAlertTitle(String? roomId) {
   return 'Order $label';
 }
 
+/// One push stage per kitchen/delivery milestone so Confirmed and Preparing
+/// do not both fire "Order confirmed".
+String orderAlertStage(String? status) {
+  final current = status?.trim().toLowerCase() ?? '';
+  if (current.contains('cancel') || current.contains('reject')) return 'cancelled';
+  if (current.contains('out for delivery') ||
+      current.contains('out_for_delivery') ||
+      (current.contains('out') && current.contains('deliver') && !current.contains('delivered'))) {
+    return 'out';
+  }
+  if (current.contains('deliver') || current.contains('complet')) return 'delivered';
+  if (current.contains('assign')) return 'assigned';
+  if (current.contains('ready') || current.contains('pack')) return 'ready';
+  if (current.contains('prepar')) return 'preparing';
+  if (current.contains('confirm')) return 'confirmed';
+  if (current.contains('pending') || current == 'placed' || current == 'new' || current.isEmpty) {
+    return 'new';
+  }
+  return current;
+}
+
 OrderAlertCopy? orderAlertCopy({
   required String status,
   required bool isInsert,
   String? previousStatus,
   String mealTitle = 'your order',
 }) {
-  final current = status.trim().toLowerCase();
-  final previous = previousStatus?.trim().toLowerCase() ?? '';
-  if (!isInsert && current == previous) return null;
+  final stage = orderAlertStage(status);
+  final previous = orderAlertStage(previousStatus);
+  if (!isInsert && stage == previous) return null;
 
-  if (isInsert || current.contains('pending')) {
+  if (stage == 'new') {
     return OrderAlertCopy(
       title: 'New order',
       body: 'You have a new order for $mealTitle.',
@@ -71,7 +92,7 @@ OrderAlertCopy? orderAlertCopy({
       notifyCustomer: false,
     );
   }
-  if (current.contains('cancel')) {
+  if (stage == 'cancelled') {
     return OrderAlertCopy(
       title: 'Order cancelled',
       body: 'The order for $mealTitle was cancelled. A refund is issued if you paid online.',
@@ -79,7 +100,7 @@ OrderAlertCopy? orderAlertCopy({
       notifyCustomer: true,
     );
   }
-  if (current.contains('deliver') || current.contains('complet')) {
+  if (stage == 'delivered') {
     return const OrderAlertCopy(
       title: 'Order delivered',
       body: 'Your order has arrived. Rate the kitchen when you can.',
@@ -87,7 +108,7 @@ OrderAlertCopy? orderAlertCopy({
       notifyCustomer: true,
     );
   }
-  if (current.contains('out for delivery') || current.contains('out_for_delivery')) {
+  if (stage == 'out') {
     return OrderAlertCopy(
       title: 'On the way',
       body: '$mealTitle is out for delivery. Track it from Orders.',
@@ -95,16 +116,15 @@ OrderAlertCopy? orderAlertCopy({
       notifyCustomer: true,
     );
   }
-  if (current.contains('assign')) {
+  if (stage == 'assigned') {
     return const OrderAlertCopy(
       title: 'Delivery partner assigned',
       body: 'A delivery partner is on the way to the kitchen.',
       notifyChef: false,
       notifyCustomer: true,
-      notifyDriver: true,
     );
   }
-  if (current.contains('ready')) {
+  if (stage == 'ready') {
     return OrderAlertCopy(
       title: 'Your box is packed',
       body: '$mealTitle is packed. Open the order to see the kitchen photo.',
@@ -113,7 +133,7 @@ OrderAlertCopy? orderAlertCopy({
       notifyDriver: true,
     );
   }
-  if (current.contains('prepar') || current.contains('confirm')) {
+  if (stage == 'confirmed') {
     return OrderAlertCopy(
       title: 'Order confirmed',
       body: 'Your order for $mealTitle is being prepared.',

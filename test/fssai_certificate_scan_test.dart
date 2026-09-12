@@ -27,9 +27,72 @@ Issued On: 10-09-26
     expect(fssaiLicenceIsExpired(scan.validUntil, now: DateTime(2027, 9, 11)), isTrue);
   });
 
-  test('does not treat issued-on as validity', () {
-    final scan = parseFssaiCertificateText(demoCard);
-    expect(scan.validUntil, isNot(DateTime(2026, 9, 10)));
+  test('reads a two-column OCR dump (labels then values)', () {
+    const twoColumn = '''
+Registration ID:
+Valid Upto:
+Name:
+Address:
+KOB:
+12345678912345
+10-09-27
+Arushi Thakare
+Gurukrupa Complex
+Dange Chowk
+Thergaon Pune 411033
+General Manufacturing
+''';
+    final scan = parseFssaiCertificateText(twoColumn);
+    expect(scan.registrationNumber, '12345678912345');
+    expect(scan.legalName, 'Arushi Thakare');
+    expect(scan.address, contains('Gurukrupa Complex'));
+    expect(scan.validUntil, DateTime(2027, 9, 10));
+    expect(scan.hasCoreFields, isTrue);
+  });
+
+  test('does not put the premises address in Name, and still reads Valid Upto', () {
+    const messy = '''
+FSSAI
+Registration Certificate
+Registration ID
+Valid Upto
+Name of Food Business Operator
+Address of Premises
+KOB
+12345678912345
+10-09-27
+Arushi Thakare
+Gurukrupa Complex
+Dange Chowk
+Thergaon Pune 411033
+General Manufacturing
+Issued On
+10-09-26
+''';
+    final scan = parseFssaiCertificateText(messy);
+    expect(scan.registrationNumber, '12345678912345');
+    expect(scan.legalName, 'Arushi Thakare');
+    expect(scan.legalName, isNot(contains('Gurukrupa')));
+    expect(scan.address, contains('Gurukrupa Complex'));
+    expect(scan.address, contains('411033'));
+    expect(scan.validUntil, DateTime(2027, 9, 10));
+  });
+
+  test('reads a month-name validity date and ignores issued-on when it is earlier', () {
+    final scan = parseFssaiCertificateText(
+      'Registration ID 12345678912345 Issued On 10-09-26 Valid Upto 10 Sep 2027 Name: Arushi Thakare Address: Gurukrupa Complex, Dange Chowk',
+    );
+    expect(scan.validUntil, DateTime(2027, 9, 10));
+    expect(scan.legalName, 'Arushi Thakare');
+  });
+
+  test('reads labels and values jammed on one line', () {
+    final scan = parseFssaiCertificateText(
+      'Registration ID: 12345678912345 Valid Upto: 10-09-27 Name: Arushi Thakare Address: Gurukrupa Complex, Dange Chowk KOB: Petty',
+    );
+    expect(scan.registrationNumber, '12345678912345');
+    expect(scan.validUntil, DateTime(2027, 9, 10));
+    expect(scan.legalName, contains('Arushi'));
   });
 
   test('publish blocks when the scanned licence date has lapsed', () {

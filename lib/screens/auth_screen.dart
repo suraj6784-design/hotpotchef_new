@@ -13,6 +13,7 @@ import '../services/auth_session.dart';
 import '../services/lifecycle_drip.dart';
 import '../services/push_notification_service.dart';
 import '../utils/account_hint.dart';
+import '../utils/app_flavor.dart';
 import '../utils/helpers.dart';
 import '../utils/legal_content.dart';
 import '../utils/network.dart';
@@ -49,7 +50,7 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _acceptedTerms = false;
   String? _authError;
 
-  AppRole _selectedRole = AppRole.customer;
+  AppRole _selectedRole = kAppStorefront.signupRoles.first;
 
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -105,9 +106,21 @@ class _AuthScreenState extends State<AuthScreen> {
     } catch (_) {}
 
     void goHub() {
+      if (!kAppStorefront.allowsRole(role)) {
+        router.go('/wrong-app');
+        return;
+      }
       if (!openedAsSheet || role != AppRole.customer) {
         router.go(role.hubPath);
       }
+    }
+
+    if (!kAppStorefront.allowsRole(role)) {
+      if (openedAsSheet || Navigator.of(context).canPop()) {
+        Navigator.of(context).pop(false);
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) => router.go('/wrong-app'));
+      return;
     }
 
     try {
@@ -429,6 +442,7 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   void _browseAsGuest() {
+    if (kAppStorefront.isPartner) return;
     if (Navigator.of(context).canPop()) {
       Navigator.pop(context);
     } else {
@@ -478,7 +492,7 @@ class _AuthScreenState extends State<AuthScreen> {
                       AnimatedSwitcher(
                         duration: const Duration(milliseconds: 250),
                         child: Text(
-                          _isLogin ? 'Welcome back' : 'Join HotPotChef',
+                          _isLogin ? 'Welcome back' : 'Join ${kAppStorefront.appName}',
                           key: ValueKey(_isLogin),
                           textAlign: TextAlign.center,
                           style: const TextStyle(
@@ -492,8 +506,12 @@ class _AuthScreenState extends State<AuthScreen> {
                       const SizedBox(height: 8),
                       Text(
                         _isLogin
-                            ? 'Sign in to kitchens, orders, and your wallet'
-                            : 'Create an account as a diner, home chef, or driver',
+                            ? (kAppStorefront.isPartner
+                                ? 'Sign in to your kitchen or delivery account'
+                                : 'Sign in to kitchens, orders, and your wallet')
+                            : (kAppStorefront.isPartner
+                                ? 'Create a kitchen or delivery-partner account'
+                                : 'Create a diner account to order home-cooked meals'),
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 13, height: 1.35, color: Colors.white.withValues(alpha: 0.9)),
                       ),
@@ -518,7 +536,7 @@ class _AuthScreenState extends State<AuthScreen> {
     final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
     final muted = isDark ? AppTheme.textMuted : AppTheme.textMuted;
     final bg = isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight;
-    final title = widget.sheetTitle ?? (_isLogin ? 'Sign in to continue' : 'Join HotPotChef');
+    final title = widget.sheetTitle ?? (_isLogin ? 'Sign in to continue' : 'Join ${kAppStorefront.appName}');
     final subtitle = widget.sheetSubtitle ??
         (_isLogin ? 'Your cart stays on this screen.' : 'Create an account to finish your order.');
     final media = MediaQuery.of(context);
@@ -604,24 +622,30 @@ class _AuthScreenState extends State<AuthScreen> {
                 ? Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text(
-                        'I want to join as',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 13,
-                            color: Theme.of(context).colorScheme.onSurface),
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          _buildRoleChoiceChip(AppRole.customer, Icons.restaurant_rounded),
-                          const SizedBox(width: 8),
-                          _buildRoleChoiceChip(AppRole.chef, Icons.outdoor_grill_rounded),
-                          const SizedBox(width: 8),
-                          _buildRoleChoiceChip(AppRole.driver, Icons.delivery_dining_rounded),
-                        ],
-                      ),
-                      const SizedBox(height: 18),
+                      if (kAppStorefront.signupRoles.length > 1) ...[
+                        Text(
+                          'I want to join as',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                              color: Theme.of(context).colorScheme.onSurface),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            for (var i = 0; i < kAppStorefront.signupRoles.length; i++) ...[
+                              if (i > 0) const SizedBox(width: 8),
+                              _buildRoleChoiceChip(
+                                kAppStorefront.signupRoles[i],
+                                kAppStorefront.signupRoles[i] == AppRole.driver
+                                    ? Icons.delivery_dining_rounded
+                                    : Icons.outdoor_grill_rounded,
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 18),
+                      ],
                       TextFormField(
                         controller: _nameController,
                         autofillHints: const [AutofillHints.name],
@@ -818,10 +842,11 @@ class _AuthScreenState extends State<AuthScreen> {
             style: AppTheme.caption,
           ),
         ),
-      TextButton(
-        onPressed: _browseAsGuest,
-        child: Text(compact ? 'Keep my cart and go back' : 'Continue browsing meals'),
-      ),
+      if (!kAppStorefront.isPartner)
+        TextButton(
+          onPressed: _browseAsGuest,
+          child: Text(compact ? 'Keep my cart and go back' : 'Continue browsing meals'),
+        ),
     ];
   }
 

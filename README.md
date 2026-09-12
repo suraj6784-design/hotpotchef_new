@@ -23,10 +23,11 @@ Delivery options: Chef-Self, Delivery Partner, Customer Pickup, Dine In.
 Configure `.env` with `SUPABASE_URL` and `SUPABASE_ANON_KEY`, then:
 
 ```bash
-flutter run --dart-define-from-file=.env
+flutter run --flavor diner --dart-define=APP_FLAVOR=diner --dart-define-from-file=.env
+flutter run --flavor partner --dart-define=APP_FLAVOR=partner --dart-define-from-file=.env
 ```
 
-Release APK (keeps Razorpay keys from `.env`; does not flip test/live mode):
+Release APKs (diner **HotPotChef** + partner **HotPotChef Partner**; Razorpay keys stay from `.env`):
 
 ```bash
 # Windows: powershell -File tool/build_release_apk.ps1

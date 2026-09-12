@@ -55,6 +55,20 @@ android {
         manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = mapsApiKey()
     }
 
+    flavorDimensions += "storefront"
+    productFlavors {
+        create("diner") {
+            dimension = "storefront"
+            applicationId = "com.hotpotchef.app"
+            resValue("string", "app_name", "HotPotChef")
+        }
+        create("partner") {
+            dimension = "storefront"
+            applicationId = "com.hotpotchef.partner"
+            resValue("string", "app_name", "HotPotChef Partner")
+        }
+    }
+
     signingConfigs {
         if (keystorePropertiesFile.exists()) {
             create("release") {
@@ -77,9 +91,16 @@ android {
             }
             
             isMinifyEnabled = true
-            isShrinkResources = false
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")
         }
+    }
+}
+
+androidComponents {
+    // Customer APK never scans FSSAI; drop ML Kit native OCR (~10 MB per ABI).
+    onVariants(selector().withFlavor("storefront", "diner")) { variant ->
+        variant.packaging.jniLibs.excludes.add("**/libmlkit*.so")
     }
 }
 

@@ -391,24 +391,25 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
     }
   }
 
-  Future<void> _showReviewDialog(Map order) async {
+  Future<void> _showReviewDialog(Map item, {String? orderId, String? chefId}) async {
     final submitted = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => MealReviewDialog(
-        mealTitle: order['title']?.toString() ?? 'this meal',
+        mealTitle: item['title']?.toString() ?? item['name']?.toString() ?? 'this meal',
         onSubmit: (rating, comment) async {
           final supabase = Supabase.instance.client;
           final user = supabase.auth.currentUser;
           if (user == null) throw Exception('Please log in to rate meals.');
 
           try {
-            await supabase.from('reviews').insert({
-              'meal_id': order['source_meal_id'] ?? order['id'],
-              'customer_id': user.id,
-              'chef_id': order['chef_id'],
-              'rating': rating,
-              'comment': comment,
-            });
+            await submitMealReview(
+              item: Map<String, dynamic>.from(item),
+              customerId: user.id,
+              chefId: chefId ?? item['chef_id']?.toString(),
+              orderId: orderId ?? item['order_id']?.toString(),
+              rating: rating,
+              comment: comment,
+            );
           } catch (e) {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -962,10 +963,15 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         child: OrderItemReviewButtons(
                           items: items,
+                          orderId: items.first['id']?.toString(),
                           onRate: (item) {
                             Navigator.pop(ctx);
                             if (!mounted) return;
-                            _showReviewDialog(item);
+                            _showReviewDialog(
+                              item,
+                              orderId: items.first['id']?.toString(),
+                              chefId: chefId,
+                            );
                           },
                         ),
                       ),

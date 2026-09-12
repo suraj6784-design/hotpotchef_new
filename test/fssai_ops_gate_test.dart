@@ -92,6 +92,14 @@ void main() {
       expect(deliveryOtpMatches('0482', '9999'), isFalse);
     });
 
+    test('kitchen and driver notes hide the diner delivery PIN', () {
+      const raw = 'No onion\nDelivery PIN: 4821\nGate: Tower A';
+      expect(kitchenFacingOrderNotes(raw), isNot(contains('4821')));
+      expect(kitchenFacingOrderNotes(raw), contains('No onion'));
+      expect(driverFacingOrderNotes(raw), isNot(contains('Delivery PIN')));
+      expect(isDeliveryPinInstructionLine('Delivery PIN: 4821'), isTrue);
+    });
+
     test('packaging supply helpers still resolve', () {
       expect(isPackagingSupplyRequest({'request_type': 'packaging_supply'}), isTrue);
     });

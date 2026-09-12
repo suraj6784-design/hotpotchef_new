@@ -220,8 +220,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
 
   Widget _dropoffNotesCard(DriverDeliveryModel delivery) {
     final gate = delivery.gateInstructions?.trim() ?? '';
-    final otp = delivery.deliveryOtp?.trim() ?? '';
-    var notes = delivery.specialInstructions?.trim() ?? '';
+    var notes = driverFacingOrderNotes(delivery.specialInstructions);
     if (notes.isNotEmpty) {
       notes = notes
           .split('\n')
@@ -230,15 +229,12 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
             if (line.isEmpty) return false;
             final lower = line.toLowerCase();
             if (gate.isNotEmpty && lower.startsWith('gate:')) return false;
-            if (otp.isNotEmpty && (lower.contains('delivery pin:') || lower.startsWith('otp:'))) {
-              return false;
-            }
             return true;
           })
           .join('\n')
           .trim();
     }
-    if (gate.isEmpty && otp.isEmpty && notes.isEmpty) return const SizedBox.shrink();
+    if (gate.isEmpty && notes.isEmpty) return const SizedBox.shrink();
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
@@ -264,21 +260,6 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
             Text('Gate instructions', style: TextStyle(fontSize: 11, color: AppTheme.textMuted, fontWeight: FontWeight.w600)),
             const SizedBox(height: 2),
             Text(gate, style: TextStyle(fontSize: 13, height: 1.35, color: AppTheme.onSurfaceOf(context), fontWeight: FontWeight.w600)),
-          ],
-          if (otp.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text('Delivery PIN / OTP', style: TextStyle(fontSize: 11, color: AppTheme.textMuted, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 4),
-            Text(
-              otp,
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 4,
-                fontFamily: 'monospace',
-                color: AppTheme.onSurfaceOf(context),
-              ),
-            ),
           ],
           if (notes.isNotEmpty) ...[
             const SizedBox(height: 10),

@@ -65,7 +65,7 @@ void main() {
       expect(bill.grandTotal, 256);
     });
 
-    test('infers coins when the paid total is less than the listed fees', () {
+    test('does not invent HotPot Coins when the paid total is less than listed fees', () {
       final bill = orderBillBreakdown(
         items: [
           {'price': 221, 'quantity': 1},
@@ -78,7 +78,7 @@ void main() {
         },
         hasDelivery: true,
       );
-      expect(bill.coinsApplied, 15);
+      expect(bill.coinsApplied, 0);
       expect(bill.grandTotal, 256);
     });
 

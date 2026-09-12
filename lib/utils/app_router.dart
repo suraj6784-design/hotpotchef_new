@@ -31,8 +31,10 @@ import '../screens/customer_bulk_request_screen.dart';
 import '../screens/customer_meal_plans_screen.dart';
 import '../screens/customer_support_tickets_screen.dart';
 import '../screens/driver_id_card_screen.dart';
+import '../screens/wrong_storefront_screen.dart';
 import '../services/auth_session.dart';
 import '../widgets/not_found_page.dart';
+import 'app_flavor.dart';
 import 'app_page.dart';
 import 'helpers.dart';
 
@@ -53,7 +55,7 @@ class AppRouter {
   static final AuthRefreshNotifier _authRefresh = AuthRefreshNotifier();
 
   static final GoRouter router = GoRouter(
-    initialLocation: '/customer-hub',
+    initialLocation: kAppStorefront.isPartner ? '/auth' : '/customer-hub',
     refreshListenable: _authRefresh,
     errorBuilder: (context, state) {
       final user = Supabase.instance.client.auth.currentUser;
@@ -89,6 +91,26 @@ class AppRouter {
         return path == '/reset-callback' ? '/reset-password' : null;
       }
 
+      if (path == '/wrong-app') {
+        if (!isAuthenticated) {
+          return kAppStorefront.isPartner ? '/auth' : '/customer-hub';
+        }
+        if (kAppStorefront.allowsRole(role)) {
+          return role.hubPath;
+        }
+        return null;
+      }
+
+      if (isAuthenticated && !kAppStorefront.allowsRole(role)) {
+        return '/wrong-app';
+      }
+
+      if (!isAuthenticated &&
+          kAppStorefront.isPartner &&
+          (path == '/customer-hub' || path == '/referral' || path == '/customer-plans')) {
+        return '/auth';
+      }
+
       if (isAuthenticated) {
         if (path == '/auth') {
           return role.hubPath;
@@ -101,12 +123,12 @@ class AppRouter {
       return null;
     },
     routes: [
-      _fadeRoute(
-        '/auth',
+      _fadeRoute('/auth',
         (context, state) => AuthScreen(
           initialReferralCode: state.uri.queryParameters['ref'],
         ),
       ),
+      _fadeRoute('/wrong-app', (context, state) => const WrongStorefrontScreen()),
       _fadeRoute('/reset-password', (context, state) => const ResetPasswordScreen()),
       _fadeRoute('/reset-callback', (context, state) => const ResetPasswordScreen()),
       _fadeRoute(

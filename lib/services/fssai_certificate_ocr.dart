@@ -8,7 +8,17 @@ Future<FssaiCertificateScan> scanFssaiCertificateImage(String imagePath) async {
   final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
   try {
     final result = await recognizer.processImage(InputImage.fromFilePath(imagePath));
-    return parseFssaiCertificateText(result.text);
+    final fromLines = StringBuffer();
+    for (final block in result.blocks) {
+      for (final line in block.lines) {
+        fromLines.writeln(line.text);
+      }
+    }
+    final combined = [
+      result.text,
+      fromLines.toString(),
+    ].where((chunk) => chunk.trim().isNotEmpty).join('\n');
+    return parseFssaiCertificateText(combined);
   } catch (e, stack) {
     FirebaseCrashlytics.instance.recordError(e, stack, reason: 'FSSAI certificate OCR failed');
     return const FssaiCertificateScan();

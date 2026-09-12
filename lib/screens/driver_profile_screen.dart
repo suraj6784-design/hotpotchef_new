@@ -8,6 +8,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import 'map_picker_screen.dart';
 import 'driver_id_card_screen.dart';
+import '../models/app_role.dart';
 import '../services/auth_session.dart';
 import '../utils/app_page.dart';
 import '../utils/helpers.dart';
@@ -240,7 +241,6 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
       if (user == null) throw Exception('Session expired');
 
       final updateData = {
-        'id': user.id,
         'name': name,
         'full_name': name,
         'phone': phone,
@@ -269,7 +269,15 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
         'updated_at': DateTime.now().toIso8601String(),
       };
 
-      await _supabase.from('users').upsert(updateData);
+      await _supabase.from('users').update(updateData).eq('id', user.id);
+      final saved = await _supabase.from('users').select('id').eq('id', user.id).maybeSingle();
+      if (saved == null) {
+        await _supabase.from('users').upsert({
+          ...updateData,
+          'id': user.id,
+          'role': AppRole.driver.storageValue,
+        });
+      }
       await _supabase.auth.updateUser(UserAttributes(data: {'name': name, 'phone': phone}));
 
       if (!mounted) return;

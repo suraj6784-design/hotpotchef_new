@@ -61,6 +61,49 @@ void main() {
     expect(ready.title, 'Your box is packed');
   });
 
+  test('out for delivery is not treated as delivered', () {
+    final copy = orderAlertCopy(
+      status: 'Out for Delivery',
+      isInsert: false,
+      previousStatus: 'Driver Assigned',
+      mealTitle: 'Thali',
+    );
+    expect(copy!.title, 'On the way');
+    expect(copy.notifyCustomer, isTrue);
+    expect(copy.notifyDriver, isFalse);
+  });
+
+  test('assigned jobs ping the diner, not the partner who just accepted', () {
+    final copy = orderAlertCopy(
+      status: 'Driver Assigned',
+      isInsert: false,
+      previousStatus: 'Ready for Pickup',
+    );
+    expect(copy!.title, 'Delivery partner assigned');
+    expect(copy.notifyCustomer, isTrue);
+    expect(copy.notifyDriver, isFalse);
+  });
+
+  test('the same milestone is not alerted twice', () {
+    expect(
+      orderAlertCopy(
+        status: 'Pending Chef Approval',
+        isInsert: false,
+        previousStatus: 'pending',
+      ),
+      isNull,
+    );
+    expect(
+      orderAlertCopy(
+        status: 'Preparing',
+        isInsert: false,
+        previousStatus: 'Confirmed',
+        mealTitle: 'Rice',
+      ),
+      isNull,
+    );
+  });
+
   test('unchanged status is silent', () {
     expect(
       orderAlertCopy(

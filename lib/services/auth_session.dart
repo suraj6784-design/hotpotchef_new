@@ -7,6 +7,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../models/app_role.dart';
 import 'push_notification_service.dart';
+import '../utils/app_flavor.dart';
 import '../utils/network.dart';
 import '../utils/platform_ops_access.dart';
 
@@ -223,7 +224,7 @@ class AuthSession {
     }
 
     if (context.mounted) {
-      context.go('/customer-hub');
+      context.go(kAppStorefront.isPartner ? '/auth' : '/customer-hub');
     }
   }
 }
