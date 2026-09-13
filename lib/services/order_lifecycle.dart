@@ -170,12 +170,16 @@ class OrderLifecycle {
     return _repo.acceptDelivery(orderId: orderId, driverId: driverId);
   }
 
-  Future<void> advanceDriver({required String orderId, required String currentStatus}) async {
+  Future<void> advanceDriver({
+    required String orderId,
+    required String currentStatus,
+    String? deliveryOtp,
+  }) async {
     final next = nextDriverStatus(currentStatus);
     if (next == null) {
       throw Exception('No driver transition from "$currentStatus"');
     }
-    await _repo.updateOrderStatus(orderId: orderId, newStatus: next);
+    await _repo.updateOrderStatus(orderId: orderId, newStatus: next, deliveryOtp: deliveryOtp);
     if (next == OrderStatus.delivered) {
       unawaited(AppAnalytics.logOrderDelivered(orderId: orderId));
     }

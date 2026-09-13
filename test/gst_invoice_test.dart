@@ -24,6 +24,19 @@ void main() {
     expect(bill.grandTotal, 200);
   });
 
+  test('GST is only on kitchen food and packaging, not delivery', () {
+    final bill = gstInvoiceBreakdown(
+      itemsTotal: 190,
+      packagingFee: 10,
+      deliveryFee: 30,
+      chefGstin: '27AAPFU0939F1ZV',
+    );
+    expect(bill.taxableValue, 190.48);
+    expect(bill.gstTotal, 9.52);
+    expect(bill.grandTotal, 230);
+    expect(bill.legalNote.contains('Delivery is a HotPotChef service'), isTrue);
+  });
+
   test('kitchen without GSTIN gets a bill of supply', () {
     final bill = gstInvoiceBreakdown(
       itemsTotal: 200,

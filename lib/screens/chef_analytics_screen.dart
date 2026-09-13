@@ -110,26 +110,16 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
           } catch (_) {}
         }
 
-        double orderRev = 0.0;
-
+        double orderRev = chefPayoutForOrder(order).chefPayout;
         for (var item in items) {
           if (item is Map) {
             final title = item['title']?.toString() ?? item['name']?.toString() ?? 'Dish';
             final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
-            
             final price = lineItemUnitPrice(Map<String, dynamic>.from(item));
-            
-            final itemTotal = price * qty;
-            orderRev += itemTotal;
-
             dishVol[title] = (dishVol[title] ?? 0) + qty;
-            dishRev[title] = (dishRev[title] ?? 0.0) + itemTotal;
+            dishRev[title] = (dishRev[title] ?? 0.0) +
+                chefPayoutBreakdown(itemsTotal: price * qty, packagingFee: 0).chefPayout;
           }
-        }
-
-        // Failsafe: if items lacked pricing data, fallback to the gross order total
-        if (orderRev == 0.0) {
-          orderRev = double.tryParse(order['total_amount']?.toString() ?? order['total_price']?.toString() ?? '0') ?? 0.0;
         }
 
         totalRev += orderRev;
@@ -206,7 +196,7 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
     return Scaffold(
       backgroundColor: AppTheme.canvasOf(context),
       appBar: AppBar(
-        title: Text('Chef Earnings & Analytics', style: TextStyle(color: AppTheme.onSurfaceOf(context), fontWeight: FontWeight.w800)),
+        title: Text('Kitchen payout & analytics', style: TextStyle(color: AppTheme.onSurfaceOf(context), fontWeight: FontWeight.w800)),
         backgroundColor: AppTheme.canvasOf(context),
         foregroundColor: AppTheme.onSurfaceOf(context),
         actions: [
@@ -245,7 +235,7 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text(
-                                'Gross sales',
+                                'Kitchen take-home',
                                 style: TextStyle(
                                   color: AppTheme.textMuted,
                                   fontSize: 12,
@@ -466,7 +456,7 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                                 ),
                                 subtitle: Text(
-                                  'Earned ₹${dish.totalEarned.toStringAsFixed(2)}',
+                                  'Est. take-home ${formatRupees(dish.totalEarned)}',
                                   style: AppTheme.caption,
                                 ),
                                 trailing: Text(

@@ -15,6 +15,7 @@ import 'pricing_calculator.dart';
 import 'meal_nutrition.dart';
 import 'service_area.dart';
 import '../models/app_role.dart';
+import '../models/cart_enums.dart';
 import '../models/pricing_models.dart';
 
 // Export the theme so all screens automatically inherit it
@@ -3240,6 +3241,18 @@ double packagingFeeForLoyaltyTier(String? tier) {
   return kDefaultPackagingFee;
 }
 
+bool loyaltyTierIsGold(String? tier) => (tier ?? '').toLowerCase().contains('gold');
+
+String formatRupees(num amount, {int fractionDigits = 2}) {
+  return '₹${roundMoney(amount.toDouble()).toStringAsFixed(fractionDigits)}';
+}
+
+String packagingFeeLineLabel({required double fee, String? loyaltyTier}) {
+  if (fee <= 0 && loyaltyTierIsGold(loyaltyTier)) return 'Packaging (Gold waiver)';
+  if (fee <= 0) return 'Packaging';
+  return 'Packaging';
+}
+
 /// Shelf-only carts: ₹0. Hamper-only: capped gift wrap. Hot meals: loyalty packaging.
 double packagingFeeForCartItems(
   Iterable<Map<String, dynamic>> items, {
@@ -3860,6 +3873,39 @@ ChefPayoutBreakdown chefPayoutBreakdown({
   );
 }
 
+/// Kitchen take-home: stored `chef_payout` when released, else 85% of food+pack (not diner GMV).
+ChefPayoutBreakdown chefPayoutForOrder(Map<String, dynamic> order) {
+  final items = parseOrderItemsList(order['items'] ?? order['cart_items']);
+  final bill = orderBillBreakdown(items: items, order: order);
+  final computed = chefPayoutBreakdown(itemsTotal: bill.itemsTotal, packagingFee: bill.packagingFee);
+  final settled = parseMoney(order['chef_payout']);
+  if (settled > 0) {
+    return ChefPayoutBreakdown(
+      foodAndPackaging: computed.foodAndPackaging,
+      marginRate: computed.marginRate,
+      margin: roundMoney((computed.foodAndPackaging - settled).clamp(0, double.infinity).toDouble()),
+      chefPayout: settled,
+    );
+  }
+  return computed;
+}
+
+bool isPartnerDeliveryOrder(Map<String, dynamic> order) {
+  final raw = (order['order_type'] ?? order['service_type'] ?? '').toString().trim();
+  if (raw.isNotEmpty) {
+    return ServiceType.fromString(raw).usesDeliveryPartner;
+  }
+  final items = parseOrderItemsList(order['items'] ?? order['cart_items']);
+  for (final item in items) {
+    final token = (item['selected_service_type'] ?? item['service_type'] ?? item['serviceType'] ?? '')
+        .toString()
+        .trim();
+    if (token.isEmpty) continue;
+    if (!ServiceType.fromString(token).usesDeliveryPartner) return false;
+  }
+  return true;
+}
+
 /// Chefs may start cooking once the requested drop-off is this close.
 const int kChefPrepEarliestMinutes = 120;
 
@@ -4365,13 +4411,19 @@ Uri? googleMapsDirectionsUri({
   double? lat,
   double? lng,
   String? address,
+  bool preferAddress = false,
 }) {
+  final text = (address ?? '').trim();
+  if (preferAddress && text.isNotEmpty) {
+    return Uri.parse(
+      'https://www.google.com/maps/dir/?api=1&destination=${Uri.encodeComponent(text)}&travelmode=driving',
+    );
+  }
   if (lat != null && lng != null && lat != 0 && lng != 0) {
     return Uri.parse(
       'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng&travelmode=driving',
     );
   }
-  final text = (address ?? '').trim();
   if (text.isEmpty) return null;
   return Uri.parse(
     'https://www.google.com/maps/dir/?api=1&destination=${Uri.encodeComponent(text)}&travelmode=driving',

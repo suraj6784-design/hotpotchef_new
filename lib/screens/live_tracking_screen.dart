@@ -84,7 +84,11 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
       if (row != null) {
         final preservedLeg = _order['navigate_leg'];
         _order = {..._order, ...row, 'id': row['id']};
-        if (preservedLeg != null) _order['navigate_leg'] = preservedLeg;
+        if (driverRunIsOutForDelivery(_order['status']?.toString())) {
+          _order['navigate_leg'] = 'dropoff';
+        } else if (preservedLeg != null) {
+          _order['navigate_leg'] = preservedLeg;
+        }
       } else {
         _order['id'] = id;
       }
@@ -306,15 +310,10 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
           final locs = await locationFromAddress(addressStr);
           if (locs.isNotEmpty) return LatLng(locs.first.latitude, locs.first.longitude);
         } catch (_) {
-          // Geocoding can fail on messy/free-form addresses — fall back below.
+          // Geocoding can fail on messy/free-form addresses.
         }
       }
-
-      final cLat = _asDouble(_customerRow?['latitude'] ?? _customerRow?['lat']);
-      final cLng = _asDouble(_customerRow?['longitude'] ?? _customerRow?['lng']);
-      if (cLat != null && cLng != null) {
-        return LatLng(cLat, cLng);
-      }
+      return null;
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Destination coordinate resolution failed');
     }
@@ -549,7 +548,15 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
             const SizedBox(height: 12),
             _buildDetailTile(icon: Icons.person_outline, title: customerName, subtitle: customerPhone),
             const SizedBox(height: 10),
-            _buildDetailTile(icon: Icons.location_on_outlined, title: deliveryAddress, subtitle: 'Destination address'),
+            _buildDetailTile(icon: Icons.location_on_outlined, title: deliveryAddress, subtitle: 'Paid checkout address'),
+            if (!widget.isDriver && (_order['delivery_otp']?.toString().trim().length ?? 0) >= 4) ...[
+              const SizedBox(height: 10),
+              _buildDetailTile(
+                icon: Icons.pin_outlined,
+                title: _order['delivery_otp'].toString(),
+                subtitle: 'Share this PIN with the driver at the door',
+              ),
+            ],
             const SizedBox(height: 10),
             _buildDetailTile(icon: Icons.confirmation_number_outlined, title: orderIdStr, subtitle: 'Order reference'),
             const SizedBox(height: 10),
@@ -702,7 +709,15 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(_etaText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.onSurfaceOf(context))),
-                                const Text('Live route tracking active', style: AppTheme.micro),
+                                if (!widget.isDriver && dinerPromisedSlotCopy(_order).isNotEmpty)
+                                  Text(dinerPromisedSlotCopy(_order), style: AppTheme.micro)
+                                else
+                                  const Text('Live route tracking active', style: AppTheme.micro),
+                                if (!widget.isDriver && (_order['delivery_otp']?.toString().trim().length ?? 0) >= 4)
+                                  Text(
+                                    'Delivery PIN: ${_order['delivery_otp']} — share at the door',
+                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppTheme.primary),
+                                  ),
                               ],
                             ),
                           ],

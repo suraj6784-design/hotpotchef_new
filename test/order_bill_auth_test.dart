@@ -251,6 +251,19 @@ void main() {
       expect(payout.chefPayout, 145.35);
     });
 
+    test('chefPayoutForOrder does not take 15% of diner GMV including delivery', () {
+      final payout = chefPayoutForOrder({
+        'total_price': 201,
+        'packaging_fee': 20,
+        'delivery_fee': 30,
+        'items': [
+          {'title': 'Thali', 'quantity': 1, 'price': 151},
+        ],
+      });
+      expect(payout.foodAndPackaging, 171);
+      expect(payout.chefPayout, 145.35);
+    });
+
     test('estimates platform margin from GMV minus delivery fees', () {
       expect(
         estimatedPlatformMargin(gmv: 9174, deliveryFeeSum: 710),

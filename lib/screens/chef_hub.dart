@@ -546,6 +546,14 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
           }
           return;
         }
+        final typed = (order['order_type'] ?? order['service_type'] ?? '').toString().trim();
+        if (typed.isEmpty) {
+          try {
+            await _supabase.from('orders').update({
+              'order_type': _orderService(order).toDisplayString(),
+            }).eq('id', order['id'].toString());
+          } catch (_) {}
+        }
       }
       await _orderLifecycle.advanceKitchen(
         orderId: order['id'].toString(),
@@ -986,7 +994,6 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     final orderId = formatOrderId(order['order_id']?.toString(), order['id'].toString());
     final title = _orderTitle(order);
     final quantity = _orderQuantity(order);
-    final totalAmount = _orderTotal(order);
     final instructions = kitchenFacingOrderNotes(order['special_instructions']?.toString());
     final customer = _customerName(order);
     final initial = customer.isNotEmpty ? customer[0].toUpperCase() : 'C';
@@ -1040,8 +1047,9 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   color: AppTheme.primary.withValues(alpha: 0.1),
                   borderRadius: AppTheme.radiusMd,
                 ),
-                child: Text('₹${totalAmount.toStringAsFixed(0)}',
-                    style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.w800, fontSize: 14)),
+                child: Text(
+                    '${formatRupees(chefPayoutForOrder(order).chefPayout)} est. payout',
+                    style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.w800, fontSize: 12)),
               ),
             ],
           ),
@@ -1161,7 +1169,8 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               Text('${_orderTitle(order)} (x${_orderQuantity(order)})',
                   style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
               const SizedBox(height: 4),
-              Text('${_customerName(order)} • ₹${_orderTotal(order).toStringAsFixed(0)}',
+              Text(
+                '${_customerName(order)} • diner paid ${formatRupees(_orderTotal(order))} · payout ${formatRupees(chefPayoutForOrder(order).chefPayout)}',
                   style: const TextStyle(fontSize: 13, color: AppTheme.textMuted)),
               const SizedBox(height: 10),
               PillTag(
@@ -1229,7 +1238,9 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                       ? 'A delivery partner is on the way. They mark this order delivered.'
                       : driverAssigned
                           ? 'A delivery partner has this order. They will start and complete the run.'
-                          : 'Waiting for a delivery partner. Drivers see this job after you mark it Ready for Pickup.',
+                          : ((order['order_type']?.toString() ?? '').trim().isEmpty)
+                              ? 'Drivers only see Delivery Partner jobs. Confirm the service type is Delivery Partner, then mark Ready for Pickup.'
+                              : 'Waiting for a delivery partner. Drivers see this job after you mark it Ready for Pickup.',
                   style: const TextStyle(fontSize: 13, color: AppTheme.textMuted, height: 1.35),
                 )
               else
@@ -1487,7 +1498,11 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             ? 'Expired'
             : isPaused
                 ? 'Paused'
-                : 'Published';
+                : stock <= 0
+                    ? 'Sold out — diners cannot buy'
+                    : mealFailsCurrentCatalogRequirements(meal)
+                        ? 'Hidden on Home — finish plate details'
+                        : 'Published';
 
     return AppCard(
       margin: const EdgeInsets.only(bottom: 10),
@@ -1585,8 +1600,16 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               if (!historyMode)
                 Switch.adaptive(
                   activeThumbColor: AppTheme.primary,
-                  value: !isPaused,
+                  value: !isPaused && stock > 0 && isAvailable,
                   onChanged: (active) async {
+                    if (active && stock <= 0) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Restock this plate before turning it Available.')),
+                        );
+                      }
+                      return;
+                    }
                     await _supabase.from('meals').update({'status': active ? 'Available' : 'Paused'}).eq('id', meal['id']);
                   },
                 ),
@@ -1693,13 +1716,8 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       return status.contains('cancel') || status.contains('reject') || status.contains('refund');
     }).toList();
     final history = _historyFilter == 'Cancelled' ? cancelled : delivered;
-    final double revenue = delivered.fold(0.0, (sum, o) => sum + _orderTotal(o));
-    final chefShare = delivered.fold(0.0, (sum, o) {
-      final settled = parseMoney(o['chef_payout']);
-      if (settled > 0) return sum + settled;
-      return sum +
-          chefPayoutBreakdown(itemsTotal: _orderTotal(o), packagingFee: 0).chefPayout;
-    });
+    final double revenue = delivered.fold(0.0, (sum, o) => sum + chefPayoutForOrder(o).chefPayout);
+    final dinerGmv = delivered.fold(0.0, (sum, o) => sum + _orderTotal(o));
     final platformPct = (kPlatformMarginRate * 100).toStringAsFixed(0);
 
     if (delivered.isEmpty && cancelled.isEmpty) {
@@ -1716,12 +1734,12 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         AppCard(
           child: Column(
             children: [
-              Text('Delivered order sales', style: AppTheme.metaOf(context).copyWith(fontSize: 13)),
+              Text('Kitchen take-home', style: AppTheme.metaOf(context).copyWith(fontSize: 13)),
               const SizedBox(height: 6),
-              Text('₹${revenue.toStringAsFixed(2)}',
+              Text(formatRupees(revenue),
                   style: AppTheme.sectionTitleOf(context).copyWith(color: AppTheme.success, fontSize: 28)),
               Text(
-                  '${delivered.length} completed • Chef share ~₹${chefShare.toStringAsFixed(0)} after $platformPct% platform fee',
+                  '${delivered.length} completed • Diner GMV ${formatRupees(dinerGmv)} · $platformPct% platform fee on food + pack',
                   textAlign: TextAlign.center,
                   style: AppTheme.metaOf(context)),
               const SizedBox(height: 4),
@@ -1766,7 +1784,6 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
           ...history.asMap().entries.map((entry) {
             final h = entry.value;
             final isCancelled = _historyFilter == 'Cancelled';
-            final settled = parseMoney(h['chef_payout']);
             return AppCard(
               margin: const EdgeInsets.only(bottom: 10),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1783,13 +1800,13 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                     subtitle: Text(
                       isCancelled
                           ? formatOrderDate(h['created_at']?.toString() ?? '')
-                          : '${formatOrderDate(h['created_at']?.toString() ?? '')}\n${chefPayoutStatusLabel(h['payout_status']?.toString())}',
+                          : '${formatOrderDate(h['created_at']?.toString() ?? '')}\n${chefPayoutStatusLabel(h['payout_status']?.toString())} · diner paid ${formatRupees(_orderTotal(h))}',
                     ),
                     isThreeLine: !isCancelled,
                     trailing: Text(
-                      !isCancelled && settled > 0
-                          ? '₹${settled.toStringAsFixed(0)}'
-                          : '₹${_orderTotal(h).toStringAsFixed(2)}',
+                      isCancelled
+                          ? formatRupees(_orderTotal(h))
+                          : formatRupees(chefPayoutForOrder(h).chefPayout),
                       style: const TextStyle(fontWeight: FontWeight.w800),
                     ),
                   ),

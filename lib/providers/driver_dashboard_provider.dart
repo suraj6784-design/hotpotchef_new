@@ -6,9 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../models/driver_delivery_model.dart';
-import '../models/cart_enums.dart';
 import '../services/order_lifecycle.dart';
 import '../utils/helpers.dart';
+import '../utils/kyc_checklist.dart';
 
 void _logDriverError(dynamic error, StackTrace stackTrace, String reason) {
   if (kDebugMode) {
@@ -130,9 +130,7 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
 
       final availableList = availableRaw
           .where((e) =>
-              ServiceType.fromString(
-                e['order_type']?.toString() ?? e['service_type']?.toString(),
-              ).usesDeliveryPartner &&
+              isPartnerDeliveryOrder(e) &&
               OrderLifecycle.isOpenDriverJob(e['status']?.toString()))
           .map(DriverDeliveryModel.fromJson)
           .toList();
@@ -228,6 +226,18 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
     if (user == null) return false;
 
     try {
+      final profile = await _supabase.from('users').select().eq('id', user.id).maybeSingle();
+      final kyc = kycChecklistFor({
+        'role': 'driver',
+        ...?profile,
+      });
+      if (kyc.incomplete) {
+        state = state.copyWith(
+          errorMessage:
+              'Complete payout KYC in Profile first: ${kyc.missing.join(', ')}.',
+        );
+        return false;
+      }
       final success = await _lifecycle.acceptDelivery(orderId: orderId, driverId: user.id);
       if (!success) {
         state = state.copyWith(
@@ -248,7 +258,7 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
 
   // --- Status Transition Handling ---
 
-  Future<bool> updateDeliveryStatus(String orderId, DeliveryStatus nextStatus) async {
+  Future<bool> updateDeliveryStatus(String orderId, DeliveryStatus nextStatus, {String? deliveryOtp}) async {
     final user = _supabase.auth.currentUser;
     if (user == null) return false;
 
@@ -263,6 +273,7 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
       await _lifecycle.advanceDriver(
         orderId: orderId,
         currentStatus: current,
+        deliveryOtp: deliveryOtp,
       );
 
       await loadDashboardData(isSilentRefresh: true);

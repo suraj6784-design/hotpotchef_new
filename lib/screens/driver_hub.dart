@@ -141,6 +141,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
       lat: toCustomer ? delivery.deliveryLat : delivery.pickupLat,
       lng: toCustomer ? delivery.deliveryLng : delivery.pickupLng,
       address: toCustomer ? delivery.customerAddress : delivery.pickupAddress,
+      preferAddress: toCustomer,
     );
     if (mapsUri == null) {
       if (!mounted) return;
@@ -484,9 +485,12 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                     Text(
                         '${state.completedCount} Successful ${state.completedCount == 1 ? 'Delivery' : 'Deliveries'}',
                         style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                    const Text('Payout: Weekly',
-                        style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
                   ],
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Wallet = delivery fee + tip on completed runs. Bank payout is arranged by ops after KYC — not an automatic weekly transfer.',
+                  style: TextStyle(color: Colors.white70, fontSize: 11, height: 1.35),
                 ),
               ],
             ),
@@ -704,24 +708,21 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
   Future<bool> _confirmMarkDelivered(DriverDeliveryModel delivery) async {
     final expected = delivery.deliveryOtp?.trim() ?? '';
     if (expected.isEmpty) {
-      final proceed = await showDialog<bool>(
+      if (!mounted) return false;
+      await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
           shape: AppTheme.dialogShape,
-          title: const Text('No delivery PIN on this order'),
+          title: const Text('Delivery PIN required'),
           content: const Text(
-            'Ask the customer to confirm the drop in person. Complete only if you have verified the diner at the door.',
+            'This order has no PIN on the server yet. Ask the diner to open Orders or Tracking and share the 4-digit PIN. Completing without a PIN is not allowed.',
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Complete without PIN'),
-            ),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
           ],
         ),
       );
-      return proceed == true;
+      return false;
     }
 
     final controller = TextEditingController();
@@ -904,7 +905,11 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                             }
                             setState(() => _busyOrderId = delivery.orderId);
                             final nextStatus = isOut ? DeliveryStatus.delivered : DeliveryStatus.outForDelivery;
-                            final ok = await notifier.updateDeliveryStatus(delivery.orderId, nextStatus);
+                            final ok = await notifier.updateDeliveryStatus(
+                              delivery.orderId,
+                              nextStatus,
+                              deliveryOtp: isOut ? delivery.deliveryOtp : null,
+                            );
                             if (!mounted) return;
                             setState(() => _busyOrderId = null);
                             ScaffoldMessenger.of(context).showSnackBar(

@@ -67,13 +67,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   double _userCoinBalance = 0.0;
   bool _applyCoins = false;
   double _loyaltyPackaging = kDefaultPackagingFee;
+  String? _loyaltyTier;
   int _selectedTip = 0;
 
   Map<String, dynamic>? _serverPricing;
   String? _heldRazorpayOrderId;
   bool _orderRecorded = false;
   bool _placingOrder = false;
-  String? _deliveryOtp;
 
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _instructionsController = TextEditingController();
@@ -90,14 +90,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         'timeSlot': widget.sharedTimeSlot,
         'roomCode': widget.sharedRoomCode,
       };
-
-  String _ensureDeliveryOtp() {
-    final existing = _deliveryOtp?.trim() ?? '';
-    if (existing.length == 4) return existing;
-    final otp = (1000 + Random().nextInt(9000)).toString();
-    _deliveryOtp = otp;
-    return otp;
-  }
 
   String _gateInstructionLine() {
     if (!_hasDelivery || _selectedAddressData == null) return '';
@@ -178,6 +170,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     Map<String, dynamic>? userData;
     List<Map<String, dynamic>>? fetchedAddresses;
     Map<String, dynamic>? pricingRes;
+    Map<String, dynamic>? gam;
 
     try {
       userData = await _supabase
@@ -188,6 +181,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           .withTimeout(NetworkTimeouts.standard);
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to load checkout user');
+    }
+
+    try {
+      gam = await _supabase
+          .from('user_gamification')
+          .select('loyalty_tier')
+          .eq('user_id', user.id)
+          .maybeSingle()
+          .withTimeout(NetworkTimeouts.short);
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to load loyalty packaging');
     }
 
     try {
@@ -233,6 +237,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           );
       _userCoinBalance =
           double.tryParse(userData?['hotpot_coins']?.toString() ?? '0') ?? 0.0;
+      _loyaltyTier = gam?['loyalty_tier']?.toString();
+      _loyaltyPackaging = packagingFeeForLoyaltyTier(_loyaltyTier);
       if (!_coinsAccepted && _applyCoins) _applyCoins = false;
       if (_instructionsController.text.trim().isEmpty) {
         final note = mergedOrderInstructions(
@@ -246,26 +252,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _isLoading = false;
     });
 
-    await _loadLoyaltyPackaging(user.id);
     await _calculateDeliveryFee();
     _warnSocietyNightMismatch();
-  }
-
-  Future<void> _loadLoyaltyPackaging(String userId) async {
-    try {
-      final gam = await _supabase
-          .from('user_gamification')
-          .select('loyalty_tier')
-          .eq('user_id', userId)
-          .maybeSingle()
-          .withTimeout(NetworkTimeouts.short);
-      if (!mounted) return;
-      setState(() {
-        _loyaltyPackaging = packagingFeeForLoyaltyTier(gam?['loyalty_tier']?.toString());
-      });
-    } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to load loyalty packaging');
-    }
   }
 
   bool get _hasDelivery => widget.cartItems.any((item) {
@@ -742,7 +730,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         'flat_no': house,
       if (society.isNotEmpty) 'society_name': society,
       if (gate.isNotEmpty) 'gate_instructions': gate,
-      'delivery_otp': _ensureDeliveryOtp(),
     };
 
     if (lat != null && lng != null) {
@@ -1573,8 +1560,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Packaging Fee'),
-                    Text('₹${_packagingFee.toStringAsFixed(2)}'),
+                    Text(packagingFeeLineLabel(fee: _packagingFee, loyaltyTier: _loyaltyTier)),
+                    Text(formatRupees(_packagingFee)),
                   ],
                 ),
                 if (_hasDelivery) ...[
@@ -1582,10 +1569,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Delivery Fee'),
+                      Text(
+                        (addressCoordinate(_selectedAddressData, latitude: true) == null ||
+                                addressCoordinate(_selectedAddressData, latitude: false) == null)
+                            ? 'Delivery Fee (est. until pin)'
+                            : 'Delivery Fee',
+                      ),
                       _isCalculatingFee
                           ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
-                          : Text('₹${_deliveryFee.toStringAsFixed(2)}'),
+                          : Text(formatRupees(_deliveryFee)),
                     ],
                   ),
                 ],
@@ -1607,10 +1599,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     activeThumbColor: AppTheme.primary,
                     title: Text(
                       _coinsAccepted
-                          ? 'Use HotPot Coins (Balance: ₹${_userCoinBalance.toStringAsFixed(2)})'
+                          ? 'Use HotPot Coins (Balance: ${formatRupees(_userCoinBalance)})'
                           : 'HotPot Coins are not accepted on a dish in this cart',
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                     ),
+                    subtitle: _coinsAccepted && !_applyCoins
+                        ? const Text(
+                            'Off by default. Turn on to reduce this bill.',
+                            style: TextStyle(fontSize: 12),
+                          )
+                        : null,
                     value: _applyCoins && _coinsAccepted,
                     onChanged: _coinsAccepted
                         ? (val) => setState(() => _applyCoins = val)

@@ -407,6 +407,17 @@ void main() {
     expect(state.deliveryFeeIsEstimate, isTrue);
   });
 
+  test('Gold loyalty waives packaging on the cart bill', () {
+    final item = _buildItem(quantity: 1, mealDetails: {'price': 200, 'offer_type': 'none'});
+    final state = CartState(items: [item], loyaltyTier: 'Gold Foodie', packagingFee: packagingFeeForCartItems(
+      [item.toCheckoutPayload()],
+      loyaltyTier: 'Gold Foodie',
+    ));
+    expect(state.packagingFee, 0);
+    expect(packagingFeeLineLabel(fee: state.packagingFee, loyaltyTier: state.loyaltyTier), 'Packaging (Gold waiver)');
+    expect(state.grandTotal, 230);
+  });
+
   test('coins cannot apply when a chef refuses HotPot Coins', () {
     final item = _buildItem(
       quantity: 1,

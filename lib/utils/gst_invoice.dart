@@ -58,8 +58,8 @@ class GstInvoiceBreakdown {
   String get documentTitle => isTaxInvoice ? 'TAX INVOICE' : 'BILL OF SUPPLY';
 
   String get legalNote => isTaxInvoice
-      ? 'GST @ ${(gstRate * 100).toStringAsFixed(0)}% is included in the prices charged. HSN $hsn (restaurant / catering service).'
-      : 'The kitchen has not provided a GSTIN, so this is a bill of supply and not a GST tax invoice.';
+      ? 'GST @ ${(gstRate * 100).toStringAsFixed(0)}% is included in food and packaging (HSN $hsn). Delivery is a HotPotChef service, not kitchen supply.'
+      : 'The kitchen has not provided a GSTIN, so this is a bill of supply and not a GST tax invoice. Delivery is charged by HotPotChef, not the kitchen.';
 }
 
 GstInvoiceBreakdown gstInvoiceBreakdown({
@@ -74,12 +74,13 @@ GstInvoiceBreakdown gstInvoiceBreakdown({
   String? chefAddress,
 }) {
   final gstin = normalizedGstin(chefGstin);
-  final foodGross = roundMoney(itemsTotal + packagingFee + deliveryFee);
+  final chefSupply = roundMoney(itemsTotal + packagingFee);
+  final delivery = roundMoney(deliveryFee);
   final tip = roundMoney(tipAmount);
   final coins = roundMoney(coinsApplied);
   final isTax = gstin != null;
-  final taxable = isTax ? roundMoney(foodGross / (1 + restaurantGstRate)) : foodGross;
-  final gst = isTax ? roundMoney(foodGross - taxable) : 0.0;
+  final taxable = isTax ? roundMoney(chefSupply / (1 + restaurantGstRate)) : chefSupply;
+  final gst = isTax ? roundMoney(chefSupply - taxable) : 0.0;
   final cgst = roundMoney(gst / 2);
   final sgst = roundMoney(gst - cgst);
 
@@ -93,13 +94,13 @@ GstInvoiceBreakdown gstInvoiceBreakdown({
     gstRate: restaurantGstRate,
     itemsTotal: roundMoney(itemsTotal),
     packagingFee: roundMoney(packagingFee),
-    deliveryFee: roundMoney(deliveryFee),
+    deliveryFee: delivery,
     tipAmount: tip,
     coinsApplied: coins,
     taxableValue: taxable,
     cgst: cgst,
     sgst: sgst,
-    grandTotal: roundMoney(foodGross + tip - coins),
+    grandTotal: roundMoney(chefSupply + delivery + tip - coins),
   );
 }
 

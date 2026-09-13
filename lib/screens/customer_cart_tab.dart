@@ -50,6 +50,16 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
     });
   }
 
+  void _maybeShowStockNotice(CartState cartState) {
+    final notice = cartState.stockNotice;
+    if (notice == null || notice.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(notice)));
+      ref.read(cartProvider.notifier).clearStockNotice();
+    });
+  }
+
   // --- Sub-Slot Generator ---
 
   List<String> _generateSubSlots(String rawChefSlot) => chefHourlySubSlots(rawChefSlot);
@@ -97,6 +107,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
   Widget build(BuildContext context) {
     super.build(context);
     final cartState = ref.watch(cartProvider);
+    _maybeShowStockNotice(cartState);
     final isLoggedIn = Supabase.instance.client.auth.currentUser != null;
 
     if (cartState.items.isEmpty) {
@@ -659,7 +670,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          '₹${cartState.grandTotal.toStringAsFixed(0)}',
+                          formatRupees(cartState.grandTotal),
                           style: TextStyle(
                             color: Theme.of(context).colorScheme.onSurface,
                             fontSize: 22,
@@ -790,30 +801,37 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
             children: [
               Text('Bill breakup', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: ink)),
               const SizedBox(height: 16),
-              row('Items', '₹${foodGross.toStringAsFixed(0)}'),
+              row('Items', formatRupees(foodGross)),
               if (promoSavings > 0)
                 row(
-                  promo == null ? 'Offer' : 'Promo ($promo)',
-                  '-₹${promoSavings.toStringAsFixed(0)}',
+                  promo == null ? 'Offer on plate price' : 'Promo ($promo) — apply at checkout',
+                  '-${formatRupees(promoSavings)}',
                   color: AppTheme.success,
                 ),
-              row('Packaging', '₹${cartState.packagingFee.toStringAsFixed(0)}'),
+              row(
+                packagingFeeLineLabel(fee: cartState.packagingFee, loyaltyTier: cartState.loyaltyTier),
+                formatRupees(cartState.packagingFee),
+              ),
               if (cartState.hasDelivery)
                 row(
-                  cartState.deliveryFeeIsEstimate ? 'Delivery (est.)' : 'Delivery',
-                  '₹${cartState.estimatedDeliveryFee.toStringAsFixed(0)}',
+                  cartState.deliveryFeeIsEstimate ? 'Delivery (est. until pin)' : 'Delivery',
+                  formatRupees(cartState.estimatedDeliveryFee),
                 ),
-              if (cartState.tipAmount > 0) row('Tip', '₹${cartState.tipAmount.toStringAsFixed(0)}'),
-              if (cartState.coinsDiscountAmount > 0)
+              if (cartState.tipAmount > 0) row('Tip', formatRupees(cartState.tipAmount)),
+              if (cartState.userCoinBalance > 0)
                 row(
-                  'HotPot Coins',
-                  '-₹${cartState.coinsDiscountAmount.toStringAsFixed(0)}',
+                  cartState.coinsDiscountAmount > 0
+                      ? 'HotPot Coins'
+                      : 'HotPot Coins (apply at checkout)',
+                  cartState.coinsDiscountAmount > 0
+                      ? '-${formatRupees(cartState.coinsDiscountAmount)}'
+                      : formatRupees(cartState.userCoinBalance),
                   color: AppTheme.success,
                 ),
               Divider(height: 20, color: AppTheme.hairlineOf(ctx)),
               row(
                 cartState.deliveryFeeIsEstimate ? 'Est. total' : 'Total payable',
-                '₹${cartState.grandTotal.toStringAsFixed(0)}',
+                formatRupees(cartState.grandTotal),
                 bold: true,
                 color: ink,
               ),

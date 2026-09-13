@@ -23,6 +23,7 @@ class OrderRepository {
     required String newStatus,
     String? driverId,
     String? dispatchPhotoUrl,
+    String? deliveryOtp,
   }) async {
     try {
       final Map<String, dynamic> updateData = {
@@ -44,12 +45,18 @@ class OrderRepository {
 
       if (completing) {
         try {
-          final done = await _supabase.rpc('complete_delivery_order', params: {'p_order_id': orderId});
+          final params = <String, dynamic>{'p_order_id': orderId};
+          if (deliveryOtp != null && deliveryOtp.trim().isNotEmpty) {
+            params['p_otp'] = deliveryOtp.trim();
+          }
+          final done = await _supabase.rpc('complete_delivery_order', params: params);
           if (done == true) {
             unawaited(_releaseChefPayout(orderId));
             return;
           }
-        } catch (_) {}
+        } catch (e) {
+          if (e.toString().contains('DELIVERY_PIN_REQUIRED')) rethrow;
+        }
       }
 
       Future<void> write(Map<String, dynamic> payload) async {

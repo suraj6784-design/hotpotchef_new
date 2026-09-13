@@ -40,6 +40,8 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
   final _emergencyPhoneController = TextEditingController();
   final _aadhaarMaskedController = TextEditingController();
   final _panController = TextEditingController();
+  final _bankAccountController = TextEditingController();
+  final _ifscController = TextEditingController();
 
   String _bloodGroup = 'O+';
   String? _avatarUrl;
@@ -78,6 +80,8 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     _emergencyPhoneController.dispose();
     _aadhaarMaskedController.dispose();
     _panController.dispose();
+    _bankAccountController.dispose();
+    _ifscController.dispose();
     _houseController.dispose();
     _streetController.dispose();
     _cityController.dispose();
@@ -110,6 +114,8 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
 
         final rawPan = userData['pan_number']?.toString() ?? userData['pan']?.toString() ?? '';
         _panController.text = maskPan(rawPan);
+        _bankAccountController.text = maskBankAccount(userData['bank_account_number']?.toString());
+        _ifscController.text = userData['bank_ifsc']?.toString() ?? userData['ifsc_code']?.toString() ?? '';
         _bloodGroup = userData['blood_group']?.toString() ?? 'O+';
         _avatarUrl = userData['avatar_url']?.toString();
 
@@ -219,6 +225,8 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     final phone = _phoneController.text.trim();
     final emergency = _emergencyPhoneController.text.trim();
     final pan = _panController.text.trim().toUpperCase();
+    final bankAcc = _bankAccountController.text.trim();
+    final ifsc = _ifscController.text.trim().toUpperCase();
 
     final house = _houseController.text.trim();
     final street = _streetController.text.trim();
@@ -246,6 +254,8 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
         'phone': phone,
         'emergency_phone': emergency,
         if (_panRegex.hasMatch(pan)) 'pan_number': pan,
+        if (bankAcc.isNotEmpty && !bankAcc.contains('X')) 'bank_account_number': bankAcc.replaceAll(' ', ''),
+        if (RegExp(r'^[A-Z]{4}0[A-Z0-9]{6}$').hasMatch(ifsc)) 'bank_ifsc': ifsc,
         'blood_group': _bloodGroup,
         'address': fullAddress,
         'house_no': house,
@@ -486,6 +496,31 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                       if (!_panRegex.hasMatch(t)) {
                         return 'Invalid PAN format';
                       }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _buildTextField(
+                    controller: _bankAccountController,
+                    label: 'Bank account number (payout KYC)',
+                    prefixIcon: Icons.account_balance_wallet_outlined,
+                    keyboardType: TextInputType.number,
+                    validator: (v) {
+                      final t = (v ?? '').replaceAll(RegExp(r'\s'), '');
+                      if (t.isEmpty || t.contains('X')) return 'Bank account is required for payouts';
+                      if (t.length < 8) return 'Enter a valid account number';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _buildTextField(
+                    controller: _ifscController,
+                    label: 'IFSC (e.g. HDFC0001234)',
+                    prefixIcon: Icons.pin_outlined,
+                    validator: (v) {
+                      final t = v?.trim().toUpperCase() ?? '';
+                      if (t.isEmpty) return 'IFSC is required for payouts';
+                      if (!RegExp(r'^[A-Z]{4}0[A-Z0-9]{6}$').hasMatch(t)) return 'Enter a valid IFSC';
                       return null;
                     },
                   ),

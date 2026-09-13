@@ -14,6 +14,7 @@ import '../services/cart_service.dart';
 import '../services/shared_cart_service.dart';
 import '../services/app_analytics.dart';
 import '../utils/helpers.dart';
+import '../utils/delivery_fee.dart';
 
 void _logCartError(dynamic error, StackTrace stackTrace, String reason) {
   if (kDebugMode) {
@@ -227,10 +228,31 @@ class CartNotifier extends Notifier<CartState> {
             final currentItem = state.items[index];
 
             if (status == 'sold out' || status == 'paused' || stock <= 0) {
-              removeItem(currentItem.id);
-            } else if (currentItem.quantity > stock) {
-              final diff = currentItem.quantity - stock;
-              updateQuantity(currentItem.id, -diff);
+              final remaining = state.items.where((i) => i.id != currentItem.id).toList();
+              _commitItems(
+                remaining,
+                stockNotice: '${currentItem.title} sold out and was removed from your cart.',
+              );
+              if (remaining.isEmpty) {
+                _stockChannel?.unsubscribe();
+              }
+              _scheduleRemoteSync();
+            } else {
+              final livePrice = double.tryParse(newRecord['price']?.toString() ?? '');
+              final liveDiscount = double.tryParse(newRecord['discounted_price']?.toString() ?? '');
+              final merged = Map<String, dynamic>.from(currentItem.rawMealDetails)..addAll({
+                ...newRecord,
+                'max_quantity': stock,
+              });
+              final updated = List<CartItemModel>.from(state.items);
+              updated[index] = currentItem.copyWith(
+                basePrice: livePrice != null && livePrice > 0 ? livePrice : currentItem.basePrice,
+                discountedPrice: (liveDiscount != null && liveDiscount > 0) ? liveDiscount : currentItem.discountedPrice,
+                quantity: currentItem.quantity > stock ? stock : currentItem.quantity,
+                rawMealDetails: merged,
+              );
+              _commitItems(updated);
+              _scheduleRemoteSync();
             }
           },
         )
@@ -304,7 +326,10 @@ class CartNotifier extends Notifier<CartState> {
       updatedItems.add(newItem);
     }
 
-    state = state.copyWith(items: updatedItems);
+    state = state.copyWith(
+      items: updatedItems,
+      packagingFee: _packagingFor(updatedItems),
+    );
     _resubscribeStockWatcher();
     _scheduleRemoteSync();
     unawaited(AppAnalytics.logAddToCart(mealId: mealId, chefId: chefId, quantity: quantity));
@@ -327,7 +352,7 @@ class CartNotifier extends Notifier<CartState> {
       updated[index] = item.copyWith(quantity: targetQty.clamp(1, maxStock));
     }
 
-    state = state.copyWith(items: updated);
+    _commitItems(updated);
     if (updated.isEmpty) {
       _stockChannel?.unsubscribe();
     }
@@ -336,7 +361,7 @@ class CartNotifier extends Notifier<CartState> {
 
   void removeItem(String cartItemId) {
     final updated = state.items.where((i) => i.id != cartItemId).toList();
-    state = state.copyWith(items: updated);
+    _commitItems(updated);
     if (updated.isEmpty) {
       _stockChannel?.unsubscribe();
     }
@@ -354,7 +379,7 @@ class CartNotifier extends Notifier<CartState> {
       }
     }
     detachSharedRoom();
-    state = state.copyWith(items: [], applyCoins: false);
+    state = state.copyWith(items: [], applyCoins: false, packagingFee: kDefaultPackagingFee);
 
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -371,6 +396,85 @@ class CartNotifier extends Notifier<CartState> {
   void setDeliveryFee(double fee) => state = state.copyWith(dynamicDeliveryFee: fee);
   void toggleCoins(bool apply) =>
       state = state.copyWith(applyCoins: apply && state.coinsAcceptedByVendors);
+  void clearStockNotice() {
+    if (state.stockNotice != null) {
+      state = state.copyWith(clearStockNotice: true);
+    }
+  }
+
+  double _packagingFor(List<CartItemModel> items, {String? loyaltyTier}) {
+    return packagingFeeForCartItems(
+      items.map((item) => item.toCheckoutPayload()),
+      loyaltyTier: loyaltyTier ?? state.loyaltyTier,
+    );
+  }
+
+  void _commitItems(List<CartItemModel> items, {String? stockNotice}) {
+    state = state.copyWith(
+      items: items,
+      packagingFee: _packagingFor(items),
+      stockNotice: stockNotice,
+    );
+  }
+
+  Future<void> refreshDeliveryQuote() async {
+    if (!state.hasDelivery) {
+      if (state.dynamicDeliveryFee != 0) {
+        state = state.copyWith(dynamicDeliveryFee: 0);
+      }
+      return;
+    }
+    final user = _supabase.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final addresses = await _supabase.from('user_addresses').select().eq('user_id', user.id);
+      final list = List<Map<String, dynamic>>.from(addresses as List);
+      Map<String, dynamic>? chosen;
+      for (final row in list) {
+        if (row['is_default'] == true) {
+          chosen = row;
+          break;
+        }
+      }
+      chosen ??= list.isNotEmpty ? list.first : null;
+      chosen ??= await _supabase
+          .from('users')
+          .select('lat, lng, latitude, longitude')
+          .eq('id', user.id)
+          .maybeSingle();
+
+      final dropLat = addressCoordinate(chosen, latitude: true);
+      final dropLng = addressCoordinate(chosen, latitude: false);
+      if (dropLat == null || dropLng == null) {
+        state = state.copyWith(dynamicDeliveryFee: 0);
+        return;
+      }
+
+      final chefIds = state.vendorIds.where((id) => id.isNotEmpty).toList();
+      if (chefIds.isEmpty) {
+        state = state.copyWith(dynamicDeliveryFee: quoteCheckoutDeliveryFee(cartItems: state.items.map((i) => i.toCheckoutPayload())));
+        return;
+      }
+      final chefsData = await _supabase.from('users').select('id, lat, lng').inFilter('id', chefIds);
+      final chefLocations = <String, ({double? lat, double? lng})>{
+        for (final c in chefsData)
+          c['id'].toString(): (
+            lat: double.tryParse(c['lat']?.toString() ?? ''),
+            lng: double.tryParse(c['lng']?.toString() ?? ''),
+          ),
+      };
+      final fee = quoteCheckoutDeliveryFee(
+        cartItems: state.items.map((i) => i.toCheckoutPayload()),
+        dropLat: dropLat,
+        dropLng: dropLng,
+        chefLocations: chefLocations,
+      );
+      state = state.copyWith(dynamicDeliveryFee: fee);
+    } catch (e, st) {
+      _logCartError(e, st, 'Failed quoting cart delivery fee');
+    }
+  }
 
   Future<void> fetchUserCoins() async {
     final user = _supabase.auth.currentUser;
@@ -383,7 +487,6 @@ class CartNotifier extends Notifier<CartState> {
           .eq('id', user.id)
           .maybeSingle();
       final coins = double.tryParse(data?['hotpot_coins']?.toString() ?? '0') ?? 0.0;
-      var packaging = state.packagingFee;
       String? tier;
       try {
         final gam = await _supabase
@@ -393,15 +496,13 @@ class CartNotifier extends Notifier<CartState> {
             .maybeSingle();
         tier = gam?['loyalty_tier']?.toString();
       } catch (_) {}
-      packaging = packagingFeeForCartItems(
-        state.items.map((item) => item.toCheckoutPayload()),
-        loyaltyTier: tier,
-      );
       state = state.copyWith(
         userCoinBalance: coins,
-        packagingFee: packaging,
+        loyaltyTier: tier,
+        packagingFee: _packagingFor(state.items, loyaltyTier: tier),
         applyCoins: state.applyCoins && state.coinsAcceptedByVendors,
       );
+      await refreshDeliveryQuote();
     } catch (e, st) {
       _logCartError(e, st, 'Failed fetching coin balance');
     }
@@ -426,7 +527,7 @@ class CartNotifier extends Notifier<CartState> {
     final serviceType = ServiceType.fromString(serviceTypeStr);
 
     updated[index] = item.copyWith(serviceType: serviceType);
-    state = state.copyWith(items: updated);
+    _commitItems(updated);
     _scheduleRemoteSync();
   }
 
@@ -438,7 +539,7 @@ class CartNotifier extends Notifier<CartState> {
     final item = updated[index];
 
     updated[index] = item.copyWith(scheduledDate: date);
-    state = state.copyWith(items: updated);
+    _commitItems(updated);
     _scheduleRemoteSync();
   }
 
@@ -458,7 +559,7 @@ class CartNotifier extends Notifier<CartState> {
       rawMealDetails: newRawDetails,
     );
 
-    state = state.copyWith(items: updated);
+    _commitItems(updated);
     _scheduleRemoteSync();
   }
 }

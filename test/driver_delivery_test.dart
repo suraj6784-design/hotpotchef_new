@@ -75,6 +75,29 @@ void main() {
       googleMapsDirectionsUri(address: 'Wakad kitchen')!.toString(),
       contains('Wakad'),
     );
+    expect(
+      googleMapsDirectionsUri(
+        lat: 18.6,
+        lng: 73.7,
+        address: 'Paid checkout street',
+        preferAddress: true,
+      )!.toString(),
+      contains('Paid'),
+    );
+  });
+
+  test('isPartnerDeliveryOrder excludes chef-self even when order_type is blank if items say so', () {
+    expect(isPartnerDeliveryOrder({'order_type': 'Chef-Self'}), isFalse);
+    expect(
+      isPartnerDeliveryOrder({
+        'order_type': '',
+        'items': [
+          {'selected_service_type': 'Chef-Self'},
+        ],
+      }),
+      isFalse,
+    );
+    expect(isPartnerDeliveryOrder({'order_type': 'Delivery Partner'}), isTrue);
   });
 
   test('DriverDeliveryModel reads the meal time slot', () {

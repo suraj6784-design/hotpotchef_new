@@ -232,6 +232,8 @@ class CartState {
   final double tipAmount;
   final double userCoinBalance;
   final bool applyCoins;
+  final String? loyaltyTier;
+  final String? stockNotice;
   final String? sharedRoomCode;
   final String? sharedHostId;
   final String? sharedPlaceKind;
@@ -246,6 +248,8 @@ class CartState {
     this.tipAmount = 0.0,
     this.userCoinBalance = 0.0,
     this.applyCoins = false,
+    this.loyaltyTier,
+    this.stockNotice,
     this.sharedRoomCode,
     this.sharedHostId,
     this.sharedPlaceKind,
@@ -261,6 +265,9 @@ class CartState {
     double? tipAmount,
     double? userCoinBalance,
     bool? applyCoins,
+    String? loyaltyTier,
+    String? stockNotice,
+    bool clearStockNotice = false,
     String? sharedRoomCode,
     String? sharedHostId,
     String? sharedPlaceKind,
@@ -276,6 +283,8 @@ class CartState {
       tipAmount: tipAmount ?? this.tipAmount,
       userCoinBalance: userCoinBalance ?? this.userCoinBalance,
       applyCoins: applyCoins ?? this.applyCoins,
+      loyaltyTier: loyaltyTier ?? this.loyaltyTier,
+      stockNotice: clearStockNotice ? null : (stockNotice ?? this.stockNotice),
       sharedRoomCode: clearSharedRoom ? null : (sharedRoomCode ?? this.sharedRoomCode),
       sharedHostId: clearSharedRoom ? null : (sharedHostId ?? this.sharedHostId),
       sharedPlaceKind: clearSharedRoom ? null : (sharedPlaceKind ?? this.sharedPlaceKind),
@@ -365,6 +374,8 @@ class CartState {
           tipAmount == other.tipAmount &&
           userCoinBalance == other.userCoinBalance &&
           applyCoins == other.applyCoins &&
+          loyaltyTier == other.loyaltyTier &&
+          stockNotice == other.stockNotice &&
           sharedRoomCode == other.sharedRoomCode &&
           sharedHostId == other.sharedHostId &&
           sharedPlaceKind == other.sharedPlaceKind &&
@@ -380,6 +391,8 @@ class CartState {
       tipAmount.hashCode ^
       userCoinBalance.hashCode ^
       applyCoins.hashCode ^
+      loyaltyTier.hashCode ^
+      stockNotice.hashCode ^
       sharedRoomCode.hashCode ^
       sharedHostId.hashCode ^
       sharedPlaceKind.hashCode ^
