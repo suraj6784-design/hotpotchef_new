@@ -11,6 +11,7 @@ import 'referral_screen.dart';
 import 'customer_order_history_screen.dart';
 import '../utils/helpers.dart';
 import '../utils/app_theme.dart';
+import '../utils/route_authz.dart';
 import '../widgets/avatar_upload.dart';
 import '../widgets/loyalty_badge_card.dart';
 
@@ -102,13 +103,7 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
     if (!mounted) return;
 
     try {
-      if (role == 'chef') {
-        context.go('/chef-hub');
-      } else if (role == 'driver') {
-        context.go('/driver-hub');
-      } else {
-        context.go('/customer-hub');
-      }
+      context.go(RouteAuthz.hubForRole(RouteAuthz.parseRole(role, email: user.email)));
       return;
     } catch (_) {
       if (Navigator.canPop(context)) {

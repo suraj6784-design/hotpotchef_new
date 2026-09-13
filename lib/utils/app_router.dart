@@ -15,6 +15,7 @@ import '../screens/driver_profile_screen.dart';
 import '../screens/customer_profile_screen.dart';
 import '../screens/chef_analytics_screen.dart';
 import '../screens/chef_publish_meal_screen.dart';
+import '../screens/platform_ops_screen.dart';
 import '../screens/reset_password_screen.dart';
 import 'route_authz.dart';
 
@@ -34,7 +35,10 @@ class AppRouter {
     errorBuilder: (context, state) {
       final user = Supabase.instance.client.auth.currentUser;
       final home = RouteAuthz.hubForRole(
-        RouteAuthz.parseRole(user?.userMetadata?['role']?.toString()),
+        RouteAuthz.parseRole(
+          user?.userMetadata?['role']?.toString(),
+          email: user?.email,
+        ),
       );
 
       return Scaffold(
@@ -68,6 +72,7 @@ class AppRouter {
       return RouteAuthz.resolveRedirect(
         isAuthenticated: session != null,
         rawRole: session?.user.userMetadata?['role']?.toString(),
+        email: session?.user.email,
         path: state.uri.path,
       );
     },
@@ -151,6 +156,10 @@ class AppRouter {
       GoRoute(
         path: '/chef-analytics',
         builder: (context, state) => const ChefAnalyticsScreen(),
+      ),
+      GoRoute(
+        path: '/platform-ops',
+        builder: (context, state) => const PlatformOpsScreen(),
       ),
     ],
   );
