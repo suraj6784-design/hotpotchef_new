@@ -6,14 +6,19 @@
 // Role source: JWT `user_metadata.role` (what GoRouter can read synchronously).
 // Auth/signup also writes `public.users.role`; if those diverge, the router
 // follows metadata until the session is refreshed.
+//
+// Owner allowlist (`suraj6784@gmail.com`) is treated as Admin even when a leftover
+// Chef/Customer JWT is still attached — matching the existing Admin desk gate.
 
-enum AppRole { customer, chef, driver }
+import 'platform_ops_access.dart';
+
+enum AppRole { customer, chef, driver, admin }
 
 enum RouteAccess {
   /// `/auth` — guests only; signed-in users are sent to their hub.
   public,
 
-  /// `/customer-hub` — guests and customers. Chefs/drivers go to their hub.
+  /// `/customer-hub` — guests and customers. Chefs/drivers/admins go to their hub.
   guestOrCustomer,
 
   /// Other `/customer-*` routes (e.g. profile) — customers only; guests → `/auth`.
@@ -25,6 +30,9 @@ enum RouteAccess {
   /// `/driver-*` — drivers only.
   driver,
 
+  /// `/platform-ops` — admins only (or the owner allowlist email).
+  admin,
+
   /// Chat / tracking — any visitor (customers and drivers both use these).
   shared,
 }
@@ -34,6 +42,7 @@ abstract final class RouteAuthz {
   static const customerHub = '/customer-hub';
   static const chefHub = '/chef-hub';
   static const driverHub = '/driver-hub';
+  static const platformOps = '/platform-ops';
 
   static const chefPaths = {
     '/chef-hub',
@@ -51,15 +60,26 @@ abstract final class RouteAuthz {
     '/customer-profile',
   };
 
-  /// Normalize signup/DB values (`Chef`, `DRIVER`, ` customer `) to [AppRole].
+  static const adminPaths = {
+    '/platform-ops',
+  };
+
+  /// Normalize signup/DB values (`Chef`, `DRIVER`, `Admin`, ` customer `) to [AppRole].
   /// Unknown or missing values default to customer, matching existing router
-  /// and auth-screen fallbacks.
-  static AppRole parseRole(String? raw) {
+  /// and auth-screen fallbacks. The owner allowlist email is always Admin.
+  static AppRole parseRole(String? raw, {String? email}) {
+    if (isPlatformOwnerEmail(email)) return AppRole.admin;
     switch (raw?.trim().toLowerCase()) {
       case 'chef':
         return AppRole.chef;
       case 'driver':
         return AppRole.driver;
+      case 'admin':
+      case 'ops':
+      case 'platform':
+      case 'platform admin':
+      case 'platform_admin':
+        return AppRole.admin;
       default:
         return AppRole.customer;
     }
@@ -71,6 +91,8 @@ abstract final class RouteAuthz {
         return chefHub;
       case AppRole.driver:
         return driverHub;
+      case AppRole.admin:
+        return platformOps;
       case AppRole.customer:
         return customerHub;
     }
@@ -100,6 +122,9 @@ abstract final class RouteAuthz {
     if (driverPaths.contains(p) || p.startsWith('/driver-')) {
       return RouteAccess.driver;
     }
+    if (adminPaths.contains(p) || p.startsWith('/platform-ops')) {
+      return RouteAccess.admin;
+    }
     if (p == '/tracking' || p == '/chat' || p.startsWith('/chat/')) {
       return RouteAccess.shared;
     }
@@ -110,9 +135,10 @@ abstract final class RouteAuthz {
   static String? resolveRedirect({
     required bool isAuthenticated,
     String? rawRole,
+    String? email,
     required String path,
   }) {
-    final role = parseRole(rawRole);
+    final role = parseRole(rawRole, email: email);
     final access = classify(path);
     final hub = hubForRole(role);
     final current = normalizePath(path);
@@ -120,7 +146,11 @@ abstract final class RouteAuthz {
     final String? target;
     if (!isAuthenticated) {
       target = switch (access) {
-        RouteAccess.chef || RouteAccess.driver || RouteAccess.customer => authPath,
+        RouteAccess.chef ||
+        RouteAccess.driver ||
+        RouteAccess.customer ||
+        RouteAccess.admin =>
+          authPath,
         RouteAccess.public || RouteAccess.guestOrCustomer || RouteAccess.shared => null,
       };
     } else {
@@ -128,6 +158,7 @@ abstract final class RouteAuthz {
         RouteAccess.public => hub,
         RouteAccess.chef => role == AppRole.chef ? null : hub,
         RouteAccess.driver => role == AppRole.driver ? null : hub,
+        RouteAccess.admin => role == AppRole.admin ? null : hub,
         RouteAccess.customer || RouteAccess.guestOrCustomer =>
           role == AppRole.customer ? null : hub,
         RouteAccess.shared => null,

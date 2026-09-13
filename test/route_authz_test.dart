@@ -13,7 +13,25 @@ void main() {
     test('defaults unknown or missing values to customer', () {
       expect(RouteAuthz.parseRole(null), AppRole.customer);
       expect(RouteAuthz.parseRole(''), AppRole.customer);
-      expect(RouteAuthz.parseRole('admin'), AppRole.customer);
+      expect(RouteAuthz.parseRole('moderator'), AppRole.customer);
+    });
+
+    test('parses admin aliases and does not collapse them to customer', () {
+      expect(RouteAuthz.parseRole('admin'), AppRole.admin);
+      expect(RouteAuthz.parseRole('Admin'), AppRole.admin);
+      expect(RouteAuthz.parseRole('ops'), AppRole.admin);
+      expect(RouteAuthz.parseRole('platform_admin'), AppRole.admin);
+    });
+
+    test('owner allowlist email is Admin even with a leftover Chef JWT', () {
+      expect(
+        RouteAuthz.parseRole('Chef', email: 'Suraj6784@gmail.com'),
+        AppRole.admin,
+      );
+      expect(
+        RouteAuthz.parseRole('customer', email: 'other@example.com'),
+        AppRole.customer,
+      );
     });
   });
 
@@ -22,6 +40,7 @@ void main() {
       expect(RouteAuthz.hubForRole(AppRole.customer), '/customer-hub');
       expect(RouteAuthz.hubForRole(AppRole.chef), '/chef-hub');
       expect(RouteAuthz.hubForRole(AppRole.driver), '/driver-hub');
+      expect(RouteAuthz.hubForRole(AppRole.admin), '/platform-ops');
     });
   });
 
@@ -40,6 +59,8 @@ void main() {
       expect(RouteAuthz.classify('/app/cart'), RouteAccess.guestOrCustomer);
       expect(RouteAuthz.classify('/chat/meal-1'), RouteAccess.shared);
       expect(RouteAuthz.classify('/tracking'), RouteAccess.shared);
+      expect(RouteAuthz.classify('/platform-ops'), RouteAccess.admin);
+      expect(RouteAuthz.classify('/platform-ops/'), RouteAccess.admin);
     });
 
     test('future chef/driver/customer paths inherit the prefix group', () {
@@ -64,6 +85,7 @@ void main() {
         '/chef-publish-meal',
         '/driver-hub',
         '/driver-profile',
+        '/platform-ops',
       ]) {
         expect(guest(path), '/auth', reason: path);
       }
@@ -100,6 +122,10 @@ void main() {
         RouteAuthz.resolveRedirect(isAuthenticated: true, rawRole: 'Customer', path: '/auth'),
         '/customer-hub',
       );
+      expect(
+        RouteAuthz.resolveRedirect(isAuthenticated: true, rawRole: 'Admin', path: '/auth'),
+        '/platform-ops',
+      );
     });
 
     test('each role may stay on their own hub and role routes', () {
@@ -132,6 +158,14 @@ void main() {
           isAuthenticated: true,
           rawRole: 'customer',
           path: '/customer-profile',
+        ),
+        isNull,
+      );
+      expect(
+        RouteAuthz.resolveRedirect(
+          isAuthenticated: true,
+          rawRole: 'admin',
+          path: '/platform-ops',
         ),
         isNull,
       );
@@ -207,7 +241,7 @@ void main() {
     });
 
     test('shared chat and tracking stay available to every role', () {
-      for (final role in ['customer', 'chef', 'driver']) {
+      for (final role in ['customer', 'chef', 'driver', 'admin']) {
         expect(
           RouteAuthz.resolveRedirect(isAuthenticated: true, rawRole: role, path: '/chat/m1'),
           isNull,
@@ -217,6 +251,61 @@ void main() {
           isNull,
         );
       }
+    });
+
+    test('only admin may open /platform-ops; others go to their hub', () {
+      expect(
+        RouteAuthz.resolveRedirect(isAuthenticated: true, rawRole: 'customer', path: '/platform-ops'),
+        '/customer-hub',
+      );
+      expect(
+        RouteAuthz.resolveRedirect(isAuthenticated: true, rawRole: 'chef', path: '/platform-ops'),
+        '/chef-hub',
+      );
+      expect(
+        RouteAuthz.resolveRedirect(isAuthenticated: true, rawRole: 'driver', path: '/platform-ops'),
+        '/driver-hub',
+      );
+      expect(
+        RouteAuthz.resolveRedirect(isAuthenticated: true, rawRole: 'admin', path: '/platform-ops'),
+        isNull,
+      );
+    });
+
+    test('admin is sent off diner/chef/driver hubs to the desk', () {
+      expect(
+        RouteAuthz.resolveRedirect(isAuthenticated: true, rawRole: 'admin', path: '/customer-hub'),
+        '/platform-ops',
+      );
+      expect(
+        RouteAuthz.resolveRedirect(isAuthenticated: true, rawRole: 'admin', path: '/chef-hub'),
+        '/platform-ops',
+      );
+      expect(
+        RouteAuthz.resolveRedirect(isAuthenticated: true, rawRole: 'admin', path: '/driver-hub'),
+        '/platform-ops',
+      );
+    });
+
+    test('owner allowlist email reaches the desk with a leftover Chef role', () {
+      expect(
+        RouteAuthz.resolveRedirect(
+          isAuthenticated: true,
+          rawRole: 'Chef',
+          email: 'suraj6784@gmail.com',
+          path: '/platform-ops',
+        ),
+        isNull,
+      );
+      expect(
+        RouteAuthz.resolveRedirect(
+          isAuthenticated: true,
+          rawRole: 'Chef',
+          email: 'suraj6784@gmail.com',
+          path: '/chef-hub',
+        ),
+        '/platform-ops',
+      );
     });
   });
 

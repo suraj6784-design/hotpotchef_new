@@ -5,6 +5,8 @@
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'platform_ops_access.dart';
+
 abstract final class AuthRoleSync {
   /// Writes [role] into JWT user_metadata when it differs (case-insensitive).
   static Future<void> ensureJwtRole(SupabaseClient client, String role) async {
@@ -24,5 +26,18 @@ abstract final class AuthRoleSync {
       'role': trimmed,
     };
     await client.auth.updateUser(UserAttributes(data: merged));
+  }
+
+  /// Owner allowlist is always Admin. Writes `public.users.role` and JWT metadata
+  /// so leftover Chef/Customer sessions still land on `/platform-ops`.
+  static Future<void> syncOwnerAdminRole(SupabaseClient client) async {
+    final user = client.auth.currentUser;
+    if (user == null || !isPlatformOwnerEmail(user.email)) return;
+    try {
+      await client.from('users').update({'role': 'Admin'}).eq('id', user.id);
+    } catch (_) {
+      // Role check constraints or missing column should not block the desk.
+    }
+    await ensureJwtRole(client, 'Admin');
   }
 }
