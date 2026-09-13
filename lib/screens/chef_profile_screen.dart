@@ -8,6 +8,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:geocoding/geocoding.dart'; // 🌟 Added for reverse geocoding
 
 import 'map_picker_screen.dart';
+import '../utils/chef_payout_status.dart';
 import '../utils/helpers.dart';
 import '../widgets/avatar_upload.dart';
 
@@ -58,7 +59,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
   bool _isLoading = true;
   bool _isSaving = false;
   bool _isSettingUpPayout = false;
-  bool _payoutEnabled = false;
+  ChefPayoutLinkKind _payoutKind = ChefPayoutLinkKind.missing;
 
   // Controllers
   final _nameController = TextEditingController();
@@ -143,7 +144,9 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
         _ifscController.text = userData['bank_ifsc']?.toString() ?? '';
 
         _avatarUrl = userData['avatar_url']?.toString();
-        _payoutEnabled = userData['payout_enabled'] == true || _gatewayAccountController.text.isNotEmpty;
+        _payoutKind = ChefPayoutStatus.classify(
+          accountId: _gatewayAccountController.text,
+        );
 
         _latitude = (userData['lat'] as num?)?.toDouble();
         _longitude = (userData['lng'] as num?)?.toDouble();
@@ -200,23 +203,28 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
           'bank_account': accNum,
           'ifsc_code': ifsc,
           'beneficiary_name': beneficiary,
+          'house': _houseController.text.trim(),
+          'street': _streetController.text.trim(),
+          'city': _cityController.text.trim(),
+          'state': _stateController.text.trim(),
+          'postal_code': _pincodeController.text.trim(),
         },
       );
 
       if (response.status == 200 && response.data != null && response.data['success'] == true) {
+        final accountId = response.data['account_id']?.toString() ?? '';
+        final kind = ChefPayoutStatus.classify(
+          accountId: accountId,
+          mockFlag: response.data['mock'] == true,
+          mode: response.data['mode']?.toString(),
+        );
         setState(() {
-          _payoutEnabled = true;
-          if (response.data['account_id'] != null) {
-            _gatewayAccountController.text = response.data['account_id'].toString();
+          _payoutKind = kind;
+          if (accountId.isNotEmpty) {
+            _gatewayAccountController.text = accountId;
           }
         });
-        final accountId = response.data['account_id']?.toString() ?? '';
-        final isMock = response.data['mock'] == true || accountId.startsWith('acc_mock_');
-        _showSnackBar(
-          isMock
-              ? 'Payout details saved in sandbox. Live Razorpay settlements are not enabled yet.'
-              : 'Payout account linked.',
-        );
+        _showSnackBar(ChefPayoutStatus.snackBarMessage(kind));
       } else {
         throw Exception(response.data?['error'] ?? 'Settlement routing rejected');
       }
@@ -645,27 +653,40 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                           ListTile(
                             contentPadding: EdgeInsets.zero,
                             leading: Icon(
-                              _payoutEnabled ? Icons.account_balance_wallet : Icons.account_balance,
-                              color: _payoutEnabled ? Colors.greenAccent : Colors.orangeAccent,
+                              _payoutKind == ChefPayoutLinkKind.missing
+                                  ? Icons.account_balance
+                                  : Icons.account_balance_wallet,
+                              color: switch (_payoutKind) {
+                                ChefPayoutLinkKind.liveLinked => Colors.greenAccent,
+                                ChefPayoutLinkKind.testLinked => Colors.lightBlueAccent,
+                                ChefPayoutLinkKind.mock => Colors.amberAccent,
+                                ChefPayoutLinkKind.missing => Colors.orangeAccent,
+                              },
                             ),
                             title: Text(
-                              _payoutEnabled ? 'Direct Settlement Active' : 'Configure Settlement Account',
+                              ChefPayoutStatus.title(_payoutKind),
                               style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
                             ),
                             subtitle: Text(
-                              _payoutEnabled
-                                  ? 'Earnings settle automatically to your registered account.'
-                                  : 'Required for automated split payouts via Razorpay Route.',
+                              ChefPayoutStatus.subtitle(_payoutKind),
                               style: const TextStyle(color: Colors.grey, fontSize: 12),
                             ),
-                            trailing: _payoutEnabled
-                                ? const Chip(backgroundColor: Colors.green, label: Text('Active', style: TextStyle(color: Colors.white, fontSize: 11)))
-                                : ElevatedButton(
+                            trailing: ChefPayoutStatus.canRelink(_payoutKind)
+                                ? ElevatedButton(
                                     style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange),
                                     onPressed: _isSettingUpPayout ? null : _setupChefPayout,
                                     child: _isSettingUpPayout
                                         ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                                         : const Text('Link', style: TextStyle(color: Colors.white, fontSize: 12)),
+                                  )
+                                : Chip(
+                                    backgroundColor: _payoutKind == ChefPayoutLinkKind.liveLinked
+                                        ? Colors.green
+                                        : Colors.blueGrey,
+                                    label: Text(
+                                      ChefPayoutStatus.chipLabel(_payoutKind),
+                                      style: const TextStyle(color: Colors.white, fontSize: 11),
+                                    ),
                                   ),
                           ),
                           const Divider(color: Colors.white12),

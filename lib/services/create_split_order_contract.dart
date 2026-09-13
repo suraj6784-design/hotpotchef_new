@@ -16,7 +16,12 @@
 // client-supplied `total_amount` (that field is ignored if sent).
 //
 // Success response:
-//   success, order_id (Razorpay), amount (integer paise), currency, chef_transfer
+//   success, order_id (Razorpay), amount (integer paise), currency, chef_transfer,
+//   transfer_status (on_hold | skipped_*), transfers? (Route splits when linked)
+//
+// Route transfers are attached only when the edge function has Razorpay keys
+// AND the chef has a real linked account (not acc_mock_*). Checkout still
+// opens Razorpay with order_id either way.
 
 class CreateSplitOrderRequest {
   static const String functionName = 'create-split-order';

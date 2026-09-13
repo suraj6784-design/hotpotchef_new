@@ -1,5 +1,7 @@
 // supabase/functions/create-chef-account/index.ts
 // Auth model: chef self-service. JWT required; chef_id is derived from auth.uid().
+// Route linked accounts: uses RAZORPAY_KEY_ID + RAZORPAY_KEY_SECRET (Test keys).
+// Mock acc_mock_* is only created when those secrets are missing.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { handleCreateChefAccount, jsonResponse } from './handler.mjs'

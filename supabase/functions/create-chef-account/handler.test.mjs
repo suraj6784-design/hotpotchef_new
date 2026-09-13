@@ -88,7 +88,12 @@ describe('handleCreateChefAccount', () => {
     ))
 
     assert.equal(result.status, 200)
-    assert.deepEqual(result.body, { success: true, account_id: 'acc_mock_1700000000000', mock: true })
+    assert.deepEqual(result.body, {
+      success: true,
+      account_id: 'acc_mock_1700000000000',
+      mock: true,
+      mode: 'mock',
+    })
     assert.deepEqual(updates, [{ id: chefId, accountId: 'acc_mock_1700000000000' }])
   })
 
@@ -107,7 +112,12 @@ describe('handleCreateChefAccount', () => {
     ))
 
     assert.equal(result.status, 200)
-    assert.deepEqual(result.body, { success: true, account_id: 'acc_existing', mock: false })
+    assert.deepEqual(result.body, {
+      success: true,
+      account_id: 'acc_existing',
+      mock: false,
+      mode: 'test',
+    })
     assert.equal(wrote, false)
   })
 
@@ -125,5 +135,71 @@ describe('handleCreateChefAccount', () => {
     assert.equal(result.status, 200)
     assert.equal(updates[0].id, chefId)
     assert.equal(result.body.success, true)
+  })
+
+  it('creates a real Route account when Test keys are present', async () => {
+    const updates = []
+    const result = await read(await handleCreateChefAccount(
+      post({
+        chef_id: chefId,
+        email: 'chef@example.com',
+        name: 'Test Kitchen',
+        phone: '9999999999',
+        bank_account: '123456789012',
+        ifsc_code: 'HDFC0001234',
+        beneficiary_name: 'Test Kitchen',
+      }, { Authorization: 'Bearer valid-chef-jwt' }),
+      chefDeps({
+        getRazorpayKeys: () => ({ keyId: 'rzp_test_abc', keySecret: 'secret' }),
+        async createLinkedAccount(input, keys) {
+          assert.equal(keys.keyId, 'rzp_test_abc')
+          assert.equal(input.email, 'chef@example.com')
+          assert.equal(input.bank_account, '123456789012')
+          return { accountId: 'acc_RZPtest123', mock: false, mode: 'test', api: 'v2', settlementsAttached: true }
+        },
+        async enablePayout(id, accountId) {
+          updates.push({ id, accountId })
+        },
+      }),
+    ))
+
+    assert.equal(result.status, 200)
+    assert.deepEqual(result.body, {
+      success: true,
+      account_id: 'acc_RZPtest123',
+      mock: false,
+      mode: 'test',
+      api: 'v2',
+      settlements_attached: true,
+    })
+    assert.deepEqual(updates, [{ id: chefId, accountId: 'acc_RZPtest123' }])
+  })
+
+  it('does not invent acc_mock_* when keys exist but Razorpay fails', async () => {
+    const updates = []
+    const result = await read(await handleCreateChefAccount(
+      post({
+        chef_id: chefId,
+        email: 'chef@example.com',
+        name: 'Test Kitchen',
+        bank_account: '123456789012',
+        ifsc_code: 'HDFC0001234',
+        beneficiary_name: 'Test Kitchen',
+      }, { Authorization: 'Bearer valid-chef-jwt' }),
+      chefDeps({
+        getRazorpayKeys: () => ({ keyId: 'rzp_test_abc', keySecret: 'secret' }),
+        async createLinkedAccount() {
+          throw new Error('Marketplace feature is not enabled')
+        },
+        async enablePayout(id, accountId) {
+          updates.push({ id, accountId })
+        },
+      }),
+    ))
+
+    assert.equal(result.status, 400)
+    assert.equal(result.body.error, 'Marketplace feature is not enabled')
+    assert.equal(updates.length, 0)
+    assert.equal(String(result.body.account_id ?? ''), '')
   })
 })
