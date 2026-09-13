@@ -89,14 +89,14 @@ GoRouter _resetRouter({
     routes: [
       GoRoute(
         path: '/reset-password',
-        builder: (_, __) => ResetPasswordScreen(
+        builder: (context, state) => ResetPasswordScreen(
           updatePassword: updatePassword,
           hubLocation: hubLocation ?? () => '/customer-hub',
         ),
       ),
       GoRoute(
         path: '/customer-hub',
-        builder: (_, __) => const Scaffold(body: Text('customer-hub')),
+        builder: (context, state) => const Scaffold(body: Text('customer-hub')),
       ),
     ],
   );
