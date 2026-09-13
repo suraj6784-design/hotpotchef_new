@@ -2,39 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts'
 import { createRazorpayOrder } from '../_shared/razorpay.ts'
-
-function asNumber(value: unknown, fallback = 0) {
-  const n = Number(value)
-  return Number.isFinite(n) ? n : fallback
-}
-
-function packagingFeeForLoyaltyTier(tier: unknown) {
-  const name = String(tier ?? '').toLowerCase()
-  if (name.includes('gold')) return 0
-  return 20
-}
-
-function normalizeCartItems(raw: unknown) {
-  if (!Array.isArray(raw) || raw.length === 0) {
-    throw new Error('Cart is empty')
-  }
-  return raw.map((item) => {
-    const row = (item && typeof item === 'object') ? item as Record<string, unknown> : {}
-    const qty = Math.max(1, Math.round(asNumber(row.quantity, 1)))
-    const price = asNumber(
-      row.discounted_price ?? row.discountedPrice ?? row.price ?? row.base_price ?? row.basePrice,
-      0,
-    )
-    return {
-      ...row,
-      quantity: qty,
-      price,
-      chef_id: row.chef_id ?? row.chefId,
-      meal_id: row.meal_id ?? row.mealId ?? row.source_meal_id,
-      source_meal_id: row.source_meal_id ?? row.meal_id ?? row.mealId,
-    }
-  })
-}
+import { quotePaidCheckout } from '../_shared/checkout_quote.ts'
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return optionsResponse()
@@ -44,11 +12,7 @@ serve(async (req) => {
     if (!authHeader) return jsonResponse({ success: false, error: 'Unauthorized' }, 401)
 
     const body = await req.json()
-    const cartItems = normalizeCartItems(body.cart_items)
-    const tipAmount = Math.max(0, Math.min(500, asNumber(body.tip_amount, 0)))
     const applyCoins = Boolean(body.apply_coins)
-    const dropLat = body.dropoff_lat == null ? null : asNumber(body.dropoff_lat, NaN)
-    const dropLng = body.dropoff_lng == null ? null : asNumber(body.dropoff_lng, NaN)
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
@@ -78,6 +42,17 @@ serve(async (req) => {
       }, 429)
     }
 
+    const quoted = await quotePaidCheckout(
+      admin,
+      user.id,
+      body.cart_items,
+      body.tip_amount,
+      applyCoins,
+      body.dropoff_lat,
+      body.dropoff_lng,
+    )
+    const cartItems = quoted.cartItems
+
     const chefIds = [...new Set(
       cartItems
         .map((row) => String(row.chef_id ?? row.chefId ?? '').trim())
@@ -97,61 +72,31 @@ serve(async (req) => {
       }
     }
 
-    const { data: quotedFee, error: feeError } = await admin.rpc('quote_checkout_delivery_fee', {
-      p_items: cartItems,
-      p_drop_lat: Number.isFinite(dropLat) ? dropLat : null,
-      p_drop_lng: Number.isFinite(dropLng) ? dropLng : null,
-    })
-    if (feeError) {
-      return jsonResponse({ success: false, error: feeError.message || 'Could not quote delivery' }, 400)
-    }
-    const deliveryFee = asNumber(quotedFee, 0)
-
-    const { data: gam } = await admin
-      .from('user_gamification')
-      .select('loyalty_tier')
-      .eq('user_id', user.id)
-      .maybeSingle()
-    let packagingAlreadyIncluded = packagingFeeForLoyaltyTier(gam?.loyalty_tier)
-    const { data: pricing, error: quoteError } = await admin.rpc('calculate_cart_total', {
-      p_items: cartItems,
-      p_user_id: user.id,
-    })
-    if (quoteError) {
-      return jsonResponse({
-        success: false,
-        error: quoteError.message || 'Could not price this cart from the live menu',
-      }, 400)
-    }
-    const foodOnly = asNumber(pricing?.items_total ?? pricing?.item_total, 0)
-    if (foodOnly <= 0) {
-      return jsonResponse({ success: false, error: 'Cart prices could not be verified' }, 400)
-    }
-    if (pricing?.packaging_fee != null) {
-      packagingAlreadyIncluded = asNumber(pricing.packaging_fee, packagingAlreadyIncluded)
-    }
-    const billBeforeCoins = foodOnly + packagingAlreadyIncluded + deliveryFee + tipAmount
-
-    const coinsAllowed = cartItems.every((row) => {
-      const flag = row.accepts_hotpot_coins
-      return !(flag === false || flag === 'false')
-    })
-
-    let coins = 0
-    if (applyCoins && coinsAllowed) {
-      const { data: profile } = await admin.from('users').select('hotpot_coins').eq('id', user.id).maybeSingle()
-      coins = Math.min(asNumber(profile?.hotpot_coins, 0), billBeforeCoins)
-    }
-
-    const grandTotal = Math.max(0, billBeforeCoins - coins)
-    const amountPaise = Math.round(grandTotal * 100)
-    if (amountPaise < 100) {
-      throw new Error('Payable amount is too small to charge')
-    }
-
-    const rzpOrder = await createRazorpayOrder(amountPaise, `hpc_${Date.now()}`, {
+    const rzpOrder = await createRazorpayOrder(quoted.amountPaise, `hpc_${Date.now()}`, {
       user_id: user.id,
     })
+
+    const pendingRow = {
+      user_id: user.id,
+      razorpay_order_id: rzpOrder.id,
+      cart_items: cartItems,
+      delivery_address: body.delivery_address ?? null,
+      instructions: body.instructions ?? null,
+      phone: body.customer_phone ?? null,
+      email: user.email ?? body.customer_email ?? null,
+      apply_coins: quoted.applyCoins,
+      tip_amount: quoted.tipAmount,
+      delivery_fee: quoted.deliveryFee,
+      amount_paise: quoted.amountPaise,
+      dropoff_lat: quoted.dropLat,
+      dropoff_lng: quoted.dropLng,
+    }
+    const { error: pendingError } = await admin
+      .from('pending_checkouts')
+      .upsert(pendingRow, { onConflict: 'razorpay_order_id' })
+    if (pendingError) {
+      throw new Error(pendingError.message)
+    }
 
     await admin.rpc('expire_checkout_holds')
     const { data: reserved, error: reserveError } = await admin.rpc('reserve_checkout_inventory', {
@@ -167,33 +112,10 @@ serve(async (req) => {
       })
     }
 
-    const { error: pendingError } = await admin.from('pending_checkouts').insert({
-      user_id: user.id,
-      razorpay_order_id: rzpOrder.id,
-      cart_items: cartItems,
-      delivery_address: body.delivery_address ?? null,
-      instructions: body.instructions ?? null,
-      phone: body.customer_phone ?? null,
-      email: user.email ?? body.customer_email ?? null,
-      apply_coins: applyCoins,
-      tip_amount: tipAmount,
-      delivery_fee: deliveryFee,
-      amount_paise: amountPaise,
-      dropoff_lat: Number.isFinite(dropLat) ? dropLat : null,
-      dropoff_lng: Number.isFinite(dropLng) ? dropLng : null,
-    })
-    if (pendingError) {
-      await admin.rpc('release_checkout_inventory', {
-        p_razorpay_order_id: rzpOrder.id,
-        p_force: true,
-      })
-      throw new Error(pendingError.message)
-    }
-
     return jsonResponse({
       success: true,
       order_id: rzpOrder.id,
-      amount: amountPaise,
+      amount: quoted.amountPaise,
       currency: 'INR',
       hold_minutes: 15,
     })

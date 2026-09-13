@@ -653,6 +653,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     });
   }
 
+  String? _resolvedRazorpayOrderId(String? fromGateway) {
+    final from = fromGateway?.trim() ?? '';
+    final held = _heldRazorpayOrderId?.trim() ?? '';
+    if (from.startsWith('order_')) return from;
+    if (held.startsWith('order_')) return held;
+    if (from.isNotEmpty) return from;
+    if (held.isNotEmpty) return held;
+    return null;
+  }
+
   Map<String, dynamic> _verifiedPaymentBody({
     required String paymentId,
     required String? razorpayOrderId,
@@ -665,6 +675,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       'customer_phone': _phoneController.text.trim(),
       'delivery_address': _formattedDeliveryAddress(),
       'instructions': _orderInstructions(),
+      'cart_items': _checkoutCartItems(),
+      'tip_amount': clampCheckoutTip(_selectedTip),
+      'apply_coins': _applyCoins && _coinsAccepted,
+      'dropoff_lat': addressCoordinate(_selectedAddressData, latitude: true),
+      'dropoff_lng': addressCoordinate(_selectedAddressData, latitude: false),
     };
   }
 
@@ -880,7 +895,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
       final placed = await _placeOrderWithRetries(
         paymentId: response.paymentId!,
-        razorpayOrderId: response.orderId ?? _heldRazorpayOrderId,
+        razorpayOrderId: _resolvedRazorpayOrderId(response.orderId),
         signature: response.signature,
       );
 

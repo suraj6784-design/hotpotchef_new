@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts'
 import { fetchPayment, refundPayment, verifyCheckoutSignature } from '../_shared/razorpay.ts'
+import { quotePaidCheckout } from '../_shared/checkout_quote.ts'
 
 type PendingCheckout = {
   user_id: string
@@ -39,6 +40,42 @@ async function placeFromPending(
   })
 }
 
+async function refundCaptured(
+  payment: { status?: string },
+  paymentId: string,
+) {
+  let refunded = false
+  let refundId: string | null = null
+  try {
+    if (payment.status === 'captured') {
+      const refund = await refundPayment(paymentId)
+      refunded = true
+      refundId = refund?.id ?? null
+    }
+  } catch (refundErr) {
+    console.error('recover-payment refund failed', refundErr)
+  }
+  return { refunded, refundId }
+}
+
+function failPlace(
+  placed: { code?: string; error?: string } | null,
+  placeError: { message?: string } | null,
+  refunded: boolean,
+  refundId: string | null,
+) {
+  const soldOut = placed?.code === 'sold_out' || /sold out|no longer available/i.test(String(placed?.error || ''))
+  return jsonResponse({
+    success: false,
+    refunded,
+    refund_id: refundId,
+    code: soldOut ? 'sold_out' : placed?.code,
+    error: soldOut
+      ? 'This meal just sold out. Your payment was refunded and should return in 5–7 business days.'
+      : (placed?.error || placeError?.message || 'Could not record the order after payment'),
+  }, refunded ? 200 : 500)
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return optionsResponse()
 
@@ -48,24 +85,32 @@ serve(async (req) => {
 
     const body = await req.json()
     const paymentId = String(body.payment_id ?? '')
-    const razorpayOrderId = String(body.razorpay_order_id ?? body.order_id ?? '')
+    let razorpayOrderId = String(body.razorpay_order_id ?? body.order_id ?? '').trim()
     const signature = String(body.razorpay_signature ?? body.signature ?? '')
 
-    if (!paymentId || !razorpayOrderId || !signature) {
+    if (!paymentId || !signature) {
       return jsonResponse({ success: false, error: 'Missing payment verification fields' }, 400)
-    }
-
-    const valid = await verifyCheckoutSignature(razorpayOrderId, paymentId, signature)
-    if (!valid) {
-      return jsonResponse({ success: false, error: 'Invalid payment signature' }, 400)
     }
 
     const payment = await fetchPayment(paymentId)
     if (payment.status !== 'captured' && payment.status !== 'authorized') {
       return jsonResponse({ success: false, error: `Payment is ${payment.status}` }, 400)
     }
-    if (payment.order_id && payment.order_id !== razorpayOrderId) {
-      return jsonResponse({ success: false, error: 'Payment does not match this order' }, 400)
+
+    const paymentOrderId = String(payment.order_id ?? '').trim()
+    if (!razorpayOrderId && paymentOrderId) {
+      razorpayOrderId = paymentOrderId
+    }
+    if (!razorpayOrderId) {
+      return jsonResponse({ success: false, error: 'Missing payment order' }, 400)
+    }
+    if (paymentOrderId && paymentOrderId !== razorpayOrderId) {
+      razorpayOrderId = paymentOrderId
+    }
+
+    const valid = await verifyCheckoutSignature(razorpayOrderId, paymentId, signature)
+    if (!valid) {
+      return jsonResponse({ success: false, error: 'Invalid payment signature' }, 400)
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
@@ -81,28 +126,113 @@ serve(async (req) => {
 
     const admin = createClient(supabaseUrl, serviceKey)
 
-    const { data: existing } = await admin
+    const { data: existingByPay } = await admin
       .from('orders')
       .select('id')
       .eq('payment_id', paymentId)
       .maybeSingle()
-    if (existing?.id) {
-      return jsonResponse({ success: true, order_id: existing.id, recovered: true })
+    if (existingByPay?.id) {
+      return jsonResponse({ success: true, order_id: existingByPay.id, recovered: true })
     }
 
-    const { data: pending } = await admin
+    const { data: existingByOrder } = await admin
+      .from('orders')
+      .select('id')
+      .eq('razorpay_order_id', razorpayOrderId)
+      .maybeSingle()
+    if (existingByOrder?.id) {
+      return jsonResponse({ success: true, order_id: existingByOrder.id, recovered: true })
+    }
+
+    let { data: pending } = await admin
       .from('pending_checkouts')
       .select('*')
       .eq('razorpay_order_id', razorpayOrderId)
       .maybeSingle()
 
+    if (!pending && Array.isArray(body.cart_items) && body.cart_items.length > 0) {
+      try {
+        const quoted = await quotePaidCheckout(
+          admin,
+          userData.user.id,
+          body.cart_items,
+          body.tip_amount,
+          Boolean(body.apply_coins),
+          body.dropoff_lat,
+          body.dropoff_lng,
+        )
+        if (Number(payment.amount) !== quoted.amountPaise) {
+          await admin.rpc('release_checkout_inventory', {
+            p_razorpay_order_id: razorpayOrderId,
+            p_force: true,
+          })
+          const refund = await refundCaptured(payment, paymentId)
+          return jsonResponse({
+            success: false,
+            refunded: refund.refunded,
+            refund_id: refund.refundId,
+            error: 'Payment amount does not match this checkout',
+          }, refund.refunded ? 200 : 400)
+        }
+        const rebuilt = {
+          user_id: userData.user.id,
+          razorpay_order_id: razorpayOrderId,
+          cart_items: quoted.cartItems,
+          delivery_address: body.delivery_address ?? null,
+          instructions: body.instructions ?? null,
+          phone: body.customer_phone ?? null,
+          email: userData.user.email ?? body.customer_email ?? null,
+          apply_coins: quoted.applyCoins,
+          tip_amount: quoted.tipAmount,
+          delivery_fee: quoted.deliveryFee,
+          amount_paise: quoted.amountPaise,
+          dropoff_lat: quoted.dropLat,
+          dropoff_lng: quoted.dropLng,
+        }
+        const { data: upserted, error: upsertError } = await admin
+          .from('pending_checkouts')
+          .upsert(rebuilt, { onConflict: 'razorpay_order_id' })
+          .select('*')
+          .maybeSingle()
+        if (upsertError) {
+          pending = rebuilt
+        } else {
+          pending = upserted ?? rebuilt
+        }
+      } catch (quoteErr) {
+        console.error('recover-payment rebuild quote failed', quoteErr)
+      }
+    }
+
     if (!pending) {
-      return jsonResponse({ success: false, error: 'No verified checkout for this payment' }, 400)
+      await admin.rpc('release_checkout_inventory', {
+        p_razorpay_order_id: razorpayOrderId,
+        p_force: true,
+      })
+      const refund = await refundCaptured(payment, paymentId)
+      return jsonResponse({
+        success: false,
+        refunded: refund.refunded,
+        refund_id: refund.refundId,
+        error: refund.refunded
+          ? 'We could not record this order, so the payment was refunded. It should return in 5–7 business days.'
+          : 'No verified checkout for this payment',
+      }, refund.refunded ? 200 : 400)
     }
 
     const expectedPaise = Number(pending.amount_paise ?? 0)
     if (expectedPaise > 0 && Number(payment.amount) !== expectedPaise) {
-      return jsonResponse({ success: false, error: 'Payment amount does not match this checkout' }, 400)
+      await admin.rpc('release_checkout_inventory', {
+        p_razorpay_order_id: razorpayOrderId,
+        p_force: true,
+      })
+      const refund = await refundCaptured(payment, paymentId)
+      return jsonResponse({
+        success: false,
+        refunded: refund.refunded,
+        refund_id: refund.refundId,
+        error: 'Payment amount does not match this checkout',
+      }, refund.refunded ? 200 : 400)
     }
 
     const snapshot: PendingCheckout = {
@@ -137,28 +267,8 @@ serve(async (req) => {
       p_force: true,
     })
 
-    let refunded = false
-    let refundId: string | null = null
-    try {
-      if (payment.status === 'captured') {
-        const refund = await refundPayment(paymentId)
-        refunded = true
-        refundId = refund?.id ?? null
-      }
-    } catch (refundErr) {
-      console.error('recover-payment refund failed', refundErr)
-    }
-
-    const soldOut = placed?.code === 'sold_out' || /sold out|no longer available/i.test(String(placed?.error || ''))
-    return jsonResponse({
-      success: false,
-      refunded,
-      refund_id: refundId,
-      code: soldOut ? 'sold_out' : placed?.code,
-      error: soldOut
-        ? 'This meal just sold out. Your payment was refunded and should return in 5–7 business days.'
-        : (placed?.error || placeError?.message || 'Could not record the order after payment'),
-    }, refunded ? 200 : 500)
+    const refund = await refundCaptured(payment, paymentId)
+    return failPlace(placed, placeError, refund.refunded, refund.refundId)
   } catch (err) {
     return jsonResponse({ success: false, error: err.message ?? 'Recovery failed' }, 400)
   }

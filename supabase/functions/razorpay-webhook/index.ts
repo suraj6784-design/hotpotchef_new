@@ -52,6 +52,15 @@ serve(async (req) => {
       return jsonResponse({ success: true, already_recorded: true, order_id: existing.id })
     }
 
+    const { data: existingOrder } = await admin
+      .from('orders')
+      .select('id')
+      .eq('razorpay_order_id', razorpayOrderId)
+      .maybeSingle()
+    if (existingOrder?.id) {
+      return jsonResponse({ success: true, already_recorded: true, order_id: existingOrder.id })
+    }
+
     const { data: pending } = await admin
       .from('pending_checkouts')
       .select('*')
