@@ -210,7 +210,13 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
             _gatewayAccountController.text = response.data['account_id'].toString();
           }
         });
-        _showSnackBar('Payout account successfully linked & verified for settlements!');
+        final accountId = response.data['account_id']?.toString() ?? '';
+        final isMock = response.data['mock'] == true || accountId.startsWith('acc_mock_');
+        _showSnackBar(
+          isMock
+              ? 'Payout details saved in sandbox. Live Razorpay settlements are not enabled yet.'
+              : 'Payout account linked.',
+        );
       } else {
         throw Exception(response.data?['error'] ?? 'Settlement routing rejected');
       }

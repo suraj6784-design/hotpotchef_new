@@ -60,3 +60,10 @@ String? resolveCustomerEmail({
   final resolved = _firstNonEmpty([authEmail, metadataEmail, profileEmail]);
   return resolved?.toString();
 }
+
+/// Catalog meals persist `title` (publish + feed). Older rows and some UI
+/// maps still use `name`. Cart must not fall back to "Meal Item" when title exists.
+String mealDisplayTitle(Map<String, dynamic> meal) {
+  final resolved = _firstNonEmpty([meal['title'], meal['name']]);
+  return resolved?.toString() ?? 'Meal Item';
+}

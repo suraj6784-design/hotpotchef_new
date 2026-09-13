@@ -21,6 +21,8 @@ class ChefPublishMealScreen extends StatefulWidget {
 }
 
 class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
+  static final _fssaiRegex = RegExp(r'^[1-2][0-9]{13}$');
+
   final _supabase = Supabase.instance.client;
   final _formKey = GlobalKey<FormState>();
 
@@ -202,6 +204,17 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
 
     if (price <= 0 || quantity <= 0) {
       _showSnackBar('Price and quantity must both be greater than zero.', isError: true);
+      return;
+    }
+
+    // FSSAI is collected on chef profile (not this form) and autofilled.
+    // Refuse to list a meal without a valid 14-digit license.
+    final fssai = _fssaiController.text.trim();
+    if (!_fssaiRegex.hasMatch(fssai)) {
+      _showSnackBar(
+        'Add a valid 14-digit FSSAI license on your chef profile before publishing.',
+        isError: true,
+      );
       return;
     }
 

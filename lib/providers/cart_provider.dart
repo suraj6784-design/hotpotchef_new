@@ -11,6 +11,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../models/cart_state.dart';
 import '../models/cart_enums.dart';
 import '../services/cart_service.dart';
+import '../utils/checkout_cart_items.dart';
 
 void _logCartError(dynamic error, StackTrace stackTrace, String reason) {
   if (kDebugMode) {
@@ -216,7 +217,7 @@ class CartNotifier extends Notifier<CartState> {
         id: '${mealId}_${DateTime.now().microsecondsSinceEpoch}',
         mealId: mealId,
         chefId: chefId,
-        title: meal['name']?.toString() ?? 'Meal Item',
+        title: mealDisplayTitle(meal),
         basePrice: basePriceVal, // Safely assigned
         discountedPrice: validDiscount, // Safely assigned
         quantity: quantity.clamp(1, availableStock),

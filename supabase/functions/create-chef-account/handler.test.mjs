@@ -88,7 +88,7 @@ describe('handleCreateChefAccount', () => {
     ))
 
     assert.equal(result.status, 200)
-    assert.deepEqual(result.body, { success: true, account_id: 'acc_mock_1700000000000' })
+    assert.deepEqual(result.body, { success: true, account_id: 'acc_mock_1700000000000', mock: true })
     assert.deepEqual(updates, [{ id: chefId, accountId: 'acc_mock_1700000000000' }])
   })
 
@@ -107,7 +107,7 @@ describe('handleCreateChefAccount', () => {
     ))
 
     assert.equal(result.status, 200)
-    assert.deepEqual(result.body, { success: true, account_id: 'acc_existing' })
+    assert.deepEqual(result.body, { success: true, account_id: 'acc_existing', mock: false })
     assert.equal(wrote, false)
   })
 

@@ -19,6 +19,13 @@
   box-sizing: border-box;
 }
 
+/* Class display rules (.btn { display: inline-flex }) otherwise override
+   the UA [hidden] stylesheet and show Pay on web / Checkout in app on an
+   empty cart before cart-page.js can hide them. */
+[hidden] {
+  display: none !important;
+}
+
 html {
   height: 100%;
 }
