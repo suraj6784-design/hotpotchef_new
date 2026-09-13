@@ -110,5 +110,70 @@ BEGIN
     RAISE EXCEPTION 'match_meals should be empty without embeddings, got %', v_match;
   END IF;
 
+  -- camelCase Flutter cart keys still price from the meals catalog
+  v_total := public.calculate_cart_total(
+    jsonb_build_array(jsonb_build_object(
+      'mealId', v_meal, 'chefId', v_chef, 'quantity', 1,
+      'basePrice', 999, 'discountedPrice', 1
+    )),
+    v_user
+  );
+  IF (v_total->>'subtotal')::numeric <> 120 THEN
+    RAISE EXCEPTION 'camelCase cart should use catalog 120, got %', v_total;
+  END IF;
+
+  v_place := public.place_customer_order(
+    'diner@example.com', '9876543210', '1 Test St', '',
+    jsonb_build_array(jsonb_build_object(
+      'mealId', v_meal, 'chef_id', v_chef, 'quantity', 1,
+      'title', 'Misal Pav', 'source_meal_id', v_meal
+    )),
+    false, 'pay_smoke_1', v_user, 0, 0, 'pay_smoke_1', 'order_smoke_1', 'sig'
+  );
+  IF v_place->>'idempotent' IS DISTINCT FROM 'true' THEN
+    RAISE EXCEPTION 'expected idempotent replay, got %', v_place;
+  END IF;
+
+  UPDATE chef_profiles SET is_open = false WHERE user_id = v_chef;
+  v_place := public.place_customer_order(
+    'diner@example.com', '9876543210', '1 Test St', '',
+    jsonb_build_array(jsonb_build_object(
+      'mealId', v_meal, 'chef_id', v_chef, 'quantity', 1,
+      'title', 'Misal Pav', 'source_meal_id', v_meal
+    )),
+    false, 'pay_closed', v_user, 0, 0, 'pay_closed', NULL, NULL
+  );
+  IF v_place->>'code' IS DISTINCT FROM 'kitchen_closed' THEN
+    RAISE EXCEPTION 'expected kitchen_closed, got %', v_place;
+  END IF;
+  UPDATE chef_profiles SET is_open = true WHERE user_id = v_chef;
+
+  UPDATE meals SET quantity = 0 WHERE id = v_meal;
+  v_place := public.place_customer_order(
+    'diner@example.com', '9876543210', '1 Test St', '',
+    jsonb_build_array(jsonb_build_object(
+      'mealId', v_meal, 'chef_id', v_chef, 'quantity', 1,
+      'title', 'Misal Pav', 'source_meal_id', v_meal
+    )),
+    false, 'pay_sold', v_user, 0, 0, 'pay_sold', NULL, NULL
+  );
+  IF v_place->>'code' IS DISTINCT FROM 'sold_out' THEN
+    RAISE EXCEPTION 'expected sold_out, got %', v_place;
+  END IF;
+
+  v_streak := public.claim_daily_streak(v_user);
+  IF v_streak->>'success' IS DISTINCT FROM 'false' THEN
+    RAISE EXCEPTION 'expected already-claimed streak, got %', v_streak;
+  END IF;
+
+  IF (
+    SELECT count(*) FROM pg_trigger t
+    JOIN pg_class c ON c.oid = t.tgrelid
+    WHERE c.relname IN ('orders', 'meals') AND NOT t.tgisinternal
+      AND t.tgname IN ('on_order_push_webhook', 'on_meal_payout_webhook')
+  ) <> 2 THEN
+    RAISE EXCEPTION 'expected order + meal push triggers';
+  END IF;
+
   RAISE NOTICE 'rpc_smoke ok place=% cancel=% streak=%', v_place, v_cancel, v_streak;
 END $$;
