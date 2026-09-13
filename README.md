@@ -17,7 +17,7 @@ For help getting started with Flutter development, view the
 
 Password-reset emails use `io.supabase.hotpotchef://reset-callback/`. That scheme is registered in Android / iOS / macOS.
 
-Push: FCM tokens sync on login and clear on every role logout. Hosted `orders` webhook SQL is **not** in this repo, so edge functions cannot be claimed live until that webhook is exported.
+Push: FCM tokens sync on login and clear on every role logout. Order-status → FCM is an in-repo trigger (`supabase/migrations/20260913133300_order_meal_push_webhooks.sql`) that POSTs to `send-push-notification`. It stays a no-op until Vault `edge_service_role_key` is set. See `supabase/README.md`.
 
 Do not commit live secrets. `.env` is already listed in `.gitignore`.
 
