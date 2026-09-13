@@ -1160,6 +1160,7 @@ FeedEmptyCopy feedEmptyCopy({
   bool hasDeliveryPin = false,
   bool followingOnly = false,
   bool hasFollows = false,
+  String? offerBrowseGroupKey,
 }) {
   final favorites = feedFavoritesFilterActive(signedIn: signedIn, favoritesOnly: favoritesOnly);
   final following = feedFollowingFilterActive(signedIn: signedIn, followingOnly: followingOnly);
@@ -1214,6 +1215,14 @@ FeedEmptyCopy feedEmptyCopy({
     );
   }
   if (hasSearch) {
+    final offerKey = offerBrowseGroupKey?.trim() ?? '';
+    if (offerKey.isNotEmpty) {
+      final label = offerFlashGroupLabel(offerKey);
+      return FeedEmptyCopy(
+        title: 'No $label plates nearby',
+        message: offerFlashGroupBrowseHint(offerKey),
+      );
+    }
     final q = searchQuery.trim();
     return FeedEmptyCopy(
       title: 'No dishes or chefs found',
@@ -2155,12 +2164,14 @@ List<Map<String, dynamic>> flashableOfferMeals(
   double? destinationLat,
   double? destinationLng,
   Map<String, Map<String, dynamic>> chefKitchenPins = const {},
+  bool excludeFestivalHampers = false,
 }) {
   final unique = <String>{};
   final offers = <Map<String, dynamic>>[];
   for (final meal in meals) {
     final chefId = meal['chef_id']?.toString() ?? '';
     if (chefId.isNotEmpty && excludedChefIds.contains(chefId)) continue;
+    if (excludeFestivalHampers && isFestivalHamper(meal)) continue;
     if (!mealHasFlashableOffer(meal, now: now)) continue;
     final pinned = mealWithKitchenPin(meal, chefPin: chefKitchenPins[chefId]);
     if (!mealInDeliveryRadius(
@@ -2327,7 +2338,7 @@ String offerFlashSubhead(Map<String, dynamic> meal) {
     final count = int.tryParse(meal['_offer_group_count']?.toString() ?? meal['_bogo_count']?.toString() ?? '') ?? 0;
     final label = offerFlashGroupLabel(group);
     if (count > 1) return '$count plates · tap to see all $label deals';
-    return '$label · tap to browse';
+    return '$label · tap to open';
   }
   final type = OfferType.fromString(meal['offer_type']?.toString());
   if (type != OfferType.none) {
@@ -4649,18 +4660,34 @@ String? societyNightAddressMismatchWarning({
   return 'This society night is for $nightLabel — check that your drop matches that building.';
 }
 
+bool isEphemeralDeliveryPin(Map<String, dynamic>? address) {
+  if (address == null) return false;
+  final id = address['id']?.toString() ?? '';
+  return id == 'device-location' || address['is_device_location'] == true;
+}
+
 Map<String, dynamic>? preferredCheckoutAddress(
   List<Map<String, dynamic>> addresses, {
   Object? selectedId,
   Map<String, dynamic>? hint,
 }) {
-  if (addresses.isEmpty) return null;
-  if (selectedId != null) {
+  final selected = selectedId?.toString();
+  final pinHint = isEphemeralDeliveryPin(hint) ? Map<String, dynamic>.from(hint!) : null;
+  if (pinHint != null &&
+      (selected == null || selected == 'device-location' || selected == pinHint['id']?.toString())) {
+    return pinHint;
+  }
+  if (selected == 'device-location') {
+    return pinHint;
+  }
+
+  if (addresses.isEmpty) return pinHint;
+  if (selected != null && selected.isNotEmpty && selected != 'device-location') {
     for (final address in addresses) {
-      if (address['id']?.toString() == selectedId.toString()) return address;
+      if (address['id']?.toString() == selected) return address;
     }
   }
-  if (hint != null) {
+  if (hint != null && !isEphemeralDeliveryPin(hint)) {
     final matchId = matchingSavedAddressId(addresses, hint);
     if (matchId != null) {
       for (final address in addresses) {

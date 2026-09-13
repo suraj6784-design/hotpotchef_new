@@ -129,6 +129,25 @@ void main() {
       ]);
       expect(selected?['id'], 'new');
     });
+
+    test('keeps the device pin even when a saved default exists', () {
+      final pin = {
+        'id': 'device-location',
+        'is_device_location': true,
+        'street': 'Near me',
+        'latitude': 18.52,
+        'longitude': 73.85,
+      };
+      final chosen = preferredCheckoutAddress(
+        [
+          {'id': 'a1', 'street': 'FC Road', 'city': 'Pune', 'is_default': true},
+        ],
+        selectedId: 'device-location',
+        hint: pin,
+      );
+      expect(chosen?['id'], 'device-location');
+      expect(isEphemeralDeliveryPin(chosen), isTrue);
+    });
   });
 
   group('checkoutAddressFromUserProfile', () {

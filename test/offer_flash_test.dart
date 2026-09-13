@@ -49,7 +49,7 @@ void main() {
       expect(offers, hasLength(1));
       expect(offers.single['id'], '1');
       expect(offerFlashHeadline(offers.single), 'Flash Sale');
-      expect(offerFlashSubhead(offers.single), 'Flash Sale · tap to browse');
+      expect(offerFlashSubhead(offers.single), 'Flash Sale · tap to open');
     });
 
     test('shows gated BOGO and Flash families beside Flat, hides expired %', () {
@@ -170,6 +170,41 @@ void main() {
         flashableOfferMeals([liveTonight], now: DateTime(2026, 9, 11, 14, 0)).single['id'],
         'live',
       );
+    });
+
+    test('home carousel can hide festive hampers that already have their own banner', () {
+      final now = DateTime(2026, 9, 12, 19, 0);
+      final hamper = _live({
+        'id': 'hamper',
+        'title': 'Diwali hamper',
+        'category': 'Festival Hamper',
+        'is_hamper': true,
+        'offer_type': 'flat',
+        'discount_value': 40,
+      });
+      final flash = _live({
+        'id': 'flash',
+        'title': 'FESTIVE50',
+        'offer_type': 'flashSale',
+        'discount_value': 50,
+      });
+      expect(
+        flashableOfferMeals([hamper, flash], now: now).map((m) => m['id']),
+        containsAll(['hamper', 'flash']),
+      );
+      expect(
+        flashableOfferMeals([hamper, flash], now: now, excludeFestivalHampers: true)
+            .map((m) => m['id']),
+        ['flash'],
+      );
+    });
+
+    test('grouped offer cards say tap to browse when more than one plate', () {
+      final card = buildOfferFlashGroupCard('flashSale', [
+        _live({'id': 'a', 'title': 'A', 'offer_type': 'flashSale'}),
+        _live({'id': 'b', 'title': 'B', 'offer_type': 'flashSale'}),
+      ]);
+      expect(offerFlashSubhead(card), '2 plates · tap to see all Flash Sale deals');
     });
   });
 

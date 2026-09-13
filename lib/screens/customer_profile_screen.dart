@@ -89,7 +89,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
       widget.onLogout!();
       return;
     }
-    await AuthSession.logout(context, beforeNavigate: () async {
+    await AuthSession.confirmSignOut(context, beforeNavigate: () async {
       ref.read(cartProvider.notifier).clearCart();
       ref.invalidate(favoritesProvider);
       ref.invalidate(kitchenFollowsProvider);

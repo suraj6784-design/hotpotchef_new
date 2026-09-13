@@ -31,7 +31,7 @@ KycChecklist kycChecklistFor(Map<String, dynamic> row) {
       'Name': row['name']?.toString() ?? row['full_name']?.toString() ?? '',
       'Phone': row['phone']?.toString() ?? '',
       'Bank account': row['bank_account_number']?.toString() ?? '',
-      'IFSC': row['ifsc_code']?.toString() ?? row['bank_ifsc']?.toString() ?? '',
+      'IFSC': row['bank_ifsc']?.toString() ?? row['ifsc_code']?.toString() ?? '',
       'PAN': row['pan_number']?.toString() ?? '',
       'Aadhaar': row['aadhaar_masked']?.toString() ?? '',
       'Vehicle type': row['vehicle_type']?.toString() ?? '',
@@ -56,7 +56,7 @@ KycChecklist kycChecklistFor(Map<String, dynamic> row) {
   if ((row['bank_account_number']?.toString() ?? '').trim().isEmpty) {
     payoutMissing.add('Bank account');
   }
-  if ((row['ifsc_code']?.toString() ?? row['bank_ifsc']?.toString() ?? '').trim().isEmpty) {
+  if ((row['bank_ifsc']?.toString() ?? row['ifsc_code']?.toString() ?? '').trim().isEmpty) {
     payoutMissing.add('IFSC');
   }
   final result = _fromChecks(live);

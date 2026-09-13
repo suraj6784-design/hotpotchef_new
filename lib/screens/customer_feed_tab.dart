@@ -623,7 +623,8 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
 
   void _onHomeOfferTap(Map<String, dynamic> meal) {
     final grouped = offerFlashGroupKey(meal) ?? offerFlashGroupKeyForMeal(meal);
-    if (grouped != null) {
+    final count = int.tryParse(meal['_offer_group_count']?.toString() ?? meal['_bogo_count']?.toString() ?? '') ?? 0;
+    if (grouped != null && count != 1) {
       _showGroupedOfferMeals(grouped);
       return;
     }
@@ -1709,6 +1710,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         hasDeliveryPin: _hasDeliveryPin,
         followingOnly: showFollowing || _showFollowingOnly,
         hasFollows: hasFollows,
+        offerBrowseGroupKey: _offerBrowseGroupKey,
       );
       return EmptyState(
         icon: copy.promptSignIn || showFollowing

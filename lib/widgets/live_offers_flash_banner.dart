@@ -142,6 +142,7 @@ class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
           destinationLat: widget.destinationLat,
           destinationLng: widget.destinationLng,
           chefKitchenPins: widget.chefKitchenPins,
+          excludeFestivalHampers: true,
         );
         if (offers.isEmpty) return const SizedBox.shrink();
         WidgetsBinding.instance.addPostFrameCallback((_) {

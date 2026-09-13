@@ -217,11 +217,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _selectedAddressData = preferredCheckoutAddress(
               _savedAddresses,
               selectedId: _selectedAddressData?['id'] ?? widget.preferredAddressId,
-              hint: widget.preferredAddress,
+              hint: _selectedAddressData ?? widget.preferredAddress,
             ) ??
+            _selectedAddressData ??
             widget.preferredAddress ??
-            checkoutAddressFromUserProfile(userData) ??
-            _selectedAddressData;
+            checkoutAddressFromUserProfile(userData);
       } else {
         _selectedAddressData ??= checkoutAddressFromUserProfile(userData);
       }
@@ -945,7 +945,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   void _showAddressSelectorModal() {
-    if (_savedAddresses.isEmpty) {
+    final devicePin = isEphemeralDeliveryPin(_selectedAddressData)
+        ? _selectedAddressData
+        : (isEphemeralDeliveryPin(widget.preferredAddress) ? widget.preferredAddress : null);
+    final choices = <Map<String, dynamic>>[
+      if (devicePin != null) devicePin,
+      ..._savedAddresses.where((addr) => addr['id']?.toString() != devicePin?['id']?.toString()),
+    ];
+    if (choices.isEmpty) {
       _openAddressForm();
       return;
     }
@@ -968,9 +975,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   Text('Select delivery address',
                       style: TextStyle(color: AppTheme.onSurfaceOf(context), fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
-                  ..._savedAddresses.map((addr) {
+                  ...choices.map((addr) {
                     final isSelected = _selectedAddressData?['id'] == addr['id'];
-                    final displayStr = formatSavedAddress(addr);
+                    final isPin = isEphemeralDeliveryPin(addr);
+                    final displayStr = isPin
+                        ? (formatSavedAddress(addr).isEmpty ? 'Current location' : 'Current location · ${formatSavedAddress(addr)}')
+                        : formatSavedAddress(addr);
 
                     return Container(
                       margin: const EdgeInsets.only(bottom: 12),
@@ -981,7 +991,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       ),
                       child: ListTile(
                         dense: true,
-                        leading: Icon(Icons.location_on, color: isSelected ? Colors.deepOrange : Colors.grey),
+                        leading: Icon(
+                          isPin ? Icons.my_location : Icons.location_on,
+                          color: isSelected ? Colors.deepOrange : Colors.grey,
+                        ),
                         title: Text(
                           displayStr.isEmpty ? 'Saved address' : displayStr,
                           style: TextStyle(

@@ -53,14 +53,14 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
   }
 
   Future<void> _handleLogout() async {
-    await AuthSession.logout(context, beforeNavigate: () async {
+    final signedOut = await AuthSession.confirmSignOut(context, beforeNavigate: () async {
       ref.read(cartProvider.notifier).clearCart();
       ref.invalidate(favoritesProvider);
       ref.invalidate(kitchenFollowsProvider);
       ref.invalidate(lastOrderProvider);
       ref.invalidate(mealPlansProvider);
     });
-    if (mounted) setState(() => _selectedIndex = 0);
+    if (signedOut && mounted) setState(() => _selectedIndex = 0);
   }
 
   void _navigateToProfile() {

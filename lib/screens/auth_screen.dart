@@ -794,6 +794,37 @@ class _AuthScreenState extends State<AuthScreen> {
                 ],
               ),
             ),
+          if (_isLogin)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Wrap(
+                children: [
+                  GestureDetector(
+                    onTap: () => openLegalDocument(context, LegalDocumentType.terms),
+                    child: Text(
+                      'Terms',
+                      style: TextStyle(
+                        color: AppTheme.linkOf(context),
+                        fontWeight: FontWeight.w700,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                  ),
+                  const Text(' · '),
+                  GestureDetector(
+                    onTap: () => openLegalDocument(context, LegalDocumentType.privacy),
+                    child: Text(
+                      'Privacy',
+                      style: TextStyle(
+                        color: AppTheme.linkOf(context),
+                        fontWeight: FontWeight.w700,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           if (_authError != null) ...[
             Container(
               width: double.infinity,

@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../models/app_role.dart';
+import '../utils/app_theme.dart';
 import 'push_notification_service.dart';
 import '../utils/app_flavor.dart';
 import '../utils/network.dart';
@@ -243,6 +244,34 @@ class AuthSession {
     final resolved = await resolveRole();
     if (!context.mounted || resolved == expected) return;
     context.go(resolved.hubPath);
+  }
+
+  /// Confirm then sign out. Returns false if the user cancelled.
+  static Future<bool> confirmSignOut(
+    BuildContext context, {
+    Future<void> Function()? beforeNavigate,
+  }) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Sign out?'),
+        content: const Text('You will need to sign in again to place orders or manage your kitchen.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Stay signed in'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Sign out'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return false;
+    await logout(context, beforeNavigate: beforeNavigate);
+    return true;
   }
 
   /// FCM token clear + Supabase signOut + return to the public guest feed

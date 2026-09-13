@@ -402,7 +402,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                       ),
                       const SizedBox(width: 12),
                       GestureDetector(
-                        onTap: () => AuthSession.logout(context),
+                        onTap: () => AuthSession.confirmSignOut(context),
                         child: Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle),

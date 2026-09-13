@@ -80,6 +80,14 @@ void main() {
     );
     expect(diet.title, 'No Jain meals');
     expect(diet.clearCategory, isTrue);
+    final offers = feedEmptyCopy(
+      signedIn: true,
+      favoritesOnly: false,
+      hasFavorites: false,
+      hasSearch: true,
+      offerBrowseGroupKey: 'flashSale',
+    );
+    expect(offers.title, 'No Flash Sale plates nearby');
   });
 
   test('unread is only for newer messages from someone else', () {

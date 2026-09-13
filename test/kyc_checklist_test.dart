@@ -35,6 +35,37 @@ void main() {
     expect(live.payoutMissing, isEmpty);
   });
 
+  test('chef payout IFSC prefers bank_ifsc over a stale ifsc_code', () {
+    final live = kycChecklistFor({
+      'role': 'chef',
+      'name': 'Asha',
+      'phone': '9999999999',
+      'fssai_number': '11234567890123',
+      'fssai_proof_url': 'https://example.com/fssai.jpg',
+      'fssai_verification_status': 'verified',
+      'lat': 18.5,
+      'lng': 73.8,
+      'bank_account_number': '****1234',
+      'ifsc_code': '',
+      'bank_ifsc': 'HDFC0001234',
+    });
+    expect(live.payoutMissing, isEmpty);
+
+    final staleOnly = kycChecklistFor({
+      'role': 'chef',
+      'name': 'Asha',
+      'phone': '9999999999',
+      'fssai_number': '11234567890123',
+      'fssai_proof_url': 'https://example.com/fssai.jpg',
+      'fssai_verification_status': 'verified',
+      'lat': 18.5,
+      'lng': 73.8,
+      'bank_account_number': '****1234',
+      'ifsc_code': 'SBIN0001234',
+    });
+    expect(staleOnly.payoutMissing, isEmpty);
+  });
+
   test('driver KYC still requires vehicle, PAN and Aadhaar', () {
     final row = kycChecklistFor({
       'role': 'driver',

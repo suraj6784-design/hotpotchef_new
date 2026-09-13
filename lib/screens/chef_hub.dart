@@ -907,7 +907,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               _headerIcon(Icons.person_outline, 'Profile', () => context.push('/chef-profile')),
               if (_isPlatformOps)
                 _headerIcon(Icons.admin_panel_settings_outlined, 'Admin', () => context.push('/platform-ops')),
-              _headerIcon(Icons.logout, 'Log Out', () => AuthSession.logout(context)),
+              _headerIcon(Icons.logout, 'Log Out', () => AuthSession.confirmSignOut(context)),
             ],
           ),
         ],

@@ -56,15 +56,34 @@ class _CartImportScreenState extends ConsumerState<CartImportScreen> {
       final client = Supabase.instance.client;
       final notifier = ref.read(cartProvider.notifier);
       var added = 0;
+      var skippedUnavailable = 0;
+      var skippedOtherKitchen = 0;
+      String? importedChefId;
 
       for (final spec in specs) {
         final row = await client.from('meals').select().eq('id', spec.id).maybeSingle();
-        if (row == null) continue;
+        if (row == null) {
+          skippedUnavailable++;
+          continue;
+        }
         final meal = Map<String, dynamic>.from(row);
         final status = meal['status']?.toString() ?? '';
-        if (status.isNotEmpty && status != 'Available') continue;
+        if (status.isNotEmpty && status != 'Available') {
+          skippedUnavailable++;
+          continue;
+        }
+        final chefId = meal['chef_id']?.toString() ?? '';
+        if (importedChefId != null && chefId.isNotEmpty && chefId != importedChefId) {
+          skippedOtherKitchen++;
+          continue;
+        }
         final ok = notifier.addToCart(meal, spec.qty, clearIfVendorConflict: added == 0);
-        if (ok) added += 1;
+        if (ok) {
+          added += 1;
+          if (chefId.isNotEmpty) importedChefId = chefId;
+        } else {
+          skippedOtherKitchen++;
+        }
       }
 
       if (!mounted) return;
@@ -80,6 +99,16 @@ class _CartImportScreenState extends ConsumerState<CartImportScreen> {
         _added = added;
         _loading = false;
       });
+
+      final skipped = skippedUnavailable + skippedOtherKitchen;
+      if (skipped > 0 && mounted) {
+        final bits = <String>[
+          'Added $added of ${specs.length} plates.',
+          if (skippedOtherKitchen > 0) '$skippedOtherKitchen from another kitchen were skipped.',
+          if (skippedUnavailable > 0) '$skippedUnavailable are no longer available.',
+        ];
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(bits.join(' '))));
+      }
 
       await Future<void>.delayed(const Duration(milliseconds: 450));
       if (!mounted) return;
