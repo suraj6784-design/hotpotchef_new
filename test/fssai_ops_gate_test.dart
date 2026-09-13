@@ -79,6 +79,10 @@ void main() {
         dinerFssaiIsVerified('verified'),
         isTrue,
       );
+      expect(
+        dinerFssaiIsVerified('verified', validUntil: DateTime(2025, 1, 1), now: DateTime(2026, 9, 14)),
+        isFalse,
+      );
     });
 
     test('masks pan and bank', () {

@@ -8,6 +8,10 @@ import 'network.dart';
 
 final _plusCode = RegExp(r'^[A-Z0-9]{4,8}\+[A-Z0-9]{2,3}$', caseSensitive: false);
 final _pinCode = RegExp(r'\b(\d{6})\b');
+final _geocodeCache = <String, PinnedAddressParts>{};
+
+String _geocodeCacheKey(double latitude, double longitude) =>
+    '${latitude.toStringAsFixed(4)},${longitude.toStringAsFixed(4)}';
 
 const _indianStates = <String>{
   'Andhra Pradesh',
@@ -223,22 +227,31 @@ String _firstNonEmpty(Iterable<String?> values) {
 }
 
 Future<PinnedAddressParts> reverseGeocodeLatLng(double latitude, double longitude) async {
+  final key = _geocodeCacheKey(latitude, longitude);
+  final cached = _geocodeCache[key];
+  if (cached != null && cached.hasRegion) return cached;
+
   final fromGoogle = await _reverseGeocodeGoogle(latitude, longitude);
-  if (fromGoogle != null && fromGoogle.hasRegion) return fromGoogle;
+  if (fromGoogle != null && fromGoogle.hasRegion) {
+    _geocodeCache[key] = fromGoogle;
+    return fromGoogle;
+  }
 
   try {
     final placemarks = await placemarkFromCoordinates(latitude, longitude);
     if (placemarks.isNotEmpty) {
       final fromDevice = partsFromPlacemark(placemarks.first);
-      if (fromDevice.hasRegion) {
-        return fromGoogle == null ? fromDevice : fromGoogle.merge(fromDevice);
-      }
-      if (fromGoogle != null) return fromGoogle.merge(fromDevice);
-      return fromDevice;
+      final merged = fromGoogle == null ? fromDevice : fromGoogle.merge(fromDevice);
+      if (merged.hasRegion) _geocodeCache[key] = merged;
+      return merged;
     }
   } catch (_) {}
 
-  return fromGoogle ?? const PinnedAddressParts();
+  if (fromGoogle != null) {
+    _geocodeCache[key] = fromGoogle;
+    return fromGoogle;
+  }
+  return const PinnedAddressParts();
 }
 
 Future<PinnedAddressParts?> _reverseGeocodeGoogle(double latitude, double longitude) async {

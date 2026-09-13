@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import '../models/cart_enums.dart';
 import '../models/order_status.dart';
 import '../utils/helpers.dart';
+import 'app_analytics.dart';
 import 'order_repository.dart';
 
 export '../models/order_status.dart';
@@ -158,6 +161,9 @@ class OrderLifecycle {
       throw Exception('No dispatch transition from "$currentStatus"');
     }
     await _repo.updateOrderStatus(orderId: orderId, newStatus: next);
+    if (next == OrderStatus.delivered) {
+      unawaited(AppAnalytics.logOrderDelivered(orderId: orderId));
+    }
   }
 
   Future<bool> acceptDelivery({required String orderId, required String driverId}) {
@@ -170,6 +176,9 @@ class OrderLifecycle {
       throw Exception('No driver transition from "$currentStatus"');
     }
     await _repo.updateOrderStatus(orderId: orderId, newStatus: next);
+    if (next == OrderStatus.delivered) {
+      unawaited(AppAnalytics.logOrderDelivered(orderId: orderId));
+    }
   }
 
   Future<void> cancel({

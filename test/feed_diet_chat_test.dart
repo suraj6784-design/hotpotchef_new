@@ -88,6 +88,14 @@ void main() {
       offerBrowseGroupKey: 'flashSale',
     );
     expect(offers.title, 'No Flash Sale plates nearby');
+    final outside = feedEmptyCopy(
+      signedIn: true,
+      favoritesOnly: false,
+      hasFavorites: false,
+      hasSearch: false,
+      outOfServiceArea: true,
+    );
+    expect(outside.title, contains('Pune'));
   });
 
   test('unread is only for newer messages from someone else', () {

@@ -12,6 +12,7 @@ import '../models/cart_state.dart';
 import '../models/cart_enums.dart';
 import '../services/cart_service.dart';
 import '../services/shared_cart_service.dart';
+import '../services/app_analytics.dart';
 import '../utils/helpers.dart';
 
 void _logCartError(dynamic error, StackTrace stackTrace, String reason) {
@@ -306,6 +307,7 @@ class CartNotifier extends Notifier<CartState> {
     state = state.copyWith(items: updatedItems);
     _resubscribeStockWatcher();
     _scheduleRemoteSync();
+    unawaited(AppAnalytics.logAddToCart(mealId: mealId, chefId: chefId, quantity: quantity));
     return true;
   }
 

@@ -13,6 +13,7 @@ import 'network.dart';
 import 'notification_copy.dart';
 import 'pricing_calculator.dart';
 import 'meal_nutrition.dart';
+import 'service_area.dart';
 import '../models/app_role.dart';
 import '../models/pricing_models.dart';
 
@@ -392,24 +393,77 @@ String? chefFssaiPublishBlockReason({
 String dinerFssaiTrustLabel({
   String? fssaiNumber,
   String? verificationStatus,
+  DateTime? validUntil,
+  DateTime? now,
 }) {
   final number = (fssaiNumber ?? '').trim();
   final status = normalizeFssaiVerificationStatus(verificationStatus);
   if (number.isEmpty) return 'FSSAI not listed';
+  if (fssaiLicenceIsExpired(validUntil, now: now)) {
+    return 'FSSAI licence expired · $number';
+  }
+  final until = dinerFssaiValidUntilCaption(validUntil);
   switch (status) {
     case 'verified':
-      return 'FSSAI verified · $number';
+      return until == null ? 'FSSAI verified · $number' : 'FSSAI verified · $number · $until';
     case 'pending':
       return 'FSSAI proof under review · $number';
     case 'rejected':
       return 'FSSAI not verified · $number';
     default:
-      return 'FSSAI listed · $number';
+      return until == null ? 'FSSAI listed · $number' : 'FSSAI listed · $number · $until';
   }
 }
 
-bool dinerFssaiIsVerified(String? verificationStatus) =>
-    normalizeFssaiVerificationStatus(verificationStatus) == 'verified';
+String? dinerFssaiValidUntilCaption(DateTime? validUntil) {
+  if (validUntil == null) return null;
+  return 'valid until ${formatAppDate(validUntil)}';
+}
+
+bool dinerFssaiIsVerified(
+  String? verificationStatus, {
+  DateTime? validUntil,
+  DateTime? now,
+}) {
+  if (normalizeFssaiVerificationStatus(verificationStatus) != 'verified') return false;
+  return !fssaiLicenceIsExpired(validUntil, now: now);
+}
+
+/// 0–100 kitchen trust from FSSAI + review velocity. Not a hygiene lab score.
+int kitchenTrustScore({
+  String? verificationStatus,
+  DateTime? validUntil,
+  ChefRatingSummary ratings = const ChefRatingSummary(),
+  DateTime? now,
+}) {
+  var score = 0;
+  final verified = dinerFssaiIsVerified(verificationStatus, validUntil: validUntil, now: now);
+  if (verified) {
+    final until = validUntil;
+    if (until == null) {
+      score += 45;
+    } else {
+      final n = (now ?? DateTime.now()).toLocal();
+      final days = until.difference(DateTime(n.year, n.month, n.day)).inDays;
+      if (days < 0) {
+        score += 10;
+      } else if (days <= 30) {
+        score += 40;
+      } else {
+        score += 50;
+      }
+    }
+  } else if (normalizeFssaiVerificationStatus(verificationStatus) == 'pending') {
+    score += 20;
+  }
+  if (ratings.hasReviews) {
+    score += ((ratings.average / 5) * 35).round().clamp(0, 35);
+    score += ((ratings.count.clamp(0, 20) / 20) * 15).round();
+  }
+  return score.clamp(0, 100);
+}
+
+String kitchenTrustLabel(int score) => 'Kitchen trust $score/100';
 
 final _panNumberRegex = RegExp(r'^[A-Z]{5}[0-9]{4}[A-Z]$');
 
@@ -1161,7 +1215,14 @@ FeedEmptyCopy feedEmptyCopy({
   bool followingOnly = false,
   bool hasFollows = false,
   String? offerBrowseGroupKey,
+  bool outOfServiceArea = false,
 }) {
+  if (outOfServiceArea) {
+    return FeedEmptyCopy(
+      title: 'Not in ${launchCitiesLabel()} yet',
+      message: 'HotPotChef is live in ${launchCitiesLabel()} first. Change your pin to a local drop to see kitchens.',
+    );
+  }
   final favorites = feedFavoritesFilterActive(signedIn: signedIn, favoritesOnly: favoritesOnly);
   final following = feedFollowingFilterActive(signedIn: signedIn, followingOnly: followingOnly);
   final categoryFilter = category != 'All';

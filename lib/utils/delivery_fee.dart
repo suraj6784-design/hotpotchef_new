@@ -6,6 +6,7 @@ const double kCheckoutDeliveryBaseFee = 30;
 const double kCheckoutDeliveryIncludedKm = 3;
 const double kCheckoutDeliveryPerExtraKm = 10;
 const int kHomeMealStreamLimit = 150;
+const int kHomeMealPageSize = 80;
 const double kMaxCheckoutTip = 500;
 
 double clampCheckoutTip(num? raw) {

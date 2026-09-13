@@ -32,6 +32,7 @@ import '../widgets/ai_recommendations_section.dart';
 import '../widgets/sponsored_placement_banner.dart';
 import '../services/delivery_estimator_service.dart';
 import '../utils/delivery_fee.dart';
+import '../utils/service_area.dart';
 import 'address_form_screen.dart';
 
 class CustomerFeedTab extends ConsumerStatefulWidget {
@@ -87,6 +88,9 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   final Set<String> _chefOpenResolved = {};
   bool _hydratingKitchenHours = false;
   StreamSubscription<AuthState>? _authSub;
+  List<Map<String, dynamic>> _olderMeals = [];
+  bool _loadingOlderMeals = false;
+  bool _olderMealsExhausted = false;
   bool _addressPickerOpen = false;
 
   final List<Map<String, dynamic>> _dietFilters = const [
@@ -724,6 +728,42 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     return lat != null && lng != null && lat != 0 && lng != 0;
   }
 
+  bool get _outOfServiceArea {
+    if (!_hasDeliveryPin) return false;
+    final dest = _selectedAddressMap;
+    return !isInLaunchServiceArea(
+      pincode: dest?['postal_code']?.toString() ?? dest?['pincode']?.toString(),
+      lat: addressCoordinate(dest, latitude: true),
+      lng: addressCoordinate(dest, latitude: false),
+    );
+  }
+
+  Future<void> _loadOlderMeals() async {
+    if (_loadingOlderMeals || _olderMealsExhausted) return;
+    setState(() => _loadingOlderMeals = true);
+    try {
+      final from = kHomeMealStreamLimit + _olderMeals.length;
+      final to = from + kHomeMealPageSize - 1;
+      final rows = await Supabase.instance.client
+          .from('meals')
+          .select()
+          .eq('status', 'Available')
+          .order('created_at', ascending: false)
+          .range(from, to)
+          .withTimeout(NetworkTimeouts.standard);
+      final extra = List<Map<String, dynamic>>.from(rows as List);
+      if (!mounted) return;
+      setState(() {
+        _olderMeals = [..._olderMeals, ...extra];
+        _olderMealsExhausted = extra.length < kHomeMealPageSize;
+        _loadingOlderMeals = false;
+      });
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Home older meals page failed');
+      if (mounted) setState(() => _loadingOlderMeals = false);
+    }
+  }
+
   Map<String, dynamic> _pinnedMeal(Map<String, dynamic> meal) {
     final chefId = meal['chef_id']?.toString();
     return mealWithKitchenPin(
@@ -1295,6 +1335,22 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
 
           if (isLoggedIn) const SupportRepliedBanner(),
 
+          if (_outOfServiceArea)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+              child: Material(
+                color: AppTheme.primary.withValues(alpha: 0.08),
+                borderRadius: AppTheme.radiusMd,
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Text(
+                    'HotPotChef is live in ${launchCitiesLabel()} first. Change your pin to a local drop to see nearby kitchens.',
+                    style: AppTheme.caption.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+            ),
+
           if (!_hasActiveSearch) ...[
             const SizedBox(height: 4),
             _filterChipRow(
@@ -1427,6 +1483,15 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                   if (!isInventory || status == 'paused' || status == 'cancelled') return false;
                   return isMealAvailableForCart(m);
                 }).toList();
+                if (_olderMeals.isNotEmpty) {
+                  final seen = meals.map((m) => m['id']?.toString()).toSet();
+                  for (final extra in _olderMeals) {
+                    final id = extra['id']?.toString();
+                    if (id == null || seen.contains(id)) continue;
+                    seen.add(id);
+                    meals.add(extra);
+                  }
+                }
 
                 if (meals.isEmpty) {
                   return const EmptyState(
@@ -1452,6 +1517,14 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                       showFollowing: showFollowing,
                       hasFollows: followedKitchens.isNotEmpty,
                     ),
+                    if (!_olderMealsExhausted && snapshot.data!.length >= kHomeMealStreamLimit)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                        child: TextButton(
+                          onPressed: _loadingOlderMeals ? null : _loadOlderMeals,
+                          child: Text(_loadingOlderMeals ? 'Loading more plates…' : 'Show more plates'),
+                        ),
+                      ),
                     ..._homeDiscoveryExtras(isLoggedIn: isLoggedIn),
                   ],
                 );
@@ -1711,6 +1784,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         followingOnly: showFollowing || _showFollowingOnly,
         hasFollows: hasFollows,
         offerBrowseGroupKey: _offerBrowseGroupKey,
+        outOfServiceArea: _outOfServiceArea,
       );
       return EmptyState(
         icon: copy.promptSignIn || showFollowing

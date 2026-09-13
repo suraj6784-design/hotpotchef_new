@@ -120,7 +120,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
 
   void _onCameraIdleDebounced(LatLng pos) {
     _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 350), () {
+    _debounceTimer = Timer(const Duration(milliseconds: 650), () {
       _updateAddress(pos);
     });
   }

@@ -1,12 +1,15 @@
 // lib/screens/checkout_screen.dart
 
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
+import '../services/app_analytics.dart';
 import '../utils/helpers.dart';
+import '../utils/service_area.dart';
 import '../utils/app_env.dart';
 import '../utils/delivery_fee.dart';
 import '../utils/network.dart';
@@ -416,6 +419,29 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _showSnackBar('Please select a delivery address', isError: true);
       return;
     }
+    if (_hasDelivery) {
+      final warning = serviceAreaCheckoutWarning(
+        pincode: _selectedAddressData?['postal_code']?.toString() ??
+            _selectedAddressData?['pincode']?.toString(),
+        lat: addressCoordinate(_selectedAddressData, latitude: true),
+        lng: addressCoordinate(_selectedAddressData, latitude: false),
+      );
+      if (warning != null) {
+        final proceed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Outside launch cities'),
+            content: Text(warning),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Change address')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Continue anyway')),
+            ],
+          ),
+        );
+        if (proceed != true || !mounted) return;
+      }
+    }
+    unawaited(AppAnalytics.logBeginCheckout(itemCount: widget.cartItems.length, value: _grandTotal));
 
     setState(() => _isCheckingOut = true);
 
@@ -686,6 +712,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final orderId = placed['order_id']?.toString();
       await _persistOrderDropoff(orderId);
       await _markSourceRequestOrdered(orderId);
+      unawaited(AppAnalytics.logPurchase(orderId: orderId, value: 0));
       if (mounted) {
         widget.onOrderPlacedSuccess();
         Navigator.pop(context);
@@ -879,6 +906,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final orderId = placed['order_id']?.toString();
       await _persistOrderDropoff(orderId);
       await _markSourceRequestOrdered(orderId);
+      unawaited(AppAnalytics.logPurchase(
+        orderId: orderId,
+        value: _grandTotal,
+        paymentId: response.paymentId,
+      ));
 
       if (mounted) {
         widget.onOrderPlacedSuccess();

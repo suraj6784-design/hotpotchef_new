@@ -16,6 +16,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../widgets/kitchen_live_badge.dart';
 
+import '../utils/fssai_certificate_scan.dart';
 import '../utils/helpers.dart';
 import '../utils/meal_nutrition.dart';
 import '../utils/app_page.dart';
@@ -24,6 +25,7 @@ import '../utils/pricing_calculator.dart';
 import '../models/cart_enums.dart';
 import '../providers/cart_provider.dart';
 import '../providers/kitchen_follows_provider.dart';
+import '../services/app_analytics.dart';
 import '../services/chef_directory.dart';
 import '../services/reorder_service.dart';
 import 'weekly_plan_sheet.dart';
@@ -463,6 +465,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
   String _name = '';
   String _fssai = '';
   String _fssaiStatus = '';
+  DateTime? _fssaiValidUntil;
   String _city = '';
   String _memberSince = '';
   String _story = '';
@@ -500,7 +503,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
       try {
         final row = await client
             .from('users')
-            .select('name, full_name, fssai_number, fssai_verification_status, city, address, created_at')
+            .select('name, full_name, fssai_number, fssai_verification_status, fssai_valid_until, city, address, created_at')
             .eq('id', chefId)
             .maybeSingle();
         if (row != null) profile = Map<String, dynamic>.from(row);
@@ -509,7 +512,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
         try {
           final row = await client
               .from('users')
-              .select('name, full_name, fssai_number, fssai_verification_status, created_at')
+              .select('name, full_name, fssai_number, fssai_verification_status, fssai_valid_until, created_at')
               .eq('id', chefId)
               .maybeSingle();
           if (row != null) profile = Map<String, dynamic>.from(row);
@@ -585,6 +588,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
         _cardLocale = cardLocale;
         if (listedFssai.isNotEmpty) _fssai = listedFssai;
         _fssaiStatus = fssaiStatus;
+        _fssaiValidUntil = parseStoredFssaiValidUntil(profile?['fssai_valid_until']);
         _city = city;
         _memberSince = joined == null ? '' : formatAppDate(joined);
         _story = kitchen?['kitchen_story']?.toString().trim() ?? '';
@@ -672,14 +676,18 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
           children: [
             Builder(
               builder: (context) {
-                final verified = dinerFssaiIsVerified(_fssaiStatus);
+                final verified = dinerFssaiIsVerified(_fssaiStatus, validUntil: _fssaiValidUntil);
                 final status = normalizeFssaiVerificationStatus(_fssaiStatus);
-                final trustLabel = verified
-                    ? 'FSSAI verified home kitchen'
-                    : dinerFssaiTrustLabel(
-                        fssaiNumber: _fssai,
-                        verificationStatus: _fssaiStatus,
-                      );
+                final trustLabel = dinerFssaiTrustLabel(
+                  fssaiNumber: _fssai,
+                  verificationStatus: _fssaiStatus,
+                  validUntil: _fssaiValidUntil,
+                );
+                final trustScore = kitchenTrustScore(
+                  verificationStatus: _fssaiStatus,
+                  validUntil: _fssaiValidUntil,
+                  ratings: _rating,
+                );
                 final Color trustColor;
                 if (verified) {
                   trustColor = AppTheme.veg;
@@ -688,9 +696,22 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
                 } else {
                   trustColor = muted;
                 }
-                return Text(
-                  trustLabel,
-                  style: TextStyle(color: trustColor, fontWeight: FontWeight.bold, fontSize: 13),
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      trustLabel,
+                      style: TextStyle(color: trustColor, fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                    if (trustScore > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          kitchenTrustLabel(trustScore),
+                          style: TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                  ],
                 );
               },
             ),
@@ -1162,6 +1183,16 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
       (_addOnsUnitTotal * _quantity);
 
   @override
+  void initState() {
+    super.initState();
+    unawaited(AppAnalytics.logViewMeal(
+      mealId: widget.meal['id']?.toString() ?? '',
+      chefId: widget.meal['chef_id']?.toString(),
+      title: widget.meal['title']?.toString(),
+    ));
+  }
+
+  @override
   Widget build(BuildContext context) {
     final meal = widget.meal;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1176,10 +1207,11 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
     final chefId = meal['chef_id']?.toString() ?? '';
     final fssai = meal['fssai_number']?.toString() ?? '';
     final fssaiStatus = meal['fssai_verification_status']?.toString();
-    final fssaiVerified = dinerFssaiIsVerified(fssaiStatus);
+    final fssaiUntil = parseStoredFssaiValidUntil(meal['fssai_valid_until']);
     final fssaiTrustLine = dinerFssaiTrustLabel(
       fssaiNumber: fssai,
       verificationStatus: fssaiStatus,
+      validUntil: fssaiUntil,
     );
     final serviceType = meal['service_type']?.toString() ?? 'Delivery, Pickup';
     final timeSlot = meal['time_slot']?.toString() ?? 'Available Today';
@@ -1390,14 +1422,42 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                                   child: Icon(Icons.storefront, color: Colors.white, size: 22)),
                               const SizedBox(width: 16),
                               Expanded(
-                                child: FutureBuilder<Map<String, dynamic>?>(
+                                child: FutureBuilder<Map<String, dynamic>>(
                                   future: chefId.isEmpty
-                                      ? Future.value(null)
-                                      : Supabase.instance.client
-                                          .from('chef_profiles')
-                                          .select('card_locale, local_kitchen_name')
-                                          .eq('user_id', chefId)
-                                          .maybeSingle(),
+                                      ? Future.value(const <String, dynamic>{})
+                                      : () async {
+                                          final client = Supabase.instance.client;
+                                          Map<String, dynamic> out = {};
+                                          try {
+                                            final row = await client
+                                                .from('chef_profiles')
+                                                .select('card_locale, local_kitchen_name')
+                                                .eq('user_id', chefId)
+                                                .maybeSingle();
+                                            if (row != null) out = Map<String, dynamic>.from(row);
+                                          } catch (_) {}
+                                          try {
+                                            final user = await client
+                                                .from('users')
+                                                .select('fssai_number, fssai_verification_status, fssai_valid_until')
+                                                .eq('id', chefId)
+                                                .maybeSingle();
+                                            if (user != null) {
+                                              out['fssai_number'] = user['fssai_number'];
+                                              out['fssai_verification_status'] = user['fssai_verification_status'];
+                                              out['fssai_valid_until'] = user['fssai_valid_until'];
+                                            }
+                                          } catch (_) {}
+                                          try {
+                                            final reviews = await client
+                                                .from('reviews')
+                                                .select('rating')
+                                                .eq('chef_id', chefId)
+                                                .limit(40);
+                                            out['_ratings'] = chefRatingSummaryFromRows(reviews);
+                                          } catch (_) {}
+                                          return out;
+                                        }(),
                                   builder: (context, snap) {
                                     final locale = normalizeChefCardLocale(snap.data?['card_locale']?.toString());
                                     final copy = chefCardCopy(locale);
@@ -1406,6 +1466,23 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                                       'local_kitchen_name': snap.data?['local_kitchen_name'],
                                       'card_locale': locale,
                                     }, locale: locale);
+                                    final liveFssai = snap.data?['fssai_number']?.toString() ?? fssai;
+                                    final liveStatus = snap.data?['fssai_verification_status']?.toString() ?? fssaiStatus;
+                                    final liveUntil = parseStoredFssaiValidUntil(snap.data?['fssai_valid_until']) ?? fssaiUntil;
+                                    final liveVerified = dinerFssaiIsVerified(liveStatus, validUntil: liveUntil);
+                                    final liveTrust = dinerFssaiTrustLabel(
+                                      fssaiNumber: liveFssai,
+                                      verificationStatus: liveStatus,
+                                      validUntil: liveUntil,
+                                    );
+                                    final ratings = snap.data?['_ratings'] is ChefRatingSummary
+                                        ? snap.data!['_ratings'] as ChefRatingSummary
+                                        : const ChefRatingSummary();
+                                    final trust = kitchenTrustScore(
+                                      verificationStatus: liveStatus,
+                                      validUntil: liveUntil,
+                                      ratings: ratings,
+                                    );
                                     return Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
@@ -1430,11 +1507,21 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                                         ),
                                         const SizedBox(height: 4),
                                         Text(
-                                          fssaiVerified ? 'Licensed kitchen' : fssaiTrustLine,
+                                          liveVerified ? liveTrust : fssaiTrustLine,
                                           style: AppTheme.caption.copyWith(
-                                            color: fssaiVerified ? AppTheme.veg : AppTheme.textMuted,
+                                            color: liveVerified ? AppTheme.veg : AppTheme.textMuted,
                                           ),
                                         ),
+                                        if (trust > 0) ...[
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            kitchenTrustLabel(trust),
+                                            style: AppTheme.micro.copyWith(
+                                              color: AppTheme.textMuted,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ],
                                       ],
                                     );
                                   },
