@@ -35,6 +35,14 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
     }
   }
 
+  @override
+  void didUpdateWidget(CustomerHubScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialTab != widget.initialTab) {
+      _selectedIndex = widget.initialTab;
+    }
+  }
+
   Future<void> _handleLogout() async {
     await PushNotificationService.clearTokenOnLogout();
     await Supabase.instance.client.auth.signOut();

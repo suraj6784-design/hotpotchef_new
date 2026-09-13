@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
 import '../utils/auth_role_sync.dart';
+import '../utils/app_deep_links.dart';
 import '../services/push_notification_service.dart';
 
 class AuthScreen extends StatefulWidget {
@@ -169,7 +170,7 @@ class _AuthScreenState extends State<AuthScreen> {
     try {
       await _supabase.auth.resetPasswordForEmail(
         email,
-        redirectTo: 'io.supabase.hotpotchef://reset-callback/',
+        redirectTo: AppDeepLinks.passwordResetRedirectTo(),
       );
 
       if (!mounted) return;

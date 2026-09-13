@@ -15,9 +15,20 @@ import '../screens/driver_profile_screen.dart';
 import '../screens/customer_profile_screen.dart';
 import '../screens/chef_analytics_screen.dart';
 import '../screens/chef_publish_meal_screen.dart';
+import '../screens/reset_password_screen.dart';
 import 'route_authz.dart';
 
 class AppRouter {
+  static void go(String location) => router.go(location);
+
+  static String? currentPath() {
+    try {
+      return router.state.uri.path;
+    } catch (_) {
+      return null;
+    }
+  }
+
   static final GoRouter router = GoRouter(
     initialLocation: '/customer-hub',
     errorBuilder: (context, state) {
@@ -64,6 +75,14 @@ class AppRouter {
       GoRoute(
         path: '/auth',
         builder: (context, state) => const AuthScreen(),
+      ),
+      GoRoute(
+        path: '/reset-password',
+        builder: (context, state) => const ResetPasswordScreen(),
+      ),
+      GoRoute(
+        path: '/reset-callback',
+        redirect: (context, state) => '/reset-password',
       ),
       GoRoute(
         path: '/customer-hub',

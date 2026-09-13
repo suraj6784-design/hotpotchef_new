@@ -34,6 +34,8 @@ abstract final class RouteAuthz {
   static const customerHub = '/customer-hub';
   static const chefHub = '/chef-hub';
   static const driverHub = '/driver-hub';
+  static const resetPasswordPath = '/reset-password';
+  static const resetCallbackPath = '/reset-callback';
 
   static const chefPaths = {
     '/chef-hub',
@@ -88,6 +90,11 @@ abstract final class RouteAuthz {
     final p = normalizePath(path);
 
     if (p == authPath) return RouteAccess.public;
+    // Recovery callback must stay reachable after Supabase creates a session.
+    // `/auth` is public and would bounce a signed-in user to their hub.
+    if (p == resetPasswordPath || p == resetCallbackPath) {
+      return RouteAccess.shared;
+    }
     if (p == customerHub || p == '/cart' || p == '/app/cart') {
       return RouteAccess.guestOrCustomer;
     }
