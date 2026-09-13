@@ -8,6 +8,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/helpers.dart';
 import '../utils/app_theme.dart';
+import '../utils/order_status.dart';
 import '../providers/cart_provider.dart';
 import '../screens/auth_screen.dart';
 
@@ -76,12 +77,13 @@ class WatermarkedMealImage extends StatelessWidget {
 // 2. Status Badge Helper
 Widget buildStatusBadge(String status) {
   Color color = Colors.orange;
-  final s = status.toLowerCase();
-  if (s.contains('deliver') || s.contains('complet') || s.contains('confirm')) {
+  final parsed = OrderStatus.parse(status);
+  final s = parsed == OrderStatus.unknown ? status.toLowerCase() : parsed.canonical;
+  if (parsed.isDeliveredLike || parsed == OrderStatus.confirmed) {
     color = Colors.green;
-  } else if (s.contains('cancel') || s.contains('reject')) {
+  } else if (parsed == OrderStatus.cancelled || s.contains('reject')) {
     color = Colors.redAccent;
-  } else if (s.contains('out') || s.contains('ready')) {
+  } else if (parsed.isDispatchQueue || s.contains('out') || s.contains('ready')) {
     color = Colors.teal;
   }
   return Container(
@@ -92,7 +94,7 @@ Widget buildStatusBadge(String status) {
       border: Border.all(color: color.withValues(alpha: 0.4)),
     ),
     child: Text(
-      status.toUpperCase(),
+      OrderStatus.toDisplay(status).toUpperCase(),
       style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold),
     ),
   );

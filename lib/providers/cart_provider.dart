@@ -11,6 +11,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../models/cart_state.dart';
 import '../models/cart_enums.dart';
 import '../services/cart_service.dart';
+import '../utils/cart_merge.dart';
 import '../utils/checkout_cart_items.dart';
 
 void _logCartError(dynamic error, StackTrace stackTrace, String reason) {
@@ -88,9 +89,11 @@ class CartNotifier extends Notifier<CartState> {
         // User had offline items prior to sign-in: push local up
         await _cartService.saveCart(state.items);
       } else if (remoteItems.isNotEmpty) {
-        // Production merge strategy: prefer remote items, resolve collisions
-        state = state.copyWith(items: remoteItems);
+        // Union guest + remote. Remote-wins used to drop guest lines.
+        final merged = CartMerge.merge(guest: state.items, remote: remoteItems);
+        state = state.copyWith(items: merged);
         await _persistLocal();
+        await _cartService.saveCart(merged);
       }
       await fetchUserCoins();
     } catch (e, st) {
@@ -315,11 +318,13 @@ class CartNotifier extends Notifier<CartState> {
       if (!_isInitialized && state.isEmpty) {
         await _loadLocalCart();
       }
-      if (state.isNotEmpty) {
-        await _cartService.saveCart(state.items);
-      } else {
-        await _loadRemoteCartAndReconcile();
+      final remoteItems = await _cartService.fetchCart();
+      final merged = CartMerge.merge(guest: state.items, remote: remoteItems);
+      if (!listEquals(merged, state.items)) {
+        state = state.copyWith(items: merged);
       }
+      await _persistLocal();
+      await _cartService.saveCart(merged);
       await fetchUserCoins();
     } catch (e, st) {
       _logCartError(e, st, 'Failed to sync guest cart to user');

@@ -10,12 +10,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { GoogleAuth } from "npm:google-auth-library@9"
+import { parseOrderStatus } from "../_shared/order_status.ts"
 
 type NotifyTarget = { userId: string; title: string; body: string }
 
 function collectTargets(record: Record<string, unknown>): NotifyTarget[] {
   const status = String(record.status ?? '')
-  const statusLc = status.toLowerCase()
+  const kind = parseOrderStatus(status)
   const title = String(record.title ?? 'your order')
   const customerId = String(record.customer_id ?? '')
   const chefId = String(record.chef_id ?? '')
@@ -26,17 +27,17 @@ function collectTargets(record: Record<string, unknown>): NotifyTarget[] {
     if (userId) targets.push({ userId, title: nTitle, body: nBody })
   }
 
-  if (statusLc === 'preparing' || statusLc === 'confirmed') {
+  if (kind === 'preparing' || kind === 'confirmed') {
     add(customerId, 'Chef is Cooking! 🍲', `Your order for ${title} is being prepared.`)
-  } else if (statusLc === 'ready for pickup' || statusLc === 'ready') {
+  } else if (kind === 'ready_for_pickup') {
     add(customerId, 'Ready for Pickup! 🥡', `Your ${title} is ready.`)
     add(driverId, 'Pickup ready 🛵', `${title} is ready for pickup.`)
-  } else if (statusLc === 'out for delivery') {
+  } else if (kind === 'out_for_delivery') {
     add(customerId, 'Order Out for Delivery! 🛵', `${title} is on its way to you.`)
     add(driverId, 'Delivery assigned 🛵', `You are delivering ${title}.`)
-  } else if (statusLc === 'delivered') {
+  } else if (kind === 'delivered' || kind === 'completed') {
     add(customerId, 'Enjoy Your Meal! 😋', 'Your order has been delivered.')
-  } else if (statusLc === 'pending chef approval') {
+  } else if (kind === 'pending_chef_approval') {
     add(chefId, 'New Order Alert! 🔔', `New request for ${title}.`)
   } else if (customerId) {
     add(customerId, 'Order Update', `Your order status is now: ${status}`)

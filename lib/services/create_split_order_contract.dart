@@ -2,6 +2,8 @@
 //
 // Shared request contract for the `create-split-order` edge function.
 // Keep this in sync with supabase/functions/create-split-order/index.ts.
+// The function requires a user JWT (Authorization: Bearer). Missing or
+// invalid sessions return 401 before a Razorpay order is created.
 //
 // Request (Flutter → function):
 //   cart_items      – line items (mealId / meal_id / source_meal_id, quantity,

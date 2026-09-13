@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { parseOrderStatus } from "../_shared/order_status.ts";
 
 // Client-side FCM token lifecycle is fixed in the Flutter app.
 // This function still depends on a hosted `orders` webhook that is NOT in
@@ -14,7 +15,7 @@ const FCM_SERVER_KEY = Deno.env.get('FCM_SERVER_KEY') ?? '';
 type NotifyTarget = { userId: string; title: string; body: string };
 
 function collectTargets(record: Record<string, unknown>): NotifyTarget[] {
-  const status = String(record.status ?? '').toLowerCase();
+  const kind = parseOrderStatus(record.status);
   const title = String(record.title ?? 'your order');
   const customerId = String(record.customer_id ?? '');
   const chefId = String(record.chef_id ?? '');
@@ -26,17 +27,17 @@ function collectTargets(record: Record<string, unknown>): NotifyTarget[] {
     if (userId) targets.push({ userId, title: nTitle, body: nBody });
   };
 
-  if (status === 'confirmed' || status === 'preparing') {
+  if (kind === 'confirmed' || kind === 'preparing') {
     add(customerId, 'Order Confirmed! 👨‍🍳', `Your order for ${title} is being prepared.`);
-  } else if (status === 'ready for pickup' || status === 'ready') {
+  } else if (kind === 'ready_for_pickup') {
     add(customerId, 'Ready for Pickup! 🥡', `Your ${title} is ready.`);
     add(driverId, 'Pickup ready 🛵', `${title} is ready for pickup.`);
-  } else if (status === 'out for delivery') {
+  } else if (kind === 'out_for_delivery') {
     add(customerId, 'Food is on the way! 🛵', `Your ${title} has been dispatched. Track it live!`);
     add(driverId, 'Delivery assigned 🛵', `You are delivering ${title}.`);
-  } else if (status === 'delivered') {
+  } else if (kind === 'delivered' || kind === 'completed') {
     add(customerId, 'Order Delivered! 🎉', `Enjoy your home-cooked meal! Don't forget to rate the chef.`);
-  } else if (status === 'pending chef approval') {
+  } else if (kind === 'pending_chef_approval') {
     add(chefId, 'New Order Alert! 🔔', `You have a new request for ${quantity}x ${title}.`);
   }
 

@@ -8,6 +8,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/helpers.dart';
 import '../utils/chat_ids.dart';
+import '../utils/order_status.dart';
 import '../models/cart_enums.dart';
 import '../widgets/customer_ui_components.dart';
 import '../services/order_repository.dart';
@@ -190,15 +191,31 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   }
 
   Future<void> _advanceOrderStatus(Map<String, dynamic> order, String nextStatus) async {
+    final parsed = OrderStatus.parse(nextStatus);
+    if (parsed == OrderStatus.outForDelivery && !OrderStatus.canMarkOutForDelivery(order)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Assign a driver before marking this order out for delivery.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
     try {
       await _orderRepo.updateOrderStatus(
         orderId: order['id'],
-        newStatus: nextStatus,
+        newStatus: parsed == OrderStatus.unknown ? nextStatus : parsed.canonical,
       );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Status updated to: $nextStatus'), backgroundColor: Colors.green),
+          SnackBar(
+            content: Text('Status updated to: ${OrderStatus.toDisplay(nextStatus)}'),
+            backgroundColor: Colors.green,
+          ),
         );
       }
     } catch (e) {
@@ -269,11 +286,8 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
 
           final orders = snapshot.data ?? [];
 
-          final pendingCount = orders.where((o) => (o['status']?.toString().toLowerCase() ?? '') == 'pending chef approval').length;
-          final dispatchCount = orders.where((o) {
-            final s = o['status']?.toString().toLowerCase() ?? '';
-            return s == 'ready for pickup' || s == 'out for delivery';
-          }).length;
+          final pendingCount = orders.where((o) => OrderStatus.parse(o['status']?.toString()) == OrderStatus.pendingChefApproval).length;
+          final dispatchCount = orders.where((o) => OrderStatus.parse(o['status']?.toString()).isDispatchQueue).length;
 
           return StreamBuilder<List<Map<String, dynamic>>>(
             stream: _supabase
@@ -412,8 +426,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
 
   Widget _buildOrdersTab(List<Map<String, dynamic>> allOrders) {
     final activeOrders = allOrders.where((o) {
-      final s = o['status']?.toString().toLowerCase() ?? '';
-      return s == 'pending chef approval' || s == 'confirmed' || s == 'preparing';
+      return OrderStatus.parse(o['status']?.toString()).isKitchenQueue;
     }).toList()
       ..sort((a, b) => (b['created_at'] ?? '').compareTo(a['created_at'] ?? ''));
 
@@ -467,8 +480,9 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
 
   Widget _buildOrderCard(Map<String, dynamic> order) {
     final status = order['status']?.toString() ?? 'Pending';
-    final isPending = status.toLowerCase() == 'pending chef approval';
-    final isPreparing = status.toLowerCase() == 'preparing';
+    final parsed = OrderStatus.parse(status);
+    final isPending = parsed == OrderStatus.pendingChefApproval;
+    final isPreparing = parsed == OrderStatus.preparing;
 
     final orderId = formatOrderId(order['order_id']?.toString(), order['id'].toString());
     final title = order['title'] ?? 'Meal Order';
@@ -525,7 +539,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 Expanded(
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-                    onPressed: () => _advanceOrderStatus(order, 'Confirmed'),
+                    onPressed: () => _advanceOrderStatus(order, OrderStatus.confirmed.canonical),
                     child: const Text('Confirm'),
                   ),
                 ),
@@ -538,7 +552,10 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                     ),
                     icon: Icon(isPreparing ? Icons.check_circle : Icons.soup_kitchen, size: 18),
                     label: Text(isPreparing ? 'Ready for Pickup' : 'Start Preparing'),
-                    onPressed: () => _advanceOrderStatus(order, isPreparing ? 'Ready for Pickup' : 'Preparing'),
+                    onPressed: () => _advanceOrderStatus(
+                      order,
+                      isPreparing ? OrderStatus.readyForPickup.canonical : OrderStatus.preparing.canonical,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -557,8 +574,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
 
   Widget _buildDispatchTab(List<Map<String, dynamic>> allOrders) {
     final dispatches = allOrders.where((o) {
-      final s = o['status']?.toString().toLowerCase() ?? '';
-      return s == 'ready for pickup' || s == 'out for delivery';
+      return OrderStatus.parse(o['status']?.toString()).isDispatchQueue;
     }).toList();
 
     if (dispatches.isEmpty) {
@@ -570,8 +586,9 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       itemCount: dispatches.length,
       itemBuilder: (context, index) {
         final order = dispatches[index];
-        final isOut = (order['status']?.toString().toLowerCase() ?? '') == 'out for delivery';
+        final isOut = OrderStatus.parse(order['status']?.toString()) == OrderStatus.outForDelivery;
         final svc = ServiceType.fromString(order['service_type']?.toString());
+        final canDispatch = isOut || OrderStatus.canMarkOutForDelivery(order);
 
         return AppCard(
           margin: const EdgeInsets.only(bottom: 14),
@@ -596,18 +613,35 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 icon: const Icon(Icons.chat_bubble_outline, size: 16),
                 label: const Text('Coordinate via chat'),
               ),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: isOut ? Colors.green : Colors.teal,
-                    foregroundColor: Colors.white,
+              if (!canDispatch) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  icon: Icon(isOut ? Icons.check : Icons.delivery_dining),
-                  label: Text(isOut ? 'Mark Delivered' : 'Dispatch Order'),
-                  onPressed: () => _advanceOrderStatus(order, isOut ? 'Delivered' : 'Out for Delivery'),
+                  child: const Text(
+                    'Waiting for a driver to accept this order before dispatch.',
+                    style: TextStyle(color: Colors.orange, fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
                 ),
-              ),
+              ] else
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isOut ? Colors.green : Colors.teal,
+                      foregroundColor: Colors.white,
+                    ),
+                    icon: Icon(isOut ? Icons.check : Icons.delivery_dining),
+                    label: Text(isOut ? 'Mark Delivered' : 'Dispatch Order'),
+                    onPressed: () => _advanceOrderStatus(
+                      order,
+                      isOut ? OrderStatus.delivered.canonical : OrderStatus.outForDelivery.canonical,
+                    ),
+                  ),
+                ),
             ],
           ),
         );
@@ -673,7 +707,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   }
 
   Widget _buildHistoryTab(List<Map<String, dynamic>> orders) {
-    final history = orders.where((o) => (o['status']?.toString().toLowerCase() ?? '') == 'delivered').toList();
+    final history = orders.where((o) => OrderStatus.parse(o['status']?.toString()).isDeliveredLike).toList();
     final double revenue = history.fold(0.0, (sum, o) => sum + ((o['total_amount'] as num?)?.toDouble() ?? 0.0));
 
     return ListView(
