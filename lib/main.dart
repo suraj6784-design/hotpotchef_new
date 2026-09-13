@@ -1,5 +1,8 @@
 // lib/main.dart
 
+import 'dart:async';
+
+import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -14,9 +17,11 @@ import 'utils/app_theme.dart';
 import 'utils/app_router.dart';
 import 'utils/google_maps_js_loader.dart';
 import 'services/push_notification_service.dart';
+import 'services/deep_link_coordinator.dart';
 
 // Global Messenger Key to show Push Notifications across all screens
-final GlobalKey<ScaffoldMessengerState> globalMessengerKey = GlobalKey<ScaffoldMessengerState>();
+final GlobalKey<ScaffoldMessengerState> globalMessengerKey =
+    GlobalKey<ScaffoldMessengerState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,23 +38,26 @@ void main() async {
   final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'];
 
   if (supabaseUrl == null || supabaseUrl.isEmpty) {
-    throw Exception("FATAL: SUPABASE_URL is missing or empty in your .env file!");
+    throw Exception(
+      "FATAL: SUPABASE_URL is missing or empty in your .env file!",
+    );
   }
   if (supabaseAnonKey == null || supabaseAnonKey.isEmpty) {
-    throw Exception("FATAL: SUPABASE_ANON_KEY is missing or empty in your .env file!");
+    throw Exception(
+      "FATAL: SUPABASE_ANON_KEY is missing or empty in your .env file!",
+    );
   }
 
   // 3. Initialize Supabase
-  await Supabase.initialize(
-    url: supabaseUrl,
-    anonKey: supabaseAnonKey,
-  );
+  await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
 
   // 4. Initialize Push Notifications cleanly via centralized service
   if (firebaseReady) {
     await PushNotificationService.initialize();
   } else {
-    debugPrint('⚠️ Skipping push notifications because Firebase is not initialized.');
+    debugPrint(
+      '⚠️ Skipping push notifications because Firebase is not initialized.',
+    );
   }
 
   runApp(const ProviderScope(child: HotPotChefApp()));
@@ -76,8 +84,37 @@ void _attachCrashlyticsIfSupported(bool firebaseReady) {
   }
 }
 
-class HotPotChefApp extends StatelessWidget {
+class HotPotChefApp extends StatefulWidget {
   const HotPotChefApp({super.key});
+
+  @override
+  State<HotPotChefApp> createState() => _HotPotChefAppState();
+}
+
+class _HotPotChefAppState extends State<HotPotChefApp> {
+  late final DeepLinkCoordinator _deepLinks;
+
+  @override
+  void initState() {
+    super.initState();
+    final appLinks = AppLinks();
+    _deepLinks = DeepLinkCoordinator(
+      navigate: AppRouter.go,
+      currentPath: AppRouter.currentPath,
+      linkStream: appLinks.uriLinkStream,
+      getInitialUri: appLinks.getInitialLink,
+      authEvents: Supabase.instance.client.auth.onAuthStateChange.map(
+        (s) => s.event,
+      ),
+    );
+    unawaited(_deepLinks.start());
+  }
+
+  @override
+  void dispose() {
+    unawaited(_deepLinks.dispose());
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -92,7 +129,8 @@ class HotPotChefApp extends StatelessWidget {
           debugShowCheckedModeBanner: false,
           theme: AppTheme.lightTheme,
           darkTheme: AppTheme.darkTheme,
-          themeMode: ThemeMode.system, // Respect system light/dark mode settings
+          themeMode:
+              ThemeMode.system, // Respect system light/dark mode settings
           routerConfig: AppRouter.router,
         );
       },

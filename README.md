@@ -12,10 +12,10 @@ For help getting started with Flutter development, view the
 ## Configuration
 
 1. Copy `.env.example` to `.env` (`.env` is gitignored).
-2. Fill in `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `GOOGLE_MAPS_API_KEY`, and `RAZORPAY_KEY_ID`.
+2. Fill in `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `GOOGLE_MAPS_API_KEY`, and `RAZORPAY_KEY_ID` (Test key `rzp_test_...`). `RAZORPAY_KEY_SECRET` is server-only — see Razorpay Route below.
 3. Optional: `PLAY_STORE_URL` / `APP_STORE_URL` when a real store listing exists. Leave them empty rather than pointing at the unpublished `com.hotpotchef.app` Play page (HTTP 404). The Android applicationId is still `com.hotpotchef.app` for installed-app intents (`hotpotchef://app/cart`).
 
-Password-reset emails use `io.supabase.hotpotchef://reset-callback/`. That scheme is registered in Android / iOS / macOS.
+Password-reset emails use `io.supabase.hotpotchef://reset-callback/`. That scheme is registered in Android / iOS / macOS. The app listens for the callback (and Supabase `passwordRecovery`) and opens `/reset-password`, then continues to the role hub.
 
 ## Admin desk
 
@@ -48,9 +48,11 @@ The desk loads without live ops functions. Missing RPCs show a banner or fall ba
 | `platform_ops` / helper invites | Scoped helper seats | Owner/Admin role only on this branch |
 | `chef_profiles.local_kitchen_name` | Chef KYC kitchen name | Kitchen name stays empty / missing |
 
-Do not add those RPCs here if [PR #12](https://github.com/suraj6784-design/hotpotchef_new/pull/12) is already exporting core schema. Coordinate there if you want the full ops console (packaging, brands, refunds, helpers).
+Do not add those RPCs here — core schema is already on `main` via [PR #12](https://github.com/suraj6784-design/hotpotchef_new/pull/12). Coordinate there if you want the full ops console (packaging, brands, refunds, helpers).
 
-Push: FCM tokens sync on login and clear on every role logout. Hosted `orders` webhook SQL is **not** in this repo, so edge functions cannot be claimed live until that webhook is exported.
+Marketing cart links (`hotpotchef://app/cart` and `/app/cart`) use the same `app_links` listener so a warm start opens the cart tab. Custom schemes do not work on web; use `/app/cart` or `/reset-password` there.
+
+Push: FCM tokens sync on login and clear on every role logout. Order-status → FCM is an in-repo trigger (`supabase/migrations/20260913133300_order_meal_push_webhooks.sql`) that POSTs to `send-push-notification`. It stays a no-op until Vault `edge_service_role_key` is set. See `supabase/README.md`.
 
 Do not commit live secrets. `.env` is already listed in `.gitignore`.
 
@@ -71,3 +73,56 @@ Restrict keys in Google Cloud Console:
 - Web: HTTP referrers for your deployed origins
 
 **Rotate any Maps key that was previously committed** in `web/index.html` or `AndroidManifest.xml`. Treat that key as public and create a restricted replacement.
+
+## Razorpay Route (Test mode)
+
+Chef payouts use Razorpay **Route linked accounts** in Test mode. Production activation is not required.
+
+### What is real vs still blocked
+
+| Piece | With Test keys (`rzp_test_` + secret) | Without keys |
+| --- | --- | --- |
+| `create-chef-account` | `POST /v2/accounts` (Route) + product/settlements, or `POST /v1/beta/accounts` if v2 is unavailable. Persists a real `acc_...` id. | Labeled mock only: `acc_mock_*`. UI says sandbox, not verified. |
+| `create-split-order` / checkout | Parent Razorpay order is created. Route `transfers[]` are attached when the chef has a real `acc_*` (not `acc_mock_*`). `transfer_status` is `on_hold`. | Parent order cannot be created (`Payment gateway configuration missing`). |
+| `release-chef-payout` | `PATCH /v1/transfers/:id` (`on_hold: 0`) after delivery. Looks up `trf_` from the order if the meal only stored `order_id`. | Errors if a real transfer is pending. Skips `skipped_*` statuses. |
+
+Skip reasons (still **not** silent `skipped_standard_mode` when Route is configured):
+
+- `skipped_no_route_account` — chef has no `gateway_account_id`
+- `skipped_mock_account` — chef still has `acc_mock_*`
+- `skipped_transfer_too_small` — chef share below Razorpay’s ₹1 transfer minimum
+- `skipped_standard_mode` — only if meal metadata is persisted without a transfer plan (should not happen on the keyed path)
+
+Blocked without dashboard secrets / Route enablement (not something this repo can invent):
+
+- Creating Test API keys and enabling **Route** on the Razorpay Test-mode dashboard
+- Setting `RAZORPAY_KEY_ID` + `RAZORPAY_KEY_SECRET` as **Supabase secrets** for the edge functions
+- Optional: KYC / settlement activation on the linked account if Razorpay Test mode asks for it
+- Hosted `orders` delivered webhook that invokes `release-chef-payout` (not exported in this repo)
+
+Live (`rzp_live_`) keys are not required and are not the default. If they are set later, the UI labels the account as live instead of Test.
+
+### Configure Test mode
+
+1. Razorpay Dashboard → **Test mode** → Account & Settings → API Keys. Copy `rzp_test_...` and the secret.
+2. Flutter `.env`: `RAZORPAY_KEY_ID=rzp_test_...` only. Do not ship `RAZORPAY_KEY_SECRET` in the app bundle.
+3. Supabase secrets (edge functions):
+
+```bash
+supabase secrets set RAZORPAY_KEY_ID=rzp_test_...
+supabase secrets set RAZORPAY_KEY_SECRET=...
+```
+
+4. Redeploy `create-chef-account`, `create-split-order`, and `release-chef-payout`.
+5. Chef Profile → bank details → **Link**. A real Test `acc_...` is stored on `users.gateway_account_id`. Mock chefs can tap Link again after keys are added.
+
+Handler tests:
+
+```bash
+deno test supabase/functions/create-chef-account/handler_test.ts \
+  supabase/functions/create-split-order/pricing_test.ts \
+  supabase/functions/create-split-order/route_transfers_test.ts \
+  supabase/functions/create-split-order/handler_test.ts \
+  supabase/functions/release-chef-payout/handler_test.ts
+node --test supabase/functions/create-chef-account/*.test.mjs
+```
