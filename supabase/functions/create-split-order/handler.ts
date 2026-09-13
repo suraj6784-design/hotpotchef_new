@@ -210,11 +210,13 @@ export async function handleCreateSplitOrder(req: Request, deps: SplitOrderDeps 
     return new Response("ok", { headers: corsHeaders })
   }
 
-  try {
-    const payload = await req.json()
-    const cartItems = asCartItems(payload?.cart_items, payload?.meal_id)
-    const customerEmail = payload?.customer_email != null ? String(payload.customer_email) : null
+  const authHeader = req.headers.get("Authorization") ?? ""
+  const jwt = authHeader.replace(/^Bearer\s+/i, "").trim()
+  if (!jwt) {
+    return jsonResponse({ error: "Authentication required" }, 401)
+  }
 
+  try {
     let supabaseAdmin: SupabaseClient | null = null
     const supabase = () => {
       if (deps.createSupabase) return deps.createSupabase()
@@ -227,18 +229,21 @@ export async function handleCreateSplitOrder(req: Request, deps: SplitOrderDeps 
       return supabaseAdmin
     }
 
-    const authHeader = req.headers.get("Authorization") ?? ""
-    const jwt = authHeader.replace(/^Bearer\s+/i, "").trim()
     let userId: string | null = null
-    if (jwt) {
-      if (deps.getUser) {
-        const user = await deps.getUser(jwt)
-        if (user) userId = user.id
-      } else {
-        const { data } = await supabase().auth.getUser(jwt)
-        if (data?.user) userId = data.user.id
-      }
+    if (deps.getUser) {
+      const user = await deps.getUser(jwt)
+      if (user) userId = user.id
+    } else {
+      const { data } = await supabase().auth.getUser(jwt)
+      if (data?.user) userId = data.user.id
     }
+    if (!userId) {
+      return jsonResponse({ error: "Invalid or expired session" }, 401)
+    }
+
+    const payload = await req.json()
+    const cartItems = asCartItems(payload?.cart_items, payload?.meal_id)
+    const customerEmail = payload?.customer_email != null ? String(payload.customer_email) : null
 
     const mealIds = collectMealIds(cartItems)
     const fetchMeals = deps.fetchMealsById ?? ((ids: string[]) => fetchMealsById(supabase(), ids))

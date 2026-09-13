@@ -1,10 +1,14 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts"
 import { handleCreateSplitOrder } from "./handler.ts"
 
-function post(body: Record<string, unknown>) {
+function post(body: Record<string, unknown>, headers: Record<string, string> = {}) {
   return new Request("http://localhost/create-split-order", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer test-jwt",
+      ...headers,
+    },
     body: JSON.stringify(body),
   })
 }
@@ -90,6 +94,30 @@ Deno.test("create-split-order skips Route (not silently standard) for mock chef 
   assertEquals(result.status, 200)
   assertEquals(result.body.transfer_status, "skipped_mock_account")
   assertEquals((orderBody as { transfers?: unknown } | null)?.transfers, undefined)
+})
+
+Deno.test("create-split-order returns 401 when the user JWT is missing", async () => {
+  const noAuth = new Request("http://localhost/create-split-order", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cart_items: [{ mealId: "m1", quantity: 1 }] }),
+  })
+  const result = await read(await handleCreateSplitOrder(noAuth, baseDeps()))
+  assertEquals(result.status, 401)
+  assertEquals(result.body.error, "Authentication required")
+})
+
+Deno.test("create-split-order returns 401 when the user JWT is invalid", async () => {
+  const result = await read(
+    await handleCreateSplitOrder(
+      post({ cart_items: [{ mealId: "m1", quantity: 1 }] }),
+      baseDeps({
+        getUser: async () => null,
+      }),
+    ),
+  )
+  assertEquals(result.status, 401)
+  assertEquals(result.body.error, "Invalid or expired session")
 })
 
 Deno.test("create-split-order still requires Razorpay keys for the parent order", async () => {

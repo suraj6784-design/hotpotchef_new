@@ -1,6 +1,7 @@
 // supabase/functions/create-split-order/index.ts
 //
 // Contract (keep in sync with lib/services/create_split_order_contract.dart):
+// Auth: user JWT required (401 if missing/invalid). Coins still use that user.
 // Request: { cart_items, customer_email, delivery_fee, tip_amount, apply_coins }
 //   - cart_items may contain multiple meals / chefs (mealId | meal_id | source_meal_id)
 //   - client `total_amount` / `meal_id` are NOT used to set the charge
