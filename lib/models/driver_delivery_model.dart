@@ -2,6 +2,8 @@
 
 import 'package:flutter/foundation.dart';
 
+import '../utils/order_status.dart';
+
 enum DeliveryStatus {
   readyForPickup,
   accepted,
@@ -11,14 +13,24 @@ enum DeliveryStatus {
   cancelled;
 
   static DeliveryStatus fromString(String? val) {
-    final s = val?.toLowerCase().trim() ?? '';
-    if (s.contains('ready')) return DeliveryStatus.readyForPickup;
-    if (s.contains('accepted')) return DeliveryStatus.accepted;
-    if (s.contains('pickup') || s.contains('picked')) return DeliveryStatus.pickedUp;
-    if (s.contains('out')) return DeliveryStatus.outForDelivery;
-    if (s.contains('deliver')) return DeliveryStatus.delivered;
-    if (s.contains('cancel')) return DeliveryStatus.cancelled;
-    return DeliveryStatus.readyForPickup;
+    switch (OrderStatus.parse(val)) {
+      case OrderStatus.readyForPickup:
+        return DeliveryStatus.readyForPickup;
+      case OrderStatus.accepted:
+      case OrderStatus.driverAssigned:
+        return DeliveryStatus.accepted;
+      case OrderStatus.pickedUp:
+        return DeliveryStatus.pickedUp;
+      case OrderStatus.outForDelivery:
+        return DeliveryStatus.outForDelivery;
+      case OrderStatus.delivered:
+      case OrderStatus.completed:
+        return DeliveryStatus.delivered;
+      case OrderStatus.cancelled:
+        return DeliveryStatus.cancelled;
+      default:
+        return DeliveryStatus.readyForPickup;
+    }
   }
 
   String toDbValue() {

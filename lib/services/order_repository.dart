@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
+import '../utils/order_status.dart';
+
 class OrderRepository {
   final SupabaseClient _supabase = Supabase.instance.client;
 
@@ -14,8 +16,11 @@ class OrderRepository {
     String? driverId,
   }) async {
     try {
+      final parsed = OrderStatus.parse(newStatus);
+      final statusValue = OrderStatus.toCanonical(newStatus);
+
       final Map<String, dynamic> updateData = {
-        'status': newStatus,
+        'status': statusValue,
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       };
 
@@ -23,7 +28,7 @@ class OrderRepository {
         updateData['driver_id'] = driverId;
       }
 
-      if (newStatus.toLowerCase() == 'delivered' || newStatus.toLowerCase() == 'completed') {
+      if (parsed.isDeliveredLike) {
         updateData['delivered_at'] = DateTime.now().toUtc().toIso8601String();
       }
 
@@ -54,7 +59,7 @@ class OrderRepository {
       await _supabase
           .from('orders')
           .update({
-            'status': 'Driver Assigned',
+            'status': OrderStatus.driverAssigned.canonical,
             'driver_id': driverId,
             'updated_at': DateTime.now().toUtc().toIso8601String(),
           })
@@ -70,7 +75,9 @@ class OrderRepository {
 
   /// Specific helper for advancing delivery states
   Future<void> advanceDeliveryState({required String orderId, required bool isCurrentlyOutForDelivery}) async {
-    final nextStatus = isCurrentlyOutForDelivery ? 'Delivered' : 'Out for Delivery';
+    final nextStatus = isCurrentlyOutForDelivery
+        ? OrderStatus.delivered.canonical
+        : OrderStatus.outForDelivery.canonical;
     await updateOrderStatus(
       orderId: orderId,
       newStatus: nextStatus,
