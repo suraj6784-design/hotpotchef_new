@@ -33,19 +33,33 @@ git config --global --add safe.directory "$(pwd)" || true
 flutter config --no-analytics >/dev/null 2>&1 || true
 flutter precache --web >/dev/null 2>&1 || true
 
-# 5. Ensure a .env exists. The app declares `.env` as a required Flutter asset
-#    and reads Supabase credentials from it at startup, so builds fail without
-#    one. Real values provided as Cursor Secrets are picked up automatically;
-#    otherwise safe placeholders keep analyze/test/build working.
-if [ ! -f .env ]; then
-  echo "Creating .env (override values via Cursor Secrets)."
-  cat > .env <<EOF
-SUPABASE_URL=${SUPABASE_URL:-https://placeholder.supabase.co}
-SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-placeholder-anon-key}
-GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY:-}
-RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID:-}
+# 5. Write .env on every Cloud Agent boot. The app declares `.env` as a
+#    required Flutter asset and reads credentials from it at startup.
+#    SUPABASE_URL defaults to this project's hosted instance. Cursor Secrets
+#    for SUPABASE_ANON_KEY / RAZORPAY_KEY_ID / GOOGLE_MAPS_API_KEY (and an
+#    optional URL override) are sanitized before write — pasted values often
+#    arrive wrapped in quotes or with a trailing newline and then fail as
+#    "Invalid API key". Placeholders keep analyze/test/build working when
+#    secrets are absent. Do not commit real keys (.env is gitignored).
+_clean_secret() {
+  local v
+  # Drop CR/LF first so a trailing quote is not hidden behind a newline.
+  v="$(printf '%s' "$1" | tr -d '\r\n')"
+  v="${v#"${v%%[![:space:]]*}"}"
+  v="${v%"${v##*[![:space:]]}"}"
+  v="${v#[\"\']}"
+  v="${v%[\"\']}"
+  printf '%s' "$v"
+}
+
+DEFAULT_SUPABASE_URL="https://tpcykyaumvqtwhuiiomg.supabase.co"
+echo "Writing .env (credentials sourced from environment / Cursor Secrets when present)."
+cat > .env <<EOF
+SUPABASE_URL=$(_clean_secret "${SUPABASE_URL:-$DEFAULT_SUPABASE_URL}")
+SUPABASE_ANON_KEY=$(_clean_secret "${SUPABASE_ANON_KEY:-placeholder-anon-key}")
+GOOGLE_MAPS_API_KEY=$(_clean_secret "${GOOGLE_MAPS_API_KEY:-}")
+RAZORPAY_KEY_ID=$(_clean_secret "${RAZORPAY_KEY_ID:-}")
 EOF
-fi
 
 # 6. Fetch Dart/Flutter package dependencies from the pinned lockfile.
 flutter pub get
