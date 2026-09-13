@@ -68,6 +68,7 @@ void main() {
     await tester.pump();
 
     expect(find.textContaining('Could not update password'), findsOneWidget);
+    expect(find.textContaining('session expired'), findsOneWidget);
     expect(find.text('Set a new password'), findsOneWidget);
   });
 }

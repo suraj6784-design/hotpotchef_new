@@ -36,7 +36,7 @@ abstract final class AppDeepLinks {
   }
 
   static bool isCartLink(Uri uri) {
-    final path = RouteAuthz.normalizePath(uri.path);
+    final path = routerPath(uri);
     final scheme = uri.scheme.toLowerCase();
     final host = uri.host.toLowerCase();
 
@@ -45,7 +45,8 @@ abstract final class AppDeepLinks {
           (path == StoreLinks.cartPath || path == cartLocation)) {
         return true;
       }
-      if (host.isEmpty && path == cartLocation) {
+      if (host.isEmpty &&
+          (path == cartLocation || path == StoreLinks.cartPath)) {
         return true;
       }
     }
@@ -56,18 +57,29 @@ abstract final class AppDeepLinks {
   static bool isPasswordResetCallback(Uri uri) {
     final scheme = uri.scheme.toLowerCase();
     final host = uri.host.toLowerCase();
-    final path = RouteAuthz.normalizePath(uri.path);
+    final path = routerPath(uri);
 
     if (scheme == StoreLinks.passwordResetScheme &&
         host == StoreLinks.passwordResetHost) {
       return true;
     }
-    if (path == RouteAuthz.resetCallbackPath) {
+    if (path == RouteAuthz.resetCallbackPath || path == resetPasswordLocation) {
       return true;
     }
 
     final type = uri.queryParameters['type'] ?? fragmentParams(uri)['type'];
     return type == 'recovery';
+  }
+
+  /// Path used by GoRouter, including Flutter-web hash locations (`#/app/cart`).
+  static String routerPath(Uri uri) {
+    final path = RouteAuthz.normalizePath(uri.path);
+    if (path != '/' && path.isNotEmpty) return path;
+    final fragment = uri.fragment;
+    if (fragment.startsWith('/')) {
+      return RouteAuthz.normalizePath(fragment.split('?').first);
+    }
+    return path;
   }
 
   static Map<String, String> fragmentParams(Uri uri) {

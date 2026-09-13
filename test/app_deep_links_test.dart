@@ -21,6 +21,12 @@ void main() {
         '/app/cart',
       );
       expect(AppDeepLinks.locationFor(Uri.parse('/app/cart')), '/app/cart');
+      expect(
+        AppDeepLinks.locationFor(
+          Uri.parse('https://hotpotchef.app/#/app/cart'),
+        ),
+        '/app/cart',
+      );
     });
 
     test('does not treat hub or generic /cart https paths as cart intents', () {
@@ -67,20 +73,35 @@ void main() {
       );
     });
 
-    test('maps /reset-callback and type=recovery fragments', () {
-      expect(
-        AppDeepLinks.locationFor(
-          Uri.parse('https://example.com/reset-callback'),
-        ),
-        '/reset-password',
-      );
-      expect(
-        AppDeepLinks.locationFor(
-          Uri.parse('https://example.com/#type=recovery'),
-        ),
-        '/reset-password',
-      );
-    });
+    test(
+      'maps /reset-callback, /reset-password, and type=recovery fragments',
+      () {
+        expect(
+          AppDeepLinks.locationFor(
+            Uri.parse('https://example.com/reset-callback'),
+          ),
+          '/reset-password',
+        );
+        expect(
+          AppDeepLinks.locationFor(
+            Uri.parse('https://example.com/reset-password'),
+          ),
+          '/reset-password',
+        );
+        expect(
+          AppDeepLinks.locationFor(
+            Uri.parse('https://example.com/#/reset-password'),
+          ),
+          '/reset-password',
+        );
+        expect(
+          AppDeepLinks.locationFor(
+            Uri.parse('https://example.com/#type=recovery'),
+          ),
+          '/reset-password',
+        );
+      },
+    );
 
     test('passwordResetRedirectTo matches the Android/iOS callback', () {
       expect(
