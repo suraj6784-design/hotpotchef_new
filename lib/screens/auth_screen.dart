@@ -9,6 +9,8 @@ import 'package:go_router/go_router.dart';
 import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
 import '../utils/auth_role_sync.dart';
+import '../utils/platform_ops_access.dart';
+import '../utils/route_authz.dart';
 import '../services/push_notification_service.dart';
 
 class AuthScreen extends StatefulWidget {
@@ -64,25 +66,24 @@ class _AuthScreenState extends State<AuthScreen> {
     role ??= user.userMetadata?['role']?.toString() ?? 'Customer';
 
     // Login reads public.users.role; GoRouter guards JWT metadata. Keep them aligned.
+    // Owner allowlist is always Admin — do not leave leftover Chef/Customer JWTs.
     try {
-      await AuthRoleSync.ensureJwtRole(_supabase, role);
+      if (isPlatformOwnerEmail(user.email)) {
+        await AuthRoleSync.syncOwnerAdminRole(_supabase);
+        role = 'Admin';
+      } else {
+        await AuthRoleSync.ensureJwtRole(_supabase, role);
+      }
     } catch (e, st) {
       FirebaseCrashlytics.instance.recordError(e, st, reason: 'JWT role sync after login');
     }
 
     await PushNotificationService.syncTokenForCurrentUser();
 
-    final normalizedRole = role.trim().toLowerCase();
-
     if (!mounted) return;
 
-    if (normalizedRole == 'chef') {
-      context.go('/chef-hub');
-    } else if (normalizedRole == 'driver') {
-      context.go('/driver-hub');
-    } else {
-      context.go('/customer-hub');
-    }
+    final hub = RouteAuthz.hubForRole(RouteAuthz.parseRole(role, email: user.email));
+    context.go(hub);
   }
 
   Future<void> _submitAuth() async {
