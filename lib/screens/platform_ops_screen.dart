@@ -10,7 +10,6 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/push_notification_service.dart';
-import '../utils/app_theme.dart';
 import '../utils/auth_role_sync.dart';
 import '../utils/helpers.dart';
 import '../utils/kyc_checklist.dart';
@@ -358,7 +357,7 @@ class _OpsDashListState extends State<_OpsDashList> {
                     _OpsCard(
                       child: Text(
                         '1. Set public.users.role = Admin for the operator (and JWT user_metadata.role = Admin).\n'
-                        '2. The owner allowlist ${kPlatformOwnerEmail} is always treated as Admin on login.\n'
+                        '2. The owner allowlist $kPlatformOwnerEmail is always treated as Admin on login.\n'
                         '3. Do not offer Admin at signup — grant it in the database only.',
                         style: const TextStyle(fontSize: 12, height: 1.45, color: AppTheme.textMuted),
                       ),
