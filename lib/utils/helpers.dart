@@ -19,6 +19,12 @@ class Validators {
     return null;
   }
 
+  static String? confirmPassword(String? v, String password) {
+    if (v == null || v.isEmpty) return 'Please confirm your password';
+    if (v != password) return 'Passwords do not match';
+    return null;
+  }
+
   static String? requiredField(String? v) {
     if (v == null || v.trim().isEmpty) return 'Required';
     return null;

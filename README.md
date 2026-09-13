@@ -15,7 +15,9 @@ For help getting started with Flutter development, view the
 2. Fill in `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `GOOGLE_MAPS_API_KEY`, and `RAZORPAY_KEY_ID`.
 3. Optional: `PLAY_STORE_URL` / `APP_STORE_URL` when a real store listing exists. Leave them empty rather than pointing at the unpublished `com.hotpotchef.app` Play page (HTTP 404). The Android applicationId is still `com.hotpotchef.app` for installed-app intents (`hotpotchef://app/cart`).
 
-Password-reset emails use `io.supabase.hotpotchef://reset-callback/`. That scheme is registered in Android / iOS / macOS.
+Password-reset emails use `io.supabase.hotpotchef://reset-callback/`. That scheme is registered in Android / iOS / macOS. The app listens for the callback (and Supabase `passwordRecovery`) and opens `/reset-password`, then continues to the role hub.
+
+Marketing cart links (`hotpotchef://app/cart` and `/app/cart`) use the same `app_links` listener so a warm start opens the cart tab. Custom schemes do not work on web; use `/app/cart` or `/reset-password` there.
 
 Push: FCM tokens sync on login and clear on every role logout. Order-status → FCM is an in-repo trigger (`supabase/migrations/20260913133300_order_meal_push_webhooks.sql`) that POSTs to `send-push-notification`. It stays a no-op until Vault `edge_service_role_key` is set. See `supabase/README.md`.
 

@@ -40,6 +40,8 @@ void main() {
       expect(RouteAuthz.classify('/app/cart'), RouteAccess.guestOrCustomer);
       expect(RouteAuthz.classify('/chat/meal-1'), RouteAccess.shared);
       expect(RouteAuthz.classify('/tracking'), RouteAccess.shared);
+      expect(RouteAuthz.classify('/reset-password'), RouteAccess.shared);
+      expect(RouteAuthz.classify('/reset-callback'), RouteAccess.shared);
     });
 
     test('future chef/driver/customer paths inherit the prefix group', () {
@@ -83,6 +85,11 @@ void main() {
     test('allows shared chat/tracking without a session', () {
       expect(guest('/chat/abc'), isNull);
       expect(guest('/tracking'), isNull);
+    });
+
+    test('allows guests on the password-recovery screen', () {
+      expect(guest('/reset-password'), isNull);
+      expect(guest('/reset-callback'), isNull);
     });
   });
 
@@ -215,6 +222,20 @@ void main() {
         expect(
           RouteAuthz.resolveRedirect(isAuthenticated: true, rawRole: role, path: '/tracking'),
           isNull,
+        );
+      }
+    });
+
+    test('password recovery stays on /reset-password for every signed-in role', () {
+      for (final role in ['customer', 'chef', 'driver']) {
+        expect(
+          RouteAuthz.resolveRedirect(
+            isAuthenticated: true,
+            rawRole: role,
+            path: '/reset-password',
+          ),
+          isNull,
+          reason: role,
         );
       }
     });
