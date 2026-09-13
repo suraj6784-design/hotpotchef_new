@@ -1,10 +1,15 @@
 // lib/screens/platform_ops_screen.dart
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
+import 'package:open_file/open_file.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -895,6 +900,114 @@ class _PackagingOpsList extends StatelessWidget {
   }
 }
 
+String _fssaiProofFileExtension(String url, String? contentType) {
+  final type = (contentType ?? '').toLowerCase();
+  if (type.contains('png')) return 'png';
+  if (type.contains('pdf')) return 'pdf';
+  if (type.contains('webp')) return 'webp';
+  if (type.contains('jpeg') || type.contains('jpg')) return 'jpg';
+  final path = Uri.tryParse(url)?.path.toLowerCase() ?? url.toLowerCase();
+  if (path.endsWith('.png')) return 'png';
+  if (path.endsWith('.pdf')) return 'pdf';
+  if (path.endsWith('.webp')) return 'webp';
+  return 'jpg';
+}
+
+Future<void> _showFssaiProofPreview(
+  BuildContext context, {
+  required String url,
+  required String chefName,
+}) {
+  return showDialog<void>(
+    context: context,
+    builder: (ctx) {
+      return Dialog(
+        insetPadding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      chefName,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Close',
+                    onPressed: () => Navigator.pop(ctx),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+            ),
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(ctx).height * 0.7,
+              ),
+              child: InteractiveViewer(
+                minScale: 1,
+                maxScale: 5,
+                child: CachedNetworkImage(imageUrl: url, fit: BoxFit.contain),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+Future<void> _downloadFssaiProof(
+  BuildContext context, {
+  required String url,
+  required String chefName,
+  required String chefId,
+}) async {
+  final uri = Uri.tryParse(url);
+  if (uri == null || url.trim().isEmpty) return;
+  showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) => const Center(child: CircularProgressIndicator(color: AppTheme.primary)),
+  );
+  try {
+    final response = await http.get(uri).timeout(NetworkTimeouts.standard);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Certificate download failed (${response.statusCode})');
+    }
+    final slug = chefName.replaceAll(RegExp(r'[^A-Za-z0-9]+'), '_').replaceAll(RegExp(r'_+'), '_');
+    final idPart = chefId.length >= 6 ? chefId.substring(0, 6) : (chefId.isEmpty ? 'chef' : chefId);
+    final ext = _fssaiProofFileExtension(url, response.headers['content-type']);
+    final dir = await getTemporaryDirectory();
+    final file = File('${dir.path}/FSSAI_${slug}_$idPart.$ext');
+    await file.writeAsBytes(response.bodyBytes);
+    if (context.mounted) Navigator.pop(context);
+    final opened = await OpenFile.open(file.path);
+    if (opened.type != ResultType.done && context.mounted) {
+      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Saved to ${file.path}. Open it from Files to inspect.')),
+        );
+      }
+    }
+  } catch (e, st) {
+    FirebaseCrashlytics.instance.recordError(e, st, reason: 'Ops FSSAI proof download failed');
+    if (context.mounted) Navigator.pop(context);
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(networkErrorMessage(e))),
+      );
+    }
+  }
+}
+
 class _FssaiOpsList extends StatelessWidget {
   const _FssaiOpsList({super.key, required this.busy, required this.onStatus});
 
@@ -984,13 +1097,30 @@ class _FssaiOpsList extends StatelessWidget {
                     ),
                   if (proof.isNotEmpty) ...[
                     const SizedBox(height: 10),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: CachedNetworkImage(
-                        imageUrl: proof,
-                        height: 160,
-                        width: double.infinity,
-                        fit: BoxFit.cover,
+                    GestureDetector(
+                      onTap: () => _showFssaiProofPreview(context, url: proof, chefName: name),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: CachedNetworkImage(
+                          imageUrl: proof,
+                          height: 160,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _downloadFssaiProof(
+                          context,
+                          url: proof,
+                          chefName: name,
+                          chefId: row['id']?.toString() ?? '',
+                        ),
+                        icon: const Icon(Icons.download_rounded, size: 18),
+                        label: const Text('Download to check'),
                       ),
                     ),
                   ],
