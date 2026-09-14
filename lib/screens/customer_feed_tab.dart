@@ -62,6 +62,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   late final Stream<List<Map<String, dynamic>>> _mealsStream;
   String _selectedCategory = 'All';
   String _selectedDiet = 'All';
+  String _selectedSort = kFeedSortNearby;
   String _currentAddress = 'Locating...';
   List<Map<String, dynamic>> _savedAddresses = [];
   /// GPS pin used for guests (and signed-in users without a saved map pin).
@@ -84,6 +85,8 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   final Map<String, Map<String, dynamic>> _chefKitchenPins = {};
   final Set<String> _chefPinsResolved = {};
   bool _hydratingChefPins = false;
+  final Map<String, ChefRatingSummary> _chefRatings = {};
+  bool _hydratingRatings = false;
   final Set<String> _closedChefIds = {};
   final Set<String> _chefOpenResolved = {};
   bool _hydratingKitchenHours = false;
@@ -115,6 +118,13 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     {'name': 'Healthy', 'icon': Icons.favorite_outline},
     {'name': 'Snacks', 'icon': Icons.fastfood_outlined},
     {'name': 'Desserts', 'icon': Icons.icecream_outlined},
+  ];
+
+  final List<Map<String, dynamic>> _sortFilters = const [
+    {'name': kFeedSortNearby, 'icon': Icons.near_me_outlined},
+    {'name': kFeedSortEta, 'icon': Icons.schedule_outlined},
+    {'name': kFeedSortPrice, 'icon': Icons.currency_rupee},
+    {'name': kFeedSortRating, 'icon': Icons.star_outline},
   ];
 
   @override
@@ -1374,6 +1384,12 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
               onSelected: (name) => setState(() => _selectedCategory = name),
             ),
             const SizedBox(height: 8),
+            _filterChipRow(
+              chips: _sortFilters,
+              selected: _selectedSort,
+              onSelected: (name) => setState(() => _selectedSort = name),
+            ),
+            const SizedBox(height: 8),
           ],
 
           if (!_hasActiveSearch) ..._homeTopHighlights(isLoggedIn: isLoggedIn),
@@ -1554,9 +1570,76 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   }
 
   List<Map<String, dynamic>> _applyFeedChips(List<Map<String, dynamic>> meals) {
-    return meals
+    final filtered = meals
         .where((meal) => mealMatchesFeedDiet(meal, _selectedDiet) && mealMatchesCuisine(meal, _selectedCategory))
         .toList();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _hydrateChefRatings(filtered));
+    return sortFeedMeals(
+      filtered,
+      sort: _selectedSort,
+      distanceKm: _distanceKmForMeal,
+      rating: (meal) {
+        final chefId = meal['chef_id']?.toString() ?? '';
+        return _chefRatings[chefId]?.average ?? 0;
+      },
+    );
+  }
+
+  double? _distanceKmForMeal(Map<String, dynamic> meal) {
+    final dest = _selectedAddressMap;
+    final pinned = _pinnedMeal(meal);
+    final startLat = kitchenCoordinate(pinned, latitude: true);
+    final startLng = kitchenCoordinate(pinned, latitude: false);
+    final endLat = addressCoordinate(dest, latitude: true);
+    final endLng = addressCoordinate(dest, latitude: false);
+    if (startLat == null || startLng == null || endLat == null || endLng == null) return null;
+    final distance = DeliveryEstimatorService.calculateDistanceKm(
+      startLat: startLat,
+      startLng: startLng,
+      endLat: endLat,
+      endLng: endLng,
+    );
+    if (distance <= 0) return null;
+    return distance;
+  }
+
+  Future<void> _hydrateChefRatings(List<Map<String, dynamic>> meals) async {
+    final missing = <String>{};
+    for (final meal in meals) {
+      final id = meal['chef_id']?.toString() ?? '';
+      if (id.isNotEmpty && !_chefRatings.containsKey(id)) missing.add(id);
+    }
+    if (missing.isEmpty || _hydratingRatings) return;
+    _hydratingRatings = true;
+    try {
+      final rows = await Supabase.instance.client.rpc(
+        'chef_rating_summaries',
+        params: {'p_chef_ids': missing.toList()},
+      );
+      var changed = false;
+      if (rows is List) {
+        for (final row in rows) {
+          if (row is! Map) continue;
+          final id = row['chef_id']?.toString() ?? '';
+          if (id.isEmpty) continue;
+          final avg = double.tryParse(row['average']?.toString() ?? '') ?? 0;
+          final count = int.tryParse(row['review_count']?.toString() ?? '') ?? 0;
+          _chefRatings[id] = ChefRatingSummary(average: avg, count: count);
+          changed = true;
+        }
+      }
+      for (final id in missing) {
+        _chefRatings.putIfAbsent(id, () => const ChefRatingSummary());
+      }
+      if (changed && mounted) setState(() {});
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to hydrate chef ratings');
+      for (final id in missing) {
+        _chefRatings.putIfAbsent(id, () => const ChefRatingSummary());
+      }
+    } finally {
+      _hydratingRatings = false;
+    }
   }
 
   Widget _buildChefSearchStrip(List<Map<String, dynamic>> chefs) {

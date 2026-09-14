@@ -124,6 +124,19 @@ serve(async (req) => {
       return jsonResponse({ success: false, error: 'Unauthorized' }, 401)
     }
 
+    const { error: rateError } = await userClient.rpc('assert_user_rate_limit', {
+      p_scope: 'recover_payment',
+      p_limit: 8,
+      p_window_minutes: 15,
+    })
+    if (rateError) {
+      return jsonResponse({
+        success: false,
+        code: 'rate_limited',
+        error: rateError.message || 'Too many recovery attempts. Wait a few minutes.',
+      }, 429)
+    }
+
     const admin = createClient(supabaseUrl, serviceKey)
 
     const { data: existingByPay } = await admin

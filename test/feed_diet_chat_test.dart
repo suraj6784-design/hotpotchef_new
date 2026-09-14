@@ -98,6 +98,42 @@ void main() {
     expect(outside.title, contains('Pune'));
   });
 
+  test('home sort chips order by price, rating, then distance', () {
+    final meals = [
+      {'id': 'a', 'price': 220.0, 'chef_id': 'c1'},
+      {'id': 'b', 'price': 140.0, 'chef_id': 'c2'},
+      {'id': 'c', 'price': 180.0, 'chef_id': 'c3'},
+    ];
+    double? km(Map<String, dynamic> meal) {
+      switch (meal['id']) {
+        case 'a':
+          return 8;
+        case 'b':
+          return 3;
+        default:
+          return 1;
+      }
+    }
+
+    expect(
+      sortFeedMeals(meals, sort: kFeedSortPrice, distanceKm: km).map((m) => m['id']),
+      ['b', 'c', 'a'],
+    );
+    expect(
+      sortFeedMeals(meals, sort: kFeedSortNearby, distanceKm: km).map((m) => m['id']),
+      ['c', 'b', 'a'],
+    );
+    expect(
+      sortFeedMeals(
+        meals,
+        sort: kFeedSortRating,
+        distanceKm: km,
+        rating: (m) => m['id'] == 'a' ? 4.8 : 4.1,
+      ).map((m) => m['id']),
+      ['a', 'c', 'b'],
+    );
+  });
+
   test('unread is only for newer messages from someone else', () {
     final lastAt = DateTime.parse('2026-09-05T10:00:00Z');
     expect(

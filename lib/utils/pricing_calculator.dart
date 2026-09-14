@@ -1,5 +1,6 @@
 // lib/utils/pricing_calculator.dart
 
+import 'dart:convert';
 import 'dart:math' as math;
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../models/pricing_models.dart';
@@ -461,6 +462,57 @@ class PricingCalculator {
     );
   }
 
+  static List<Map<String, dynamic>> _asAddOnMaps(dynamic raw) {
+    dynamic decoded = raw;
+    if (decoded is String && decoded.trim().isNotEmpty) {
+      try {
+        decoded = jsonDecode(decoded);
+      } catch (_) {
+        return const [];
+      }
+    }
+    if (decoded is! List) return const [];
+    return decoded.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  /// Re-price selected extras from the published meal. Unknown extras are dropped.
+  static List<Map<String, dynamic>> catalogPricedAddOns({
+    required dynamic catalog,
+    required dynamic selected,
+  }) {
+    final published = _asAddOnMaps(catalog);
+    final picks = _asAddOnMaps(selected);
+    if (picks.isEmpty || published.isEmpty) return const [];
+    final byId = <String, Map<String, dynamic>>{};
+    final byTitle = <String, Map<String, dynamic>>{};
+    for (final row in published) {
+      final id = (row['id'] ?? '').toString().trim().toLowerCase();
+      final title = (row['title'] ?? row['name'] ?? '').toString().trim().toLowerCase();
+      if (id.isNotEmpty) byId[id] = row;
+      if (title.isNotEmpty) byTitle[title] = row;
+    }
+    final out = <Map<String, dynamic>>[];
+    for (final pick in picks) {
+      final id = (pick['id'] ?? '').toString().trim().toLowerCase();
+      final title = (pick['title'] ?? pick['name'] ?? '').toString().trim().toLowerCase();
+      final match = (id.isNotEmpty ? byId[id] : null) ?? (title.isNotEmpty ? byTitle[title] : null);
+      if (match == null) continue;
+      out.add({
+        'id': match['id'] ?? pick['id'],
+        'title': match['title'] ?? match['name'] ?? pick['title'] ?? 'Add-on',
+        'price': _parseCurrency(match['price']),
+      });
+    }
+    return out;
+  }
+
+  static double catalogAddOnUnit(Map<String, dynamic> meal, dynamic selected) {
+    return addOnsTotal(catalogPricedAddOns(
+      catalog: meal['add_ons'] ?? meal['addons'],
+      selected: selected,
+    ));
+  }
+
   /// Food total for one checkout/order line (offers + add-ons).
   static double lineFoodTotal(
     Map<String, dynamic> item, {
@@ -469,7 +521,9 @@ class PricingCalculator {
   }) {
     final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
     final meal = pricingSourceFromLine(item);
-    final addOnUnit = addOnsTotal(item['selectedAddOns'] ?? item['selected_add_ons']);
+    final selected = item['selectedAddOns'] ?? item['selected_add_ons'];
+    final published = _asAddOnMaps(meal['add_ons'] ?? meal['addons']);
+    final addOnUnit = published.isNotEmpty ? catalogAddOnUnit(meal, selected) : addOnsTotal(selected);
     return roundCurrency(
       effectiveItemTotal(
             meal,
@@ -485,7 +539,9 @@ class PricingCalculator {
   static double lineFoodGross(Map<String, dynamic> item) {
     final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
     final meal = pricingSourceFromLine(item);
-    final addOnUnit = addOnsTotal(item['selectedAddOns'] ?? item['selected_add_ons']);
+    final selected = item['selectedAddOns'] ?? item['selected_add_ons'];
+    final published = _asAddOnMaps(meal['add_ons'] ?? meal['addons']);
+    final addOnUnit = published.isNotEmpty ? catalogAddOnUnit(meal, selected) : addOnsTotal(selected);
     return roundCurrency(basePrice(meal) * qty + addOnUnit * qty);
   }
 
@@ -502,7 +558,11 @@ class PricingCalculator {
         label: '${title.isEmpty ? 'Meal' : title}$qtySuffix',
         amount: plate,
       ));
-      final addOns = item['selectedAddOns'] ?? item['selected_add_ons'];
+      final selected = item['selectedAddOns'] ?? item['selected_add_ons'];
+      final published = _asAddOnMaps(meal['add_ons'] ?? meal['addons']);
+      final addOns = published.isNotEmpty
+          ? catalogPricedAddOns(catalog: meal['add_ons'] ?? meal['addons'], selected: selected)
+          : selected;
       if (addOns is! List) continue;
       for (final addon in addOns) {
         if (addon is! Map) continue;

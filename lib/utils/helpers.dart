@@ -3772,7 +3772,92 @@ ChefRatingSummary chefRatingSummaryFromRows(Iterable<dynamic> rows) {
   return ChefRatingSummary(average: sum / count, count: count);
 }
 
-/// Unit price for a cart/order line. Ignores a "discount" that is higher than the listed price.
+/// Re-price cart extras from the published meal. Unknown extras are dropped.
+List<CartItemAddOn> pricedAddOnsFromCatalog({
+  required dynamic catalog,
+  required Iterable<CartItemAddOn> selected,
+}) {
+  if (selected.isEmpty) return const [];
+  dynamic decoded = catalog;
+  if (decoded is String && decoded.trim().isNotEmpty) {
+    try {
+      decoded = jsonDecode(decoded);
+    } catch (_) {
+      decoded = null;
+    }
+  }
+  if (decoded is List && decoded.isEmpty) return const [];
+  final priced = PricingCalculator.catalogPricedAddOns(
+    catalog: catalog,
+    selected: [for (final addon in selected) addon.toJson()],
+  );
+  if (decoded is List && decoded.isNotEmpty) {
+    return priced
+        .map((row) => CartItemAddOn(
+              id: row['id']?.toString() ?? '',
+              title: row['title']?.toString() ?? 'Add-on',
+              price: (row['price'] as num?)?.toDouble() ?? 0,
+            ))
+        .toList();
+  }
+  return selected.toList();
+}
+
+const String kFeedSortNearby = 'Nearby';
+const String kFeedSortPrice = 'Price';
+const String kFeedSortRating = 'Rating';
+const String kFeedSortEta = 'ETA';
+
+List<Map<String, dynamic>> sortFeedMeals(
+  List<Map<String, dynamic>> meals, {
+  required String sort,
+  required double? Function(Map<String, dynamic> meal) distanceKm,
+  double Function(Map<String, dynamic> meal)? rating,
+}) {
+  final copy = List<Map<String, dynamic>>.from(meals);
+  int byDistance(Map<String, dynamic> a, Map<String, dynamic> b) {
+    final da = distanceKm(a);
+    final db = distanceKm(b);
+    if (da == null && db == null) return 0;
+    if (da == null) return 1;
+    if (db == null) return -1;
+    return da.compareTo(db);
+  }
+
+  copy.sort((a, b) {
+    switch (sort) {
+      case kFeedSortPrice:
+        final pa = PricingCalculator.effectiveUnitPrice(a, 1);
+        final pb = PricingCalculator.effectiveUnitPrice(b, 1);
+        final compared = pa.compareTo(pb);
+        return compared != 0 ? compared : byDistance(a, b);
+      case kFeedSortRating:
+        final ra = rating?.call(a) ?? 0;
+        final rb = rating?.call(b) ?? 0;
+        final compared = rb.compareTo(ra);
+        return compared != 0 ? compared : byDistance(a, b);
+      case kFeedSortEta:
+      case kFeedSortNearby:
+      default:
+        return byDistance(a, b);
+    }
+  });
+  return copy;
+}
+
+int compareKitchenOrdersBySlot(Map<String, dynamic> a, Map<String, dynamic> b, {DateTime? now}) {
+  final startA = orderSlotStart(a, now: now);
+  final startB = orderSlotStart(b, now: now);
+  if (startA == null && startB == null) {
+    return (b['created_at'] ?? '').toString().compareTo((a['created_at'] ?? '').toString());
+  }
+  if (startA == null) return 1;
+  if (startB == null) return -1;
+  final slot = startA.compareTo(startB);
+  if (slot != 0) return slot;
+  return (a['created_at'] ?? '').toString().compareTo((b['created_at'] ?? '').toString());
+}
+
 double lineItemUnitPrice(Map<String, dynamic> item) {
   final meal = PricingCalculator.pricingSourceFromLine(item);
   final addonsUnit = parseMoney(item['addons_unit']);

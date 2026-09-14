@@ -381,6 +381,37 @@ void main() {
     expect(PricingCalculator.lineFoodGross(item.toCheckoutPayload()), 271.0);
   });
 
+  test('catalog add-on prices win over a patched client extra', () {
+    final meal = {
+      'price': 200,
+      'offer_type': 'none',
+      'add_ons': [
+        {'id': 'raita', 'title': 'Raita', 'price': 40},
+      ],
+    };
+    final priced = PricingCalculator.catalogPricedAddOns(
+      catalog: meal['add_ons'],
+      selected: [
+        {'id': 'raita', 'title': 'Raita', 'price': 1},
+        {'id': 'ghost', 'title': 'Ghost extra', 'price': 500},
+      ],
+    );
+    expect(priced, [
+      {'id': 'raita', 'title': 'Raita', 'price': 40.0},
+    ]);
+    expect(PricingCalculator.catalogAddOnUnit(meal, priced), 40.0);
+    expect(
+      pricedAddOnsFromCatalog(
+        catalog: meal['add_ons'],
+        selected: const [
+          CartItemAddOn(id: 'raita', title: 'Raita', price: 1),
+          CartItemAddOn(id: 'ghost', title: 'Ghost extra', price: 500),
+        ],
+      ).map((a) => a.price),
+      [40.0],
+    );
+  });
+
   test('addon prices stored as strings still appear on checkout', () {
     final payload = {
       'title': 'Veg Jumbo Thali',

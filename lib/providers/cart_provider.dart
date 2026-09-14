@@ -249,6 +249,10 @@ class CartNotifier extends Notifier<CartState> {
                 basePrice: livePrice != null && livePrice > 0 ? livePrice : currentItem.basePrice,
                 discountedPrice: (liveDiscount != null && liveDiscount > 0) ? liveDiscount : currentItem.discountedPrice,
                 quantity: currentItem.quantity > stock ? stock : currentItem.quantity,
+                selectedAddOns: pricedAddOnsFromCatalog(
+                  catalog: newRecord['add_ons'] ?? newRecord['addons'],
+                  selected: currentItem.selectedAddOns,
+                ),
                 rawMealDetails: merged,
               );
               _commitItems(updated);
@@ -284,6 +288,10 @@ class CartNotifier extends Notifier<CartState> {
       (meal['service_type']?.toString() ?? 'Delivery Partner').split(',').first.trim(),
     );
     final int availableStock = int.tryParse(meal['quantity']?.toString() ?? '99') ?? 99;
+    final pricedAddOns = pricedAddOnsFromCatalog(
+      catalog: meal['add_ons'] ?? meal['addons'],
+      selected: addOns,
+    );
 
     final double basePriceVal = double.tryParse(meal['price']?.toString() ?? '') ?? 0.0;
     final double? rawDiscount = double.tryParse(meal['discounted_price']?.toString() ?? '');
@@ -295,7 +303,7 @@ class CartNotifier extends Notifier<CartState> {
     final resolvedDate = chefSlotDefaultDate(smartSchedule);
 
     final existingIndex = state.items.indexWhere(
-      (i) => i.mealId == mealId && listEquals(i.selectedAddOns, addOns),
+      (i) => i.mealId == mealId && listEquals(i.selectedAddOns, pricedAddOns),
     );
 
     List<CartItemModel> updatedItems = List.from(state.items);
@@ -316,7 +324,7 @@ class CartNotifier extends Notifier<CartState> {
         scheduledDate: resolvedDate,
         timeSlot: resolvedSlot,
         serviceType: serviceType,
-        selectedAddOns: addOns,
+        selectedAddOns: pricedAddOns,
         rawMealDetails: {
           ...meal,
           'exact_time': resolvedSlot,

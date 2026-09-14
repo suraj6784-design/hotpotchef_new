@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../utils/helpers.dart';
 import '../utils/pricing_calculator.dart';
+import '../utils/delivery_fee.dart';
 import 'app_widgets.dart';
 
 class LiveOffersFlashBanner extends StatefulWidget {
@@ -47,7 +48,9 @@ class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
     _mealsStream = Supabase.instance.client
         .from('meals')
         .stream(primaryKey: ['id'])
-        .eq('status', 'Available');
+        .eq('status', 'Available')
+        .order('created_at', ascending: false)
+        .limit(kHomeMealStreamLimit);
     _pageController = PageController(viewportFraction: 0.92);
     _shimmer = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800))
       ..repeat();

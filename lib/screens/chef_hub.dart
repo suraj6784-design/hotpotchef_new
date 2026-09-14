@@ -968,7 +968,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
 
   Widget _buildOrdersTab(List<Map<String, dynamic>> allOrders) {
     final activeOrders = allOrders.where((o) => OrderLifecycle.isKitchenActive(o['status']?.toString())).toList()
-      ..sort((a, b) => (b['created_at'] ?? '').compareTo(a['created_at'] ?? ''));
+      ..sort(compareKitchenOrdersBySlot);
 
     final filteredOrders = activeOrders.where((o) => _matchesFilter(o, _fulfillmentFilter)).toList();
 
@@ -1145,21 +1145,31 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               ],
             )
           else
-            Row(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
-                  child: _ChefPrepAdvanceButton(
-                    order: order,
-                    isPreparing: isPreparing,
-                    onAdvance: () => _advanceKitchen(order),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _ChefPrepAdvanceButton(
+                        order: order,
+                        isPreparing: isPreparing,
+                        onAdvance: () => _advanceKitchen(order),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: const Icon(Icons.cancel_outlined, color: AppTheme.error),
+                      tooltip: 'Cancel & Restock',
+                      onPressed: () => _cancelCustomerOrder(order),
+                    ),
+                  ],
+                ),
+                if (!isPreparing && chefPrepGateHint(order).isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(chefPrepGateHint(order), style: AppTheme.caption),
                   ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.cancel_outlined, color: AppTheme.error),
-                  tooltip: 'Cancel & Restock',
-                  onPressed: () => _cancelCustomerOrder(order),
-                ),
               ],
             ),
         ],
