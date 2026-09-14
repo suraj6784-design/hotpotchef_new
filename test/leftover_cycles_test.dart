@@ -158,13 +158,15 @@ void main() {
   });
 
   group('chef prep window', () {
-    test('unlocks Start Preparing 2 hours before a scheduled slot', () {
+    test('unlocks Start Preparing 4 hours before a scheduled slot', () {
       final placed = DateTime(2026, 9, 5, 8);
       final order = {
         'created_at': placed.toIso8601String(),
         'time_slot': '05/09/2026 | 8:00 PM',
       };
       expect(canChefStartPreparing(order, now: DateTime(2026, 9, 5, 10)), isFalse);
+      expect(canChefStartPreparing(order, now: DateTime(2026, 9, 5, 15, 50)), isFalse);
+      expect(canChefStartPreparing(order, now: DateTime(2026, 9, 5, 16, 0)), isTrue);
       expect(canChefStartPreparing(order, now: DateTime(2026, 9, 5, 18, 10)), isTrue);
       expect(canChefStartPreparing(order, now: DateTime(2026, 9, 5, 20, 10)), isTrue);
       expect(canChefStartPreparing({'time_slot': 'ASAP'}, now: DateTime(2026, 9, 5, 10)), isTrue);

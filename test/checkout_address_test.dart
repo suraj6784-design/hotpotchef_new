@@ -506,5 +506,6 @@ void main() {
     expect(customerHubTabIndex('profile'), 3);
     expect(chefHubTabIndex('leads'), 4);
     expect(chefHubTabIndex('supplies'), 5);
+    expect(chefPrepEarliestWindowLabel(), '4 hours');
   });
 }

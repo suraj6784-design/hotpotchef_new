@@ -14,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../utils/app_haptics.dart';
 import '../utils/helpers.dart';
+import '../utils/network.dart';
 import '../utils/meal_nutrition.dart';
 import '../models/cart_enums.dart';
 import '../widgets/customer_ui_components.dart';
@@ -532,7 +533,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       final next = OrderLifecycle.nextKitchenStatus(current);
       if (next == OrderStatus.preparing && !canChefStartPreparing(order)) {
         throw Exception(chefPrepGateHint(order).isEmpty
-            ? 'Too early to start preparing. Wait until 2 hours before the requested time.'
+            ? 'Too early to start preparing. Wait until ${chefPrepEarliestWindowLabel()} before the requested time.'
             : chefPrepGateHint(order));
       }
       String? packedUrl;
@@ -770,6 +771,24 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                         if (!_isKitchenOpen) unawaited(_toggleKitchenStatus());
                       },
                     ),
+                    if (_selectedIndex >= 4)
+                      Material(
+                        color: AppTheme.surfaceOf(context),
+                        child: ListTile(
+                          dense: true,
+                          leading: IconButton(
+                            tooltip: 'Back to menu',
+                            icon: const Icon(Icons.arrow_back),
+                            onPressed: () => setState(() => _selectedIndex = 2),
+                          ),
+                          title: Text(
+                            _selectedIndex == 4
+                                ? (openLeadsCount > 0 ? 'Catering leads ($openLeadsCount)' : 'Catering leads')
+                                : 'Packaging supplies',
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ),
                     Expanded(
                       child: HubTabSwitcher(
                         index: _selectedIndex,
@@ -779,7 +798,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   ],
                 ),
                 bottomNavigationBar: NavigationBar(
-                  selectedIndex: _selectedIndex,
+                  selectedIndex: _selectedIndex > 3 ? 2 : _selectedIndex,
                   backgroundColor: AppTheme.surfaceOf(context),
                   indicatorColor: AppTheme.primary.withValues(alpha: 0.14),
                   onDestinationSelected: (idx) {
@@ -800,12 +819,6 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                     ),
                     const NavigationDestination(icon: Icon(Icons.restaurant_menu_outlined), selectedIcon: Icon(Icons.restaurant_menu, color: AppTheme.primary), label: 'Menu'),
                     const NavigationDestination(icon: Icon(Icons.account_balance_wallet_outlined), selectedIcon: Icon(Icons.account_balance_wallet, color: AppTheme.primary), label: 'History'),
-                    NavigationDestination(
-                      icon: Badge(label: Text('$openLeadsCount'), isLabelVisible: openLeadsCount > 0, child: const Icon(Icons.campaign_outlined)),
-                      selectedIcon: Badge(label: Text('$openLeadsCount'), isLabelVisible: openLeadsCount > 0, child: const Icon(Icons.campaign, color: AppTheme.primary)),
-                      label: 'Leads',
-                    ),
-                    const NavigationDestination(icon: Icon(Icons.inventory_2_outlined), selectedIcon: Icon(Icons.inventory_2, color: AppTheme.primary), label: 'Supplies'),
                   ],
                 ),
               ),
@@ -908,14 +921,44 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
           ),
           Row(
             children: [
-              _headerIcon(Icons.forum_outlined, 'Order chats', () => context.push('/chats')),
-              _headerIcon(Icons.campaign_outlined, 'Refer brand', () => context.push('/chef-advertise')),
-              _headerIcon(Icons.school_outlined, 'Academy', () => context.push('/chef-academy')),
-              _headerIcon(Icons.insights, 'Analytics', () => context.push('/chef-analytics')),
               _headerIcon(Icons.person_outline, 'Profile', () => context.push('/chef-profile')),
-              if (_isPlatformOps)
-                _headerIcon(Icons.admin_panel_settings_outlined, 'Admin', () => context.push('/platform-ops')),
-              _headerIcon(Icons.logout, 'Log Out', () => AuthSession.confirmSignOut(context)),
+              PopupMenuButton<String>(
+                tooltip: 'More',
+                icon: const Icon(Icons.more_vert, color: Colors.white),
+                onSelected: (value) {
+                  switch (value) {
+                    case 'chats':
+                      context.push('/chats');
+                    case 'leads':
+                      setState(() => _selectedIndex = 4);
+                    case 'supplies':
+                      setState(() => _selectedIndex = 5);
+                    case 'ads':
+                      context.push('/chef-advertise');
+                    case 'academy':
+                      context.push('/chef-academy');
+                    case 'analytics':
+                      context.push('/chef-analytics');
+                    case 'profile':
+                      context.push('/chef-profile');
+                    case 'ops':
+                      context.push('/platform-ops');
+                    case 'logout':
+                      AuthSession.confirmSignOut(context);
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(value: 'chats', child: Text('Order chats')),
+                  const PopupMenuItem(value: 'leads', child: Text('Catering leads')),
+                  const PopupMenuItem(value: 'supplies', child: Text('Packaging supplies')),
+                  const PopupMenuItem(value: 'ads', child: Text('Refer brand')),
+                  const PopupMenuItem(value: 'academy', child: Text('Academy')),
+                  const PopupMenuItem(value: 'analytics', child: Text('Kitchen take-home')),
+                  const PopupMenuItem(value: 'profile', child: Text('Profile')),
+                  if (_isPlatformOps) const PopupMenuItem(value: 'ops', child: Text('Admin')),
+                  const PopupMenuItem(value: 'logout', child: Text('Log out')),
+                ],
+              ),
             ],
           ),
         ],
@@ -1267,6 +1310,68 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _quickRestockMeal(Map<String, dynamic> meal) async {
+    final id = meal['id']?.toString() ?? '';
+    if (id.isEmpty) return;
+    final current = int.tryParse(meal['quantity']?.toString() ?? '0') ?? 0;
+    final controller = TextEditingController(text: current.toString());
+    final next = await showDialog<int>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Restock portions'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(meal['title']?.toString() ?? 'Dish', style: AppTheme.caption),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: const InputDecoration(labelText: 'Portions on the menu'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            TextButton(
+              onPressed: () {
+                final n = (int.tryParse(controller.text.trim()) ?? current) + 5;
+                controller.text = n.toString();
+              },
+              child: const Text('+5'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, int.tryParse(controller.text.trim()) ?? current),
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+    controller.dispose();
+    if (next == null || next < 0 || !mounted) return;
+    try {
+      await _supabase.from('meals').update({
+        'quantity': next,
+        if (next > 0 && meal['status']?.toString().toLowerCase() == 'paused') 'status': 'Available',
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(next == 0 ? 'Sold out — diners cannot buy.' : 'Stock set to $next portions.')),
+      );
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Quick restock failed');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(networkErrorMessage(e)), backgroundColor: Colors.red),
+      );
+    }
   }
 
   void _duplicateMeal(Map<String, dynamic> meal) {
@@ -1623,6 +1728,12 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   icon: Icons.edit_outlined,
                   tooltip: 'Edit',
                   onPressed: () => _openMealEditor(meal),
+                ),
+                const SizedBox(width: 8),
+                AppIconAction(
+                  icon: Icons.inventory_2_outlined,
+                  tooltip: 'Restock',
+                  onPressed: () => _quickRestockMeal(meal),
                 ),
                 const SizedBox(width: 8),
               ],

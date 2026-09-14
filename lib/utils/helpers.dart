@@ -3923,7 +3923,17 @@ bool isPartnerDeliveryOrder(Map<String, dynamic> order) {
 }
 
 /// Chefs may start cooking once the requested drop-off is this close.
-const int kChefPrepEarliestMinutes = 120;
+/// Four hours lets kitchens batch earlier without waiting until the last two.
+const int kChefPrepEarliestMinutes = 240;
+
+String chefPrepEarliestWindowLabel() {
+  final hours = kChefPrepEarliestMinutes / 60.0;
+  if (hours == hours.roundToDouble()) {
+    final n = hours.toInt();
+    return n == 1 ? '1 hour' : '$n hours';
+  }
+  return '$kChefPrepEarliestMinutes minutes';
+}
 
 /// Ideal last-hour cooking window shown on the chef card.
 const int kChefPrepIdealMinutes = 60;
@@ -4094,8 +4104,8 @@ String formatDeliverySlotLabel(Map<String, dynamic> order, {DateTime? now}) {
   );
 }
 
-/// Start Preparing unlocks at 120 minutes before the requested time, and stays
-/// on through the last hour and after the slot (food must still go out).
+/// Start Preparing unlocks [kChefPrepEarliestMinutes] before the requested time,
+/// and stays on through the last hour and after the slot (food must still go out).
 bool canChefStartPreparing(Map<String, dynamic> order, {DateTime? now}) {
   final start = orderSlotStart(order, now: now);
   if (start == null) return true;
@@ -4110,9 +4120,9 @@ String chefPrepGateHint(Map<String, dynamic> order, {DateTime? now}) {
   final unlockAt = start.subtract(const Duration(minutes: kChefPrepEarliestMinutes));
   final wait = formatSlotCountdown(unlockAt, now: now).replaceAll(' left', '');
   if (wait.isEmpty) {
-    return 'Opens 2 hours before the requested time';
+    return 'Opens ${chefPrepEarliestWindowLabel()} before the requested time';
   }
-  return 'Opens in $wait (2 hours before requested time)';
+  return 'Opens in $wait (${chefPrepEarliestWindowLabel()} before requested time)';
 }
 
 String _humanDuration(Duration duration) {

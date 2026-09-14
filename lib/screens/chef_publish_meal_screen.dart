@@ -111,6 +111,8 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
 
   final Set<ServiceType> _selectedServices = {ServiceType.deliveryPlatform};
   final List<_AddOnDraft> _addOns = [];
+  int _publishStep = 0;
+  bool _promoAdvanced = false;
 
   @override
   void initState() {
@@ -175,6 +177,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     _promoExtraType = extraType == OfferType.flat ? OfferType.flat : extraType == OfferType.percentage
         ? OfferType.percentage
         : OfferType.none;
+    _promoAdvanced = _promoController.text.trim().isNotEmpty || _promoExtraType != OfferType.none;
 
     // Offer validity timestamp
     final validUntilStr = meal['offer_valid_until']?.toString();
@@ -301,6 +304,46 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     if (pickedFile != null && mounted) {
       setState(() => _selectedImageFile = pickedFile);
     }
+  }
+
+  bool _plateStepReady() {
+    if (_titleController.text.trim().isEmpty) {
+      _showSnackBar('Enter the name of your dish.', isError: true);
+      return false;
+    }
+    if (_descriptionController.text.trim().length < 10) {
+      _showSnackBar('Describe ingredients and flavor (min 10 characters).', isError: true);
+      return false;
+    }
+    final price = double.tryParse(_priceController.text.trim()) ?? 0;
+    final quantity = int.tryParse(_quantityController.text.trim()) ?? 0;
+    if (price <= 0 || quantity <= 0) {
+      _showSnackBar('Price and portions must both be greater than zero.', isError: true);
+      return false;
+    }
+    return true;
+  }
+
+  bool _slotStepReady() {
+    if (_activeTimeSlot.isEmpty) {
+      _showSnackBar('Please set an availability schedule for this meal.', isError: true);
+      return false;
+    }
+    if (_selectedServices.isEmpty) {
+      _showSnackBar('Select at least one delivery or dining method.', isError: true);
+      return false;
+    }
+    return true;
+  }
+
+  void _goPublishNext() {
+    if (_publishStep == 0 && !_plateStepReady()) return;
+    if (_publishStep == 1 && !_slotStepReady()) return;
+    if (_publishStep >= 2) {
+      _publishMeal();
+      return;
+    }
+    setState(() => _publishStep++);
   }
 
   // --- Meal Publication / Update Logic ---
@@ -617,9 +660,57 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
       ),
       body: Form(
         key: _formKey,
-        child: ListView(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Row(
+                children: [
+                  for (var i = 0; i < 3; i++) ...[
+                    if (i > 0)
+                      Expanded(
+                        child: Container(
+                          height: 2,
+                          color: i <= _publishStep ? AppTheme.primary : hairline,
+                        ),
+                      ),
+                    GestureDetector(
+                      onTap: () {
+                        if (i < _publishStep) setState(() => _publishStep = i);
+                      },
+                      child: CircleAvatar(
+                        radius: 14,
+                        backgroundColor: i <= _publishStep ? AppTheme.primary : hairline,
+                        child: Text(
+                          '${i + 1}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: i <= _publishStep ? Colors.white : AppTheme.textMuted,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                _publishStep == 0
+                    ? 'Plate'
+                    : _publishStep == 1
+                        ? 'Slot & delivery'
+                        : 'Offers',
+                style: TextStyle(fontWeight: FontWeight.w700, color: titleColor),
+              ),
+            ),
+            Expanded(
+              child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
+            if (_publishStep == 0) ...[
             // Meal Image Banner
             GestureDetector(
               onTap: _pickImage,
@@ -1029,7 +1120,8 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
               ],
             ),
             const SizedBox(height: 24),
-
+            ],
+            if (_publishStep == 1) ...[
             // Logistics & Schedule
             Text('Time slots', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor)),
             const SizedBox(height: 4),
@@ -1125,7 +1217,8 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
               ),
             ),
             const SizedBox(height: 24),
-
+            ],
+            if (_publishStep == 2) ...[
             // Pricing Calculator Offer Section
             Text('Promotions & Discounts', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor)),
             const SizedBox(height: 12),
@@ -1231,19 +1324,46 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                   ],
 
                   const SizedBox(height: 16),
+                  if (_selectedOfferType != OfferType.none && _promoExtraType != OfferType.none)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Text(
+                        'Both the automatic offer and the extra code discount apply. Kitchen take-home follows the reduced food price.',
+                        style: TextStyle(fontSize: 12, height: 1.35, color: AppTheme.warning, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    value: _promoAdvanced,
+                    activeColor: AppTheme.primary,
+                    title: const Text('Checkout code (optional)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                    subtitle: const Text(
+                      'Off by default. Turn on only if diners must type a code. Extra % / ₹ on top of an automatic offer stacks — use one or the other.',
+                      style: AppTheme.micro,
+                    ),
+                    onChanged: (val) => setState(() {
+                      _promoAdvanced = val;
+                      if (!val) {
+                        _promoController.clear();
+                        _promoDiscountController.clear();
+                        _promoExtraType = OfferType.none;
+                      }
+                    }),
+                  ),
+                  if (_promoAdvanced) ...[
                   TextFormField(
                     controller: _promoController,
                     textCapitalization: TextCapitalization.characters,
-                    decoration: _inputStyle('Promo code (optional, e.g. HOME20)'),
+                    decoration: _inputStyle('Promo code (e.g. HOME20)'),
                     validator: (v) {
-                      if (_promoExtraType == OfferType.none) return null;
+                      if (!_promoAdvanced || _promoExtraType == OfferType.none) return null;
                       if ((v ?? '').trim().isEmpty) return 'Add a code for the extra stacked discount';
                       return null;
                     },
                   ),
                   const SizedBox(height: 6),
                   const Text(
-                    'If you add a code with no extra discount, customers must enter it at checkout to unlock the offer above. Add an extra % or ₹ to stack it on top of the automatic offer.',
+                    'Code with no extra discount unlocks the offer above at checkout. Extra % or ₹ is a second cut — not a replacement.',
                     style: TextStyle(fontSize: 11, color: AppTheme.textMuted, height: 1.35),
                   ),
                   const SizedBox(height: 12),
@@ -1253,7 +1373,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                         : OfferType.none,
                     dropdownColor: surface,
                     style: TextStyle(color: titleColor, fontSize: 14),
-                    decoration: _inputStyle('Extra promo discount (stacks)'),
+                    decoration: _inputStyle('Extra discount on this code'),
                     items: const [
                       DropdownMenuItem(value: OfferType.none, child: Text('No extra — code unlocks the offer')),
                       DropdownMenuItem(value: OfferType.percentage, child: Text('Extra percentage off (stacks)')),
@@ -1282,6 +1402,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                       },
                     ),
                   ],
+                  ],
 
                   const SizedBox(height: 12),
                   SwitchListTile.adaptive(
@@ -1295,30 +1416,51 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 32),
-
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              ),
-              onPressed: _isLoading ? null : _publishMeal,
-              child: _isLoading
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : Text(
-                      isEditing ? 'Update Meal' : 'Publish Meal to Menu',
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-            ),
             const SizedBox(height: 12),
             Text(
               'Orders from HotPotChef diners must stay on the app (Razorpay checkout). Off-app WhatsApp/UPI deals can pause boosts and Support.',
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 12, height: 1.35, color: AppTheme.textMuted, fontWeight: FontWeight.w600),
             ),
-            const SizedBox(height: 40),
+            const SizedBox(height: 24),
+            ],
+          ],
+        ),
+            ),
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: Row(
+                  children: [
+                    if (_publishStep > 0)
+                      TextButton(
+                        onPressed: _isLoading ? null : () => setState(() => _publishStep--),
+                        child: const Text('Back'),
+                      ),
+                    if (_publishStep > 0) const SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        onPressed: _isLoading ? null : _goPublishNext,
+                        child: _isLoading
+                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                            : Text(
+                                _publishStep < 2
+                                    ? 'Next'
+                                    : (isEditing ? 'Update Meal' : 'Publish Meal to Menu'),
+                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
       ),
