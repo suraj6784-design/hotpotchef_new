@@ -8,6 +8,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../utils/helpers.dart';
 import '../utils/customer_constants.dart';
 import '../utils/dynamic_ui_engine.dart';
+import '../utils/meal_catalog.dart';
 import '../providers/cart_provider.dart';
 import '../models/cart_state.dart';
 import '../widgets/customer_ui_components.dart';
@@ -134,11 +135,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         }
       }
 
-      final validMeals = rawMeals.where((m) {
-        final status = m['status']?.toString().toLowerCase() ?? '';
-        final isInventory = (m['customer_name'] == null || m['customer_name'].toString().isEmpty);
-        return isInventory && status != 'paused' && status != 'cancelled';
-      }).toList();
+      final validMeals = rawMeals.where(MealCatalog.isSellable).toList();
 
       if (mounted) {
         setState(() => _aiSearchResults = validMeals);
