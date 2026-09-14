@@ -6,7 +6,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../models/app_role.dart';
 import '../providers/cart_provider.dart';
@@ -16,7 +15,6 @@ import '../providers/last_order_provider.dart';
 import '../providers/meal_plans_provider.dart';
 import '../services/auth_session.dart';
 import '../utils/app_haptics.dart';
-import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/customer_ui_components.dart';
@@ -24,6 +22,7 @@ import '../widgets/diner_onboarding_coach.dart';
 import 'customer_feed_tab.dart';
 import 'customer_cart_tab.dart';
 import 'customer_orders_tab.dart';
+import 'customer_profile_screen.dart';
 
 class CustomerHubScreen extends ConsumerStatefulWidget {
   static bool returnToCartAfterLogin = false;
@@ -64,13 +63,7 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
   }
 
   void _navigateToProfile() {
-    context.push('/customer-profile').then((result) {
-      if (result == 'go_to_orders') {
-        _onNavigationItemTapped(2);
-      } else {
-        setState(() {});
-      }
-    });
+    _onNavigationItemTapped(3);
   }
 
   void _onNavigationItemTapped(int index) {
@@ -109,6 +102,13 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
         onProfileTap: _navigateToProfile,
         onLogout: _handleLogout,
         onReorderToCart: () => _onNavigationItemTapped(2),
+      ),
+      CustomerProfileScreen(
+        embedded: true,
+        onLogout: () async {
+          await _handleLogout();
+          if (mounted) setState(() => _selectedIndex = 0);
+        },
       ),
     ];
 
@@ -169,7 +169,7 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
                           ],
                         ),
                       ),
-                      const Text('Checkout', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+                      const Text('View cart', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
                       const SizedBox(width: 4),
                       const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 18),
                     ],
@@ -194,12 +194,13 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
                   badgeCount: cartState.itemCount,
                 ),
                 const HubDockDestination(icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: 'Orders'),
+                const HubDockDestination(icon: Icons.person_outline, selectedIcon: Icons.person, label: 'Account'),
               ],
             ),
           ),
           DinerOnboardingCoach(
             onGoHome: () => _onNavigationItemTapped(0),
-            onGoOrders: () => _onNavigationItemTapped(2),
+            onGoCart: () => _onNavigationItemTapped(1),
           ),
         ],
       ),

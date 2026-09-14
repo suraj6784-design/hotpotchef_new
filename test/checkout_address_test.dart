@@ -502,6 +502,8 @@ void main() {
       '/driver-profile',
     );
     expect(customerHubTabIndex('orders'), 2);
+    expect(customerHubTabIndex('account'), 3);
+    expect(customerHubTabIndex('profile'), 3);
     expect(chefHubTabIndex('leads'), 4);
     expect(chefHubTabIndex('supplies'), 5);
   });

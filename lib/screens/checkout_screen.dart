@@ -1718,7 +1718,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               const SizedBox(width: 16),
               Expanded(
                 child: GradientButton(
-                  label: (_applyCoins && _grandTotal < 1) ? 'Place order with coins' : 'Confirm this slot',
+                  label: (_applyCoins && _grandTotal < 1)
+                      ? 'Place order with coins'
+                      : 'Pay ₹${_grandTotal.toStringAsFixed(0)}',
                   icon: Icons.lock_rounded,
                   loading: _isCheckingOut,
                   onPressed: _isCheckingOut ? null : _startRazorpayPayment,

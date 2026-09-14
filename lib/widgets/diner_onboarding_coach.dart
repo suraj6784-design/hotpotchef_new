@@ -4,10 +4,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/app_theme.dart';
 
 class DinerOnboardingCoach extends StatefulWidget {
-  const DinerOnboardingCoach({super.key, required this.onGoHome, required this.onGoOrders});
+  const DinerOnboardingCoach({super.key, required this.onGoHome, required this.onGoCart});
 
   final VoidCallback onGoHome;
-  final VoidCallback onGoOrders;
+  final VoidCallback onGoCart;
 
   @override
   State<DinerOnboardingCoach> createState() => _DinerOnboardingCoachState();
@@ -21,7 +21,7 @@ class _DinerOnboardingCoachState extends State<DinerOnboardingCoach> {
   static const _copy = [
     ('Find a kitchen', 'Home lists live plates near you. Open hours and FSSAI show on each card.'),
     ('Checkout in minutes', 'Add a plate, pick an address, and pay in-app. Coins apply at pay if you have them.'),
-    ('Track and support', 'Orders shows status. Support tickets are under Profile if something is wrong.'),
+    ('Track your kitchen', 'Home is live plates. Account holds support, coins, and addresses. Orders fills in after you pay.'),
   ];
 
   @override
@@ -78,10 +78,11 @@ class _DinerOnboardingCoachState extends State<DinerOnboardingCoach> {
                           FilledButton(
                             onPressed: () {
                               if (_step >= _copy.length - 1) {
-                                widget.onGoOrders();
+                                widget.onGoHome();
                                 _finish();
                               } else {
                                 if (_step == 0) widget.onGoHome();
+                                if (_step == 1) widget.onGoCart();
                                 setState(() => _step++);
                               }
                             },

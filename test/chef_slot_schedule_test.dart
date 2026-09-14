@@ -171,6 +171,8 @@ void main() {
     expect(feedKitchenSlotLabel('ASAP'), 'On your slot');
     expect(usableCustomerPhone('1234567890'), '');
     expect(usableCustomerPhone('+91 98765 43210'), '9876543210');
+    expect(e164IndiaPhone('9876543210'), '+919876543210');
+    expect(e164IndiaPhone('1234567890'), '');
     expect(isPlaceholderPhone('0000000000'), isTrue);
   });
 }

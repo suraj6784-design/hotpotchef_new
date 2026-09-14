@@ -13,8 +13,10 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../utils/app_env.dart';
 import 'package:go_router/go_router.dart';
 
+import '../services/order_lifecycle.dart';
 import '../utils/helpers.dart';
 import '../utils/support.dart';
+import '../widgets/diner_order_progress.dart';
 
 class LiveTrackingScreen extends StatefulWidget {
   final Map<String, dynamic> order;
@@ -661,10 +663,30 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
           ),
         ],
       ),
-      body: _isLoading || _currentPosition == null
-          ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
-          : Stack(
-              children: [
+      body: Column(
+        children: [
+          if (!widget.isDriver)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: DinerOrderProgress(status: _order['status']?.toString()),
+            ),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
+                : _currentPosition == null
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(28),
+                          child: Text(
+                            OrderLifecycle.dinerProgressStep(_order['status']?.toString()) < 2
+                                ? 'Kitchen has your order. The map opens when a rider is on the way.'
+                                : 'Waiting for a live location. Status still updates above.',
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      )
+                    : Stack(
+                        children: [
                 if (googleMapsApiKeyConfigured())
                   GoogleMap(
                     initialCameraPosition: CameraPosition(target: _currentPosition!, zoom: 15),
@@ -731,8 +753,11 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                     ),
                   ),
                 ),
-              ],
-            ),
+                        ],
+                      ),
+          ),
+        ],
+      ),
     );
   }
 }

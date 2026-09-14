@@ -12,6 +12,7 @@ import '../utils/helpers.dart';
 import '../utils/network.dart';
 import '../utils/support.dart';
 import '../widgets/customer_ui_components.dart';
+import '../widgets/diner_order_progress.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/last_order_banner.dart';
 import '../widgets/order_slot_banner.dart';
@@ -496,7 +497,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
       statusIcon = Icons.cancel;
       statusColor = Colors.red;
       statusText = 'Order Cancelled';
-    } else if (OrderLifecycle.isTrackable(status) && !status.toLowerCase().contains('ready')) {
+    } else if (status.toLowerCase().contains('out') || status.toLowerCase().contains('assigned')) {
       statusIcon = Icons.delivery_dining;
       statusColor = AppTheme.primary;
       statusText = 'Order is on the way';
@@ -581,6 +582,8 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                               Expanded(child: Text(statusText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.onSurfaceOf(context)))),
                             ],
                           ),
+                          const SizedBox(height: 16),
+                          DinerOrderProgress(status: status),
                           if (hasDispatchPhoto(items.first)) ...[
                             const SizedBox(height: 12),
                             DispatchPackedPhoto(

@@ -203,19 +203,14 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
         ).timeout(const Duration(seconds: 8));
       } catch (_) {
-        position = await Geolocator.getLastKnownPosition() ??
-            Position(
-              latitude: 18.6298,
-              longitude: 73.7997,
-              timestamp: DateTime.now(),
-              accuracy: 0,
-              altitude: 0,
-              altitudeAccuracy: 0,
-              heading: 0,
-              headingAccuracy: 0,
-              speed: 0,
-              speedAccuracy: 0,
-            );
+        final last = await Geolocator.getLastKnownPosition();
+        if (last == null || (last.latitude == 0 && last.longitude == 0)) {
+          _applyDeviceLocationFallback(
+            message: 'Turn on location or drop a pin to see kitchens near you.',
+          );
+          return;
+        }
+        position = last;
       }
 
       String label = 'Near you';
@@ -284,15 +279,15 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   void _applyDeviceLocationFallback({String? message}) {
     if (!mounted) return;
     setState(() {
+      _deviceLocationPin = null;
       if (_currentAddress == 'Locating...' || _currentAddress.isEmpty) {
         _currentAddress = 'Select Delivery Address';
       }
     });
-    if (message != null && message.isNotEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message), backgroundColor: Colors.orange),
-      );
-    }
+    final text = message ?? 'Turn on location or drop a pin to see kitchens near you.';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text), backgroundColor: Colors.orange),
+    );
   }
 
   @override
@@ -860,19 +855,17 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           .map(_pinnedMeal)
           .toList(),
     );
-    if (!_hasDeliveryPin) return pinned;
+    if (!_hasDeliveryPin) return [];
     final dest = _selectedAddressMap;
     final endLat = addressCoordinate(dest, latitude: true);
     final endLng = addressCoordinate(dest, latitude: false);
-    if (endLat == null || endLng == null) return pinned;
+    if (endLat == null || endLng == null) return [];
 
     final inRange = <Map<String, dynamic>>[];
-    final unknown = <Map<String, dynamic>>[];
     for (final meal in pinned) {
       final startLat = kitchenCoordinate(meal, latitude: true);
       final startLng = kitchenCoordinate(meal, latitude: false);
       if (startLat == null || startLng == null) {
-        unknown.add(meal);
         continue;
       }
       final distance = DeliveryEstimatorService.calculateDistanceKm(
@@ -885,7 +878,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         inRange.add(meal);
       }
     }
-    return [...inRange, ...unknown];
+    return inRange;
   }
 
   String? _etaLabelForMeal(Map<String, dynamic> meal) {
@@ -1334,6 +1327,22 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           const SizedBox(height: 48),
 
           if (isLoggedIn) const SupportRepliedBanner(),
+
+          if (_currentAddress == 'Select Delivery Address')
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+              child: Material(
+                color: AppTheme.primary.withValues(alpha: 0.08),
+                borderRadius: AppTheme.radiusMd,
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Text(
+                    'Drop a pin or turn on location. We do not guess a city for you.',
+                    style: AppTheme.caption.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+            ),
 
           if (_outOfServiceArea)
             Padding(

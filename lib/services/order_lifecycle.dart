@@ -70,11 +70,23 @@ class OrderLifecycle {
 
   static bool isTrackable(String? status) {
     final s = normalize(status);
-    if (s.contains('cancel') || s.contains('reject') || s.contains('delivered') || s.contains('completed')) {
+    if (s.contains('cancel') || s.contains('reject') || isFulfilled(status)) {
       return false;
     }
-    return s.contains('ready') || s.contains('assigned') || s.contains('out');
+    return s.isNotEmpty;
   }
+
+  /// Diner timeline: 0 kitchen, 1 packed, 2 on the way, 3 delivered. `-1` cancelled.
+  static int dinerProgressStep(String? status) {
+    final s = normalize(status);
+    if (s.contains('cancel') || s.contains('reject')) return -1;
+    if (isFulfilled(status)) return 3;
+    if (s.contains('out') || s.contains('assigned')) return 2;
+    if (s.contains('ready') || s.contains('packed')) return 1;
+    return 0;
+  }
+
+  static const dinerProgressLabels = ['Kitchen', 'Packed', 'On the way', 'Delivered'];
 
   static bool canCustomerCancel(String? status) {
     final s = normalize(status);

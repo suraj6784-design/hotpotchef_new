@@ -150,10 +150,22 @@ void main() {
       );
     });
 
-    test('trackable after kitchen is ready or driver is assigned', () {
+    test('trackable from kitchen accept until delivered', () {
+      expect(OrderLifecycle.isTrackable('Pending Chef Approval'), isTrue);
+      expect(OrderLifecycle.isTrackable('Preparing'), isTrue);
       expect(OrderLifecycle.isTrackable('Ready for Pickup'), isTrue);
       expect(OrderLifecycle.isTrackable('Driver Assigned'), isTrue);
-      expect(OrderLifecycle.isTrackable('Preparing'), isFalse);
+      expect(OrderLifecycle.isTrackable('Delivered'), isFalse);
+      expect(OrderLifecycle.isTrackable('Cancelled'), isFalse);
+    });
+
+    test('diner progress is Kitchen → Packed → On the way → Delivered', () {
+      expect(OrderLifecycle.dinerProgressStep('Confirmed'), 0);
+      expect(OrderLifecycle.dinerProgressStep('Preparing'), 0);
+      expect(OrderLifecycle.dinerProgressStep('Ready for Pickup'), 1);
+      expect(OrderLifecycle.dinerProgressStep('Out for Delivery'), 2);
+      expect(OrderLifecycle.dinerProgressStep('Delivered'), 3);
+      expect(OrderLifecycle.dinerProgressStep('Cancelled'), -1);
     });
   });
 }

@@ -862,6 +862,9 @@ int customerHubTabIndex(String? tab) {
       return 1;
     case 'orders':
       return 2;
+    case 'account':
+    case 'profile':
+      return 3;
     default:
       return 0;
   }
@@ -1303,10 +1306,10 @@ FeedEmptyCopy feedEmptyCopy({
     );
   }
   return FeedEmptyCopy(
-    title: 'No meals found',
+    title: hasDeliveryPin ? 'No meals found' : 'Drop a pin to see kitchens',
     message: hasDeliveryPin
         ? 'No kitchens are delivering to this pin right now. Try another address or category.'
-        : 'Try a different category or search for something else.',
+        : 'Turn on location or choose an address. We do not guess a city for you.',
   );
 }
 
@@ -1886,6 +1889,20 @@ String feedKitchenSlotLabel(String? timeSlot) {
 
 String digitsOnlyPhone(String? raw) => (raw ?? '').replaceAll(RegExp(r'\D'), '');
 
+/// 10-digit Indian mobile, or empty if the number is dummy / too short.
+String usableCustomerPhone(String? raw) {
+  var digits = digitsOnlyPhone(raw);
+  if (digits.startsWith('91') && digits.length >= 12) {
+    digits = digits.substring(digits.length - 10);
+  } else if (digits.length > 10) {
+    digits = digits.substring(digits.length - 10);
+  }
+  if (digits.length != 10) return '';
+  if (isPlaceholderPhone(digits)) return '';
+  if (!RegExp(r'^[6-9]').hasMatch(digits)) return '';
+  return digits;
+}
+
 /// Dummy / repeated digits that should never be used as a diner contact.
 bool isPlaceholderPhone(String? raw) {
   final digits = digitsOnlyPhone(raw);
@@ -1895,11 +1912,10 @@ bool isPlaceholderPhone(String? raw) {
   return false;
 }
 
-String usableCustomerPhone(String? raw) {
-  var digits = digitsOnlyPhone(raw);
-  if (digits.length > 10) digits = digits.substring(digits.length - 10);
-  if (isPlaceholderPhone(digits) || digits.length != 10) return '';
-  return digits;
+String e164IndiaPhone(String? raw) {
+  final digits = usableCustomerPhone(raw);
+  if (digits.isEmpty) return '';
+  return '+91$digits';
 }
 
 /// True when the selected slot's start is now or earlier on that calendar day.
@@ -4727,7 +4743,7 @@ Map<String, dynamic> mealWithKitchenPin(
 }
 
 /// Matches Home meal-grid radius: road-adjusted haversine ≤ [maxRoadKm].
-/// Meals without a kitchen pin stay visible (same as feed unknown-pin behavior).
+/// No destination and no kitchen pin both hide the meal (do not guess a city).
 bool mealInDeliveryRadius(
   Map<String, dynamic> meal, {
   double? destinationLat,
@@ -4735,11 +4751,11 @@ bool mealInDeliveryRadius(
   double maxRoadKm = 15,
   double roadMultiplier = 1.3,
 }) {
-  if (destinationLat == null || destinationLng == null) return true;
-  if (destinationLat == 0 || destinationLng == 0) return true;
+  if (destinationLat == null || destinationLng == null) return false;
+  if (destinationLat == 0 || destinationLng == 0) return false;
   final startLat = kitchenCoordinate(meal, latitude: true);
   final startLng = kitchenCoordinate(meal, latitude: false);
-  if (startLat == null || startLng == null) return true;
+  if (startLat == null || startLng == null) return false;
   final roadKm = haversineKm(startLat, startLng, destinationLat, destinationLng) * roadMultiplier;
   return roadKm <= maxRoadKm;
 }

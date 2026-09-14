@@ -49,6 +49,8 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _obscurePassword = true;
   bool _acceptedTerms = false;
   String? _authError;
+  bool _useEmailAuth = kAppStorefront.isPartner;
+  bool _otpSent = false;
 
   AppRole _selectedRole = kAppStorefront.signupRoles.first;
 
@@ -56,6 +58,7 @@ class _AuthScreenState extends State<AuthScreen> {
   final _passwordController = TextEditingController();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _otpController = TextEditingController();
   final _referralController = TextEditingController();
 
   @override
@@ -74,6 +77,7 @@ class _AuthScreenState extends State<AuthScreen> {
     _passwordController.dispose();
     _nameController.dispose();
     _phoneController.dispose();
+    _otpController.dispose();
     _referralController.dispose();
     super.dispose();
   }
@@ -145,7 +149,89 @@ class _AuthScreenState extends State<AuthScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => goHub());
   }
 
+  Future<void> _submitPhoneAuth() async {
+    final phone = e164IndiaPhone(_phoneController.text);
+    if (phone.isEmpty) {
+      _showAuthError('Enter a valid 10-digit mobile number.');
+      return;
+    }
+    if (!_isLogin) {
+      if (_nameController.text.trim().isEmpty) {
+        _showAuthError('Please enter your name.');
+        return;
+      }
+      if (!_acceptedTerms) {
+        _showAuthError('Please accept the Terms & conditions to create an account.');
+        return;
+      }
+    }
+
+    setState(() {
+      _isLoading = true;
+      _authError = null;
+    });
+
+    try {
+      if (!_otpSent) {
+        String? referredBy;
+        if (!_isLogin && _selectedRole.usesReferral) {
+          try {
+            referredBy = await _resolveSignupReferralCode();
+          } on FormatException catch (e) {
+            _showAuthError(e.message);
+            return;
+          }
+        }
+        await _supabase.auth
+            .signInWithOtp(
+              phone: phone,
+              data: {
+                'name': _nameController.text.trim(),
+                'phone': usableCustomerPhone(_phoneController.text),
+                'role': AppRole.customer.storageValue,
+                if (referredBy != null) 'referred_by': referredBy,
+              },
+            )
+            .withTimeout(NetworkTimeouts.standard);
+        if (!mounted) return;
+        setState(() => _otpSent = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('OTP sent to $phone')),
+        );
+        return;
+      }
+
+      final token = _otpController.text.trim();
+      if (token.length < 4) {
+        _showAuthError('Enter the 6-digit code from SMS.');
+        return;
+      }
+      final response = await _supabase.auth
+          .verifyOTP(phone: phone, token: token, type: OtpType.sms)
+          .withTimeout(NetworkTimeouts.standard);
+      if (response.user == null) {
+        _showAuthError('That code did not match. Try again.');
+        return;
+      }
+      await _ensurePublicUserProfile(recordLegalConsent: !_isLogin && _acceptedTerms);
+      unawaited(PushNotificationService.syncTokenForCurrentUser());
+      unawaited(enqueueWelcomeDrip());
+      _leaveAuthAfterSuccess();
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Phone OTP authentication failure');
+      _showAuthError(_friendlyAuthError(e));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  bool get _phoneOtpAuth => !kAppStorefront.isPartner && !_useEmailAuth;
+
   Future<void> _submitAuth() async {
+    if (_phoneOtpAuth) {
+      await _submitPhoneAuth();
+      return;
+    }
     if (!_formKey.currentState!.validate()) return;
 
     setState(() {
@@ -300,8 +386,13 @@ class _AuthScreenState extends State<AuthScreen> {
         signupUserPayload(
           id: user.id,
           email: user.email ?? existing?['email']?.toString() ?? '',
-          name: existing?['name']?.toString() ?? meta['name']?.toString() ?? '',
-          phone: existing?['phone']?.toString() ?? meta['phone']?.toString() ?? '',
+          name: existing?['name']?.toString() ?? meta['name']?.toString() ?? _nameController.text.trim(),
+          phone: () {
+            final stored = usableCustomerPhone(
+              existing?['phone']?.toString() ?? meta['phone']?.toString() ?? _phoneController.text,
+            );
+            return stored.isEmpty ? (existing?['phone']?.toString() ?? meta['phone']?.toString() ?? '') : stored;
+          }(),
           role: role,
           // Keep an existing referred_by if metadata is empty (email-confirm then sign-in).
           referredBy: referredBy ?? normalizeReferralCode(existing?['referred_by']?.toString()),
@@ -508,10 +599,14 @@ class _AuthScreenState extends State<AuthScreen> {
                         _isLogin
                             ? (kAppStorefront.isPartner
                                 ? 'Sign in to your kitchen or delivery account'
-                                : 'Sign in to kitchens, orders, and your wallet')
+                                : (_useEmailAuth
+                                    ? 'Sign in to kitchens, orders, and your wallet'
+                                    : 'Sign in with your mobile number'))
                             : (kAppStorefront.isPartner
                                 ? 'Create a kitchen or delivery-partner account'
-                                : 'Create a diner account to order home-cooked meals'),
+                                : (_useEmailAuth
+                                    ? 'Create a diner account to order home-cooked meals'
+                                    : 'Create a diner account with your mobile number')),
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 13, height: 1.35, color: Colors.white.withValues(alpha: 0.9)),
                       ),
@@ -658,23 +753,64 @@ class _AuthScreenState extends State<AuthScreen> {
                             !_isLogin && (v == null || v.trim().isEmpty) ? 'Please enter your name' : null,
                       ),
                       const SizedBox(height: 14),
-                      TextFormField(
-                        controller: _phoneController,
-                        keyboardType: TextInputType.phone,
-                        autofillHints: const [AutofillHints.telephoneNumber],
-                        decoration: const InputDecoration(
-                          labelText: 'Phone Number',
-                          prefixIcon: Icon(Icons.phone_outlined),
+                      if (!_phoneOtpAuth) ...[
+                        TextFormField(
+                          controller: _phoneController,
+                          keyboardType: TextInputType.phone,
+                          autofillHints: const [AutofillHints.telephoneNumber],
+                          decoration: const InputDecoration(
+                            labelText: 'Phone Number',
+                            prefixIcon: Icon(Icons.phone_outlined),
+                          ),
+                          validator: (v) => !_isLogin && (v == null || v.trim().length < 10)
+                              ? 'Enter a valid 10-digit number'
+                              : null,
                         ),
-                        validator: (v) => !_isLogin && (v == null || v.trim().length < 10)
-                            ? 'Enter a valid 10-digit number'
-                            : null,
-                      ),
-                      const SizedBox(height: 14),
+                        const SizedBox(height: 14),
+                      ],
                     ],
                   )
                 : const SizedBox.shrink(),
           ),
+          if (_phoneOtpAuth) ...[
+            TextFormField(
+              controller: _phoneController,
+              keyboardType: TextInputType.phone,
+              autofillHints: const [AutofillHints.telephoneNumber],
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)],
+              decoration: const InputDecoration(
+                labelText: 'Mobile number',
+                prefixIcon: Icon(Icons.phone_outlined),
+                prefixText: '+91 ',
+              ),
+              validator: (v) => e164IndiaPhone(v).isEmpty ? 'Enter a valid 10-digit number' : null,
+            ),
+            const SizedBox(height: 14),
+            if (_otpSent) ...[
+              TextFormField(
+                controller: _otpController,
+                keyboardType: TextInputType.number,
+                autofillHints: const [AutofillHints.oneTimeCode],
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)],
+                decoration: const InputDecoration(
+                  labelText: '6-digit OTP',
+                  prefixIcon: Icon(Icons.sms_outlined),
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: _isLoading
+                      ? null
+                      : () => setState(() {
+                            _otpSent = false;
+                            _otpController.clear();
+                          }),
+                  child: const Text('Resend OTP'),
+                ),
+              ),
+            ],
+          ] else ...[
           TextFormField(
             controller: _emailController,
             keyboardType: TextInputType.emailAddress,
@@ -726,6 +862,7 @@ class _AuthScreenState extends State<AuthScreen> {
               return null;
             },
           ),
+          ],
           if (!_isLogin && _selectedRole.usesReferral) ...[
             const SizedBox(height: 14),
             TextFormField(
@@ -743,7 +880,7 @@ class _AuthScreenState extends State<AuthScreen> {
               },
             ),
           ],
-          if (_isLogin)
+          if (_isLogin && !_phoneOtpAuth)
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(
@@ -842,8 +979,12 @@ class _AuthScreenState extends State<AuthScreen> {
             ),
           ],
           GradientButton(
-            label: _isLogin ? 'Sign In' : 'Register as ${_selectedRole.storageValue}',
-            icon: _isLogin ? Icons.login_rounded : Icons.person_add_alt_1_rounded,
+            label: _phoneOtpAuth
+                ? (_otpSent ? 'Verify OTP' : 'Get OTP')
+                : (_isLogin ? 'Sign In' : 'Register as ${_selectedRole.storageValue}'),
+            icon: _phoneOtpAuth
+                ? (_otpSent ? Icons.verified_outlined : Icons.sms_outlined)
+                : (_isLogin ? Icons.login_rounded : Icons.person_add_alt_1_rounded),
             loading: _isLoading,
             onPressed: _isLoading ? null : _submitAuth,
           ),
@@ -860,18 +1001,32 @@ class _AuthScreenState extends State<AuthScreen> {
             : () => setState(() {
                   _isLogin = !_isLogin;
                   _authError = null;
+                  _otpSent = false;
+                  _otpController.clear();
                 }),
         child: Text(
           _isLogin ? "Don't have an account? Sign Up" : 'Already have an account? Sign In',
         ),
       ),
-      if (_isLogin)
+      if (_isLogin && !_phoneOtpAuth)
         TextButton(
           onPressed: _handleForgotUsername,
           child: const Text(
             'Forgot Email / Username?',
             style: AppTheme.caption,
           ),
+        ),
+      if (!kAppStorefront.isPartner)
+        TextButton(
+          onPressed: _isLoading
+              ? null
+              : () => setState(() {
+                    _useEmailAuth = !_useEmailAuth;
+                    _otpSent = false;
+                    _otpController.clear();
+                    _authError = null;
+                  }),
+          child: Text(_useEmailAuth ? 'Use phone OTP instead' : 'Use email instead'),
         ),
       if (!kAppStorefront.isPartner)
         TextButton(

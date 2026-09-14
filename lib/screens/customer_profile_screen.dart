@@ -29,8 +29,9 @@ import '../widgets/premium_profile_template.dart';
 
 class CustomerProfileScreen extends ConsumerStatefulWidget {
   final VoidCallback? onLogout;
+  final bool embedded;
 
-  const CustomerProfileScreen({super.key, this.onLogout});
+  const CustomerProfileScreen({super.key, this.onLogout, this.embedded = false});
 
   @override
   ConsumerState<CustomerProfileScreen> createState() => _CustomerProfileScreenState();
@@ -77,6 +78,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
   // --- Safe Back Navigation Logic ---
 
   Future<void> _handleSafeBack() async {
+    if (widget.embedded) return;
     if (AuthSession.currentUser == null) {
       if (mounted) context.go('/auth');
       return;
@@ -1086,7 +1088,9 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
   Widget build(BuildContext context) {
     if (_supabase.auth.currentUser == null) {
       return Scaffold(
-        appBar: AppBar(
+        appBar: widget.embedded
+            ? const HubAppBar(title: 'Account')
+            : AppBar(
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: _handleSafeBack,
@@ -1111,7 +1115,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
     }
 
     return PopScope(
-      canPop: false,
+      canPop: widget.embedded,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
         _handleSafeBack();
@@ -1125,7 +1129,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
           onUploadComplete: (newUrl) => setState(() => _avatarUrl = newUrl),
         ),
         loading: _isLoading,
-        onBack: _handleSafeBack,
+        onBack: widget.embedded ? null : _handleSafeBack,
         onLogout: _handleLogout,
         body: SingleChildScrollView(
           child: Column(
