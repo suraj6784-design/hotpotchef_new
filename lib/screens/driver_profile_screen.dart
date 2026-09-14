@@ -666,7 +666,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                     icon: Icons.admin_panel_settings_outlined,
                     title: 'Admin desk',
                     subtitle: 'Catalog, accounts, tickets, and dashboard',
-                    onTap: () => context.push('/platform-ops'),
+                    onTap: () => context.go('/platform-ops'),
                     showDivider: false,
                   ),
                 ],

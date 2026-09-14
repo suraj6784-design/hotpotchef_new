@@ -824,7 +824,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                       leading: const Icon(Icons.admin_panel_settings_outlined, color: AppTheme.primary),
                       title: const Text('Open platform ops desk', style: TextStyle(fontWeight: FontWeight.w700)),
                       subtitle: const Text('Packaging inbox and FSSAI review'),
-                      onTap: () => context.push('/platform-ops'),
+                      onTap: () => context.go('/platform-ops'),
                     ),
                   _buildValidatedTextField(
                     controller: _gstinController,

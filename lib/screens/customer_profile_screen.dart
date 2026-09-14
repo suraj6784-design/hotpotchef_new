@@ -1289,7 +1289,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                       icon: Icons.admin_panel_settings_outlined,
                       title: 'Admin desk',
                       subtitle: 'Catalog, accounts, tickets',
-                      onTap: () => context.push('/platform-ops'),
+                      onTap: () => context.go('/platform-ops'),
                     ),
                   PremiumProfileTile(
                     icon: Icons.chat_bubble_outline_rounded,

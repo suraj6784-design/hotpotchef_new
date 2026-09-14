@@ -44,6 +44,26 @@ void main() {
       expect(opsFriendlyError('weird postgrest 500'), 'Could not complete that action. Try again.');
     });
 
+    test('inner back stays on the desk instead of remounting dashboard', () {
+      expect(
+        opsTabHistoryAfterOpen(const [], kOpsPermissionDashboard, kOpsPermissionCrm),
+        [kOpsPermissionDashboard],
+      );
+      expect(
+        opsTabHistoryAfterOpen([kOpsPermissionDashboard], kOpsPermissionCrm, kOpsPermissionDashboard),
+        isEmpty,
+      );
+      expect(
+        opsTabAfterBack(kOpsPermissionCrm, [kOpsPermissionDashboard])?.selected,
+        kOpsPermissionDashboard,
+      );
+      expect(
+        opsTabAfterBack(kOpsPermissionTickets, const [])?.selected,
+        kOpsPermissionDashboard,
+      );
+      expect(opsTabAfterBack(kOpsPermissionDashboard, const []), isNull);
+    });
+
     test('permission containment', () {
       expect(opsPermissionsContain(['fssai', 'tickets'], 'FSSAI'), isTrue);
       expect(opsPermissionsContain(['fssai'], 'accounts'), isFalse);

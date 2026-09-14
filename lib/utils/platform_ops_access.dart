@@ -123,6 +123,36 @@ String? opsNavGroupTitleFor(String key) {
   return null;
 }
 
+/// Nav drawer / queue tiles: opening Overview home clears inner back history.
+List<String> opsTabHistoryAfterOpen(
+  List<String> history,
+  String from,
+  String to, {
+  String home = kOpsPermissionDashboard,
+  int maxLength = 16,
+}) {
+  if (to == from) return List<String>.from(history);
+  if (to == home) return const [];
+  final next = [...history, from];
+  if (next.length <= maxLength) return next;
+  return next.sublist(next.length - maxLength);
+}
+
+/// System / AppBar back inside the desk. Null means already on home — do not pop the route.
+({String selected, List<String> history})? opsTabAfterBack(
+  String selected,
+  List<String> history, {
+  String home = kOpsPermissionDashboard,
+}) {
+  if (history.isNotEmpty) {
+    return (selected: history.last, history: history.sublist(0, history.length - 1));
+  }
+  if (selected != home) {
+    return (selected: home, history: const []);
+  }
+  return null;
+}
+
 const kOpsHelperEmailDomain = 'helpers.hotpotchef.app';
 
 /// Login field: real email, or a helper username mapped to the reserved domain.

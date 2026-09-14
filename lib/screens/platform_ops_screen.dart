@@ -50,12 +50,14 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> {
   final _supabase = Supabase.instance.client;
   List<_OpsTabSpec> _tabSpecs = const [];
   String _selectedKey = kOpsPermissionDashboard;
+  List<String> _tabBack = const [];
   bool _checking = true;
   bool _allowed = false;
   bool _isOwner = false;
   bool _busy = false;
   int _reloadToken = 0;
   String _opsEmail = '';
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
   void initState() {
@@ -189,7 +191,24 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> {
 
   void _openTab(String key) {
     if (!_tabSpecs.any((t) => t.key == key)) return;
-    setState(() => _selectedKey = key);
+    if (key == _selectedKey) return;
+    setState(() {
+      _tabBack = opsTabHistoryAfterOpen(_tabBack, _selectedKey, key);
+      _selectedKey = key;
+    });
+  }
+
+  bool get _canPopInnerTab =>
+      opsTabAfterBack(_selectedKey, _tabBack) != null;
+
+  bool _popInnerTab() {
+    final next = opsTabAfterBack(_selectedKey, _tabBack);
+    if (next == null) return false;
+    setState(() {
+      _selectedKey = next.selected;
+      _tabBack = next.history;
+    });
+    return true;
   }
 
   _OpsTabSpec? get _currentSpec {
@@ -634,10 +653,36 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> {
       onSelect: _openTab,
     );
 
-    return Scaffold(
-      backgroundColor: AppTheme.canvasOf(context),
-      appBar: AppBar(
-        title: Column(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        final scaffold = _scaffoldKey.currentState;
+        if (scaffold?.isDrawerOpen == true) {
+          scaffold!.closeDrawer();
+          return;
+        }
+        if (_popInnerTab()) return;
+      },
+      child: Scaffold(
+        key: _scaffoldKey,
+        backgroundColor: AppTheme.canvasOf(context),
+        appBar: AppBar(
+          automaticallyImplyLeading: false,
+          leading: _canPopInnerTab
+              ? IconButton(
+                  tooltip: 'Back',
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: _popInnerTab,
+                )
+              : (wide
+                  ? null
+                  : IconButton(
+                      tooltip: 'Menu',
+                      icon: const Icon(Icons.menu),
+                      onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+                    )),
+          title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(_currentSpec?.label ?? (_isOwner ? 'Admin desk' : 'Platform ops')),
@@ -675,6 +720,7 @@ class _PlatformOpsScreenState extends State<PlatformOpsScreen> {
                   ],
                 )
               : _currentSpec!.builder(),
+    ),
     );
   }
 }
@@ -790,8 +836,8 @@ class _OpsDeskNav extends StatelessWidget {
                     visualDensity: VisualDensity.compact,
                     onTap: () {
                       onSelect(key);
-                      if (popOnSelect && Navigator.of(context).canPop()) {
-                        Navigator.of(context).pop();
+                      if (popOnSelect) {
+                        Scaffold.maybeOf(context)?.closeDrawer();
                       }
                     },
                   ),

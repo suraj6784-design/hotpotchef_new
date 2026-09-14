@@ -954,7 +954,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                     case 'profile':
                       context.push('/chef-profile');
                     case 'ops':
-                      context.push('/platform-ops');
+                      context.go('/platform-ops');
                     case 'logout':
                       AuthSession.confirmSignOut(context);
                   }

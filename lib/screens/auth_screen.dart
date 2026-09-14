@@ -129,7 +129,9 @@ class _AuthScreenState extends State<AuthScreen> {
 
     try {
       if (await AuthSession.isPlatformOps()) {
-        if (openedAsSheet || Navigator.of(context).canPop()) {
+        // Pop only a guest sheet. Popping a pushed Auth route then go()-ing
+        // to the desk stacks two pages (duplicate cards) and lands on Dashboard.
+        if (openedAsSheet && Navigator.of(context).canPop()) {
           Navigator.of(context).pop(true);
         }
         WidgetsBinding.instance.addPostFrameCallback((_) {
