@@ -426,7 +426,26 @@ void main() {
     final state = CartState(items: [item], applyCoins: true, userCoinBalance: 50);
     expect(state.coinsAcceptedByVendors, isFalse);
     expect(state.coinsDiscountAmount, 0);
+    expect(state.coinsBillKind, CartCoinsBillKind.refused);
     expect(state.grandTotal, 250);
+  });
+
+  test('cart coin line is a wallet preview until applyCoins is on', () {
+    final item = _buildItem(quantity: 1, mealDetails: {'price': 221, 'offer_type': 'none'});
+    final preview = CartState(
+      items: [item],
+      packagingFee: 0,
+      userCoinBalance: 140,
+    );
+    expect(preview.billBeforeCoins, 251);
+    expect(preview.coinsDiscountAmount, 0);
+    expect(preview.grandTotal, 251);
+    expect(preview.coinsBillKind, CartCoinsBillKind.available);
+
+    final applied = preview.copyWith(applyCoins: true);
+    expect(applied.coinsDiscountAmount, 140);
+    expect(applied.grandTotal, 111);
+    expect(applied.coinsBillKind, CartCoinsBillKind.applied);
   });
 
   test('lists chef promo codes and rejects those outside the offer window', () {

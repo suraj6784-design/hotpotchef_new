@@ -1,23 +1,25 @@
 // lib/widgets/daily_streak_banner.dart
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
+import '../providers/cart_provider.dart';
 import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
 import 'app_widgets.dart';
 
-class DailyStreakBanner extends StatefulWidget {
+class DailyStreakBanner extends ConsumerStatefulWidget {
   const DailyStreakBanner({super.key, this.compact = false});
 
   final bool compact;
 
   @override
-  State<DailyStreakBanner> createState() => _DailyStreakBannerState();
+  ConsumerState<DailyStreakBanner> createState() => _DailyStreakBannerState();
 }
 
-class _DailyStreakBannerState extends State<DailyStreakBanner> {
+class _DailyStreakBannerState extends ConsumerState<DailyStreakBanner> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
   int _currentStreak = 0;
@@ -82,6 +84,7 @@ class _DailyStreakBannerState extends State<DailyStreakBanner> {
         });
 
         _showSnackBar('Streak Claimed! +$reward HotPot Coins Added! 🎉', isError: false);
+        await ref.read(cartProvider.notifier).fetchUserCoins();
       } else {
         final message = response?['message']?.toString() ??
             'Already claimed today. Coins stay in your wallet until you spend them at checkout.';

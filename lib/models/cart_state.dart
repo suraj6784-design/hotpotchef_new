@@ -224,6 +224,9 @@ class CartItemModel {
       Object.hashAll(selectedAddOns);
 }
 
+/// Cart breakup must not look like a discount unless coins are actually on.
+enum CartCoinsBillKind { hidden, available, applied, refused }
+
 @immutable
 class CartState {
   final List<CartItemModel> items;
@@ -344,6 +347,14 @@ class CartState {
   double get coinsDiscountAmount {
     if (!applyCoins || !coinsAcceptedByVendors || userCoinBalance <= 0) return 0.0;
     return userCoinBalance > billBeforeCoins ? billBeforeCoins : userCoinBalance;
+  }
+
+  /// How the cart bill should show coins. A minus is only valid when [applied].
+  CartCoinsBillKind get coinsBillKind {
+    if (userCoinBalance <= 0) return CartCoinsBillKind.hidden;
+    if (!coinsAcceptedByVendors) return CartCoinsBillKind.refused;
+    if (coinsDiscountAmount > 0) return CartCoinsBillKind.applied;
+    return CartCoinsBillKind.available;
   }
 
   /// Estimated payable including packaging and a delivery estimate when the fee is unknown.

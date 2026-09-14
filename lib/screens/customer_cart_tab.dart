@@ -750,7 +750,44 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
     );
   }
 
-  void _showCartBillBreakup(CartState cartState) {
+  List<Widget> _cartCoinsBreakupRows(
+    CartState cartState,
+    Widget Function(String label, String value, {Color? color, bool bold}) row,
+  ) {
+    switch (cartState.coinsBillKind) {
+      case CartCoinsBillKind.hidden:
+        return const [];
+      case CartCoinsBillKind.applied:
+        return [
+          row(
+            'HotPot Coins',
+            '-${formatRupees(cartState.coinsDiscountAmount)}',
+            color: AppTheme.success,
+          ),
+        ];
+      case CartCoinsBillKind.refused:
+        return [
+          row(
+            'HotPot Coins not accepted on this cart',
+            formatRupees(cartState.userCoinBalance),
+            color: AppTheme.textMuted,
+          ),
+        ];
+      case CartCoinsBillKind.available:
+        return [
+          row(
+            'Wallet (apply at checkout)',
+            '${formatRupees(cartState.userCoinBalance)} available',
+            color: AppTheme.textMuted,
+          ),
+        ];
+    }
+  }
+
+  Future<void> _showCartBillBreakup(CartState _) async {
+    await ref.read(cartProvider.notifier).fetchUserCoins();
+    if (!mounted) return;
+    final cartState = ref.read(cartProvider);
     final foodGross = cartState.originalFoodTotal;
     final foodNet = cartState.foodTotal;
     final promoSavings = foodGross > foodNet + 0.5 ? foodGross - foodNet : 0.0;
@@ -818,16 +855,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                   formatRupees(cartState.estimatedDeliveryFee),
                 ),
               if (cartState.tipAmount > 0) row('Tip', formatRupees(cartState.tipAmount)),
-              if (cartState.userCoinBalance > 0)
-                row(
-                  cartState.coinsDiscountAmount > 0
-                      ? 'HotPot Coins'
-                      : 'HotPot Coins (apply at checkout)',
-                  cartState.coinsDiscountAmount > 0
-                      ? '-${formatRupees(cartState.coinsDiscountAmount)}'
-                      : formatRupees(cartState.userCoinBalance),
-                  color: AppTheme.success,
-                ),
+              ..._cartCoinsBreakupRows(cartState, row),
               Divider(height: 20, color: AppTheme.hairlineOf(ctx)),
               row(
                 cartState.deliveryFeeIsEstimate ? 'Est. total' : 'Total payable',
@@ -882,6 +910,9 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
       );
       return;
     }
+
+    await ref.read(cartProvider.notifier).fetchUserCoins();
+    if (!mounted) return;
 
     dismissAppSnackBars(context);
     Navigator.push(

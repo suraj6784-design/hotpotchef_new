@@ -3,11 +3,13 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../services/app_analytics.dart';
+import '../providers/cart_provider.dart';
 import '../utils/helpers.dart';
 import '../utils/service_area.dart';
 import '../utils/app_env.dart';
@@ -251,9 +253,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (pricingRes != null) _serverPricing = pricingRes;
       _isLoading = false;
     });
+    _pushWalletToCart();
 
     await _calculateDeliveryFee();
     _warnSocietyNightMismatch();
+  }
+
+  void _pushWalletToCart() {
+    try {
+      ProviderScope.containerOf(context).read(cartProvider.notifier).setUserCoinBalance(_userCoinBalance);
+    } catch (_) {}
   }
 
   bool get _hasDelivery => widget.cartItems.any((item) {
@@ -1619,9 +1628,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                     ),
                     subtitle: _coinsAccepted && !_applyCoins
-                        ? const Text(
-                            'Off by default. Turn on to reduce this bill.',
-                            style: TextStyle(fontSize: 12),
+                        ? Text(
+                            'Off by default. ${formatRupees(_userCoinBalance)} stays in your wallet until you turn this on.',
+                            style: const TextStyle(fontSize: 12),
                           )
                         : null,
                     value: _applyCoins && _coinsAccepted,

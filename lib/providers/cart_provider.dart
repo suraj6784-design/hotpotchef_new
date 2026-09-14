@@ -476,6 +476,12 @@ class CartNotifier extends Notifier<CartState> {
     }
   }
 
+  void setUserCoinBalance(double coins) {
+    final next = coins < 0 ? 0.0 : coins;
+    if (state.userCoinBalance == next) return;
+    state = state.copyWith(userCoinBalance: next);
+  }
+
   Future<void> fetchUserCoins() async {
     final user = _supabase.auth.currentUser;
     if (user == null) return;
