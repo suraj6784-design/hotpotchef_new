@@ -15,9 +15,11 @@ import '../screens/driver_profile_screen.dart';
 import '../screens/customer_profile_screen.dart';
 import '../screens/chef_analytics_screen.dart';
 import '../screens/chef_publish_meal_screen.dart';
+import '../screens/legal_document_screen.dart';
 import '../screens/platform_ops_screen.dart';
 import '../screens/reset_password_screen.dart';
 import 'route_authz.dart';
+import '../legal/legal_documents.dart';
 
 class AppRouter {
   static void go(String location) => router.go(location);
@@ -160,6 +162,17 @@ class AppRouter {
       GoRoute(
         path: '/platform-ops',
         builder: (context, state) => const PlatformOpsScreen(),
+      ),
+      GoRoute(
+        path: '/legal/:doc',
+        builder: (context, state) {
+          final path = '/legal/${state.pathParameters['doc'] ?? ''}';
+          final doc = LegalDocuments.byPath(path);
+          if (doc == null) {
+            return const Scaffold(body: Center(child: Text('Document not found')));
+          }
+          return LegalDocumentScreen(document: doc);
+        },
       ),
     ],
   );
