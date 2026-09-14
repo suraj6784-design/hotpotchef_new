@@ -9,9 +9,16 @@ Migrations under `supabase/migrations/` recreate the RPCs and push triggers the 
 | `migrations/20260913133000_core_tables_for_rpcs.sql` | `users`, `meals`, `orders`, `chef_profiles`, `user_gamification`, addresses, carts, holds, wallets, RLS, realtime |
 | `migrations/20260913133100_rpc_cart_orders_streak.sql` | `calculate_cart_total`, `place_customer_order`, `cancel_and_restock_order`, `claim_daily_streak` (+ hold / packaging helpers) |
 | `migrations/20260913133200_rpc_match_meals.sql` | `match_meals` (Gemini `text-embedding-004` / 768-d) |
-| `migrations/20260913133300_order_meal_push_webhooks.sql` | `orders.status` → `send-push-notification`; `meals.status` → `release-chef-payout` |
+| `migrations/20260913133300_order_meal_push_webhooks.sql` | `orders.status` → `send-push-notification`; **legacy** `meals.status` → `release-chef-payout` (superseded) |
+| `migrations/20260914120000_rls_lockdown_meals_orders.sql` | Drop USING(true) meals/orders writes; hide payout/FSSAI columns from anon |
+| `migrations/20260914120100_payout_on_delivered_orders.sql` | Payout webhook on **delivered orders**; drop meal-update spam |
+| `migrations/20260914120200_match_meals_available_only.sql` | `match_meals` Available-only |
+| `migrations/20260914120300_normalize_app_roles.sql` | Chef/Customer/Driver/Admin aliases |
+| `migrations/20260914120400_ops_release_stale_inventory_holds.sql` | Dry-run RPC for stuck confirmed holds |
 | `functions/` | Edge Functions (already in repo) |
 | `config.toml` | Local CLI config (`project_id = hotpotchef_new`) |
+
+**Do not `db push` the reconstructed 202609131330–1333 dumps onto the live project.** Apply the 20260914* files (or the matching MCP lockdown) only.
 
 ## How to apply
 
@@ -36,7 +43,8 @@ These are **not** in git. Migrations no-op HTTP calls until Vault is populated.
 | Secret | Where | Used for |
 |---|---|---|
 | `edge_service_role_key` | `vault.create_secret('<service_role JWT>', 'edge_service_role_key')` | `Authorization: Bearer …` on trigger → Edge Function |
-| `edge_webhook_secret` | `vault.create_secret('<random>', 'edge_webhook_secret')` | Optional `X-Webhook-Secret` header |
+| `edge_webhook_secret` | `vault.create_secret('<random>', 'edge_webhook_secret')` | **Required** `X-Webhook-Secret` for `send-push-notification` / `release-chef-payout` (service_role bearer also accepted) |
+| `RAZORPAY_WEBHOOK_SECRET` | Edge Function secrets (`supabase secrets set RAZORPAY_WEBHOOK_SECRET=...`) | HMAC for `razorpay-webhook`. Unsigned requests return **HTTP 401**. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Edge Function secrets | Admin client inside functions |
 | `FCM_SERVER_KEY` | Edge Function secrets | Legacy `push-notifier` |
 | `FIREBASE_SERVICE_ACCOUNT` | Edge Function secrets | `send-push-notification` (FCM HTTP v1) |
@@ -49,6 +57,7 @@ After push, confirm Edge Functions are deployed:
 supabase functions deploy send-push-notification
 supabase functions deploy push-notifier
 supabase functions deploy release-chef-payout
+supabase functions deploy razorpay-webhook
 supabase functions deploy create-split-order
 supabase functions deploy ai-search
 supabase functions deploy ai-craving-matcher

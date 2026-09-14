@@ -415,7 +415,7 @@ enabled = true
 
 [functions.ai-craving-matcher]
 enabled = true
-verify_jwt = false
+verify_jwt = true
 import_map = "./functions/ai-craving-matcher/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
@@ -426,6 +426,7 @@ entrypoint = "./functions/ai-craving-matcher/index.ts"
 
 [functions.push-notifier]
 enabled = true
+# Auth is X-Webhook-Secret or service_role inside the function (anon JWT is not enough).
 verify_jwt = false
 import_map = "./functions/push-notifier/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
@@ -437,6 +438,7 @@ entrypoint = "./functions/push-notifier/index.ts"
 
 [functions.send-push-notification]
 enabled = true
+# Auth is X-Webhook-Secret or service_role inside the function (anon JWT is not enough).
 verify_jwt = false
 import_map = "./functions/send-push-notification/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
@@ -445,6 +447,22 @@ entrypoint = "./functions/send-push-notification/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/send-push-notification/*.html" ]
+
+[functions.release-chef-payout]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/release-chef-payout/index.ts"
+
+[functions.razorpay-webhook]
+enabled = true
+# Razorpay HMAC (RAZORPAY_WEBHOOK_SECRET), not a Supabase user JWT.
+verify_jwt = false
+entrypoint = "./functions/razorpay-webhook/index.ts"
+
+[functions.ai-search]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/ai-search/index.ts"
 
 # JWT at the gateway is not sufficient by itself (the anon key is a valid JWT).
 # The function still verifies the user with auth.getUser and authorizes chef self-service.

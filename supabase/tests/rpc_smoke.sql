@@ -170,9 +170,9 @@ BEGIN
     SELECT count(*) FROM pg_trigger t
     JOIN pg_class c ON c.oid = t.tgrelid
     WHERE c.relname IN ('orders', 'meals') AND NOT t.tgisinternal
-      AND t.tgname IN ('on_order_push_webhook', 'on_meal_payout_webhook')
+      AND t.tgname IN ('on_order_push_webhook', 'on_order_payout_webhook')
   ) <> 2 THEN
-    RAISE EXCEPTION 'expected order + meal push triggers';
+    RAISE EXCEPTION 'expected order push + order payout triggers';
   END IF;
 
   RAISE NOTICE 'rpc_smoke ok place=% cancel=% streak=%', v_place, v_cancel, v_streak;

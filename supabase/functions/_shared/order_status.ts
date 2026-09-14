@@ -69,3 +69,8 @@ export function isReadyForPickup(raw: unknown): boolean {
 export function isOutForDelivery(raw: unknown): boolean {
   return parseOrderStatus(raw) === "out_for_delivery"
 }
+
+export function isDeliveredLike(raw: unknown): boolean {
+  const kind = parseOrderStatus(raw)
+  return kind === "delivered" || kind === "completed"
+}

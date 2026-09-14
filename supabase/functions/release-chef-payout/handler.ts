@@ -10,6 +10,7 @@ import {
   razorpayErrorMessage,
   readRazorpayKeys,
 } from "../_shared/razorpay_route.mjs"
+import { isDeliveredLike } from "../_shared/order_status.ts"
 
 export interface ReleaseRecord {
   id?: string
@@ -89,11 +90,13 @@ export async function releaseHeldTransfer(
 }
 
 export async function handleReleaseChefPayout(
-  payload: { record?: ReleaseRecord },
+  payload: { record?: ReleaseRecord; table?: string },
   deps: ReleaseDeps,
 ): Promise<ReleaseResult> {
   const record = payload.record
-  if (!record || record.status !== "Delivered") {
+  // Catalog meal status churn (Available/Paused/Archived) must not release.
+  // Orders use delivered / completed (Title Case or snake_case).
+  if (!record || !isDeliveredLike(record.status)) {
     return jsonResult({ skipped: true, reason: "not_delivered" })
   }
   if (record.transfer_status === "released") {

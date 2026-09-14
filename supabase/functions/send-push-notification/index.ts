@@ -3,14 +3,14 @@
 // FCM HTTP v1 path. Prefer this over legacy `push-notifier` when
 // FIREBASE_SERVICE_ACCOUNT is configured.
 //
-// Still blocked without a hosted `orders` webhook (SQL not in this repo).
-// Targeting uses customer_id / chef_id / delivery_partner_id — not
-// customer_name-as-email.
+// Invoked from `orders.status` via `handle_order_push_webhook`.
+// Requires X-Webhook-Secret or the service role key — the anon JWT is rejected.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { GoogleAuth } from "npm:google-auth-library@9"
 import { parseOrderStatus } from "../_shared/order_status.ts"
+import { authorizeInternalInvoke, unauthorizedResponse } from "../_shared/webhook_auth.ts"
 
 type NotifyTarget = { userId: string; title: string; body: string }
 
@@ -48,6 +48,9 @@ function collectTargets(record: Record<string, unknown>): NotifyTarget[] {
 
 serve(async (req) => {
   try {
+    const auth = authorizeInternalInvoke(req.headers)
+    if (!auth.ok) return unauthorizedResponse(auth)
+
     const payload = await req.json()
     const record = payload.record ?? payload
 
