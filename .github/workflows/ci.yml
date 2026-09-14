@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Provide dotenv asset
+        run: cp .env.example .env
+      - run: flutter pub get
+      - run: flutter analyze --no-fatal-infos
+      - run: flutter test
+
+  deno:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Edge function unit tests
+        run: |
+          deno test \
+            supabase/functions/_shared/order_status_test.ts \
+            supabase/functions/_shared/webhook_auth_test.ts \
+            supabase/functions/_shared/meal_catalog_test.ts \
+            supabase/functions/_shared/app_role_test.ts \
+            supabase/functions/razorpay-webhook/signature_test.ts \
+            supabase/functions/release-chef-payout/handler_test.ts \
+            supabase/functions/create-split-order/pricing_test.ts \
+            supabase/functions/create-split-order/route_transfers_test.ts \
+            supabase/functions/create-split-order/handler_test.ts \
+            supabase/functions/create-chef-account/handler_test.ts
+      - name: Node authorize tests
+        run: node --test supabase/functions/create-chef-account/*.test.mjs

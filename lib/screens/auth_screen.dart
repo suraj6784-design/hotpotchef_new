@@ -73,7 +73,7 @@ class _AuthScreenState extends State<AuthScreen> {
         await AuthRoleSync.syncOwnerAdminRole(_supabase);
         role = 'Admin';
       } else {
-        await AuthRoleSync.ensureJwtRole(_supabase, role);
+        role = await AuthRoleSync.syncCanonicalRole(_supabase, rawRole: role, email: user.email);
       }
     } catch (e, st) {
       FirebaseCrashlytics.instance.recordError(e, st, reason: 'JWT role sync after login');

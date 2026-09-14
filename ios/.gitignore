@@ -27,6 +27,11 @@ Flutter/flutter_export_environment.sh
 ServiceDefinitions.json
 Runner/GeneratedPluginRegistrant.*
 
+# Real iOS Firebase config is produced by `flutterfire configure`.
+# Keep the example template; never commit live GoogleService-Info.plist secrets.
+Runner/GoogleService-Info.plist
+!Runner/GoogleService-Info.plist.example
+
 # Exceptions to above rules.
 !default.mode1v3
 !default.mode2v3

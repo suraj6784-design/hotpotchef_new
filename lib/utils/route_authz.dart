@@ -71,20 +71,52 @@ abstract final class RouteAuthz {
   /// and auth-screen fallbacks. The owner allowlist email is always Admin.
   static AppRole parseRole(String? raw, {String? email}) {
     if (isPlatformOwnerEmail(email)) return AppRole.admin;
-    switch (raw?.trim().toLowerCase()) {
+    switch (_normalizeRoleKey(raw)) {
       case 'chef':
+      case 'cook':
+      case 'kitchen':
         return AppRole.chef;
       case 'driver':
+      case 'delivery':
+      case 'delivery partner':
+      case 'deliverypartner':
         return AppRole.driver;
       case 'admin':
       case 'ops':
       case 'platform':
       case 'platform admin':
-      case 'platform_admin':
+      case 'platformadmin':
         return AppRole.admin;
+      case 'customer':
+      case 'food lover':
+      case 'foodlover':
+      case 'diner':
+        return AppRole.customer;
       default:
         return AppRole.customer;
     }
+  }
+
+  /// Title-case label written to `public.users.role` and JWT metadata.
+  static String canonicalLabel(AppRole role) {
+    switch (role) {
+      case AppRole.chef:
+        return 'Chef';
+      case AppRole.driver:
+        return 'Driver';
+      case AppRole.admin:
+        return 'Admin';
+      case AppRole.customer:
+        return 'Customer';
+    }
+  }
+
+  static String _normalizeRoleKey(String? raw) {
+    return (raw ?? '')
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[_-]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ');
   }
 
   static String hubForRole(AppRole role) {
@@ -114,7 +146,7 @@ abstract final class RouteAuthz {
     if (p == authPath) return RouteAccess.public;
     // Recovery callback must stay reachable after Supabase creates a session.
     // `/auth` is public and would bounce a signed-in user to their hub.
-    if (p == resetPasswordPath || p == resetCallbackPath) {
+    if (p == resetPasswordPath || p == resetCallbackPath || p.startsWith('/legal')) {
       return RouteAccess.shared;
     }
     if (p == customerHub || p == '/cart' || p == '/app/cart') {
