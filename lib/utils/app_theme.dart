@@ -406,7 +406,7 @@ class AppTheme {
       colorScheme: colorScheme,
       textTheme: textTheme,
       iconTheme: IconThemeData(color: onSurface, size: iconSize, opticalSize: iconOpticalSize, weight: 400, fill: 0),
-      splashFactory: InkSparkle.splashFactory,
+      splashFactory: InkRipple.splashFactory,
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
           TargetPlatform.android: CupertinoPageTransitionsBuilder(),

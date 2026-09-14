@@ -394,7 +394,7 @@ class _ContactSupportSheetState extends State<ContactSupportSheet> {
               style: const TextStyle(color: AppTheme.textMuted, fontSize: 13, height: 1.4),
             ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Ops replies within 1 business day (SLA)',
               style: AppTheme.caption,
             ),

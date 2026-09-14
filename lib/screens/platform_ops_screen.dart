@@ -2235,7 +2235,7 @@ class _OpsTicketThreadScreenState extends State<_OpsTicketThreadScreen> {
                       'Internal note',
                       style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
                     ),
-                    subtitle: const Text(
+                    subtitle: Text(
                       'Not shown to the diner',
                       style: AppTheme.micro,
                     ),

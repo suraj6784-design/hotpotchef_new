@@ -1784,8 +1784,8 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               )
             else ...[
               if (canBoost && !isAvailable)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 6),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
                   child: Text(
                     'Stock is back — boost will publish this dish on Home again.',
                     style: AppTheme.caption,
@@ -2114,10 +2114,10 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   ),
                 )
               else if (awaitingPay)
-                const Text('Stay ready. The customer pays from My Orders, then this becomes a kitchen order.',
+                Text('Stay ready. The customer pays from My Orders, then this becomes a kitchen order.',
                     style: AppTheme.caption)
               else
-                const Text('Payment received. Confirm the new order on the Orders tab.',
+                Text('Payment received. Confirm the new order on the Orders tab.',
                     style: AppTheme.caption),
               const SizedBox(height: 8),
               if (hasMyQuote || awaitingPay || paid)
@@ -2150,7 +2150,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   ],
                 )
               else
-                const Text('Submit a quote to message the customer about this lead.',
+                Text('Submit a quote to message the customer about this lead.',
                     style: AppTheme.caption),
             ],
           ),

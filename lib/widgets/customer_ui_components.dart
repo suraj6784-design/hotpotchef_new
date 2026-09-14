@@ -182,7 +182,7 @@ Future<void> showPlateShareSheet(
                 style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.onSurfaceOf(ctx)),
               ),
               const SizedBox(height: 4),
-              const Text(
+              Text(
                 'Share who cooked it — and the FSSAI number when the kitchen has listed one. The link opens this dish in HotPotChef.',
                 style: AppTheme.caption,
               ),
@@ -1561,7 +1561,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                         const SizedBox(height: 8),
                         MealNutritionStrip(meal: meal),
                         const SizedBox(height: 6),
-                        const Text(
+                        Text(
                           'Per listed portion, as entered by the kitchen.',
                           style: AppTheme.caption,
                         ),

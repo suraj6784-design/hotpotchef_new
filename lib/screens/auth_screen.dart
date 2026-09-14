@@ -1011,7 +1011,7 @@ class _AuthScreenState extends State<AuthScreen> {
       if (_isLogin && !_phoneOtpAuth)
         TextButton(
           onPressed: _handleForgotUsername,
-          child: const Text(
+          child: Text(
             'Forgot Email / Username?',
             style: AppTheme.caption,
           ),

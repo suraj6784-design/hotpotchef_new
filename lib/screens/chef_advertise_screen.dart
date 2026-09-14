@@ -351,8 +351,8 @@ class _ChefAdvertiseScreenState extends State<ChefAdvertiseScreen> {
                                 ],
                               ),
                             ] else if (status == 'live')
-                              const Padding(
-                                padding: EdgeInsets.only(top: 8),
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
                                 child: Text(
                                   'Live on diner Home. Contact HotPotChef to pause or change terms.',
                                   style: AppTheme.caption,

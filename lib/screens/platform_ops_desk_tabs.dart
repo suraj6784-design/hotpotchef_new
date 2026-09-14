@@ -130,20 +130,20 @@ class _AdminProfileListState extends State<_AdminProfileList> {
         AppCard(
           margin: const EdgeInsets.only(bottom: 8),
           onTap: () => launchUrl(Uri.parse('https://hotpotchef.com'), mode: LaunchMode.externalApplication),
-          child: const Row(
+          child: Row(
             children: [
-              Icon(Icons.language, color: AppTheme.primary),
-              SizedBox(width: 12),
+              const Icon(Icons.language, color: AppTheme.primary),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Website', style: TextStyle(fontWeight: FontWeight.w800)),
+                    const Text('Website', style: TextStyle(fontWeight: FontWeight.w800)),
                     Text('hotpotchef.com catalog and policies', style: AppTheme.caption),
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right),
+              const Icon(Icons.chevron_right),
             ],
           ),
         ),
@@ -506,7 +506,7 @@ class _OpsAccountsListState extends State<_OpsAccountsList> {
                                   ],
                                 ),
                                 const SizedBox(height: 4),
-                                const Text(
+                                Text(
                                   'Tap Save to apply role or suspend changes.',
                                   style: AppTheme.micro,
                                 ),

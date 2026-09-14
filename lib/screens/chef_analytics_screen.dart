@@ -325,7 +325,7 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                                 color: AppTheme.onSurfaceOf(context),
                               ),
                             ),
-                            const Text(
+                            Text(
                               'Amounts in ₹',
                               style: AppTheme.micro,
                             ),

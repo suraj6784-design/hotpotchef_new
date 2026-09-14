@@ -1328,7 +1328,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Text(
+                Text(
                   'Chefs cook to this window — not a restaurant ETA.',
                   style: AppTheme.caption,
                 ),
@@ -1527,7 +1527,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           Text('Optional rider tip',
                               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppTheme.onSurfaceOf(context))),
                           const SizedBox(height: 2),
-                          const Text('100% of the tip amount goes directly to them',
+                          Text('100% of the tip amount goes directly to them',
                               style: AppTheme.micro),
                         ],
                       ),

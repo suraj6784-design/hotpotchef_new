@@ -838,8 +838,8 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                       return null;
                     },
                   ),
-                  const Padding(
-                    padding: EdgeInsets.only(top: 4, bottom: 8),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4, bottom: 8),
                     child: Text(
                       'GSTIN is only needed when you want tax invoices. Leave blank for a bill of supply. FSSAI verification is still required before you can publish meals.',
                       style: AppTheme.micro,

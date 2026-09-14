@@ -734,7 +734,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                                 if (!widget.isDriver && dinerPromisedSlotCopy(_order).isNotEmpty)
                                   Text(dinerPromisedSlotCopy(_order), style: AppTheme.micro)
                                 else
-                                  const Text('Live route tracking active', style: AppTheme.micro),
+                                  Text('Live route tracking active', style: AppTheme.micro),
                                 if (!widget.isDriver && (_order['delivery_otp']?.toString().trim().length ?? 0) >= 4)
                                   Text(
                                     'Delivery PIN: ${_order['delivery_otp']} — share at the door',

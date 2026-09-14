@@ -953,7 +953,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
               value: _isHamper,
               activeThumbColor: AppTheme.primary,
               title: Text('Festival hamper', style: TextStyle(fontWeight: FontWeight.w800, color: titleColor, fontSize: 14)),
-              subtitle: const Text(
+              subtitle: Text(
                 'Gift box for Diwali / festivals — shows on diner Home under Festival Hampers.',
                 style: AppTheme.caption,
               ),
@@ -969,7 +969,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
               value: _isSocietyNight,
               activeThumbColor: AppTheme.primary,
               title: Text('Society / RWA night', style: TextStyle(fontWeight: FontWeight.w800, color: titleColor, fontSize: 14)),
-              subtitle: const Text(
+              subtitle: Text(
                 'One building, one drop — shows on diner Home under Society Nights.',
                 style: AppTheme.caption,
               ),
@@ -994,7 +994,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
               value: _isShelfItem,
               activeThumbColor: AppTheme.primary,
               title: Text('Shelf / pantry item', style: TextStyle(fontWeight: FontWeight.w800, color: titleColor, fontSize: 14)),
-              subtitle: const Text(
+              subtitle: Text(
                 'Pickle, masala, papad — shows on diner Home under Shelf from Home.',
                 style: AppTheme.caption,
               ),
@@ -1017,7 +1017,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
             const SizedBox(height: 16),
             Text('Diet tags', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor)),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               'Diners can filter Home by these tags. Leave blank if they do not apply.',
               style: AppTheme.caption,
             ),
@@ -1047,7 +1047,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
             const SizedBox(height: 24),
             Text('Nutrition (per portion)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor)),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               'Shown on the diner meal card. Leave blank if you are not sure — do not guess.',
               style: AppTheme.caption,
             ),
@@ -1125,7 +1125,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
             // Logistics & Schedule
             Text('Time slots', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor)),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               'When this dish can be ordered and served.',
               style: AppTheme.caption,
             ),
@@ -1183,7 +1183,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
 
             Text('Delivery options', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor)),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               'How customers can receive this dish. Select every option you can offer.',
               style: AppTheme.caption,
             ),
@@ -1337,7 +1337,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                     value: _promoAdvanced,
                     activeColor: AppTheme.primary,
                     title: const Text('Checkout code (optional)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                    subtitle: const Text(
+                    subtitle: Text(
                       'Off by default. Turn on only if diners must type a code. Extra % / ₹ on top of an automatic offer stacks — use one or the other.',
                       style: AppTheme.micro,
                     ),
@@ -1409,7 +1409,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                     contentPadding: EdgeInsets.zero,
                     activeColor: AppTheme.primary,
                     title: const Text('Accept HotPot Reward Coins', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                    subtitle: const Text('Customers can use platform coins to discount this dish', style: AppTheme.micro),
+                    subtitle: Text('Customers can use platform coins to discount this dish', style: AppTheme.micro),
                     value: _acceptsHotpotCoins,
                     onChanged: (val) => setState(() => _acceptsHotpotCoins = val),
                   ),

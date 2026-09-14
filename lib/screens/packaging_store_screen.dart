@@ -223,13 +223,13 @@ class _PackagingStoreScreenState extends State<PackagingStoreScreen> {
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
                   ),
-                  child: const Column(
+                  child: Column(
                     children: [
-                      Icon(Icons.inventory_2_rounded, color: AppTheme.primary, size: 40),
-                      SizedBox(height: 10),
-                      Text('HotPotChef Supply Store',
+                      const Icon(Icons.inventory_2_rounded, color: AppTheme.primary, size: 40),
+                      const SizedBox(height: 10),
+                      const Text('HotPotChef Supply Store',
                           style: TextStyle(color: AppTheme.link, fontSize: 18, fontWeight: FontWeight.bold)),
-                      SizedBox(height: 4),
+                      const SizedBox(height: 4),
                       Text(
                         'Tap Request to place the order on your kitchen account. The HotPotChef supply desk confirms stock in-app; WhatsApp is optional backup.',
                         textAlign: TextAlign.center,
