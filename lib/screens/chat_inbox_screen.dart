@@ -75,7 +75,7 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
             .select('request_id, chef_id, status')
             .inFilter('status', ['open', 'selected'])
             .limit(200),
-      ]);
+      ]).withTimeout(NetworkTimeouts.standard);
 
       final orders = _asMaps(results[0]);
       var requests = _asMaps(results[1]);

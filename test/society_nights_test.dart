@@ -21,6 +21,8 @@ void main() {
           'status': 'Available',
           'price': 149,
           'time_slot': '19:30',
+          'pickup_lat': 18.52,
+          'pickup_lng': 73.85,
         },
         {
           'id': '2',
@@ -36,7 +38,7 @@ void main() {
           'quantity': 0,
           'status': 'Available',
         },
-      ]);
+      ], destinationLat: 18.52, destinationLng: 73.85);
       expect(list, hasLength(1));
       expect(societyNightHeadline(list.single), 'Green Valley A');
       expect(societyNightSubhead(list.single), contains('Building Thali'));
@@ -74,8 +76,12 @@ void main() {
             'quantity': 12,
             'status': 'Available',
             'price': 149,
+            'pickup_lat': 18.52,
+            'pickup_lng': 73.85,
           },
         ],
+        destinationLat: 18.52,
+        destinationLng: 73.85,
         destinationAddress: {
           'society_name': 'Green Valley',
           'wing': 'A',
@@ -94,8 +100,12 @@ void main() {
             'quantity': 12,
             'status': 'Available',
             'price': 149,
+            'pickup_lat': 18.52,
+            'pickup_lng': 73.85,
           },
         ],
+        destinationLat: 18.52,
+        destinationLng: 73.85,
         destinationAddress: {
           'society_name': 'Lakeview Residency',
           'wing': 'C',

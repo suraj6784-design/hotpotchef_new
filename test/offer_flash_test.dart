@@ -15,11 +15,28 @@ Map<String, dynamic> _live(Map<String, dynamic> extra) {
   };
 }
 
+/// Home strips require a diner pin (no city guess). Tests pin to the kitchen.
+List<Map<String, dynamic>> _offers(
+  Iterable<Map<String, dynamic>> meals, {
+  DateTime? now,
+  Set<String> excludedChefIds = const {},
+  bool excludeFestivalHampers = false,
+}) {
+  return flashableOfferMeals(
+    meals,
+    now: now,
+    excludedChefIds: excludedChefIds,
+    excludeFestivalHampers: excludeFestivalHampers,
+    destinationLat: 18.52,
+    destinationLng: 73.85,
+  );
+}
+
 void main() {
   group('flashableOfferMeals', () {
     test('keeps live catalog offers and promo codes, skips sold-out and private rows', () {
       final now = DateTime(2026, 9, 12, 19, 0);
-      final offers = flashableOfferMeals([
+      final offers = _offers([
         _live({
           'id': '1',
           'title': 'FESTIVE50',
@@ -54,7 +71,7 @@ void main() {
 
     test('shows gated BOGO and Flash families beside Flat, hides expired %', () {
       final now = DateTime(2026, 9, 9, 6, 30);
-      final offers = flashableOfferMeals([
+      final offers = _offers([
         _live({
           'id': 'bogo',
           'title': 'PromoSales',
@@ -106,7 +123,7 @@ void main() {
         'discount_value': 30,
       });
       expect(
-        flashableOfferMeals([meal], excludedChefIds: {'closed-chef'}),
+        _offers([meal], excludedChefIds: {'closed-chef'}),
         isEmpty,
       );
       expect(offerFlashHeadline(meal), 'FLASH 30%');
@@ -131,7 +148,7 @@ void main() {
         'title': 'Yesterday',
         'boosted_until': DateTime(2026, 9, 6).toIso8601String(),
       });
-      final offers = flashableOfferMeals([promo, expiredBoost, boosted], now: now);
+      final offers = _offers([promo, expiredBoost, boosted], now: now);
       expect(offers.map((meal) => meal['id']), ['promo', 'boosted']);
       expect(offerFlashHeadline(boosted, now: now), 'Boosted today');
       expect(isMealBoosted(expiredBoost, now: now), isFalse);
@@ -148,7 +165,7 @@ void main() {
         'promo_code': 'FESTIVE50',
         'time_slot': 'Sat, Sun (11:00 AM to 6:00 PM)',
       });
-      expect(flashableOfferMeals([weekendOnly], now: fridayNight), isEmpty);
+      expect(_offers([weekendOnly], now: fridayNight), isEmpty);
 
       final windowOver = _live({
         'id': 'lunch',
@@ -157,7 +174,7 @@ void main() {
         'time_slot': 'Daily (11:00 AM to 12:00 PM)',
       });
       expect(
-        flashableOfferMeals([windowOver], now: DateTime(2026, 9, 11, 14, 0)),
+        _offers([windowOver], now: DateTime(2026, 9, 11, 14, 0)),
         isEmpty,
       );
 
@@ -167,7 +184,7 @@ void main() {
         'time_slot': 'Daily (6:30 PM to 9:30 PM)',
       };
       expect(
-        flashableOfferMeals([liveTonight], now: DateTime(2026, 9, 11, 14, 0)).single['id'],
+        _offers([liveTonight], now: DateTime(2026, 9, 11, 14, 0)).single['id'],
         'live',
       );
     });
@@ -189,11 +206,11 @@ void main() {
         'discount_value': 50,
       });
       expect(
-        flashableOfferMeals([hamper, flash], now: now).map((m) => m['id']),
+        _offers([hamper, flash], now: now).map((m) => m['id']),
         containsAll(['hamper', 'flash']),
       );
       expect(
-        flashableOfferMeals([hamper, flash], now: now, excludeFestivalHampers: true)
+        _offers([hamper, flash], now: now, excludeFestivalHampers: true)
             .map((m) => m['id']),
         ['flash'],
       );
@@ -227,5 +244,20 @@ void main() {
     );
     expect(mealHasPlaceholderOrMissingSlot({'time_slot': 'Flexible'}), isTrue);
     expect(mealHasPlaceholderOrMissingSlot({'time_slot': 'Daily (6:30 PM to 9:30 PM)'}), isFalse);
+  });
+
+  test('offer strip stays empty until the diner drops a delivery pin', () {
+    final now = DateTime(2026, 9, 12, 19, 0);
+    expect(
+      flashableOfferMeals([
+        _live({
+          'id': '1',
+          'title': 'FESTIVE50',
+          'offer_type': 'flashSale',
+          'discount_value': 50,
+        }),
+      ], now: now),
+      isEmpty,
+    );
   });
 }

@@ -9,6 +9,7 @@ import '../models/driver_delivery_model.dart';
 import '../services/order_lifecycle.dart';
 import '../utils/helpers.dart';
 import '../utils/kyc_checklist.dart';
+import '../utils/network.dart';
 
 void _logDriverError(dynamic error, StackTrace stackTrace, String reason) {
   if (kDebugMode) {
@@ -120,7 +121,7 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
         activeFuture,
         completedRecentFuture,
         earningsFuture,
-      ].cast<Future<dynamic>>());
+      ].cast<Future<dynamic>>()).withTimeout(NetworkTimeouts.standard);
 
       final availableRaw = (results[0] as List).map((e) => Map<String, dynamic>.from(e)).toList();
       final activeRaw = (results[1] as List).map((e) => Map<String, dynamic>.from(e)).toList();
@@ -188,7 +189,8 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
           .select(
             'id, name, full_name, address, house_no, street, landmark, city, state, postal_code, pincode, lat, lng, latitude, longitude',
           )
-          .inFilter('id', missing.toList());
+          .inFilter('id', missing.toList())
+          .withTimeout(NetworkTimeouts.standard);
       final byId = <String, Map<String, dynamic>>{
         for (final row in rows)
           if (row['id'] != null) row['id'].toString(): Map<String, dynamic>.from(row),

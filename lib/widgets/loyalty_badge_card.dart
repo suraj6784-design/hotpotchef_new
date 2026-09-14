@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/app_theme.dart';
+import '../utils/network.dart';
 
 class LoyaltyBadgeCard extends StatefulWidget {
   const LoyaltyBadgeCard({super.key});
@@ -34,10 +35,10 @@ class _LoyaltyBadgeCardState extends State<LoyaltyBadgeCard> {
         return;
       }
 
-      final results = await Future.wait([
+      final results = await Future.wait<dynamic>([
         _supabase.from('user_gamification').select().eq('user_id', user.id).maybeSingle(),
         _supabase.from('orders').select('status').eq('customer_id', user.id),
-      ].cast<Future<dynamic>>());
+      ]).withTimeout(NetworkTimeouts.standard);
 
       if (!mounted) return;
 
@@ -56,7 +57,6 @@ class _LoyaltyBadgeCardState extends State<LoyaltyBadgeCard> {
       });
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to fetch gamification tier data');
-      if (mounted) setState(() => _isLoading =false);
       if (mounted) setState(() => _isLoading = false);
     }
   }

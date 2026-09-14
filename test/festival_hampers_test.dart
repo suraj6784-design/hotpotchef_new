@@ -9,7 +9,8 @@ void main() {
       expect(isFestivalHamper({'title': 'Diwali hamper box'}), isTrue);
       expect(isFestivalHamper({'category': 'Maharashtrian'}), isFalse);
 
-      final list = festivalHamperMeals([
+      final list = festivalHamperMeals(
+        [
         {
           'id': '1',
           'title': 'Diwali Box',
@@ -18,6 +19,8 @@ void main() {
           'quantity': 3,
           'status': 'Available',
           'price': 499,
+          'pickup_lat': 18.52,
+          'pickup_lng': 73.85,
         },
         {
           'id': '2',
@@ -33,7 +36,10 @@ void main() {
           'quantity': 0,
           'status': 'Available',
         },
-      ]);
+      ],
+        destinationLat: 18.52,
+        destinationLng: 73.85,
+      );
       expect(list, hasLength(1));
       expect(festivalHamperHeadline(list.single), 'Festival hamper');
       expect(festivalHamperSubhead(list.single), contains('Diwali Box'));

@@ -10,7 +10,8 @@ void main() {
       expect(isShelfItem({'shelf_kind': 'Masala'}), isTrue);
       expect(isShelfItem({'category': 'Maharashtrian'}), isFalse);
 
-      final list = shelfItems([
+      final list = shelfItems(
+        [
         {
           'id': '1',
           'title': 'Godā masala',
@@ -20,6 +21,8 @@ void main() {
           'quantity': 8,
           'status': 'Available',
           'price': 120,
+          'pickup_lat': 18.52,
+          'pickup_lng': 73.85,
         },
         {
           'id': '2',
@@ -35,7 +38,10 @@ void main() {
           'quantity': 0,
           'status': 'Available',
         },
-      ]);
+      ],
+        destinationLat: 18.52,
+        destinationLng: 73.85,
+      );
       expect(list, hasLength(1));
       expect(shelfItemHeadline(list.single), 'Masala');
       expect(shelfItemSubhead(list.single), contains('Godā masala'));
