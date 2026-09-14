@@ -4,7 +4,7 @@
     terms: {
       slug: 'terms',
       title: 'Terms & conditions',
-      updated: '7 September 2026',
+      updated: '15 September 2026',
       sections: [
         {
           heading: 'The marketplace',
@@ -49,7 +49,7 @@
         {
           heading: 'Grievance',
           body:
-            'For complaints or disputes, email hello@hotpotchef.com or open an in-app support ticket from Account → Contact Us. Ops aims to reply within one business day.',
+            'Grievance Officer (HotPotChef) is reachable at hello@hotpotchef.com. You can also open an in-app support ticket from Account → Contact Us. Ops aims to acknowledge within one business day and resolve or give a status update within 15 days, as required under the IT Rules / DPDP grievance process.',
         },
         {
           heading: 'Data and deletion',
@@ -61,7 +61,7 @@
     privacy: {
       slug: 'privacy',
       title: 'Privacy policy',
-      updated: '7 September 2026',
+      updated: '15 September 2026',
       sections: [
         {
           heading: 'What we collect',
@@ -91,14 +91,14 @@
         {
           heading: 'Grievance',
           body:
-            'Privacy and grievance contact: hello@hotpotchef.com, or in-app support tickets under Account.',
+            'Grievance Officer (HotPotChef): hello@hotpotchef.com. In-app support tickets under Account are the same channel. We aim to acknowledge within one business day.',
         },
       ],
     },
     faq: {
       slug: 'faq',
       title: 'FAQs',
-      updated: '7 September 2026',
+      updated: '15 September 2026',
       sections: [
         {
           heading: 'How do I place an order?',
@@ -135,7 +135,7 @@
     cancellation: {
       slug: 'cancellation',
       title: 'Cancellation & reschedule policy',
-      updated: '2 September 2026',
+      updated: '15 September 2026',
       sections: [
         {
           heading: 'Customer cancel',

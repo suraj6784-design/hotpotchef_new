@@ -19,11 +19,9 @@ void main() {
     );
   });
 
-  test('terms keep invoice guidance after marketplace integrity section', () {
+  test('terms name a grievance officer and keep invoice guidance', () {
     final terms = legalDocumentFor(LegalDocumentType.terms);
-    expect(
-      terms.sections.any((s) => s.heading.toLowerCase().contains('invoice')),
-      isTrue,
-    );
+    expect(terms.sections.any((s) => s.heading.toLowerCase().contains('invoice')), isTrue);
+    expect(terms.sections.any((s) => s.body.contains('Grievance Officer')), isTrue);
   });
 }

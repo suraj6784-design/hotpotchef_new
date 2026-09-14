@@ -10,7 +10,11 @@ void main() {
     test('parses chef, driver, admin, and customer aliases', () {
       expect(AppRole.parse('Chef'), AppRole.chef);
       expect(AppRole.parse('driver'), AppRole.driver);
+      expect(AppRole.parse('Delivery'), AppRole.driver);
+      expect(AppRole.parse('Delivery Partner'), AppRole.driver);
       expect(AppRole.parse('Admin'), AppRole.admin);
+      expect(AppRole.parse('customer'), AppRole.customer);
+      expect(AppRole.parse('Food Lover'), AppRole.customer);
       expect(AppRole.parse(null), AppRole.customer);
       expect(AppRole.chef.hubPath, '/chef-hub');
       expect(AppRole.admin.hubPath, '/platform-ops');

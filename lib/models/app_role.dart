@@ -49,8 +49,10 @@ enum AppRole {
       case 'cook':
         return AppRole.chef;
       case 'driver':
+      case 'delivery':
       case 'delivery partner':
       case 'delivery_partner':
+      case 'deliverypartner':
         return AppRole.driver;
       case 'admin':
       case 'ops':

@@ -20,7 +20,7 @@ LegalDocument legalDocumentFor(LegalDocumentType type) {
     case LegalDocumentType.terms:
       return const LegalDocument(
         title: 'Terms & conditions',
-        updated: '7 September 2026',
+        updated: '15 September 2026',
         sections: [
           LegalSection(
             'The marketplace',
@@ -56,7 +56,7 @@ LegalDocument legalDocumentFor(LegalDocumentType type) {
           ),
           LegalSection(
             'Grievance',
-            'For complaints or disputes, email hello@hotpotchef.com or open an in-app support ticket from Account → Contact Us. Ops aims to reply within one business day.',
+            'Grievance Officer (HotPotChef) is reachable at hello@hotpotchef.com. You can also open an in-app support ticket from Account → Contact Us. Ops aims to acknowledge within one business day and resolve or give a status update within 15 days, as required under the IT Rules / DPDP grievance process.',
           ),
           LegalSection(
             'Data and deletion',
@@ -67,7 +67,7 @@ LegalDocument legalDocumentFor(LegalDocumentType type) {
     case LegalDocumentType.privacy:
       return const LegalDocument(
         title: 'Privacy policy',
-        updated: '7 September 2026',
+        updated: '15 September 2026',
         sections: [
           LegalSection(
             'What we collect',
@@ -91,14 +91,14 @@ LegalDocument legalDocumentFor(LegalDocumentType type) {
           ),
           LegalSection(
             'Grievance',
-            'Privacy and grievance contact: hello@hotpotchef.com, or in-app support tickets under Account.',
+            'Grievance Officer (HotPotChef): hello@hotpotchef.com. In-app support tickets under Account are the same channel. We aim to acknowledge within one business day.',
           ),
         ],
       );
     case LegalDocumentType.faq:
       return const LegalDocument(
         title: 'FAQs',
-        updated: '7 September 2026',
+        updated: '15 September 2026',
         sections: [
           LegalSection(
             'How do I place an order?',
@@ -129,7 +129,7 @@ LegalDocument legalDocumentFor(LegalDocumentType type) {
     case LegalDocumentType.cancellation:
       return const LegalDocument(
         title: 'Cancellation & reschedule policy',
-        updated: '2 September 2026',
+        updated: '15 September 2026',
         sections: [
           LegalSection(
             'Customer cancel',
