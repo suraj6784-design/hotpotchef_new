@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { parseOrderStatus } from "../_shared/order_status.ts";
+import { authorizeInternalInvoke, unauthorizedResponse } from "../_shared/webhook_auth.ts";
 
 // Client-side FCM token lifecycle is fixed in the Flutter app.
 // This function still depends on a hosted `orders` webhook that is NOT in
@@ -46,6 +47,9 @@ function collectTargets(record: Record<string, unknown>): NotifyTarget[] {
 
 serve(async (req) => {
   try {
+    const auth = authorizeInternalInvoke(req.headers);
+    if (!auth.ok) return unauthorizedResponse(auth);
+
     const payload = await req.json();
     const newRecord = payload.record ?? {};
     const oldRecord = payload.old_record;

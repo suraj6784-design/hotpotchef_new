@@ -10,6 +10,16 @@ void main() {
       expect(RouteAuthz.parseRole(' customer '), AppRole.customer);
     });
 
+    test('maps Delivery Partner / Food Lover / Delivery aliases', () {
+      expect(RouteAuthz.parseRole('Delivery Partner'), AppRole.driver);
+      expect(RouteAuthz.parseRole('delivery_partner'), AppRole.driver);
+      expect(RouteAuthz.parseRole('Delivery'), AppRole.driver);
+      expect(RouteAuthz.parseRole('Food Lover'), AppRole.customer);
+      expect(RouteAuthz.parseRole('food_lover'), AppRole.customer);
+      expect(RouteAuthz.canonicalLabel(AppRole.driver), 'Driver');
+      expect(RouteAuthz.canonicalLabel(AppRole.customer), 'Customer');
+    });
+
     test('defaults unknown or missing values to customer', () {
       expect(RouteAuthz.parseRole(null), AppRole.customer);
       expect(RouteAuthz.parseRole(''), AppRole.customer);
@@ -63,6 +73,8 @@ void main() {
       expect(RouteAuthz.classify('/platform-ops/'), RouteAccess.admin);
       expect(RouteAuthz.classify('/reset-password'), RouteAccess.shared);
       expect(RouteAuthz.classify('/reset-callback'), RouteAccess.shared);
+      expect(RouteAuthz.classify('/legal/privacy'), RouteAccess.shared);
+      expect(RouteAuthz.classify('/legal/terms'), RouteAccess.shared);
     });
 
     test('future chef/driver/customer paths inherit the prefix group', () {

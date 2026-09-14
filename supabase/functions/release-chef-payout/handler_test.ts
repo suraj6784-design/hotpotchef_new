@@ -19,6 +19,29 @@ Deno.test("skips when the meal is not delivered", async () => {
   assertEquals(result.body.reason, "not_delivered")
 })
 
+Deno.test("skips catalog Available/Paused status churn", async () => {
+  for (const status of ["Available", "Paused", "Archived", "Closed"]) {
+    const result = await handleReleaseChefPayout(
+      { record: { id: "m1", status, transfer_status: "on_hold", razorpay_transfer_id: "trf_1" } },
+      { async markReleased() {} },
+    )
+    assertEquals(result.body.reason, "not_delivered")
+  }
+})
+
+Deno.test("treats snake_case delivered as releasable", async () => {
+  const result = await handleReleaseChefPayout(
+    { record: { id: "o1", status: "delivered", transfer_status: "on_hold", razorpay_transfer_id: "trf_1" } },
+    {
+      getRazorpayKeys: () => ({ keyId: "rzp_test_abc", keySecret: "secret" }),
+      fetchImpl: () => Promise.resolve(new Response(JSON.stringify({ id: "trf_1" }), { status: 200 })),
+      async markReleased() {},
+    },
+  )
+  assertEquals(result.status, 200)
+  assertEquals(result.body.success, true)
+})
+
 Deno.test("releases an on-hold transfer with PATCH /v1/transfers/:id", async () => {
   const calls: { method?: string; url: string; body: unknown }[] = []
   let marked = ""

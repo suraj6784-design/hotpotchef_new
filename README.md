@@ -13,7 +13,18 @@ For help getting started with Flutter development, view the
 
 1. Copy `.env.example` to `.env` (`.env` is gitignored).
 2. Fill in `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `GOOGLE_MAPS_API_KEY`, and `RAZORPAY_KEY_ID` (Test key `rzp_test_...`). `RAZORPAY_KEY_SECRET` is server-only — see Razorpay Route below.
-3. Optional: `PLAY_STORE_URL` / `APP_STORE_URL` when a real store listing exists. Leave them empty rather than pointing at the unpublished `com.hotpotchef.app` Play page (HTTP 404). The Android applicationId is still `com.hotpotchef.app` for installed-app intents (`hotpotchef://app/cart`).
+3. Optional: `PLAY_STORE_URL` / `APP_STORE_URL` when a real store listing exists. Leave them empty rather than pointing at the unpublished `com.hotpotchef.app` Play page (HTTP 404). The Android applicationId **and iOS bundle id** are `com.hotpotchef.app`. iOS display name is **HotPotChef**.
+
+### iOS Firebase
+
+There is no live `GoogleService-Info.plist` in git (do not invent an iOS app id). Template: `ios/Runner/GoogleService-Info.plist.example`. After adding an iOS app on Firebase project `hotpotchef-c53fa`:
+
+```bash
+dart pub global activate flutterfire_cli
+flutterfire configure --project=hotpotchef-c53fa --platforms=ios,android,web
+```
+
+Until that plist exists, `FirebaseBootstrap` uses native config lookup on iOS and reconstructed Dart options on Android/web (`lib/firebase_options.dart`).
 
 Password-reset emails use `io.supabase.hotpotchef://reset-callback/`. That scheme is registered in Android / iOS / macOS. The app listens for the callback (and Supabase `passwordRecovery`) and opens `/reset-password`, then continues to the role hub.
 
@@ -34,6 +45,10 @@ where email = 'operator@example.com';
 ```
 
 **Owner allowlist:** `suraj6784@gmail.com` is always treated as Admin, even if `users.role` or JWT still says Chef/Customer. Login writes `Admin` into both places.
+
+Login also canonicalizes aliases: `Delivery Partner` / `Delivery` → Driver, `Food Lover` → Customer.
+
+Privacy / Terms / FAQ / Cancellation / Contact are in-app screens (`/legal/...`) plus `website/*.html`. They are working drafts, not lawyer-reviewed DPDP notices.
 
 KYC on the desk is chef-only for FSSAI + kitchen name. Drivers are scored on identity/payout fields only (no FSSAI in Missing / denominator).
 
@@ -84,7 +99,7 @@ Chef payouts use Razorpay **Route linked accounts** in Test mode. Production act
 | --- | --- | --- |
 | `create-chef-account` | `POST /v2/accounts` (Route) + product/settlements, or `POST /v1/beta/accounts` if v2 is unavailable. Persists a real `acc_...` id. | Labeled mock only: `acc_mock_*`. UI says sandbox, not verified. |
 | `create-split-order` / checkout | Parent Razorpay order is created. Route `transfers[]` are attached when the chef has a real `acc_*` (not `acc_mock_*`). `transfer_status` is `on_hold`. | Parent order cannot be created (`Payment gateway configuration missing`). |
-| `release-chef-payout` | `PATCH /v1/transfers/:id` (`on_hold: 0`) after delivery. Looks up `trf_` from the order if the meal only stored `order_id`. | Errors if a real transfer is pending. Skips `skipped_*` statuses. |
+| `release-chef-payout` | `PATCH /v1/transfers/:id` (`on_hold: 0`) after **order delivered**. Looks up `trf_` from the order if only `order_id` was stored. Catalog meal pause/archive does **not** trigger this. | Errors if a real transfer is pending. Skips `skipped_*` statuses. |
 
 Skip reasons (still **not** silent `skipped_standard_mode` when Route is configured):
 
@@ -98,7 +113,8 @@ Blocked without dashboard secrets / Route enablement (not something this repo ca
 - Creating Test API keys and enabling **Route** on the Razorpay Test-mode dashboard
 - Setting `RAZORPAY_KEY_ID` + `RAZORPAY_KEY_SECRET` as **Supabase secrets** for the edge functions
 - Optional: KYC / settlement activation on the linked account if Razorpay Test mode asks for it
-- Hosted `orders` delivered webhook that invokes `release-chef-payout` (not exported in this repo)
+- Hosted `orders` delivered trigger that invokes `release-chef-payout` (`supabase/migrations/20260914120100_payout_on_delivered_orders.sql`)
+- `RAZORPAY_WEBHOOK_SECRET` on the `razorpay-webhook` function (unsigned posts return HTTP 401)
 
 Live (`rzp_live_`) keys are not required and are not the default. If they are set later, the UI labels the account as live instead of Test.
 
@@ -113,8 +129,16 @@ supabase secrets set RAZORPAY_KEY_ID=rzp_test_...
 supabase secrets set RAZORPAY_KEY_SECRET=...
 ```
 
-4. Redeploy `create-chef-account`, `create-split-order`, and `release-chef-payout`.
-5. Chef Profile → bank details → **Link**. A real Test `acc_...` is stored on `users.gateway_account_id`. Mock chefs can tap Link again after keys are added.
+4. Redeploy `create-chef-account`, `create-split-order`, `release-chef-payout`, and `razorpay-webhook`.
+5. Razorpay Dashboard → Webhooks → add `https://<project>.supabase.co/functions/v1/razorpay-webhook` with a secret. Set the same value:
+
+```bash
+supabase secrets set RAZORPAY_WEBHOOK_SECRET=...
+```
+
+6. Chef Profile → bank details → **Link**. A real Test `acc_...` is stored on `users.gateway_account_id`. Mock chefs can tap Link again after keys are added.
+
+Market-readiness audit (2026-09-14): [`docs/E2E_MARKET_AUDIT_2026-09-14.md`](docs/E2E_MARKET_AUDIT_2026-09-14.md). Remediation notes: [`docs/AUDIT_REMEDIATION_2026-09-14.md`](docs/AUDIT_REMEDIATION_2026-09-14.md).
 
 Handler tests:
 
@@ -123,6 +147,8 @@ deno test supabase/functions/create-chef-account/handler_test.ts \
   supabase/functions/create-split-order/pricing_test.ts \
   supabase/functions/create-split-order/route_transfers_test.ts \
   supabase/functions/create-split-order/handler_test.ts \
-  supabase/functions/release-chef-payout/handler_test.ts
+  supabase/functions/release-chef-payout/handler_test.ts \
+  supabase/functions/razorpay-webhook/signature_test.ts \
+  supabase/functions/_shared/webhook_auth_test.ts
 node --test supabase/functions/create-chef-account/*.test.mjs
 ```

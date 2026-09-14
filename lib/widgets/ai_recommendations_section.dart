@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/app_theme.dart';
+import '../utils/meal_catalog.dart';
 import '../widgets/customer_ui_components.dart';
 
 class AiRecommendationsSection extends ConsumerStatefulWidget {
@@ -56,16 +57,15 @@ class _AiRecommendationsSectionState extends ConsumerState<AiRecommendationsSect
       final mealsResponse = await _supabase
           .from('meals')
           .select()
+          .eq('status', MealCatalog.availableStatus)
           .ilike('category', '%$_favoriteCategory%')
           .limit(5);
 
       if (!mounted) return;
 
-      final validMeals = List<Map<String, dynamic>>.from(mealsResponse).where((m) {
-        final status = m['status']?.toString().toLowerCase() ?? '';
-        final isInventory = (m['customer_name'] == null || m['customer_name'].toString().isEmpty);
-        return isInventory && status != 'paused' && status != 'cancelled';
-      }).toList();
+      final validMeals = List<Map<String, dynamic>>.from(mealsResponse)
+          .where(MealCatalog.isSellable)
+          .toList();
 
       if (mounted) {
         setState(() {

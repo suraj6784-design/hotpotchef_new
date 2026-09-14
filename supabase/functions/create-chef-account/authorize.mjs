@@ -5,7 +5,12 @@ export function extractBearerToken(authorizationHeader) {
 }
 
 export function normalizeRole(role) {
-  return (role ?? '').toString().trim().toLowerCase()
+  return (role ?? '').toString().trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ')
+}
+
+function isChefRole(role) {
+  const normalized = normalizeRole(role)
+  return normalized === 'chef' || normalized === 'cook' || normalized === 'kitchen'
 }
 
 /**
@@ -25,7 +30,7 @@ export function authorizeChefAccount(input) {
   }
 
   const role = normalizeRole(input.role)
-  if (role && role !== 'chef') {
+  if (role && !isChefRole(role)) {
     return { ok: false, status: 403, error: 'Forbidden' }
   }
 
