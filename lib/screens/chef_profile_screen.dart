@@ -426,7 +426,8 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
         });
         _showSnackBar(
           pending
-              ? 'Bank details saved. Chef settlements start after Razorpay Route is activated on this account.'
+              ? (response.data['message']?.toString() ??
+                  'Bank details saved. Chef settlements start after Razorpay Route is activated on this account.')
               : 'Payout account linked for settlements.',
         );
       } else {

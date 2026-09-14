@@ -112,6 +112,25 @@ serve(async (req) => {
       })
     }
 
+    if (quoted.coinsApplied > 0) {
+      const { data: coinHold, error: coinError } = await admin.rpc('reserve_checkout_coins', {
+        p_razorpay_order_id: rzpOrder.id,
+        p_amount: quoted.coinsApplied,
+        p_user_id: user.id,
+      })
+      if (coinError || coinHold?.success !== true) {
+        await admin.rpc('release_checkout_inventory', {
+          p_razorpay_order_id: rzpOrder.id,
+          p_force: true,
+        })
+        return jsonResponse({
+          success: false,
+          code: coinHold?.code ?? 'insufficient_coins',
+          error: coinHold?.error || coinError?.message || 'HotPot Coins changed. Pay the remainder online.',
+        }, 400)
+      }
+    }
+
     return jsonResponse({
       success: true,
       order_id: rzpOrder.id,

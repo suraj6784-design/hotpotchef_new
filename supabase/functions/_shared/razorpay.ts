@@ -114,3 +114,102 @@ export async function createPaymentTransfer(paymentId: string, accountId: string
   const transfer = Array.isArray(data?.items) ? data.items[0] : (Array.isArray(data) ? data[0] : data)
   return transfer
 }
+
+function razorpayError(data: Record<string, unknown> | null, fallback: string) {
+  const err = data?.error as Record<string, unknown> | undefined
+  return String(err?.description || err?.reason || fallback)
+}
+
+function digitsPhone(raw: string) {
+  const d = raw.replace(/\D/g, '')
+  if (d.length >= 10) return d.slice(-10)
+  return ''
+}
+
+/** Route Linked Account + bank product request. Returns acc_ id when Razorpay accepts. */
+export async function createRouteLinkedAccount(input: {
+  chefId: string
+  email: string
+  phone: string
+  name: string
+  bankAccount: string
+  ifsc: string
+  beneficiary: string
+  pan?: string
+  gstin?: string
+  street?: string
+  city?: string
+}) {
+  const { header } = razorpayAuthHeader()
+  const phone = digitsPhone(input.phone)
+  const legalName = (input.name || input.beneficiary || 'HotPotChef kitchen').slice(0, 200)
+  const accountBody: Record<string, unknown> = {
+    email: input.email,
+    phone: phone || undefined,
+    type: 'route',
+    reference_id: input.chefId.replace(/-/g, '').slice(0, 20),
+    legal_business_name: legalName,
+    business_type: 'individual',
+    contact_name: input.beneficiary || legalName,
+    profile: {
+      category: 'food',
+      subcategory: 'restaurant',
+      addresses: {
+        registered: {
+          street1: (input.street || 'Pune').slice(0, 100),
+          street2: '.',
+          city: input.city || 'Pune',
+          state: 'MAHARASHTRA',
+          postal_code: '411001',
+          country: 'IN',
+        },
+      },
+    },
+  }
+  if (input.pan && /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(input.pan)) {
+    accountBody.legal_info = {
+      pan: input.pan,
+      ...(input.gstin ? { gst: input.gstin } : {}),
+    }
+  }
+
+  const created = await fetch('https://api.razorpay.com/v2/accounts', {
+    method: 'POST',
+    headers: { Authorization: header, 'Content-Type': 'application/json' },
+    body: JSON.stringify(accountBody),
+  })
+  const createdJson = await created.json()
+  if (!created.ok) {
+    throw new Error(razorpayError(createdJson, 'Could not create Razorpay Route account'))
+  }
+  const accountId = String(createdJson?.id ?? '')
+  if (!accountId.startsWith('acc_')) {
+    throw new Error('Razorpay did not return a Linked Account id')
+  }
+
+  const productRes = await fetch(`https://api.razorpay.com/v2/accounts/${accountId}/products`, {
+    method: 'POST',
+    headers: { Authorization: header, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ product_name: 'route' }),
+  })
+  const productJson = await productRes.json()
+  const productId = String(productJson?.id ?? productJson?.product_id ?? '')
+  if (productRes.ok && productId) {
+    await fetch(`https://api.razorpay.com/v2/accounts/${accountId}/products/${productId}`, {
+      method: 'PATCH',
+      headers: { Authorization: header, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        requested_configuration: {
+          settlements: {
+            account_number: input.bankAccount,
+            ifsc_code: input.ifsc,
+            beneficiary_name: input.beneficiary,
+          },
+        },
+      }),
+    })
+  }
+
+  return { accountId, status: String(createdJson?.status ?? 'created') }
+}
+

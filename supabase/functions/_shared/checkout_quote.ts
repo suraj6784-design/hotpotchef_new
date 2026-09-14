@@ -37,6 +37,7 @@ export type QuotedCheckout = {
   cartItems: ReturnType<typeof normalizeCartItems>
   tipAmount: number
   applyCoins: boolean
+  coinsApplied: number
   deliveryFee: number
   amountPaise: number
   dropLat: number | null
@@ -110,6 +111,7 @@ export async function quotePaidCheckout(
     cartItems,
     tipAmount,
     applyCoins: applyCoins && coinsAllowed,
+    coinsApplied: coins,
     deliveryFee,
     amountPaise,
     dropLat: Number.isFinite(dropLat) ? dropLat : null,

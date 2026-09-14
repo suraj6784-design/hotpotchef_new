@@ -90,6 +90,23 @@ serve(async (req) => {
       })
     }
 
+    const { data: coinHold, error: coinError } = await admin.rpc('reserve_checkout_coins', {
+      p_razorpay_order_id: paymentId,
+      p_amount: billBeforeCoins,
+      p_user_id: user.id,
+    })
+    if (coinError || coinHold?.success !== true) {
+      await admin.rpc('release_checkout_inventory', {
+        p_razorpay_order_id: paymentId,
+        p_force: true,
+      })
+      return jsonResponse({
+        success: false,
+        code: coinHold?.code ?? 'insufficient_coins',
+        error: coinHold?.error || coinError?.message || 'HotPot Coins do not cover this order. Pay the remainder online.',
+      }, 400)
+    }
+
     const { error: pendingError } = await admin.from('pending_checkouts').insert({
       user_id: user.id,
       razorpay_order_id: paymentId,

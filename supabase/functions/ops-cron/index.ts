@@ -26,11 +26,23 @@ serve(async (req) => {
     } catch (expireErr) {
       console.error('expire_lapsed_fssai_licences', expireErr)
     }
+    try {
+      await admin.rpc('expire_checkout_holds')
+    } catch (holdErr) {
+      console.error('expire_checkout_holds', holdErr)
+    }
+    let lapsed = 0
+    try {
+      const { data: lapse } = await admin.rpc('lapse_unconfirmed_paid_orders')
+      lapsed = Number(lapse?.lapsed ?? 0)
+    } catch (lapseErr) {
+      console.error('lapse_unconfirmed_paid_orders', lapseErr)
+    }
 
     const { data: rows, error } = await admin
       .from('orders')
       .select('id, payment_id, total_price, refund_status, refund_id')
-      .eq('refund_status', 'failed')
+      .in('refund_status', ['failed', 'pending'])
       .not('payment_id', 'is', null)
       .order('updated_at', { ascending: true })
       .limit(25)
@@ -39,7 +51,7 @@ serve(async (req) => {
     let recovered = 0
     for (const row of rows ?? []) {
       const paymentId = String(row.payment_id ?? '')
-      if (!paymentId) continue
+      if (!paymentId || paymentId.startsWith('coins_')) continue
       try {
         const refundPaise = Math.round(Number(row.total_price || 0) * 100)
         const refund = await refundPayment(paymentId, refundPaise > 0 ? refundPaise : undefined)
@@ -61,6 +73,7 @@ serve(async (req) => {
       success: true,
       failed_refunds_scanned: (rows ?? []).length,
       recovered,
+      lapsed,
     })
   } catch (err) {
     return jsonResponse({ success: false, error: (err as Error).message ?? 'Cron failed' }, 400)
