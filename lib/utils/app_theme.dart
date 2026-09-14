@@ -80,17 +80,27 @@ class AppTheme {
   );
 
   // ---------------------------------------------------------------------------
-  // 3. Radii & spacing tokens
+  // 3. Radii, 4pt grid, motion
   // ---------------------------------------------------------------------------
-  static const double rSm = 10;
-  static const double rMd = 14;
-  static const double rLg = 20;
+  static const double rSm = 12;
+  static const double rMd = 16;
+  static const double rLg = 22;
   static const double rXl = 28;
 
   static const BorderRadius radiusSm = BorderRadius.all(Radius.circular(rSm));
   static const BorderRadius radiusMd = BorderRadius.all(Radius.circular(rMd));
   static const BorderRadius radiusLg = BorderRadius.all(Radius.circular(rLg));
   static const BorderRadius radiusXl = BorderRadius.all(Radius.circular(rXl));
+
+  static const double space4 = 4;
+  static const double space8 = 8;
+  static const double space12 = 12;
+  static const double space16 = 16;
+  static const double space20 = 20;
+  static const double space24 = 24;
+  static const double pagePadding = 20;
+  static const double iconSize = 22;
+  static const double iconOpticalSize = 24;
 
   static const Duration tabDuration = Duration(milliseconds: 240);
   static const Duration pageDuration = Duration(milliseconds: 340);
@@ -101,14 +111,16 @@ class AppTheme {
   static const int entranceStaggerMaxIndex = 4;
 
   // ---------------------------------------------------------------------------
-  // 4. Shadows
+  // 4. Shadows (warm ink, not raw black)
   // ---------------------------------------------------------------------------
   static const List<BoxShadow> softShadow = [
-    BoxShadow(color: Color(0x14000000), blurRadius: 16, offset: Offset(0, 6)),
+    BoxShadow(color: Color(0x14241F1C), blurRadius: 8, offset: Offset(0, 2)),
+    BoxShadow(color: Color(0x10241F1C), blurRadius: 24, offset: Offset(0, 12)),
   ];
 
   static const List<BoxShadow> heavyShadow = [
-    BoxShadow(color: Color(0x24000000), blurRadius: 24, offset: Offset(0, 10)),
+    BoxShadow(color: Color(0x1A241F1C), blurRadius: 12, offset: Offset(0, 4)),
+    BoxShadow(color: Color(0x1F241F1C), blurRadius: 32, offset: Offset(0, 16)),
   ];
 
   /// Warm, brand-tinted glow for primary CTAs.
@@ -138,7 +150,7 @@ class AppTheme {
   static Color hairlineOf(BuildContext context) =>
       Theme.of(context).brightness == Brightness.dark
           ? Colors.white.withValues(alpha: 0.08)
-          : const Color(0xFFEDE6E0);
+          : const Color(0xFFE8DFD6);
 
   static BoxDecoration cardDecoration({bool isDark = false}) {
     return BoxDecoration(
@@ -146,8 +158,37 @@ class AppTheme {
       borderRadius: radiusLg,
       boxShadow: isDark ? const [] : softShadow,
       border: Border.all(
-        color: isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFEDE6E0),
+        color: isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFE8DFD6),
+        width: 0.8,
       ),
+    );
+  }
+
+  /// Layered plate: inner highlight + outer hairline for meal/order cards.
+  static BoxDecoration layeredCardDecoration(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return BoxDecoration(
+      color: surfaceOf(context),
+      borderRadius: radiusLg,
+      boxShadow: isDark ? const [] : softShadow,
+      border: Border.all(color: hairlineOf(context), width: 0.8),
+      gradient: isDark
+          ? null
+          : const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFFFFFEFB), Color(0xFFFFF8F2)],
+            ),
+    );
+  }
+
+  static BoxDecoration glassDockDecoration(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return BoxDecoration(
+      color: (isDark ? const Color(0xE62A1F18) : const Color(0xF2FFFCF8)),
+      borderRadius: const BorderRadius.all(Radius.circular(40)),
+      border: Border.all(color: hairlineOf(context), width: 0.8),
+      boxShadow: softShadow,
     );
   }
 
@@ -169,91 +210,121 @@ class AppTheme {
   // Typography + chip helpers (premium uniformity)
   // ---------------------------------------------------------------------------
   static TextStyle sectionTitleOf(BuildContext context) => GoogleFonts.fraunces(
-        fontSize: 24,
+        fontSize: 26,
         fontWeight: FontWeight.w700,
         color: onSurfaceOf(context),
-        height: 1.15,
+        height: 1.12,
+        letterSpacing: -0.6,
       );
 
   static TextStyle cardTitleOf(BuildContext context) => GoogleFonts.fraunces(
-        fontSize: 16,
+        fontSize: 17,
         fontWeight: FontWeight.w600,
         color: onSurfaceOf(context),
-        height: 1.2,
+        height: 1.22,
+        letterSpacing: -0.25,
       );
 
   static TextStyle bodyOf(BuildContext context) => GoogleFonts.figtree(
-        fontSize: 14,
+        fontSize: 15,
         fontWeight: FontWeight.w500,
         color: onSurfaceOf(context),
-        height: 1.4,
+        height: 1.45,
+        letterSpacing: 0.1,
       );
 
   static TextStyle metaOf(BuildContext context) => GoogleFonts.figtree(
         fontSize: 13,
         fontWeight: FontWeight.w600,
         color: textMutedOf(context),
-        height: 1.35,
+        height: 1.4,
+        letterSpacing: 0.15,
       );
 
   /// Shared Home section label (offers, shelf, diet, meal grid).
   static TextStyle homeSectionLabelOf(BuildContext context) => GoogleFonts.figtree(
-        fontSize: 14,
-        fontWeight: FontWeight.w800,
+        fontSize: 13,
+        fontWeight: FontWeight.w700,
         color: onSurfaceOf(context),
-        height: 1.2,
+        height: 1.25,
+        letterSpacing: 0.2,
       );
 
   static TextStyle homeKickerOf(BuildContext context) => GoogleFonts.figtree(
         fontSize: 11,
-        fontWeight: FontWeight.w800,
-        letterSpacing: 0.3,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.8,
         color: linkOf(context),
         height: 1.2,
       );
 
   static TextStyle homeCardTitleOf(BuildContext context) => GoogleFonts.figtree(
         fontSize: 15,
-        fontWeight: FontWeight.w800,
+        fontWeight: FontWeight.w700,
         color: onSurfaceOf(context),
-        height: 1.25,
+        height: 1.28,
+        letterSpacing: -0.1,
       );
 
   /// Card / list row title. Use everywhere instead of ad-hoc w800.
   static TextStyle listTitleOf(BuildContext context) => homeCardTitleOf(context);
 
-  /// Secondary line under a title (12 / muted). Light-mode AA; prefer [captionOf] in dark.
-  static const TextStyle caption = TextStyle(
-    fontSize: 12,
-    fontWeight: FontWeight.w600,
-    color: textMuted,
-    height: 1.35,
-  );
+  static TextStyle captionOf(BuildContext context) => GoogleFonts.figtree(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        color: textMutedOf(context),
+        height: 1.4,
+        letterSpacing: 0.15,
+      );
 
-  static TextStyle captionOf(BuildContext context) =>
-      caption.copyWith(color: textMutedOf(context));
+  static TextStyle get caption => GoogleFonts.figtree(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        color: textMuted,
+        height: 1.4,
+        letterSpacing: 0.15,
+      );
 
-  /// Timestamps and chart labels.
-  static const TextStyle micro = TextStyle(
-    fontSize: 11,
-    fontWeight: FontWeight.w600,
-    color: textMuted,
-    height: 1.3,
-  );
+  static TextStyle get micro => GoogleFonts.figtree(
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+        color: textMuted,
+        height: 1.35,
+        letterSpacing: 0.2,
+      );
 
-  static TextStyle microOf(BuildContext context) =>
-      micro.copyWith(color: textMutedOf(context));
+  static TextStyle microOf(BuildContext context) => GoogleFonts.figtree(
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+        color: textMutedOf(context),
+        height: 1.35,
+        letterSpacing: 0.2,
+      );
 
-  /// Body copy that is supporting, not primary.
-  static const TextStyle bodyMuted = TextStyle(
-    fontSize: 14,
-    fontWeight: FontWeight.w500,
-    color: textMuted,
-    height: 1.45,
-  );
+  static TextStyle get bodyMuted => GoogleFonts.figtree(
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+        color: textMuted,
+        height: 1.5,
+        letterSpacing: 0.1,
+      );
 
-  static TextStyle bodyMutedOf(BuildContext context) =>
-      bodyMuted.copyWith(color: textMutedOf(context));
+  static TextStyle bodyMutedOf(BuildContext context) => GoogleFonts.figtree(
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+        color: textMutedOf(context),
+        height: 1.5,
+        letterSpacing: 0.1,
+      );
+
+  static IconThemeData iconThemeOf(BuildContext context, {Color? color}) => IconThemeData(
+        color: color ?? onSurfaceOf(context),
+        size: iconSize,
+        opticalSize: iconOpticalSize,
+        weight: 400,
+        fill: 0,
+        grade: 0,
+      );
 
   static TextStyle priceOf(BuildContext context) => GoogleFonts.figtree(
         fontSize: 16,
@@ -310,18 +381,18 @@ class AppTheme {
     final baseTypography =
         isDark ? Typography.material2021().white : Typography.material2021().black;
     final textTheme = GoogleFonts.figtreeTextTheme(baseTypography).copyWith(
-      displaySmall: GoogleFonts.fraunces(fontWeight: FontWeight.w700, color: onSurface, fontSize: 28, height: 1.15),
-      headlineMedium: GoogleFonts.fraunces(fontWeight: FontWeight.w700, color: onSurface, fontSize: 24, height: 1.15),
-      headlineSmall: GoogleFonts.fraunces(fontWeight: FontWeight.w600, color: onSurface, fontSize: 20, height: 1.2),
-      titleLarge: GoogleFonts.figtree(fontWeight: FontWeight.w800, color: onSurface, fontSize: 18, height: 1.2),
-      titleMedium: GoogleFonts.figtree(fontWeight: FontWeight.w800, color: onSurface, fontSize: 15, height: 1.25),
-      titleSmall: GoogleFonts.figtree(fontWeight: FontWeight.w700, color: onSurface, fontSize: 14, height: 1.25),
-      bodyLarge: GoogleFonts.figtree(fontWeight: FontWeight.w500, color: onSurface, fontSize: 16, height: 1.4),
-      bodyMedium: GoogleFonts.figtree(fontWeight: FontWeight.w500, color: onSurface, fontSize: 14, height: 1.4),
-      bodySmall: GoogleFonts.figtree(fontWeight: FontWeight.w600, color: muted, fontSize: 12, height: 1.35),
-      labelLarge: GoogleFonts.figtree(fontWeight: FontWeight.w700, color: onSurface, fontSize: 14),
-      labelMedium: GoogleFonts.figtree(fontWeight: FontWeight.w600, color: muted, fontSize: 13, height: 1.35),
-      labelSmall: GoogleFonts.figtree(fontWeight: FontWeight.w800, color: link, fontSize: 11, letterSpacing: 0.3, height: 1.2),
+      displaySmall: GoogleFonts.fraunces(fontWeight: FontWeight.w700, color: onSurface, fontSize: 28, height: 1.12, letterSpacing: -0.7),
+      headlineMedium: GoogleFonts.fraunces(fontWeight: FontWeight.w700, color: onSurface, fontSize: 24, height: 1.14, letterSpacing: -0.5),
+      headlineSmall: GoogleFonts.fraunces(fontWeight: FontWeight.w600, color: onSurface, fontSize: 20, height: 1.2, letterSpacing: -0.3),
+      titleLarge: GoogleFonts.figtree(fontWeight: FontWeight.w700, color: onSurface, fontSize: 18, height: 1.25, letterSpacing: -0.2),
+      titleMedium: GoogleFonts.figtree(fontWeight: FontWeight.w700, color: onSurface, fontSize: 15, height: 1.3, letterSpacing: -0.1),
+      titleSmall: GoogleFonts.figtree(fontWeight: FontWeight.w600, color: onSurface, fontSize: 14, height: 1.3),
+      bodyLarge: GoogleFonts.figtree(fontWeight: FontWeight.w500, color: onSurface, fontSize: 16, height: 1.5, letterSpacing: 0.1),
+      bodyMedium: GoogleFonts.figtree(fontWeight: FontWeight.w500, color: onSurface, fontSize: 15, height: 1.45, letterSpacing: 0.1),
+      bodySmall: GoogleFonts.figtree(fontWeight: FontWeight.w600, color: muted, fontSize: 12, height: 1.4, letterSpacing: 0.15),
+      labelLarge: GoogleFonts.figtree(fontWeight: FontWeight.w700, color: onSurface, fontSize: 14, letterSpacing: 0.15),
+      labelMedium: GoogleFonts.figtree(fontWeight: FontWeight.w600, color: muted, fontSize: 13, height: 1.35, letterSpacing: 0.15),
+      labelSmall: GoogleFonts.figtree(fontWeight: FontWeight.w700, color: link, fontSize: 11, letterSpacing: 0.8, height: 1.2),
     ).apply(
       bodyColor: onSurface,
       displayColor: onSurface,
@@ -329,10 +400,12 @@ class AppTheme {
 
     return ThemeData(
       useMaterial3: true,
+      visualDensity: VisualDensity.standard,
       brightness: brightness,
       scaffoldBackgroundColor: scaffoldBg,
       colorScheme: colorScheme,
       textTheme: textTheme,
+      iconTheme: IconThemeData(color: onSurface, size: iconSize, opticalSize: iconOpticalSize, weight: 400, fill: 0),
       splashFactory: InkSparkle.splashFactory,
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
@@ -345,19 +418,23 @@ class AppTheme {
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
-        iconTheme: IconThemeData(color: onSurface),
+        iconTheme: IconThemeData(color: onSurface, size: iconSize, opticalSize: iconOpticalSize, weight: 400, fill: 0),
         titleTextStyle: GoogleFonts.figtree(
           color: onSurface,
           fontSize: 18,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w700,
           height: 1.2,
+          letterSpacing: -0.2,
         ),
       ),
       cardTheme: CardThemeData(
         color: surface,
         elevation: 0,
         margin: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(borderRadius: radiusLg),
+        shape: RoundedRectangleBorder(
+          borderRadius: radiusLg,
+          side: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFE8DFD6), width: 0.8),
+        ),
         clipBehavior: Clip.antiAlias,
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -365,6 +442,7 @@ class AppTheme {
           backgroundColor: primary,
           foregroundColor: Colors.white,
           elevation: 0,
+          minimumSize: const Size(48, 48),
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
           shape: RoundedRectangleBorder(borderRadius: radiusMd),
           textStyle: GoogleFonts.figtree(fontSize: 16, fontWeight: FontWeight.w700),
@@ -374,6 +452,7 @@ class AppTheme {
         style: OutlinedButton.styleFrom(
           foregroundColor: link,
           side: BorderSide(color: link, width: 1.5),
+          minimumSize: const Size(48, 48),
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
           shape: RoundedRectangleBorder(borderRadius: radiusMd),
           textStyle: GoogleFonts.figtree(fontSize: 15, fontWeight: FontWeight.w700),
@@ -382,6 +461,7 @@ class AppTheme {
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: link,
+          minimumSize: const Size(48, 40),
           textStyle: GoogleFonts.figtree(fontSize: 14, fontWeight: FontWeight.w600),
         ),
       ),
@@ -389,9 +469,16 @@ class AppTheme {
         style: FilledButton.styleFrom(
           backgroundColor: primary,
           foregroundColor: Colors.white,
+          minimumSize: const Size(48, 48),
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
           shape: RoundedRectangleBorder(borderRadius: radiusMd),
           textStyle: GoogleFonts.figtree(fontSize: 16, fontWeight: FontWeight.w700),
+        ),
+      ),
+      iconButtonTheme: IconButtonThemeData(
+        style: IconButton.styleFrom(
+          minimumSize: const Size(48, 48),
+          visualDensity: VisualDensity.standard,
         ),
       ),
       chipTheme: ChipThemeData(
@@ -401,24 +488,30 @@ class AppTheme {
         labelStyle: GoogleFonts.figtree(fontSize: 12, fontWeight: FontWeight.w600, color: onSurface),
         secondaryLabelStyle: GoogleFonts.figtree(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white),
         side: BorderSide.none,
-        shape: RoundedRectangleBorder(borderRadius: radiusMd),
+        shape: const StadiumBorder(),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: surface,
         elevation: 0,
-        height: 68,
-        indicatorColor: primary.withValues(alpha: 0.14),
-        labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
+        height: 72,
+        indicatorColor: primary.withValues(alpha: 0.12),
+        indicatorShape: const StadiumBorder(),
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         labelTextStyle: WidgetStateProperty.resolveWith(
           (states) => GoogleFonts.figtree(
             fontSize: 11,
+            letterSpacing: 0.2,
             fontWeight: states.contains(WidgetState.selected) ? FontWeight.w700 : FontWeight.w500,
             color: states.contains(WidgetState.selected) ? link : muted,
           ),
         ),
         iconTheme: WidgetStateProperty.resolveWith(
           (states) => IconThemeData(
+            size: iconSize,
+            opticalSize: iconOpticalSize,
+            weight: 400,
+            fill: states.contains(WidgetState.selected) ? 1 : 0,
             color: states.contains(WidgetState.selected) ? link : muted,
           ),
         ),

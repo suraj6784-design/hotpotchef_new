@@ -4,6 +4,8 @@
 // Warm & premium direction: gradient CTAs, soft cards, shimmer skeletons,
 // friendly empty states, and consistent entrance animations.
 
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:shimmer/shimmer.dart';
@@ -710,32 +712,32 @@ class HubBottomDock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final surface = AppTheme.surfaceOf(context);
     return SafeArea(
       minimum: const EdgeInsets.only(bottom: 8),
       child: Center(
-        child: Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            color: surface,
-            borderRadius: BorderRadius.circular(40),
-            border: Border.all(color: AppTheme.hairlineOf(context)),
-            boxShadow: AppTheme.softShadow,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (var i = 0; i < destinations.length; i++)
-                _HubDockButton(
-                  destination: destinations[i],
-                  selected: selectedIndex == i,
-                  onTap: () {
-                    if (i == selectedIndex) return;
-                    AppHaptics.selection();
-                    onSelect(i);
-                  },
-                ),
-            ],
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(40),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: AppTheme.glassDockDecoration(context),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (var i = 0; i < destinations.length; i++)
+                    _HubDockButton(
+                      destination: destinations[i],
+                      selected: selectedIndex == i,
+                      onTap: () {
+                        if (i == selectedIndex) return;
+                        AppHaptics.selection();
+                        onSelect(i);
+                      },
+                    ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -785,17 +787,20 @@ class _HubDockButton extends StatelessWidget {
                   child: Icon(
                     selected ? destination.selectedIcon : destination.icon,
                     color: selected ? AppTheme.linkOf(context) : AppTheme.textMutedOf(context),
-                    size: 22,
+                    size: AppTheme.iconSize,
+                    opticalSize: AppTheme.iconOpticalSize,
+                    weight: 400,
+                    fill: selected ? 1 : 0,
                   ),
                 ),
                 if (selected) ...[
                   const SizedBox(width: 6),
                   Text(
                     destination.label,
-                    style: TextStyle(
+                    style: AppTheme.homeKickerOf(context).copyWith(
                       color: AppTheme.linkOf(context),
-                      fontWeight: FontWeight.w700,
                       fontSize: 13,
+                      letterSpacing: 0.15,
                     ),
                   ),
                 ],

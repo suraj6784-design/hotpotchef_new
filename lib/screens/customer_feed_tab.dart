@@ -100,23 +100,23 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     {'name': 'All', 'icon': Icons.tune},
     {'name': 'Veg', 'icon': Icons.eco_outlined},
     {'name': 'Vegan', 'icon': Icons.spa_outlined},
-    {'name': 'Jain', 'icon': Icons.brightness_low_outlined},
+    {'name': 'Jain', 'icon': Icons.filter_vintage_outlined},
     {'name': 'High-protein', 'icon': Icons.fitness_center_outlined},
-    {'name': 'Millet', 'icon': Icons.grass_outlined},
+    {'name': 'Millet', 'icon': Icons.grain},
     {'name': 'Diabetic', 'icon': Icons.monitor_heart_outlined},
   ];
 
   final List<Map<String, dynamic>> _categories = const [
-    {'name': 'All', 'icon': Icons.set_meal_outlined},
+    {'name': 'All', 'icon': Icons.restaurant_menu_outlined},
     {'name': 'Festival Hamper', 'icon': Icons.card_giftcard_outlined},
     {'name': 'Society Night', 'icon': Icons.apartment_outlined},
     {'name': 'Shelf', 'icon': Icons.kitchen_outlined},
-    {'name': 'Maharashtrian', 'icon': Icons.kebab_dining_outlined},
-    {'name': 'Punjabi', 'icon': Icons.ramen_dining_outlined},
-    {'name': 'South Indian', 'icon': Icons.tapas_outlined},
+    {'name': 'Maharashtrian', 'icon': Icons.set_meal_outlined},
+    {'name': 'Punjabi', 'icon': Icons.soup_kitchen_outlined},
+    {'name': 'South Indian', 'icon': Icons.rice_bowl_outlined},
     {'name': 'North Indian', 'icon': Icons.dinner_dining_outlined},
-    {'name': 'Healthy', 'icon': Icons.favorite_outline},
-    {'name': 'Snacks', 'icon': Icons.fastfood_outlined},
+    {'name': 'Healthy', 'icon': Icons.eco_outlined},
+    {'name': 'Snacks', 'icon': Icons.bakery_dining_outlined},
     {'name': 'Desserts', 'icon': Icons.icecream_outlined},
   ];
 
@@ -1949,11 +1949,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
               onTap: () => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
               child: Container(
                 clipBehavior: Clip.antiAlias,
-                decoration: BoxDecoration(
-                  color: AppTheme.surfaceOf(context),
-                  borderRadius: AppTheme.radiusLg,
-                  boxShadow: AppTheme.softShadow,
-                ),
+                decoration: AppTheme.layeredCardDecoration(context),
                 child: Stack(
                   children: [
                     Opacity(

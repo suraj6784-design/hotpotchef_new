@@ -12,7 +12,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../utils/app_haptics.dart';
 import '../utils/helpers.dart';
 import '../utils/network.dart';
 import '../utils/meal_nutrition.dart';
@@ -785,7 +784,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                             _selectedIndex == 4
                                 ? (openLeadsCount > 0 ? 'Catering leads ($openLeadsCount)' : 'Catering leads')
                                 : 'Packaging supplies',
-                            style: const TextStyle(fontWeight: FontWeight.w800),
+                            style: AppTheme.listTitleOf(context),
                           ),
                         ),
                       ),
@@ -797,28 +796,32 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                     ),
                   ],
                 ),
-                bottomNavigationBar: NavigationBar(
+                bottomNavigationBar: HubBottomDock(
                   selectedIndex: _selectedIndex > 3 ? 2 : _selectedIndex,
-                  backgroundColor: AppTheme.surfaceOf(context),
-                  indicatorColor: AppTheme.primary.withValues(alpha: 0.14),
-                  onDestinationSelected: (idx) {
-                    if (idx == _selectedIndex) return;
-                    AppHaptics.selection();
-                    setState(() => _selectedIndex = idx);
-                  },
+                  onSelect: (idx) => setState(() => _selectedIndex = idx),
                   destinations: [
-                    NavigationDestination(
-                      icon: Badge(label: Text('$pendingCount'), isLabelVisible: pendingCount > 0, child: const Icon(Icons.receipt_long_outlined)),
-                      selectedIcon: Badge(label: Text('$pendingCount'), isLabelVisible: pendingCount > 0, child: const Icon(Icons.receipt_long, color: AppTheme.primary)),
+                    HubDockDestination(
+                      icon: Icons.receipt_long_outlined,
+                      selectedIcon: Icons.receipt_long,
                       label: 'Orders',
+                      badgeCount: pendingCount,
                     ),
-                    NavigationDestination(
-                      icon: Badge(label: Text('$dispatchCount'), isLabelVisible: dispatchCount > 0, child: const Icon(Icons.local_shipping_outlined)),
-                      selectedIcon: Badge(label: Text('$dispatchCount'), isLabelVisible: dispatchCount > 0, child: const Icon(Icons.local_shipping, color: AppTheme.primary)),
+                    HubDockDestination(
+                      icon: Icons.local_shipping_outlined,
+                      selectedIcon: Icons.local_shipping,
                       label: 'Dispatch',
+                      badgeCount: dispatchCount,
                     ),
-                    const NavigationDestination(icon: Icon(Icons.restaurant_menu_outlined), selectedIcon: Icon(Icons.restaurant_menu, color: AppTheme.primary), label: 'Menu'),
-                    const NavigationDestination(icon: Icon(Icons.account_balance_wallet_outlined), selectedIcon: Icon(Icons.account_balance_wallet, color: AppTheme.primary), label: 'History'),
+                    const HubDockDestination(
+                      icon: Icons.restaurant_menu_outlined,
+                      selectedIcon: Icons.restaurant_menu,
+                      label: 'Menu',
+                    ),
+                    const HubDockDestination(
+                      icon: Icons.account_balance_wallet_outlined,
+                      selectedIcon: Icons.account_balance_wallet,
+                      label: 'History',
+                    ),
                   ],
                 ),
               ),

@@ -24,4 +24,11 @@ void main() {
     expect(AppTheme.entranceStaggerMaxIndex, 4);
     expect(AppTheme.entranceStaggerMs * AppTheme.entranceStaggerMaxIndex, 240);
   });
+
+  test('4pt spacing scale and icon size stay consistent', () {
+    expect(AppTheme.space4, 4);
+    expect(AppTheme.pagePadding, 20);
+    expect(AppTheme.iconSize, 22);
+    expect(AppTheme.rLg, 22);
+  });
 }
