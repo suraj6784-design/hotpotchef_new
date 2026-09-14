@@ -82,6 +82,7 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
     final favoriteSet = ref.watch(favoritesProvider);
     final favoritesList = favoriteSet.keys.toList();
 
+    final sessionKey = Supabase.instance.client.auth.currentUser?.id ?? 'guest';
     final List<Widget> pages = [
       CustomerFeedTab(
         favoriteMeals: favoritesList,
@@ -98,12 +99,14 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
         onLogout: _handleLogout,
       ),
       CustomerOrdersTab(
+        key: ValueKey('orders-$sessionKey'),
         refreshEpoch: _ordersEpoch,
         onProfileTap: _navigateToProfile,
         onLogout: _handleLogout,
         onReorderToCart: () => _onNavigationItemTapped(2),
       ),
       CustomerProfileScreen(
+        key: ValueKey('account-$sessionKey'),
         embedded: true,
         onLogout: () async {
           await _handleLogout();

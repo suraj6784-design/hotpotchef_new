@@ -12,6 +12,7 @@ import '../models/app_role.dart';
 import '../services/auth_session.dart';
 import '../utils/app_page.dart';
 import '../utils/helpers.dart';
+import '../utils/network.dart';
 import '../utils/pinned_address.dart';
 import '../utils/gst_invoice.dart';
 import '../widgets/avatar_upload.dart';
@@ -100,9 +101,12 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     setState(() => _isLoading = true);
     try {
       final user = _supabase.auth.currentUser;
-      if (user == null) return;
+      if (user == null) {
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
 
-      final userData = await _supabase.from('users').select().eq('id', user.id).maybeSingle();
+      final userData = await _supabase.from('users').select().eq('id', user.id).maybeSingle().withTimeout(NetworkTimeouts.standard);
 
       if (userData != null && mounted) {
         _nameController.text = userData['name']?.toString() ?? userData['full_name']?.toString() ?? user.userMetadata?['name']?.toString() ?? '';
@@ -139,7 +143,10 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
         _stateController.text = userData['state']?.toString() ?? 'Maharashtra';
         _pincodeController.text = userData['pincode']?.toString() ?? userData['postal_code']?.toString() ?? '';
       }
-      final ops = await AuthSession.isPlatformOps();
+      var ops = false;
+      try {
+        ops = await AuthSession.isPlatformOps().withTimeout(NetworkTimeouts.short);
+      } catch (_) {}
       if (mounted) _isPlatformOps = ops;
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Driver profile load failure');

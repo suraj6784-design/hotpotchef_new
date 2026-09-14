@@ -123,7 +123,16 @@ class PremiumProfileScaffold extends StatelessWidget {
         ],
       ),
       body: loading
-          ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(color: AppTheme.primary),
+                  const SizedBox(height: 16),
+                  Text('Opening your table…', style: AppTheme.captionOf(context)),
+                ],
+              ),
+            )
           : Column(
               children: [
                 Expanded(child: body),

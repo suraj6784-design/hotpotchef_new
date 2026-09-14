@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/helpers.dart';
+import '../utils/network.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
 
@@ -63,7 +64,10 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
   Future<void> _fetchChefAnalytics() async {
     try {
       final user = _supabase.auth.currentUser;
-      if (user == null) return;
+      if (user == null) {
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
 
       final cutoffDate = DateTime.now().subtract(Duration(days: _selectedDays));
 
@@ -72,7 +76,8 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
           .from('orders')
           .select()
           .eq('chef_id', user.id)
-          .gte('created_at', cutoffDate.toIso8601String());
+          .gte('created_at', cutoffDate.toIso8601String())
+          .withTimeout(NetworkTimeouts.standard);
 
       final orders = List<Map<String, dynamic>>.from(response);
 

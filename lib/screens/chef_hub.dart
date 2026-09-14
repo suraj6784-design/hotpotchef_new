@@ -756,7 +756,9 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 children: [
                   Scaffold(
                 backgroundColor: AppTheme.canvasOf(context),
-                body: Column(
+                body: Stack(
+                  children: [
+                    Column(
                   children: [
                     _buildHeader(),
                     const KycReminderBanner(profilePath: '/chef-profile'),
@@ -795,32 +797,39 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                       ),
                     ),
                   ],
-                ),
-                bottomNavigationBar: HubBottomDock(
-                  selectedIndex: _selectedIndex > 3 ? 2 : _selectedIndex,
-                  onSelect: (idx) => setState(() => _selectedIndex = idx),
-                  destinations: [
-                    HubDockDestination(
-                      icon: Icons.receipt_long_outlined,
-                      selectedIcon: Icons.receipt_long,
-                      label: 'Orders',
-                      badgeCount: pendingCount,
                     ),
-                    HubDockDestination(
-                      icon: Icons.local_shipping_outlined,
-                      selectedIcon: Icons.local_shipping,
-                      label: 'Dispatch',
-                      badgeCount: dispatchCount,
-                    ),
-                    const HubDockDestination(
-                      icon: Icons.restaurant_menu_outlined,
-                      selectedIcon: Icons.restaurant_menu,
-                      label: 'Menu',
-                    ),
-                    const HubDockDestination(
-                      icon: Icons.account_balance_wallet_outlined,
-                      selectedIcon: Icons.account_balance_wallet,
-                      label: 'History',
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 12,
+                      child: HubBottomDock(
+                        selectedIndex: _selectedIndex > 3 ? 2 : _selectedIndex,
+                        onSelect: (idx) => setState(() => _selectedIndex = idx),
+                        destinations: [
+                          HubDockDestination(
+                            icon: Icons.receipt_long_outlined,
+                            selectedIcon: Icons.receipt_long,
+                            label: 'Orders',
+                            badgeCount: pendingCount,
+                          ),
+                          HubDockDestination(
+                            icon: Icons.local_shipping_outlined,
+                            selectedIcon: Icons.local_shipping,
+                            label: 'Dispatch',
+                            badgeCount: dispatchCount,
+                          ),
+                          const HubDockDestination(
+                            icon: Icons.restaurant_menu_outlined,
+                            selectedIcon: Icons.restaurant_menu,
+                            label: 'Menu',
+                          ),
+                          const HubDockDestination(
+                            icon: Icons.account_balance_wallet_outlined,
+                            selectedIcon: Icons.account_balance_wallet,
+                            label: 'History',
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -1023,7 +1032,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   message: 'New orders in this queue will appear here in real time.',
                 )
               : ListView.builder(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
                   itemCount: filteredOrders.length,
                   itemBuilder: (context, index) => _buildOrderCard(filteredOrders[index]).entrance(index: index),
                 ),
@@ -1192,7 +1201,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
       itemCount: dispatches.length,
       itemBuilder: (context, index) {
         final order = dispatches[index];
@@ -1521,7 +1530,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
                 children: [
                   if (_menuFilter == 'Active') ...[
                     GradientButton(
@@ -1853,7 +1862,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     }
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
       children: [
         AppCard(
           child: Column(
@@ -2047,7 +2056,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
       itemCount: requests.length,
       itemBuilder: (context, index) {
         final req = requests[index];

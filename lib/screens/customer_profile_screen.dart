@@ -1,5 +1,7 @@
 // lib/screens/customer_profile_screen.dart
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -18,6 +20,7 @@ import '../providers/meal_plans_provider.dart';
 import '../services/auth_session.dart';
 import '../services/ticket_reply_seen_store.dart';
 import '../utils/helpers.dart';
+import '../utils/network.dart';
 import '../utils/legal_content.dart';
 import '../utils/payment_preferences.dart';
 import '../utils/support.dart';
@@ -59,15 +62,28 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
   bool _isLoading = true;
   bool _isSaving = false;
   bool _isPlatformOps = false;
+  int _loadSeq = 0;
+  StreamSubscription<AuthState>? _authSub;
 
   @override
   void initState() {
     super.initState();
-    _loadProfileData();
+    unawaited(_loadProfileData());
+    _authSub = _supabase.auth.onAuthStateChange.listen((data) {
+      if (!mounted) return;
+      if (data.session == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
+      if (data.event == AuthChangeEvent.signedIn || data.event == AuthChangeEvent.initialSession) {
+        unawaited(_loadProfileData());
+      }
+    });
   }
 
   @override
   void dispose() {
+    _authSub?.cancel();
     _nameController.dispose();
     _phoneController.dispose();
     _dobController.dispose();
@@ -103,23 +119,32 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
   // --- Data Loading ---
 
   Future<void> _loadProfileData() async {
+    final seq = ++_loadSeq;
     try {
       final user = _supabase.auth.currentUser;
-      if (user == null) return;
+      if (user == null) {
+        if (mounted && seq == _loadSeq) setState(() => _isLoading = false);
+        return;
+      }
 
+      if (mounted && seq == _loadSeq) setState(() => _isLoading = true);
       _email = user.email ?? '';
 
-      final futures = await Future.wait([
-        _supabase.from('users').select().eq('id', user.id).maybeSingle(),
+      final futures = await Future.wait<dynamic>([
+        _supabase
+            .from('users')
+            .select('name, phone, dob, gender, dietary_preference, allergies, hotpot_coins, avatar_url')
+            .eq('id', user.id)
+            .maybeSingle(),
         _supabase.from('user_addresses').select().eq('user_id', user.id),
         _supabase.from('orders').select('status').eq('customer_id', user.id),
-      ].cast<Future<dynamic>>());
+      ]).withTimeout(NetworkTimeouts.standard);
 
       final userData = futures[0] as Map<String, dynamic>?;
       final addressResponse = futures[1] as List<dynamic>;
       final ordersResponse = futures[2] as List<dynamic>;
 
-      if (userData != null && mounted) {
+      if (userData != null && mounted && seq == _loadSeq) {
         setState(() {
           _nameController.text = userData['name']?.toString() ?? user.userMetadata?['name']?.toString() ?? 'Valued Customer';
           _phoneController.text = userData['phone']?.toString() ?? user.userMetadata?['phone']?.toString() ?? '';
@@ -141,7 +166,10 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
       }).length;
 
       final preferredPay = await loadPreferredPaymentMethod();
-      final ops = await AuthSession.isPlatformOps();
+      var ops = false;
+      try {
+        ops = await AuthSession.isPlatformOps().withTimeout(NetworkTimeouts.short);
+      } catch (_) {}
       var ticketsSubtitle = 'Track replies and open conversations';
       try {
         final ticketRows = await _supabase
@@ -150,7 +178,8 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
             .eq('created_by', user.id)
             .eq('status', 'pending_customer')
             .order('last_message_at', ascending: false)
-            .limit(8);
+            .limit(8)
+            .withTimeout(NetworkTimeouts.short);
         final tickets = List<Map<String, dynamic>>.from(ticketRows as List);
         final seen = await TicketReplySeenStore.lastSeenByTicket(
           tickets.map((row) => row['id']?.toString() ?? ''),
@@ -171,7 +200,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
         }
       } catch (_) {}
 
-      if (mounted) {
+      if (mounted && seq == _loadSeq) {
         setState(() {
           _addresses = uniqueSavedAddresses(List<Map<String, dynamic>>.from(addressResponse));
           _orderCount = pastOrdersCount;
@@ -183,7 +212,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
       }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Customer profile load failure');
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted && seq == _loadSeq) setState(() => _isLoading = false);
     }
   }
 

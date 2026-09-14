@@ -697,7 +697,12 @@ class HubTabSwitcher extends StatelessWidget {
   }
 }
 
-/// Floating pill navigation used on customer and driver hubs.
+/// Floating pill navigation used on diner, chef, and driver hubs.
+///
+/// Size to the pill only. Never pass this as [Scaffold.bottomNavigationBar] —
+/// that slot is height-loose, and [BackdropFilter] / aligned containers will
+/// stretch into a full-height strip (chef Menu bug, Sep 2026). Overlay with
+/// [Positioned] like the diner and driver hubs.
 class HubBottomDock extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onSelect;
@@ -714,8 +719,11 @@ class HubBottomDock extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       minimum: const EdgeInsets.only(bottom: 8),
-      child: Center(
-        child: ClipRRect(
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        heightFactor: 1,
+        child: UnconstrainedBox(
+          child: ClipRRect(
           borderRadius: BorderRadius.circular(40),
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
@@ -724,6 +732,7 @@ class HubBottomDock extends StatelessWidget {
               decoration: AppTheme.glassDockDecoration(context),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   for (var i = 0; i < destinations.length; i++)
                     _HubDockButton(
@@ -739,6 +748,7 @@ class HubBottomDock extends StatelessWidget {
               ),
             ),
           ),
+        ),
         ),
       ),
     );
@@ -766,14 +776,13 @@ class _HubDockButton extends StatelessWidget {
       child: GestureDetector(
         onTap: onTap,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48, maxHeight: 56),
           child: AnimatedContainer(
             duration: MediaQuery.disableAnimationsOf(context)
                 ? Duration.zero
                 : const Duration(milliseconds: 280),
             curve: Curves.easeOutCubic,
             padding: EdgeInsets.symmetric(horizontal: selected ? 18 : 14, vertical: 10),
-            alignment: Alignment.center,
             decoration: BoxDecoration(
               color: selected ? AppTheme.primary.withValues(alpha: 0.14) : Colors.transparent,
               borderRadius: BorderRadius.circular(30),
