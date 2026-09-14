@@ -10,7 +10,6 @@ import '../utils/customer_constants.dart';
 import '../utils/dynamic_ui_engine.dart';
 import '../utils/meal_catalog.dart';
 import '../providers/cart_provider.dart';
-import '../models/cart_state.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/daily_streak_banner.dart';
 import '../widgets/ai_recommendations_section.dart';
