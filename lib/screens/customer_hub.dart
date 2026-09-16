@@ -27,8 +27,13 @@ import 'customer_profile_screen.dart';
 class CustomerHubScreen extends ConsumerStatefulWidget {
   static bool returnToCartAfterLogin = false;
   final int initialTab;
+  final bool skipHubRoleGuard;
 
-  const CustomerHubScreen({super.key, this.initialTab = 0});
+  const CustomerHubScreen({
+    super.key,
+    this.initialTab = 0,
+    this.skipHubRoleGuard = false,
+  });
 
   @override
   ConsumerState<CustomerHubScreen> createState() => _CustomerHubScreenState();
@@ -46,7 +51,8 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
       _selectedIndex = 1;
       CustomerHubScreen.returnToCartAfterLogin = false;
     }
-    if (Supabase.instance.client.auth.currentUser != null) {
+    if (!widget.skipHubRoleGuard &&
+        Supabase.instance.client.auth.currentUser != null) {
       unawaited(AuthSession.ensureHubRole(context, AppRole.customer));
     }
   }

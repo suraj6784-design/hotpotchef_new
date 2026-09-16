@@ -36,6 +36,16 @@ void main() {
       expect(roleCanOpenAuthenticatedPath(AppRole.admin, '/driver-hub'), isFalse);
       expect(AppRole.admin.canUsePackagingStore, isFalse);
       expect(AppRole.admin.usesReferral, isFalse);
+      expect(adminShouldSkipCustomerHome(AppRole.admin, '/customer-hub'), isTrue);
+      expect(
+        adminShouldSkipCustomerHome(
+          AppRole.admin,
+          '/customer-hub',
+          preview: kCustomerHubAdminPreviewValue,
+        ),
+        isFalse,
+      );
+      expect(adminShouldSkipCustomerHome(AppRole.customer, '/customer-hub'), isFalse);
     });
   });
 }

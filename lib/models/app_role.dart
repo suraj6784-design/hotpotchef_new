@@ -95,6 +95,16 @@ const kAdminOnlyRoutes = {
   '/platform-ops',
 };
 
+/// Diner app cold-starts on `/customer-hub`. Admins must skip that paint
+/// unless they explicitly opened the diner preview from the ops desk.
+const kCustomerHubAdminPreviewValue = 'diner';
+
+bool adminShouldSkipCustomerHome(AppRole role, String path, {String? preview}) {
+  if (role != AppRole.admin) return false;
+  if (path != '/customer-hub') return false;
+  return preview != kCustomerHubAdminPreviewValue;
+}
+
 /// Signed-in users may only open the hub and account screens for their role.
 bool roleCanOpenAuthenticatedPath(AppRole role, String path) {
   // Helpers (chef/customer/driver with ops seat) still need the desk.

@@ -115,6 +115,13 @@ class AppRouter {
         if (path == '/auth') {
           return role.hubPath;
         }
+        if (adminShouldSkipCustomerHome(
+          role,
+          path,
+          preview: state.uri.queryParameters['preview'],
+        )) {
+          return AppRole.admin.hubPath;
+        }
         if (!roleCanOpenAuthenticatedPath(role, path)) {
           return role.hubPath;
         }
@@ -137,8 +144,10 @@ class AppRouter {
           final userId = Supabase.instance.client.auth.currentUser?.id ?? 'guest';
           final tab = state.uri.queryParameters['tab'];
           return CustomerHubScreen(
-            key: ValueKey('customer-$userId-${tab ?? ''}'),
+            key: ValueKey('customer-$userId-${tab ?? ''}-${state.uri.queryParameters['preview'] ?? ''}'),
             initialTab: userId == 'guest' ? 0 : customerHubTabIndex(tab),
+            skipHubRoleGuard:
+                state.uri.queryParameters['preview'] == kCustomerHubAdminPreviewValue,
           );
         },
       ),

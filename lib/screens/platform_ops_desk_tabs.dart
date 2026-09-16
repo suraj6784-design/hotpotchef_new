@@ -64,7 +64,7 @@ class _AdminProfileListState extends State<_AdminProfileList> {
       (Icons.confirmation_number_outlined, 'Tickets', 'Customer and chef support', () => widget.onOpenTab(kOpsPermissionTickets)),
       (Icons.badge_outlined, 'KYC', 'Chef and driver completeness', () => widget.onOpenTab(kOpsPermissionKyc)),
       (Icons.insights_outlined, 'Dashboard', 'Command center and queues', () => widget.onOpenTab(kOpsPermissionDashboard)),
-      (Icons.restaurant_outlined, 'Diner feed', 'See the customer home', () => context.go('/customer-hub')),
+      (Icons.restaurant_outlined, 'Diner feed', 'See the customer home', () => context.go('/customer-hub?preview=$kCustomerHubAdminPreviewValue')),
     ];
 
     return ListView(
