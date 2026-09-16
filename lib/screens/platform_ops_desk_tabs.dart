@@ -861,6 +861,205 @@ class _OpsHelpersListState extends State<_OpsHelpersList> {
   }
 }
 
+class _MembershipOpsPanel extends StatefulWidget {
+  const _MembershipOpsPanel();
+
+  @override
+  State<_MembershipOpsPanel> createState() => _MembershipOpsPanelState();
+}
+
+class _MembershipOpsPanelState extends State<_MembershipOpsPanel> {
+  bool _loading = true;
+  bool _saving = false;
+  List<Map<String, dynamic>> _plans = [];
+  List<Map<String, dynamic>> _leads = [];
+  final _grantEmail = TextEditingController();
+  final _grantDays = TextEditingController(text: '90');
+
+  @override
+  void initState() {
+    super.initState();
+    _reload();
+  }
+
+  @override
+  void dispose() {
+    _grantEmail.dispose();
+    _grantDays.dispose();
+    super.dispose();
+  }
+
+  Future<void> _reload() async {
+    setState(() => _loading = true);
+    try {
+      final client = Supabase.instance.client;
+      final plans = await client.from('membership_plans').select().order('sort_order');
+      final leads = await client
+          .from('diner_membership_leads')
+          .select('user_id, plan_id, created_at')
+          .order('created_at', ascending: false)
+          .limit(20);
+      if (!mounted) return;
+      setState(() {
+        _plans = List<Map<String, dynamic>>.from(plans as List);
+        _leads = List<Map<String, dynamic>>.from(leads as List);
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _savePlan(Map<String, dynamic> plan) async {
+    setState(() => _saving = true);
+    try {
+      await Supabase.instance.client.from('membership_plans').update({
+        'name': plan['name'],
+        'list_price_inr': parseMoney(plan['list_price_inr']),
+        'offer_price_inr': parseMoney(plan['offer_price_inr']),
+        'duration_days': int.tryParse(plan['duration_days']?.toString() ?? '') ?? 90,
+        'flash_enabled': plan['flash_enabled'] == true,
+        'flash_label': plan['flash_label'],
+        'is_active': plan['is_active'] != false,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', plan['id']);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Membership plan saved')));
+      await _reload();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not save plan: $e')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _grant() async {
+    final email = _grantEmail.text.trim();
+    if (email.isEmpty) return;
+    setState(() => _saving = true);
+    try {
+      final res = await Supabase.instance.client.rpc('admin_grant_membership', params: {
+        'p_email': email,
+        'p_plan_id': _plans.isEmpty ? null : _plans.first['id'],
+        'p_days': int.tryParse(_grantDays.text.trim()),
+        'p_note': 'Granted from ops',
+      });
+      if (!mounted) return;
+      final ok = res is Map && res['success'] == true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(ok ? 'Membership granted' : (res is Map ? '${res['error']}' : 'Grant failed'))),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Grant failed: $e')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Membership & free delivery', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 6),
+          Text(
+            'Members get unlimited free delivery. Flash a lower price (₹1 for 3 months) on Home and checkout.',
+            style: AppTheme.caption,
+          ),
+          const SizedBox(height: 12),
+          for (final plan in _plans) _planEditor(plan),
+          const Divider(height: 28),
+          const Text('Grant membership', style: TextStyle(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _grantEmail,
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(labelText: 'Customer email'),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _grantDays,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Days'),
+          ),
+          const SizedBox(height: 8),
+          FilledButton(
+            onPressed: _saving ? null : _grant,
+            child: const Text('Grant membership'),
+          ),
+          if (_leads.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text('${_leads.length} recent interest tap(s)', style: AppTheme.caption),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _planEditor(Map<String, dynamic> plan) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(plan['name']?.toString() ?? 'Plan', style: const TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          TextFormField(
+            initialValue: plan['list_price_inr']?.toString() ?? '149',
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'List price (₹)'),
+            onChanged: (v) => plan['list_price_inr'] = v,
+          ),
+          const SizedBox(height: 8),
+          TextFormField(
+            initialValue: plan['offer_price_inr']?.toString() ?? '1',
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Flash / offer price (₹)'),
+            onChanged: (v) => plan['offer_price_inr'] = v,
+          ),
+          const SizedBox(height: 8),
+          TextFormField(
+            initialValue: plan['duration_days']?.toString() ?? '90',
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Duration (days)'),
+            onChanged: (v) => plan['duration_days'] = v,
+          ),
+          const SizedBox(height: 8),
+          TextFormField(
+            initialValue: plan['flash_label']?.toString() ?? '',
+            decoration: const InputDecoration(labelText: 'Flash label shown to diners'),
+            onChanged: (v) => plan['flash_label'] = v,
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Flash this offer on Home & checkout'),
+            value: plan['flash_enabled'] == true,
+            onChanged: (v) => setState(() => plan['flash_enabled'] = v),
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.tonal(
+              onPressed: _saving ? null : () => _savePlan(plan),
+              child: const Text('Save plan'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _CatalogOpsList extends StatelessWidget {
   const _CatalogOpsList({super.key, required this.busy, required this.onStatus});
 

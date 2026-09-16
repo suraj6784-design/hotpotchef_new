@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'app_theme.dart';
+import 'delivery_fee.dart';
 import 'fssai_certificate_scan.dart';
 import 'network.dart';
 import 'notification_copy.dart';
@@ -3252,9 +3253,8 @@ const double kDefaultDeliveryEstimate = 30;
 const double kDefaultDriverPayout = 40;
 
 double packagingFeeForLoyaltyTier(String? tier) {
-  final name = (tier ?? '').toLowerCase();
-  if (name.contains('gold')) return 0;
-  return kDefaultPackagingFee;
+  // Packaging is a disclosed per-order charge, not a loyalty perk.
+  return kPackagingFeeAtFreeDelivery;
 }
 
 bool loyaltyTierIsGold(String? tier) => (tier ?? '').toLowerCase().contains('gold');
@@ -3264,43 +3264,39 @@ String formatRupees(num amount, {int fractionDigits = 2}) {
 }
 
 String packagingFeeLineLabel({required double fee, String? loyaltyTier}) {
-  if (fee <= 0 && loyaltyTierIsGold(loyaltyTier)) return 'Packaging (Gold waiver)';
   if (fee <= 0) return 'Packaging';
-  return 'Packaging';
+  if (fee <= kPackagingFeeBelowFreeDelivery) return 'Packaging (under ₹199)';
+  return 'Packaging (₹199+)';
 }
 
-/// Shelf-only carts: ₹0. Hamper-only: capped gift wrap. Hot meals: loyalty packaging.
+/// Per order: ₹10 when food is under ₹199, ₹20 at/above ₹199. Empty cart is ₹0.
 double packagingFeeForCartItems(
   Iterable<Map<String, dynamic>> items, {
   String? loyaltyTier,
   double? loyaltyTierFee,
+  double? foodTotal,
 }) {
-  final base = loyaltyTierFee ?? packagingFeeForLoyaltyTier(loyaltyTier);
   final list = items.toList();
-  if (list.isEmpty) return base;
-
-  var hot = 0;
-  var hamper = 0;
-  var shelf = 0;
-  for (final item in list) {
-    final nested = item['rawMealDetails'] ?? item['mealDetails'] ?? item['meal_details'];
-    final merged = {
-      if (nested is Map) ...Map<String, dynamic>.from(nested),
-      ...item,
-    };
-    if (isShelfItem(merged)) {
-      shelf += 1;
-    } else if (isFestivalHamper(merged)) {
-      hamper += 1;
-    } else {
-      hot += 1;
+  if (list.isEmpty) return 0;
+  var food = foodTotal ?? 0;
+  if (foodTotal == null) {
+    food = 0;
+    for (final item in list) {
+      final qty = (item['quantity'] as num?)?.toDouble() ??
+          double.tryParse(item['quantity']?.toString() ?? '') ??
+          1;
+      final unit = (item['discounted_price'] as num?)?.toDouble() ??
+          double.tryParse(item['discounted_price']?.toString() ?? '') ??
+          (item['price'] as num?)?.toDouble() ??
+          double.tryParse(item['price']?.toString() ?? '') ??
+          (item['base_price'] as num?)?.toDouble() ??
+          double.tryParse(item['base_price']?.toString() ?? '') ??
+          0;
+      food += unit * (qty <= 0 ? 1 : qty);
     }
   }
-
-  if (hot > 0) return base;
-  if (shelf > 0 && hamper == 0) return 0;
-  if (hamper > 0) return base < 10 ? base : 10;
-  return base;
+  if (food >= kFreeDeliveryMinFood) return kPackagingFeeAtFreeDelivery;
+  return kPackagingFeeBelowFreeDelivery;
 }
 
 DateTime istCalendarDate([DateTime? now]) {
@@ -5109,6 +5105,58 @@ bool isCoinLedgerDebit(String? type, double amount) {
       .hasMatch(type ?? '');
 }
 
+/// Groups wallet copy that is logged twice (trigger + explicit insert).
+String coinActivityFamily(String title) {
+  final text = title.toLowerCase();
+  if (text.contains('streak')) return 'streak';
+  if (text.contains('restored') || text.contains('cancel')) return 'restore';
+  if (text.contains('referral')) return 'referral';
+  if (text.contains('checkout') || text.contains('applied')) return 'checkout';
+  if (text.contains('credited') || text.contains('credit')) return 'credit';
+  return text.replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
+}
+
+DateTime? coinActivityMinute(DateTime? at) {
+  if (at == null) return null;
+  final utc = at.toUtc();
+  return DateTime.utc(utc.year, utc.month, utc.day, utc.hour, utc.minute);
+}
+
+String coinActivityDedupeKey(Map<String, dynamic> txn) {
+  final rawAmount = (txn['amount'] as num?)?.toDouble() ??
+      double.tryParse(txn['amount']?.toString() ?? '') ??
+      0.0;
+  final type = txn['transaction_type']?.toString() ?? '';
+  final title = (txn['description']?.toString() ?? type).trim();
+  final debit = isCoinLedgerDebit(type, rawAmount);
+  final at = coinActivityMinute(DateTime.tryParse(txn['created_at']?.toString() ?? ''));
+  return '${coinActivityFamily(title)}|$debit|${rawAmount.abs().toStringAsFixed(2)}|${at?.toIso8601String() ?? ''}';
+}
+
+bool _coinTxnHasOrderLink(Map<String, dynamic> txn) {
+  final orderId = txn['order_id']?.toString().trim() ?? '';
+  return orderId.isNotEmpty;
+}
+
+/// Prefer the row that already names an order, else the first seen.
+List<Map<String, dynamic>> dedupeCoinTransactions(List<Map<String, dynamic>> transactions) {
+  final buckets = <String, Map<String, dynamic>>{};
+  final order = <String>[];
+  for (final txn in transactions) {
+    final key = coinActivityDedupeKey(txn);
+    final existing = buckets[key];
+    if (existing == null) {
+      buckets[key] = txn;
+      order.add(key);
+      continue;
+    }
+    if (_coinTxnHasOrderLink(txn) && !_coinTxnHasOrderLink(existing)) {
+      buckets[key] = txn;
+    }
+  }
+  return [for (final key in order) buckets[key]!];
+}
+
 bool _looksLikeStandaloneCoinCredit(String title, String type) {
   return RegExp(r'streak|referral|signup|welcome', caseSensitive: false)
       .hasMatch('$title $type');
@@ -5132,6 +5180,13 @@ String coinWalletOrderNumber(String? orderRef) {
   final compact = ref.replaceFirst(RegExp(r'^order\s*#?\s*', caseSensitive: false), '');
   if (compact.isEmpty) return '';
   return 'Order #$compact';
+}
+
+String coinWalletOrderLine({required bool isDebit, String? orderRef}) {
+  final number = coinWalletOrderNumber(orderRef);
+  if (number.isEmpty) return '';
+  if (isDebit) return 'Used on $number';
+  return 'Tied to $number';
 }
 
 String? _briefOrderRef(Map<String, dynamic> order) {
@@ -5236,8 +5291,9 @@ List<CoinLedgerEntry> mergeCoinLedger({
 }) {
   final entries = <CoinLedgerEntry>[];
   final usedOrderIds = <String>{};
+  final uniqueTxns = dedupeCoinTransactions(transactions);
 
-  for (final txn in transactions) {
+  for (final txn in uniqueTxns) {
     final rawAmount = (txn['amount'] as num?)?.toDouble() ??
         double.tryParse(txn['amount']?.toString() ?? '') ??
         0.0;
@@ -5251,14 +5307,18 @@ List<CoinLedgerEntry> mergeCoinLedger({
     if (orderRef != null && orderRef.isEmpty) orderRef = null;
     Map<String, dynamic>? matchedOrder;
     if (orderRef != null) {
-      orderRef = formatOrderId(orderRef, orderRef);
+      final rawOrderId = orderRef;
       for (final o in orders) {
-        final ref = formatOrderId(o['order_id']?.toString(), o['id']?.toString() ?? '');
-        if (ref == orderRef) {
+        final id = o['id']?.toString() ?? '';
+        final publicId = o['order_id']?.toString() ?? '';
+        if (id == rawOrderId || publicId == rawOrderId) {
           matchedOrder = o;
           break;
         }
       }
+      orderRef = matchedOrder == null
+          ? formatOrderId(rawOrderId, rawOrderId)
+          : _briefOrderRef(matchedOrder);
     } else if (shouldAttachOrderToCoinRow(title: title, type: type, isDebit: debit)) {
       matchedOrder = matchOrderForCoinDebit(
         amount: rawAmount.abs(),

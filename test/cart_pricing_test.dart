@@ -429,24 +429,24 @@ void main() {
     expect(CartItemAddOn.fromJson({'id': 'i', 'title': 'Ice Cream', 'price': '20'}).price, 20);
   });
 
-  test('cart estimated total includes packaging and a delivery estimate', () {
+  test('cart estimated total includes packaging; food ₹199+ has free delivery', () {
     final item = _buildItem(quantity: 1, mealDetails: {'price': 200, 'offer_type': 'none'});
     final state = CartState(items: [item]);
     expect(state.packagingFee, 20);
-    expect(state.estimatedDeliveryFee, 30);
-    expect(state.grandTotal, 250);
-    expect(state.deliveryFeeIsEstimate, isTrue);
+    expect(state.estimatedDeliveryFee, 0);
+    expect(state.grandTotal, 220);
+    expect(state.deliveryFeeIsEstimate, isFalse);
   });
 
-  test('Gold loyalty waives packaging on the cart bill', () {
+  test('Gold loyalty no longer waives packaging; ₹199+ food still packs at ₹20', () {
     final item = _buildItem(quantity: 1, mealDetails: {'price': 200, 'offer_type': 'none'});
     final state = CartState(items: [item], loyaltyTier: 'Gold Foodie', packagingFee: packagingFeeForCartItems(
       [item.toCheckoutPayload()],
       loyaltyTier: 'Gold Foodie',
     ));
-    expect(state.packagingFee, 0);
-    expect(packagingFeeLineLabel(fee: state.packagingFee, loyaltyTier: state.loyaltyTier), 'Packaging (Gold waiver)');
-    expect(state.grandTotal, 230);
+    expect(state.packagingFee, 20);
+    expect(packagingFeeLineLabel(fee: state.packagingFee, loyaltyTier: state.loyaltyTier), 'Packaging (₹199+)');
+    expect(state.grandTotal, 220);
   });
 
   test('coins cannot apply when a chef refuses HotPot Coins', () {
@@ -458,7 +458,7 @@ void main() {
     expect(state.coinsAcceptedByVendors, isFalse);
     expect(state.coinsDiscountAmount, 0);
     expect(state.coinsBillKind, CartCoinsBillKind.refused);
-    expect(state.grandTotal, 250);
+    expect(state.grandTotal, 220);
   });
 
   test('cart coin line is a wallet preview until applyCoins is on', () {
@@ -468,14 +468,14 @@ void main() {
       packagingFee: 0,
       userCoinBalance: 140,
     );
-    expect(preview.billBeforeCoins, 251);
+    expect(preview.billBeforeCoins, 221);
     expect(preview.coinsDiscountAmount, 0);
-    expect(preview.grandTotal, 251);
+    expect(preview.grandTotal, 221);
     expect(preview.coinsBillKind, CartCoinsBillKind.available);
 
     final applied = preview.copyWith(applyCoins: true);
     expect(applied.coinsDiscountAmount, 140);
-    expect(applied.grandTotal, 111);
+    expect(applied.grandTotal, 81);
     expect(applied.coinsBillKind, CartCoinsBillKind.applied);
   });
 

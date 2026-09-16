@@ -1,6 +1,7 @@
 // lib/models/cart_state.dart
 
 import 'package:flutter/foundation.dart';
+import '../utils/delivery_fee.dart';
 import '../utils/pricing_calculator.dart';
 import 'cart_enums.dart';
 
@@ -243,6 +244,7 @@ class CartState {
   final String? sharedPlaceLabel;
   final String? sharedDropoffNote;
   final String? sharedTimeSlot;
+  final bool membershipWaivesDelivery;
 
   const CartState({
     this.items = const [],
@@ -252,6 +254,7 @@ class CartState {
     this.userCoinBalance = 0.0,
     this.applyCoins = false,
     this.loyaltyTier,
+    this.membershipWaivesDelivery = false,
     this.stockNotice,
     this.sharedRoomCode,
     this.sharedHostId,
@@ -269,6 +272,7 @@ class CartState {
     double? userCoinBalance,
     bool? applyCoins,
     String? loyaltyTier,
+    bool? membershipWaivesDelivery,
     String? stockNotice,
     bool clearStockNotice = false,
     String? sharedRoomCode,
@@ -287,6 +291,7 @@ class CartState {
       userCoinBalance: userCoinBalance ?? this.userCoinBalance,
       applyCoins: applyCoins ?? this.applyCoins,
       loyaltyTier: loyaltyTier ?? this.loyaltyTier,
+      membershipWaivesDelivery: membershipWaivesDelivery ?? this.membershipWaivesDelivery,
       stockNotice: clearStockNotice ? null : (stockNotice ?? this.stockNotice),
       sharedRoomCode: clearSharedRoom ? null : (sharedRoomCode ?? this.sharedRoomCode),
       sharedHostId: clearSharedRoom ? null : (sharedHostId ?? this.sharedHostId),
@@ -337,7 +342,12 @@ class CartState {
 
   double get estimatedDeliveryFee {
     if (!hasDelivery) return 0.0;
-    return dynamicDeliveryFee > 0 ? dynamicDeliveryFee : 30.0;
+    return customerDeliveryFee(
+      distanceQuote: dynamicDeliveryFee > 0 ? dynamicDeliveryFee : kCheckoutDeliveryBaseFee,
+      foodTotal: foodTotal,
+      hasDelivery: true,
+      membershipWaivesDelivery: membershipWaivesDelivery,
+    );
   }
 
   double get billBeforeCoins =>
@@ -363,7 +373,11 @@ class CartState {
     return subtotal < 0.0 ? 0.0 : subtotal;
   }
 
-  bool get deliveryFeeIsEstimate => hasDelivery && dynamicDeliveryFee <= 0;
+  bool get deliveryFeeIsEstimate =>
+      hasDelivery &&
+      !membershipWaivesDelivery &&
+      foodTotal < kFreeDeliveryMinFood &&
+      dynamicDeliveryFee <= 0;
 
   // --- Status & Query Flags ---
 
@@ -386,6 +400,7 @@ class CartState {
           userCoinBalance == other.userCoinBalance &&
           applyCoins == other.applyCoins &&
           loyaltyTier == other.loyaltyTier &&
+          membershipWaivesDelivery == other.membershipWaivesDelivery &&
           stockNotice == other.stockNotice &&
           sharedRoomCode == other.sharedRoomCode &&
           sharedHostId == other.sharedHostId &&
@@ -403,6 +418,7 @@ class CartState {
       userCoinBalance.hashCode ^
       applyCoins.hashCode ^
       loyaltyTier.hashCode ^
+      membershipWaivesDelivery.hashCode ^
       stockNotice.hashCode ^
       sharedRoomCode.hashCode ^
       sharedHostId.hashCode ^

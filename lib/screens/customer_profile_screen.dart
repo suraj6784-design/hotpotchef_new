@@ -10,7 +10,6 @@ import 'package:go_router/go_router.dart';
 
 import 'address_form_screen.dart';
 import 'auth_screen.dart';
-import 'referral_screen.dart';
 import 'customer_order_history_screen.dart';
 import '../providers/cart_provider.dart';
 import '../providers/favorites_provider.dart';
@@ -846,7 +845,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                                     ),
                                     if ((entry.orderRef ?? '').isNotEmpty)
                                       Text(
-                                        coinWalletOrderNumber(entry.orderRef),
+                                        coinWalletOrderLine(isDebit: entry.isDebit, orderRef: entry.orderRef),
                                         style: TextStyle(color: muted, fontSize: 11, fontWeight: FontWeight.w800),
                                       ),
                                     if ((entry.detail ?? '').isNotEmpty)
@@ -1183,17 +1182,14 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                   PremiumProfileStat(label: 'Saved drops', value: '${_addresses.length}'),
                 ],
               ),
-              const LoyaltyBadgeCard(),
+              LoyaltyBadgeCard(
+                coins: _hotpotCoins,
+                onOpenWallet: _showWalletDialog,
+              ),
               PremiumProfileSection(
                 title: 'Dining',
-                caption: 'Orders, coins, and your table preferences.',
+                caption: 'Orders and your table preferences.',
                 children: [
-                  PremiumProfileTile(
-                    icon: Icons.card_giftcard_outlined,
-                    title: 'Refer & earn',
-                    subtitle: 'Invite friends and earn HotPot Coins',
-                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReferralScreen())),
-                  ),
                   PremiumProfileTile(
                     icon: Icons.tune_rounded,
                     title: 'Personalise your plate',
@@ -1240,12 +1236,6 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
               PremiumProfileSection(
                 title: 'Wallet & delivery',
                 children: [
-                  PremiumProfileTile(
-                    icon: Icons.account_balance_wallet_outlined,
-                    title: 'HotPot Wallet',
-                    subtitle: '₹${_hotpotCoins.toInt()} coins · tap for Order # history',
-                    onTap: _showWalletDialog,
-                  ),
                   PremiumProfileTile(
                     icon: Icons.payments_outlined,
                     title: 'Payment options',

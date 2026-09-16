@@ -39,10 +39,11 @@ serve(async (req) => {
       }, 429)
     }
 
-    const { data: feeRow, error: feeError } = await admin.rpc('quote_checkout_delivery_fee', {
+    const { data: feeRow, error: feeError } = await admin.rpc('quote_customer_delivery_fee', {
       p_items: cartItems,
       p_drop_lat: Number.isFinite(dropLat) ? dropLat : null,
       p_drop_lng: Number.isFinite(dropLng) ? dropLng : null,
+      p_user_id: user.id,
     })
     if (feeError) {
       return jsonResponse({ success: false, error: feeError.message || 'Could not quote delivery' }, 400)

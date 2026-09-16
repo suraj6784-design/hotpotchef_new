@@ -70,6 +70,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   bool _applyCoins = false;
   double _loyaltyPackaging = kDefaultPackagingFee;
   String? _loyaltyTier;
+  bool _membershipWaivesDelivery = false;
+  Map<String, dynamic>? _membershipOffer;
+  double _distanceQuote = 0;
   int _selectedTip = 0;
 
   Map<String, dynamic>? _serverPricing;
@@ -197,6 +200,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
 
     try {
+      final waived = await _supabase.rpc('diner_membership_waives_delivery');
+      _membershipWaivesDelivery = waived == true;
+    } catch (_) {}
+    try {
+      final offer = await _supabase.rpc('diner_flash_membership_offer');
+      if (offer is Map) {
+        _membershipOffer = Map<String, dynamic>.from(offer);
+        _membershipWaivesDelivery =
+            _membershipWaivesDelivery || _membershipOffer?['active_member'] == true;
+      }
+    } catch (_) {}
+
+    try {
       final raw = await _supabase
           .from('user_addresses')
           .select()
@@ -279,14 +295,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Future<void> _calculateDeliveryFee() async {
     if (!_hasDelivery) {
-      setState(() => _deliveryFee = 0.0);
+      setState(() {
+        _distanceQuote = 0;
+        _deliveryFee = 0;
+      });
       return;
     }
 
     final custLat = addressCoordinate(_selectedAddressData, latitude: true);
     final custLng = addressCoordinate(_selectedAddressData, latitude: false);
     if (custLat == null || custLng == null) {
-      setState(() => _deliveryFee = quoteCheckoutDeliveryFee(cartItems: widget.cartItems));
+      setState(() {
+        _distanceQuote = quoteCheckoutDeliveryFee(cartItems: widget.cartItems);
+        _deliveryFee = _customerDeliveryFromDistance(_distanceQuote);
+      });
       return;
     }
 
@@ -315,24 +337,45 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
       if (mounted) {
         setState(() {
-          _deliveryFee = quoteCheckoutDeliveryFee(
+          _distanceQuote = quoteCheckoutDeliveryFee(
             cartItems: widget.cartItems,
             dropLat: custLat,
             dropLng: custLng,
             chefLocations: chefLocations,
           );
+          _deliveryFee = _customerDeliveryFromDistance(_distanceQuote);
         });
       }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Delivery fee calculation error');
       if (mounted) {
         setState(() {
-          _deliveryFee = quoteCheckoutDeliveryFee(cartItems: widget.cartItems);
+          _distanceQuote = quoteCheckoutDeliveryFee(cartItems: widget.cartItems);
+          _deliveryFee = _customerDeliveryFromDistance(_distanceQuote);
         });
       }
     } finally {
       if (mounted) setState(() => _isCalculatingFee = false);
     }
+  }
+
+  double _customerDeliveryFromDistance(double distance) {
+    return customerDeliveryFee(
+      distanceQuote: distance,
+      foodTotal: _foodTotal,
+      hasDelivery: _hasDelivery,
+      membershipWaivesDelivery: _membershipWaivesDelivery,
+    );
+  }
+
+  void _repriceDeliveryAfterPromo() {
+    if (!_hasDelivery) {
+      _deliveryFee = 0;
+      return;
+    }
+    _deliveryFee = _customerDeliveryFromDistance(
+      _distanceQuote > 0 ? _distanceQuote : quoteCheckoutDeliveryFee(cartItems: widget.cartItems),
+    );
   }
 
   // --- Price Computations ---
@@ -387,7 +430,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   bool get _coinsAccepted => cartAcceptsHotpotCoins(widget.cartItems);
 
   double get _packagingFee {
-    final typed = packagingFeeForCartItems(widget.cartItems, loyaltyTierFee: _loyaltyPackaging);
+    final typed = packagingFeeForCartItems(
+      widget.cartItems,
+      loyaltyTierFee: _loyaltyPackaging,
+      foodTotal: _foodTotal,
+    );
     if (_serverPricing != null && _serverPricing!.containsKey('packaging_fee')) {
       return parseMoney(_serverPricing!['packaging_fee'], typed);
     }
@@ -647,6 +694,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     setState(() {
       _appliedPromoCode = code;
       _promoIsError = false;
+      _repriceDeliveryAfterPromo();
       _promoFeedback = _promoSavings > 0
           ? 'Code $code applied — you save ₹${_promoSavings.toStringAsFixed(0)}'
           : 'Code $code applied';
@@ -659,6 +707,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _promoFeedback = null;
       _promoIsError = false;
       _promoController.clear();
+      _repriceDeliveryAfterPromo();
     });
   }
 
@@ -1552,6 +1601,28 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
           _buildPromoCard(),
           const SizedBox(height: 16),
+          if (_hasDelivery &&
+              !_membershipWaivesDelivery &&
+              _membershipOffer != null &&
+              _membershipOffer!['plan_id'] != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: _CheckoutMembershipOfferCard(
+                offer: _membershipOffer!,
+                onInterested: () async {
+                  final planId = _membershipOffer!['plan_id']?.toString();
+                  if (planId == null || planId.isEmpty) return;
+                  try {
+                    await _supabase.rpc('diner_interest_in_membership', params: {'p_plan_id': planId});
+                    if (!mounted) return;
+                    _showSnackBar('We noted your interest. Admin can activate this flash membership.');
+                  } catch (_) {
+                    if (!mounted) return;
+                    _showSnackBar('Could not save interest. Try again.', isError: true);
+                  }
+                },
+              ),
+            ),
 
           // Bill Summary
           Container(
@@ -1594,10 +1665,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        (addressCoordinate(_selectedAddressData, latitude: true) == null ||
-                                addressCoordinate(_selectedAddressData, latitude: false) == null)
-                            ? 'Delivery Fee (est. until pin)'
-                            : 'Delivery Fee',
+                        deliveryFeeBillLabel(
+                          fee: _deliveryFee,
+                          foodTotal: _foodTotal,
+                          membershipWaivesDelivery: _membershipWaivesDelivery,
+                          pinMissing: addressCoordinate(_selectedAddressData, latitude: true) == null ||
+                              addressCoordinate(_selectedAddressData, latitude: false) == null,
+                        ),
                       ),
                       _isCalculatingFee
                           ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
@@ -1670,6 +1744,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       ),
                     ],
                   ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Food, packaging, and delivery are shown separately. GST, if applicable, is included in the line. No hidden platform fee.',
+                  style: AppTheme.micro,
                 ),
               ],
             ),
@@ -1766,6 +1845,52 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 child: Text('Cancellation', style: AppTheme.metaOf(context).copyWith(fontWeight: FontWeight.w700, color: AppTheme.linkOf(context))),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CheckoutMembershipOfferCard extends StatelessWidget {
+  const _CheckoutMembershipOfferCard({required this.offer, required this.onInterested});
+
+  final Map<String, dynamic> offer;
+  final VoidCallback onInterested;
+
+  @override
+  Widget build(BuildContext context) {
+    final list = parseMoney(offer['list_price_inr']);
+    final flash = parseMoney(offer['offer_price_inr']);
+    final days = int.tryParse(offer['duration_days']?.toString() ?? '') ?? 90;
+    final label = offer['flash_label']?.toString().trim();
+    final flashing = offer['flash_enabled'] == true;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.primary.withValues(alpha: 0.08),
+        borderRadius: AppTheme.radiusLg,
+        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.28)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            flashing && (label != null && label.isNotEmpty)
+                ? label
+                : 'HotPotChef membership',
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Unlimited free delivery for $days days. List price ₹${list.toStringAsFixed(0)}'
+            '${flashing ? ' · flash ₹${flash.toStringAsFixed(0)}' : ''}.',
+            style: AppTheme.caption,
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton(
+            onPressed: onInterested,
+            child: const Text('I want this membership'),
           ),
         ],
       ),

@@ -5,6 +5,9 @@ import '../models/cart_enums.dart';
 const double kCheckoutDeliveryBaseFee = 30;
 const double kCheckoutDeliveryIncludedKm = 3;
 const double kCheckoutDeliveryPerExtraKm = 10;
+const double kFreeDeliveryMinFood = 199;
+const double kPackagingFeeBelowFreeDelivery = 10;
+const double kPackagingFeeAtFreeDelivery = 20;
 const int kHomeMealStreamLimit = 150;
 const int kHomeMealPageSize = 80;
 const double kMaxCheckoutTip = 500;
@@ -97,4 +100,33 @@ double quoteCheckoutDeliveryFee({
     total += km <= 0 ? kCheckoutDeliveryBaseFee : deliveryFeeForDistanceKm(km);
   }
   return total;
+}
+
+/// Guest / non-member: ₹0 delivery when food is ₹199+. Members: ₹0 with no minimum.
+double customerDeliveryFee({
+  required double distanceQuote,
+  required double foodTotal,
+  required bool hasDelivery,
+  bool membershipWaivesDelivery = false,
+}) {
+  if (!hasDelivery) return 0;
+  if (membershipWaivesDelivery) return 0;
+  if (foodTotal >= kFreeDeliveryMinFood) return 0;
+  return distanceQuote;
+}
+
+String deliveryFeeBillLabel({
+  required double fee,
+  required double foodTotal,
+  bool membershipWaivesDelivery = false,
+  bool pinMissing = false,
+}) {
+  if (membershipWaivesDelivery) return 'Delivery (HotPotChef Member)';
+  if (foodTotal >= kFreeDeliveryMinFood) return 'Delivery (free on food ₹199+)';
+  if (pinMissing) return 'Delivery (est. until pin)';
+  final need = (kFreeDeliveryMinFood - foodTotal).clamp(0, kFreeDeliveryMinFood);
+  if (need > 0 && fee > 0) {
+    return 'Delivery (₹${need.toStringAsFixed(0)} more for free)';
+  }
+  return 'Delivery';
 }

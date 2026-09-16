@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../utils/app_page.dart';
 import '../utils/helpers.dart';
+import '../utils/delivery_fee.dart';
 import '../utils/pricing_calculator.dart';
 import '../models/cart_state.dart';
 import '../models/cart_enums.dart';
@@ -851,7 +852,12 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
               ),
               if (cartState.hasDelivery)
                 row(
-                  cartState.deliveryFeeIsEstimate ? 'Delivery (est. until pin)' : 'Delivery',
+                  deliveryFeeBillLabel(
+                    fee: cartState.estimatedDeliveryFee,
+                    foodTotal: foodNet,
+                    membershipWaivesDelivery: cartState.membershipWaivesDelivery,
+                    pinMissing: cartState.deliveryFeeIsEstimate,
+                  ),
                   formatRupees(cartState.estimatedDeliveryFee),
                 ),
               if (cartState.tipAmount > 0) row('Tip', formatRupees(cartState.tipAmount)),

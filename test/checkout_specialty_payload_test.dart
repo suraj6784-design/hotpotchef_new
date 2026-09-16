@@ -98,23 +98,23 @@ void main() {
   });
 
   group('packagingFeeForCartItems', () {
-    test('zeros shelf-only and caps hamper-only', () {
+    test('charges ₹10 under ₹199 food and ₹20 at or above ₹199', () {
       expect(
         packagingFeeForCartItems([
-          {'is_shelf_item': true, 'title': 'Mango pickle'},
-        ], loyaltyTierFee: 20),
-        0,
-      );
-      expect(
-        packagingFeeForCartItems([
-          {'is_hamper': true, 'title': 'Diwali box'},
-        ], loyaltyTierFee: 20),
+          {'is_shelf_item': true, 'title': 'Mango pickle', 'price': 80, 'quantity': 1},
+        ]),
         10,
       );
       expect(
         packagingFeeForCartItems([
-          {'title': 'Dal rice', 'category': 'Maharashtrian'},
-        ], loyaltyTierFee: 20),
+          {'is_hamper': true, 'title': 'Diwali box', 'price': 80, 'quantity': 1},
+        ]),
+        10,
+      );
+      expect(
+        packagingFeeForCartItems([
+          {'title': 'Dal rice', 'category': 'Maharashtrian', 'price': 199, 'quantity': 1},
+        ]),
         20,
       );
     });

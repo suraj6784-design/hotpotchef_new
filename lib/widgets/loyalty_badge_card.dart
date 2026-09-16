@@ -1,14 +1,24 @@
 // lib/widgets/loyalty_badge_card.dart
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/app_theme.dart';
+import '../utils/helpers.dart';
 import '../utils/network.dart';
 
 class LoyaltyBadgeCard extends StatefulWidget {
-  const LoyaltyBadgeCard({super.key});
+  const LoyaltyBadgeCard({
+    super.key,
+    this.coins = 0,
+    this.onOpenWallet,
+  });
+
+  final double coins;
+  final VoidCallback? onOpenWallet;
 
   @override
   State<LoyaltyBadgeCard> createState() => _LoyaltyBadgeCardState();
@@ -20,14 +30,15 @@ class _LoyaltyBadgeCardState extends State<LoyaltyBadgeCard> {
   String _tier = 'Bronze Foodie 🥉';
   int _completedOrders = 0;
   int _streak = 0;
+  String _referralCode = '';
 
   @override
   void initState() {
     super.initState();
-    _fetchGamificationData();
+    _fetchRewards();
   }
 
-  Future<void> _fetchGamificationData() async {
+  Future<void> _fetchRewards() async {
     try {
       final user = _supabase.auth.currentUser;
       if (user == null) {
@@ -38,27 +49,61 @@ class _LoyaltyBadgeCardState extends State<LoyaltyBadgeCard> {
       final results = await Future.wait<dynamic>([
         _supabase.from('user_gamification').select().eq('user_id', user.id).maybeSingle(),
         _supabase.from('orders').select('status').eq('customer_id', user.id),
+        _supabase.from('users').select('referral_code, role').eq('id', user.id).maybeSingle(),
       ]).withTimeout(NetworkTimeouts.standard);
 
       if (!mounted) return;
 
       final res = results[0] as Map<String, dynamic>?;
       final orders = List<Map<String, dynamic>>.from((results[1] as List?) ?? const []);
+      final profile = results[2] as Map<String, dynamic>?;
       final delivered = orders.where((order) {
         final status = order['status']?.toString().toLowerCase() ?? '';
         return status.contains('delivered') || status.contains('completed');
       }).length;
 
+      var code = '';
+      if (roleUsesReferral(profile?['role']?.toString())) {
+        code = normalizeReferralCode(profile?['referral_code']?.toString()) ?? '';
+        if (code.isEmpty) {
+          code = generateReferralCode();
+          try {
+            await _supabase.from('users').update({'referral_code': code}).eq('id', user.id);
+          } catch (_) {}
+        }
+      }
+
+      if (!mounted) return;
       setState(() {
         _tier = res?['loyalty_tier']?.toString() ?? 'Bronze Foodie 🥉';
         _completedOrders = delivered;
         _streak = (res?['current_streak'] as num?)?.toInt() ?? 0;
+        _referralCode = code;
         _isLoading = false;
       });
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to fetch gamification tier data');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to fetch diner rewards card');
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _copyReferral() async {
+    if (_referralCode.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: _referralCode));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Copied $_referralCode')),
+    );
+  }
+
+  void _shareReferral() {
+    if (_referralCode.isEmpty) return;
+    SharePlus.instance.share(
+      ShareParams(
+        text: referralInviteText(_referralCode),
+        subject: 'Join HotPotChef with my code $_referralCode',
+      ),
+    );
   }
 
   @override
@@ -66,74 +111,115 @@ class _LoyaltyBadgeCardState extends State<LoyaltyBadgeCard> {
     if (_isLoading) return const SizedBox.shrink();
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final coins = widget.coins.toInt();
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      padding: const EdgeInsets.all(20),
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
       decoration: BoxDecoration(
         color: isDark ? AppTheme.surfaceDark : Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: AppTheme.primary.withValues(alpha: isDark ? 0.4 : 0.2)),
         boxShadow: isDark ? [] : AppTheme.softShadow,
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: AppTheme.primary.withValues(alpha: 0.15),
-              shape: BoxShape.circle,
+          Text(
+            _tier,
+            style: TextStyle(
+              color: isDark ? AppTheme.textMainDark : AppTheme.textMain,
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
             ),
-            child: const Icon(Icons.workspace_premium, color: AppTheme.primary, size: 32),
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Customer Loyalty Tier',
-                  style: TextStyle(
-                    color: isDark ? AppTheme.textMuted : AppTheme.textMuted,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                  ),
+          const SizedBox(height: 2),
+          Text(
+            '$_completedOrders orders completed · rewards in one place',
+            style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _RewardCell(
+                  icon: Icons.local_fire_department_outlined,
+                  label: 'Streak',
+                  value: _streak > 0 ? '$_streak days' : 'Start today',
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  _tier,
-                  style: TextStyle(
-                    color: isDark ? AppTheme.textMainDark : AppTheme.textMain,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                  ),
+              ),
+              Expanded(
+                child: _RewardCell(
+                  icon: Icons.account_balance_wallet_outlined,
+                  label: 'Coins',
+                  value: '$coins',
+                  onTap: widget.onOpenWallet,
                 ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Text(
-                      '$_completedOrders Orders Completed',
-                      style: TextStyle(
-                        color: AppTheme.textMuted,
-                        fontSize: 12,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      '🔥 $_streak Streak',
-                      style: const TextStyle(
-                        color: Colors.orangeAccent,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
+              ),
+              Expanded(
+                child: _RewardCell(
+                  icon: Icons.card_giftcard_outlined,
+                  label: 'Referral',
+                  value: _referralCode.isEmpty ? '—' : _referralCode,
+                  onTap: _referralCode.isEmpty ? null : _copyReferral,
+                  onLongPress: _referralCode.isEmpty ? null : _shareReferral,
                 ),
-              ],
+              ),
+            ],
+          ),
+          if (_referralCode.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: _shareReferral,
+                icon: const Icon(Icons.ios_share, size: 16),
+                label: const Text('Share code'),
+              ),
             ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _RewardCell extends StatelessWidget {
+  const _RewardCell({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.onTap,
+    this.onLongPress,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final child = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+      child: Column(
+        children: [
+          Icon(icon, color: AppTheme.primary, size: 22),
+          const SizedBox(height: 6),
+          Text(label, style: AppTheme.caption),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
           ),
         ],
       ),
     );
+    if (onTap == null && onLongPress == null) return child;
+    return InkWell(onTap: onTap, onLongPress: onLongPress, borderRadius: BorderRadius.circular(12), child: child);
   }
 }

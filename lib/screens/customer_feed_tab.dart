@@ -26,6 +26,7 @@ import '../widgets/daily_streak_banner.dart';
 import '../widgets/weekly_plan_banner.dart';
 import '../widgets/support_replied_banner.dart';
 import '../widgets/live_offers_flash_banner.dart';
+import '../widgets/membership_flash_banner.dart';
 import '../widgets/festival_hampers_banner.dart';
 import '../widgets/society_nights_banner.dart';
 import '../widgets/ai_recommendations_section.dart';
@@ -1775,6 +1776,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         chefKitchenPins: _chefKitchenPins,
         onOfferTap: _onHomeOfferTap,
       ),
+      const MembershipFlashBanner(),
       SponsoredPlacementBanner(
         destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
         destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),

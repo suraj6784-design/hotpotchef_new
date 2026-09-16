@@ -27,8 +27,8 @@ void main() {
   });
 
   group('packagingFeeForLoyaltyTier', () {
-    test('Gold is free; Silver and Bronze stay at ₹20 packaging', () {
-      expect(packagingFeeForLoyaltyTier('Gold Foodie'), 0);
+    test('packaging is a disclosed per-order fee, not a Gold perk', () {
+      expect(packagingFeeForLoyaltyTier('Gold Foodie'), 20);
       expect(packagingFeeForLoyaltyTier('Silver Foodie'), 20);
       expect(packagingFeeForLoyaltyTier('Bronze Foodie'), 20);
       expect(packagingFeeForLoyaltyTier(null), 20);

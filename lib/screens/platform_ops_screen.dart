@@ -875,73 +875,82 @@ class _PackagingOpsList extends StatelessWidget {
           return const Center(child: CircularProgressIndicator());
         }
         final rows = snap.data ?? const [];
-        if (rows.isEmpty) {
-          return const EmptyState(
-            icon: Icons.inventory_2_outlined,
-            title: 'No packaging requests',
-            message: 'Chef supply requests appear here for confirmation and fulfillment.',
-          );
-        }
-        return ListView.builder(
+        return ListView(
           padding: const EdgeInsets.all(16),
-          itemCount: rows.length,
-          itemBuilder: (context, index) {
-            final row = rows[index];
-            final status = packagingRequestStatusLabel(row['status']?.toString());
-            final requestId = packagingRequestDisplayId(row);
-            final total = parseMoney(row['quoted_total'] ?? row['budget']);
-            return AppCard(
-              margin: const EdgeInsets.only(bottom: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          row['title']?.toString() ?? 'Packaging',
-                          style: const TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                      ),
-                      Text(status, style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.link)),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '${requestId.isEmpty ? 'SUP' : requestId} · Qty ${row['quantity'] ?? 1} · ₹${total.toStringAsFixed(0)}',
-                    style: AppTheme.caption,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${row['customer_name'] ?? 'Chef'} · ${row['customer_phone'] ?? ''}',
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                  Text(
-                    row['delivery_address']?.toString() ?? '',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTheme.caption,
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final next in const ['Confirmed', 'Packed', 'Out for Delivery', 'Fulfilled', 'Rejected'])
-                        OutlinedButton(
-                          onPressed: busy || status.toLowerCase() == next.toLowerCase()
-                              ? null
-                              : () => onStatus(row, next),
-                          child: Text(next, style: const TextStyle(fontSize: 12)),
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          },
+          children: [
+            const _MembershipOpsPanel(),
+            const SizedBox(height: 16),
+            Text('Chef packaging supply', style: AppTheme.homeSectionLabelOf(context)),
+            const SizedBox(height: 8),
+            if (rows.isEmpty)
+              const Padding(
+                padding: EdgeInsets.only(top: 24),
+                child: EmptyState(
+                  icon: Icons.inventory_2_outlined,
+                  title: 'No packaging requests',
+                  message: 'Chef supply requests appear here for confirmation and fulfillment.',
+                ),
+              )
+            else
+              for (final row in rows) _packagingRequestCard(context, row),
+          ],
         );
       },
+    );
+  }
+
+  Widget _packagingRequestCard(BuildContext context, Map<String, dynamic> row) {
+    final status = packagingRequestStatusLabel(row['status']?.toString());
+    final requestId = packagingRequestDisplayId(row);
+    final total = parseMoney(row['quoted_total'] ?? row['budget']);
+    return AppCard(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  row['title']?.toString() ?? 'Packaging',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+              Text(status, style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.link)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${requestId.isEmpty ? 'SUP' : requestId} · Qty ${row['quantity'] ?? 1} · ₹${total.toStringAsFixed(0)}',
+            style: AppTheme.caption,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${row['customer_name'] ?? 'Chef'} · ${row['customer_phone'] ?? ''}',
+            style: const TextStyle(fontSize: 12),
+          ),
+          Text(
+            row['delivery_address']?.toString() ?? '',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: AppTheme.caption,
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final next in const ['Confirmed', 'Packed', 'Out for Delivery', 'Fulfilled', 'Rejected'])
+                OutlinedButton(
+                  onPressed: busy || status.toLowerCase() == next.toLowerCase()
+                      ? null
+                      : () => onStatus(row, next),
+                  child: Text(next, style: const TextStyle(fontSize: 12)),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

@@ -150,5 +150,67 @@ void main() {
   test('coinWalletOrderNumber prefixes Order # once', () {
     expect(coinWalletOrderNumber('ABC12345'), 'Order #ABC12345');
     expect(coinWalletOrderNumber('Order ABC12345'), 'Order #ABC12345');
+    expect(coinWalletOrderLine(isDebit: true, orderRef: 'HP-1042'), 'Used on Order #HP-1042');
+    expect(coinWalletOrderLine(isDebit: false, orderRef: 'HP-1042'), 'Tied to Order #HP-1042');
+  });
+
+  test('duplicate trigger plus checkout rows collapse to one debit and one credit', () {
+    final entries = mergeCoinLedger(
+      transactions: [
+        {
+          'amount': 15,
+          'transaction_type': 'earning',
+          'description': 'Daily streak bonus',
+          'created_at': '2026-09-15T11:14:00Z',
+        },
+        {
+          'amount': 15,
+          'transaction_type': 'earning',
+          'description': 'Daily streak bonus',
+          'created_at': '2026-09-15T11:14:02Z',
+        },
+        {
+          'amount': 15,
+          'transaction_type': 'earning',
+          'description': 'HotPot Coins credited',
+          'created_at': '2026-09-15T21:43:00Z',
+        },
+        {
+          'amount': 15,
+          'transaction_type': 'earning',
+          'description': 'HotPot Coins credited',
+          'created_at': '2026-09-15T21:43:01Z',
+        },
+        {
+          'amount': 15,
+          'transaction_type': 'debit',
+          'description': 'Coins applied at checkout',
+          'created_at': '2026-09-15T21:43:04Z',
+        },
+        {
+          'amount': -15,
+          'transaction_type': 'redeem',
+          'description': 'Coins applied at checkout',
+          'created_at': '2026-09-15T21:43:05Z',
+        },
+      ],
+      orders: [
+        {
+          'id': '65709a47-aaaa-bbbb-cccc-ddddeeeeffff',
+          'order_id': 'HP-1881',
+          'coins_applied': 15,
+          'created_at': '2026-09-15T21:43:08Z',
+          'items': [
+            {'title': 'Veg Thali'},
+          ],
+        },
+      ],
+    );
+    expect(entries, hasLength(3));
+    expect(entries.where((e) => e.title == 'Daily streak bonus'), hasLength(1));
+    expect(entries.where((e) => e.title.contains('credited')), hasLength(1));
+    expect(entries.where((e) => e.title.contains('checkout')), hasLength(1));
+    final checkout = entries.firstWhere((e) => e.isDebit);
+    expect(coinWalletOrderLine(isDebit: true, orderRef: checkout.orderRef), 'Used on Order #HP-1881');
   });
 }

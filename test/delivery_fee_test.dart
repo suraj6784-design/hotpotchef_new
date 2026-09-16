@@ -40,6 +40,26 @@ void main() {
     expect(deliveryFeeForDistanceKm(5), 50);
   });
 
+  test('guest delivery is free when food is ₹199 or more', () {
+    expect(
+      customerDeliveryFee(distanceQuote: 40, foodTotal: 198, hasDelivery: true),
+      40,
+    );
+    expect(
+      customerDeliveryFee(distanceQuote: 40, foodTotal: 199, hasDelivery: true),
+      0,
+    );
+    expect(
+      customerDeliveryFee(
+        distanceQuote: 40,
+        foodTotal: 50,
+        hasDelivery: true,
+        membershipWaivesDelivery: true,
+      ),
+      0,
+    );
+  });
+
   test('tips cannot exceed ₹500', () {
     expect(clampCheckoutTip(12), 12);
     expect(clampCheckoutTip(900), 500);

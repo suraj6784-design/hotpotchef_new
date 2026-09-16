@@ -5,10 +5,13 @@ export function asNumber(value: unknown, fallback = 0) {
   return Number.isFinite(n) ? n : fallback
 }
 
-export function packagingFeeForLoyaltyTier(tier: unknown) {
-  const name = String(tier ?? '').toLowerCase()
-  if (name.includes('gold')) return 0
+export function packagingFeeForLoyaltyTier(_tier: unknown) {
   return 20
+}
+
+export function packagingFeeFromFoodTotal(food: number) {
+  if (!Number.isFinite(food) || food <= 0) return 0
+  return food >= 199 ? 20 : 10
 }
 
 export function normalizeCartItems(raw: unknown) {
@@ -58,22 +61,18 @@ export async function quotePaidCheckout(
   const dropLat = dropLatRaw == null ? null : asNumber(dropLatRaw, NaN)
   const dropLng = dropLngRaw == null ? null : asNumber(dropLngRaw, NaN)
 
-  const { data: quotedFee, error: feeError } = await admin.rpc('quote_checkout_delivery_fee', {
+  const { data: quotedFee, error: feeError } = await admin.rpc('quote_customer_delivery_fee', {
     p_items: cartItems,
     p_drop_lat: Number.isFinite(dropLat) ? dropLat : null,
     p_drop_lng: Number.isFinite(dropLng) ? dropLng : null,
+    p_user_id: userId,
   })
   if (feeError) {
     throw new Error(feeError.message || 'Could not quote delivery')
   }
   const deliveryFee = asNumber(quotedFee, 0)
 
-  const { data: gam } = await admin
-    .from('user_gamification')
-    .select('loyalty_tier')
-    .eq('user_id', userId)
-    .maybeSingle()
-  let packagingAlreadyIncluded = packagingFeeForLoyaltyTier(gam?.loyalty_tier)
+  let packagingAlreadyIncluded = 20
   const { data: pricing, error: quoteError } = await admin.rpc('calculate_cart_total', {
     p_items: cartItems,
     p_user_id: userId,
@@ -87,6 +86,8 @@ export async function quotePaidCheckout(
   }
   if (pricing?.packaging_fee != null) {
     packagingAlreadyIncluded = asNumber(pricing.packaging_fee, packagingAlreadyIncluded)
+  } else {
+    packagingAlreadyIncluded = packagingFeeFromFoodTotal(foodOnly)
   }
   const billBeforeCoins = foodOnly + packagingAlreadyIncluded + deliveryFee + tipAmount
 

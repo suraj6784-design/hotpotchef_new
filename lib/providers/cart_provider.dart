@@ -414,6 +414,7 @@ class CartNotifier extends Notifier<CartState> {
     return packagingFeeForCartItems(
       items.map((item) => item.toCheckoutPayload()),
       loyaltyTier: loyaltyTier ?? state.loyaltyTier,
+      foodTotal: items.fold(0.0, (sum, item) => sum + state.getEffectiveItemTotal(item)),
     );
   }
 
@@ -461,7 +462,14 @@ class CartNotifier extends Notifier<CartState> {
 
       final chefIds = state.vendorIds.where((id) => id.isNotEmpty).toList();
       if (chefIds.isEmpty) {
-        state = state.copyWith(dynamicDeliveryFee: quoteCheckoutDeliveryFee(cartItems: state.items.map((i) => i.toCheckoutPayload())));
+        state = state.copyWith(
+          dynamicDeliveryFee: customerDeliveryFee(
+            distanceQuote: quoteCheckoutDeliveryFee(cartItems: state.items.map((i) => i.toCheckoutPayload())),
+            foodTotal: state.foodTotal,
+            hasDelivery: true,
+            membershipWaivesDelivery: state.membershipWaivesDelivery,
+          ),
+        );
         return;
       }
       final chefsData = await _supabase.from('users').select('id, lat, lng').inFilter('id', chefIds);
@@ -472,11 +480,16 @@ class CartNotifier extends Notifier<CartState> {
             lng: double.tryParse(c['lng']?.toString() ?? ''),
           ),
       };
-      final fee = quoteCheckoutDeliveryFee(
-        cartItems: state.items.map((i) => i.toCheckoutPayload()),
-        dropLat: dropLat,
-        dropLng: dropLng,
-        chefLocations: chefLocations,
+      final fee = customerDeliveryFee(
+        distanceQuote: quoteCheckoutDeliveryFee(
+          cartItems: state.items.map((i) => i.toCheckoutPayload()),
+          dropLat: dropLat,
+          dropLng: dropLng,
+          chefLocations: chefLocations,
+        ),
+        foodTotal: state.foodTotal,
+        hasDelivery: true,
+        membershipWaivesDelivery: state.membershipWaivesDelivery,
       );
       state = state.copyWith(dynamicDeliveryFee: fee);
     } catch (e, st) {
@@ -502,6 +515,7 @@ class CartNotifier extends Notifier<CartState> {
           .maybeSingle();
       final coins = double.tryParse(data?['hotpot_coins']?.toString() ?? '0') ?? 0.0;
       String? tier;
+      var member = false;
       try {
         final gam = await _supabase
             .from('user_gamification')
@@ -510,9 +524,14 @@ class CartNotifier extends Notifier<CartState> {
             .maybeSingle();
         tier = gam?['loyalty_tier']?.toString();
       } catch (_) {}
+      try {
+        final waived = await _supabase.rpc('diner_membership_waives_delivery');
+        member = waived == true;
+      } catch (_) {}
       state = state.copyWith(
         userCoinBalance: coins,
         loyaltyTier: tier,
+        membershipWaivesDelivery: member,
         packagingFee: _packagingFor(state.items, loyaltyTier: tier),
         applyCoins: state.applyCoins && state.coinsAcceptedByVendors,
       );
