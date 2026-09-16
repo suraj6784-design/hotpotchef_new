@@ -18,6 +18,7 @@ import '../utils/network.dart';
 import '../utils/payment_preferences.dart';
 import '../utils/pricing_calculator.dart';
 import '../utils/legal_content.dart';
+import '../utils/membership.dart';
 import '../utils/support.dart';
 import '../models/cart_enums.dart';
 import '../widgets/app_widgets.dart';
@@ -71,6 +72,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   double _loyaltyPackaging = kDefaultPackagingFee;
   String? _loyaltyTier;
   bool _membershipWaivesDelivery = false;
+  bool _addMembership = false;
   Map<String, dynamic>? _membershipOffer;
   double _distanceQuote = 0;
   int _selectedTip = 0;
@@ -207,8 +209,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final offer = await _supabase.rpc('diner_flash_membership_offer');
       if (offer is Map) {
         _membershipOffer = Map<String, dynamic>.from(offer);
-        _membershipWaivesDelivery =
-            _membershipWaivesDelivery || _membershipOffer?['active_member'] == true;
+        final alreadyMember =
+            dinerHasActiveMembership(_membershipOffer) || _membershipWaivesDelivery;
+        _membershipWaivesDelivery = alreadyMember;
+        _addMembership = alreadyMember
+            ? false
+            : membershipOfferEligible(_membershipOffer) && await consumeAddMembershipAtCheckout();
       }
     } catch (_) {}
 
@@ -359,12 +365,23 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
+  bool get _showMembershipUpsell =>
+      !_membershipWaivesDelivery && membershipOfferEligible(_membershipOffer);
+
+  bool get _membershipOnThisOrder => _addMembership && _showMembershipUpsell;
+
+  double get _membershipFee =>
+      _membershipOnThisOrder ? membershipOfferPrice(_membershipOffer) : 0;
+
+  bool get _effectiveMembershipWaives =>
+      _membershipWaivesDelivery || _membershipOnThisOrder;
+
   double _customerDeliveryFromDistance(double distance) {
     return customerDeliveryFee(
       distanceQuote: distance,
       foodTotal: _foodTotal,
       hasDelivery: _hasDelivery,
-      membershipWaivesDelivery: _membershipWaivesDelivery,
+      membershipWaivesDelivery: _effectiveMembershipWaives,
     );
   }
 
@@ -441,11 +458,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     return typed;
   }
 
-  double get _subTotalBeforeCoins =>
+  double get _mealBillBeforeCoins =>
       _foodTotal + _packagingFee + _deliveryFee + _selectedTip;
 
+  double get _subTotalBeforeCoins => _mealBillBeforeCoins + _membershipFee;
+
   double get _coinDeduction =>
-      (_applyCoins && _coinsAccepted) ? min(_userCoinBalance, _subTotalBeforeCoins) : 0.0;
+      (_applyCoins && _coinsAccepted) ? min(_userCoinBalance, _mealBillBeforeCoins) : 0.0;
 
   double get _grandTotal => max(0.0, _subTotalBeforeCoins - _coinDeduction);
 
@@ -523,7 +542,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         }
       }
 
-      if (_applyCoins && _coinsAccepted && _grandTotal < 1) {
+      if (_applyCoins && _coinsAccepted && _grandTotal < 1 && !_membershipOnThisOrder) {
         await _placeCoinsOnlyOrder();
         return;
       }
@@ -541,6 +560,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           'dropoff_lng': addressCoordinate(_selectedAddressData, latitude: false),
           'tip_amount': clampCheckoutTip(_selectedTip),
           'apply_coins': _applyCoins && _coinsAccepted,
+          'add_membership': _membershipOnThisOrder,
+          'membership_plan_id': _membershipOnThisOrder ? _membershipOffer?['plan_id'] : null,
         },
       ).withTimeout(NetworkTimeouts.payment);
 
@@ -736,6 +757,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       'cart_items': _checkoutCartItems(),
       'tip_amount': clampCheckoutTip(_selectedTip),
       'apply_coins': _applyCoins && _coinsAccepted,
+      'add_membership': _membershipOnThisOrder,
+      'membership_plan_id': _membershipOnThisOrder ? _membershipOffer?['plan_id'] : null,
       'dropoff_lat': addressCoordinate(_selectedAddressData, latitude: true),
       'dropoff_lng': addressCoordinate(_selectedAddressData, latitude: false),
     };
@@ -777,7 +800,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (mounted) {
         widget.onOrderPlacedSuccess();
         Navigator.pop(context);
-        _showSnackBar('Order placed with HotPot Coins.', isError: false);
+        _showSnackBar(
+          _membershipOnThisOrder
+              ? 'Order placed. You are now a Family member.'
+              : 'Order placed with HotPot Coins.',
+          isError: false,
+        );
       }
     } finally {
       _placingOrder = false;
@@ -975,7 +1003,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (mounted) {
         widget.onOrderPlacedSuccess();
         Navigator.pop(context);
-        _showSnackBar('Payment Verified! Order placed successfully.', isError: false);
+        _showSnackBar(
+          _membershipOnThisOrder
+              ? 'You are now a Family member. Unlimited free delivery is on.'
+              : 'Payment Verified! Order placed successfully.',
+          isError: false,
+        );
       }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Order recording failed post-payment');
@@ -1601,25 +1634,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
           _buildPromoCard(),
           const SizedBox(height: 16),
-          if (_hasDelivery &&
-              !_membershipWaivesDelivery &&
-              _membershipOffer != null &&
-              _membershipOffer!['plan_id'] != null)
+          if (_showMembershipUpsell)
             Padding(
               padding: const EdgeInsets.only(bottom: 16),
               child: _CheckoutMembershipOfferCard(
                 offer: _membershipOffer!,
-                onInterested: () async {
-                  final planId = _membershipOffer!['plan_id']?.toString();
-                  if (planId == null || planId.isEmpty) return;
-                  try {
-                    await _supabase.rpc('diner_interest_in_membership', params: {'p_plan_id': planId});
-                    if (!mounted) return;
-                    _showSnackBar('We noted your interest. Admin can activate this flash membership.');
-                  } catch (_) {
-                    if (!mounted) return;
-                    _showSnackBar('Could not save interest. Try again.', isError: true);
-                  }
+                selected: _addMembership,
+                onChanged: (value) {
+                  setState(() {
+                    _addMembership = value;
+                    _repriceDeliveryAfterPromo();
+                  });
                 },
               ),
             ),
@@ -1668,7 +1693,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         deliveryFeeBillLabel(
                           fee: _deliveryFee,
                           foodTotal: _foodTotal,
-                          membershipWaivesDelivery: _membershipWaivesDelivery,
+                          membershipWaivesDelivery: _effectiveMembershipWaives,
                           pinMissing: addressCoordinate(_selectedAddressData, latitude: true) == null ||
                               addressCoordinate(_selectedAddressData, latitude: false) == null,
                         ),
@@ -1676,6 +1701,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       _isCalculatingFee
                           ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
                           : Text(formatRupees(_deliveryFee)),
+                    ],
+                  ),
+                ],
+                if (_membershipFee > 0) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('${membershipMemberTitle(_membershipOffer)} membership'),
+                      Text(formatRupees(_membershipFee)),
                     ],
                   ),
                 ],
@@ -1853,16 +1888,22 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 }
 
 class _CheckoutMembershipOfferCard extends StatelessWidget {
-  const _CheckoutMembershipOfferCard({required this.offer, required this.onInterested});
+  const _CheckoutMembershipOfferCard({
+    required this.offer,
+    required this.selected,
+    required this.onChanged,
+  });
 
   final Map<String, dynamic> offer;
-  final VoidCallback onInterested;
+  final bool selected;
+  final ValueChanged<bool> onChanged;
 
   @override
   Widget build(BuildContext context) {
     final list = parseMoney(offer['list_price_inr']);
-    final flash = parseMoney(offer['offer_price_inr']);
+    final flash = membershipOfferPrice(offer);
     final days = int.tryParse(offer['duration_days']?.toString() ?? '') ?? 90;
+    final period = membershipPlanPeriodLabel(days);
     final label = offer['flash_label']?.toString().trim();
     final flashing = offer['flash_enabled'] == true;
     return Container(
@@ -1878,19 +1919,22 @@ class _CheckoutMembershipOfferCard extends StatelessWidget {
           Text(
             flashing && (label != null && label.isNotEmpty)
                 ? label
-                : 'HotPotChef membership',
+                : 'Become a Family member',
             style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
           ),
           const SizedBox(height: 6),
           Text(
-            'Unlimited free delivery for $days days. List price ₹${list.toStringAsFixed(0)}'
-            '${flashing ? ' · flash ₹${flash.toStringAsFixed(0)}' : ''}.',
+            'Unlimited free delivery for $period. Added to this bill as ${membershipMemberTitle(offer)}.'
+            ' List ₹${list.toStringAsFixed(0)}'
+            '${flashing ? ' · today ₹${flash.toStringAsFixed(0)}' : ''}.',
             style: AppTheme.caption,
           ),
-          const SizedBox(height: 10),
-          OutlinedButton(
-            onPressed: onInterested,
-            child: const Text('I want this membership'),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text('Add ₹${flash.toStringAsFixed(0)} on this order'),
+            subtitle: const Text('Starts as soon as payment succeeds'),
+            value: selected,
+            onChanged: onChanged,
           ),
         ],
       ),

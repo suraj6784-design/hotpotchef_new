@@ -8,6 +8,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
+import '../utils/membership.dart';
 import '../utils/network.dart';
 
 class LoyaltyBadgeCard extends StatefulWidget {
@@ -28,6 +29,9 @@ class _LoyaltyBadgeCardState extends State<LoyaltyBadgeCard> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
   String _tier = 'Bronze Foodie 🥉';
+  bool _isFamilyMember = false;
+  DateTime? _memberUntil;
+  int _memberPlanDays = 90;
   int _completedOrders = 0;
   int _streak = 0;
   String _referralCode = '';
@@ -50,6 +54,13 @@ class _LoyaltyBadgeCardState extends State<LoyaltyBadgeCard> {
         _supabase.from('user_gamification').select().eq('user_id', user.id).maybeSingle(),
         _supabase.from('orders').select('status').eq('customer_id', user.id),
         _supabase.from('users').select('referral_code, role').eq('id', user.id).maybeSingle(),
+        _supabase
+            .from('diner_memberships')
+            .select('ends_at, status, membership_plans(duration_days, member_title)')
+            .eq('user_id', user.id)
+            .eq('status', 'active')
+            .order('ends_at', ascending: false)
+            .limit(1),
       ]).withTimeout(NetworkTimeouts.standard);
 
       if (!mounted) return;
@@ -57,6 +68,15 @@ class _LoyaltyBadgeCardState extends State<LoyaltyBadgeCard> {
       final res = results[0] as Map<String, dynamic>?;
       final orders = List<Map<String, dynamic>>.from((results[1] as List?) ?? const []);
       final profile = results[2] as Map<String, dynamic>?;
+      final membershipRows = List<Map<String, dynamic>>.from((results[3] as List?) ?? const []);
+      final membership = membershipRows.isEmpty ? null : membershipRows.first;
+      final plan = membership?['membership_plans'];
+      final planMap = plan is Map
+          ? Map<String, dynamic>.from(plan)
+          : (plan is List && plan.isNotEmpty && plan.first is Map)
+              ? Map<String, dynamic>.from(plan.first as Map)
+              : const <String, dynamic>{};
+      final planDays = int.tryParse(planMap['duration_days']?.toString() ?? '') ?? 90;
       final delivered = orders.where((order) {
         final status = order['status']?.toString().toLowerCase() ?? '';
         return status.contains('delivered') || status.contains('completed');
@@ -74,8 +94,13 @@ class _LoyaltyBadgeCardState extends State<LoyaltyBadgeCard> {
       }
 
       if (!mounted) return;
+      final ends = DateTime.tryParse(membership?['ends_at']?.toString() ?? '');
+      final family = ends != null && ends.isAfter(DateTime.now());
       setState(() {
-        _tier = res?['loyalty_tier']?.toString() ?? 'Bronze Foodie 🥉';
+        _isFamilyMember = family;
+        _memberUntil = family ? ends : null;
+        _memberPlanDays = planDays;
+        _tier = family ? kFamilyMemberTitle : (res?['loyalty_tier']?.toString() ?? 'Bronze Foodie 🥉');
         _completedOrders = delivered;
         _streak = (res?['current_streak'] as num?)?.toInt() ?? 0;
         _referralCode = code;
@@ -135,7 +160,9 @@ class _LoyaltyBadgeCardState extends State<LoyaltyBadgeCard> {
           ),
           const SizedBox(height: 2),
           Text(
-            '$_completedOrders orders completed · rewards in one place',
+            _isFamilyMember
+                ? membershipDaysLeftLabel(endsAt: _memberUntil, durationDays: _memberPlanDays)
+                : '$_completedOrders orders completed · rewards in one place',
             style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
           ),
           const SizedBox(height: 14),

@@ -50,6 +50,8 @@ serve(async (req) => {
       applyCoins,
       body.dropoff_lat,
       body.dropoff_lng,
+      Boolean(body.add_membership),
+      body.membership_plan_id ?? null,
     )
     const cartItems = quoted.cartItems
 
@@ -87,6 +89,8 @@ serve(async (req) => {
       apply_coins: quoted.applyCoins,
       tip_amount: quoted.tipAmount,
       delivery_fee: quoted.deliveryFee,
+      membership_plan_id: quoted.membershipPlanId,
+      membership_fee: quoted.membershipFee,
       amount_paise: quoted.amountPaise,
       dropoff_lat: quoted.dropLat,
       dropoff_lng: quoted.dropLng,

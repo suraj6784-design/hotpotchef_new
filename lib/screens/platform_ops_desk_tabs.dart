@@ -874,7 +874,7 @@ class _MembershipOpsPanelState extends State<_MembershipOpsPanel> {
   List<Map<String, dynamic>> _plans = [];
   List<Map<String, dynamic>> _leads = [];
   final _grantEmail = TextEditingController();
-  final _grantDays = TextEditingController(text: '90');
+  final _grantDays = TextEditingController(text: '3');
 
   @override
   void initState() {
@@ -918,7 +918,9 @@ class _MembershipOpsPanelState extends State<_MembershipOpsPanel> {
         'name': plan['name'],
         'list_price_inr': parseMoney(plan['list_price_inr']),
         'offer_price_inr': parseMoney(plan['offer_price_inr']),
-        'duration_days': int.tryParse(plan['duration_days']?.toString() ?? '') ?? 90,
+        'duration_days': membershipDurationDaysForMonths(
+          membershipPlanMonthsFromDays(int.tryParse(plan['duration_days']?.toString() ?? '') ?? 90),
+        ),
         'flash_enabled': plan['flash_enabled'] == true,
         'flash_label': plan['flash_label'],
         'is_active': plan['is_active'] != false,
@@ -943,7 +945,7 @@ class _MembershipOpsPanelState extends State<_MembershipOpsPanel> {
       final res = await Supabase.instance.client.rpc('admin_grant_membership', params: {
         'p_email': email,
         'p_plan_id': _plans.isEmpty ? null : _plans.first['id'],
-        'p_days': int.tryParse(_grantDays.text.trim()),
+        'p_days': membershipDurationDaysForMonths(int.tryParse(_grantDays.text.trim()) ?? 3),
         'p_note': 'Granted from ops',
       });
       if (!mounted) return;
@@ -991,7 +993,7 @@ class _MembershipOpsPanelState extends State<_MembershipOpsPanel> {
           TextField(
             controller: _grantDays,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Days'),
+            decoration: const InputDecoration(labelText: 'Plan months (1, 3, 6, or 9)'),
           ),
           const SizedBox(height: 8),
           FilledButton(
@@ -1029,11 +1031,19 @@ class _MembershipOpsPanelState extends State<_MembershipOpsPanel> {
             onChanged: (v) => plan['offer_price_inr'] = v,
           ),
           const SizedBox(height: 8),
-          TextFormField(
-            initialValue: plan['duration_days']?.toString() ?? '90',
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Duration (days)'),
-            onChanged: (v) => plan['duration_days'] = v,
+          DropdownButtonFormField<int>(
+            value: membershipPlanMonthsFromDays(
+              int.tryParse(plan['duration_days']?.toString() ?? '') ?? 90,
+            ),
+            decoration: const InputDecoration(labelText: 'Plan length'),
+            items: [
+              for (final months in kMembershipPlanMonths)
+                DropdownMenuItem(value: months, child: Text('$months month${months == 1 ? '' : 's'}')),
+            ],
+            onChanged: (v) {
+              if (v == null) return;
+              plan['duration_days'] = membershipDurationDaysForMonths(v);
+            },
           ),
           const SizedBox(height: 8),
           TextFormField(

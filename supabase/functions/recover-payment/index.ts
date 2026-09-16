@@ -173,6 +173,8 @@ serve(async (req) => {
           Boolean(body.apply_coins),
           body.dropoff_lat,
           body.dropoff_lng,
+          Boolean(body.add_membership),
+          body.membership_plan_id ?? null,
         )
         if (Number(payment.amount) !== quoted.amountPaise) {
           await admin.rpc('release_checkout_inventory', {
@@ -198,6 +200,8 @@ serve(async (req) => {
           apply_coins: quoted.applyCoins,
           tip_amount: quoted.tipAmount,
           delivery_fee: quoted.deliveryFee,
+          membership_plan_id: quoted.membershipPlanId,
+          membership_fee: quoted.membershipFee,
           amount_paise: quoted.amountPaise,
           dropoff_lat: quoted.dropLat,
           dropoff_lng: quoted.dropLng,

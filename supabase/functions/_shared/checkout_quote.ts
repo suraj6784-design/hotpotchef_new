@@ -42,6 +42,8 @@ export type QuotedCheckout = {
   applyCoins: boolean
   coinsApplied: number
   deliveryFee: number
+  membershipFee: number
+  membershipPlanId: string | null
   amountPaise: number
   dropLat: number | null
   dropLng: number | null
@@ -55,11 +57,30 @@ export async function quotePaidCheckout(
   applyCoins: boolean,
   dropLatRaw: unknown,
   dropLngRaw: unknown,
+  addMembership = false,
+  planIdRaw: unknown = null,
 ): Promise<QuotedCheckout> {
   const cartItems = normalizeCartItems(rawCart)
   const tipAmount = Math.max(0, Math.min(500, asNumber(tipRaw, 0)))
   const dropLat = dropLatRaw == null ? null : asNumber(dropLatRaw, NaN)
   const dropLng = dropLngRaw == null ? null : asNumber(dropLngRaw, NaN)
+
+  let membershipFee = 0
+  let membershipPlanId: string | null = null
+  if (addMembership) {
+    const planId = typeof planIdRaw === 'string' && planIdRaw.trim() ? planIdRaw.trim() : null
+    const { data: quote, error: memError } = await admin.rpc('membership_checkout_quote', {
+      p_user_id: userId,
+      p_plan_id: planId,
+    })
+    if (memError) {
+      throw new Error(memError.message || 'Could not quote membership')
+    }
+    if (quote?.eligible === true && quote?.plan_id) {
+      membershipFee = Math.max(0, asNumber(quote.offer_price_inr, 0))
+      membershipPlanId = String(quote.plan_id)
+    }
+  }
 
   const { data: quotedFee, error: feeError } = await admin.rpc('quote_customer_delivery_fee', {
     p_items: cartItems,
@@ -70,7 +91,8 @@ export async function quotePaidCheckout(
   if (feeError) {
     throw new Error(feeError.message || 'Could not quote delivery')
   }
-  const deliveryFee = asNumber(quotedFee, 0)
+  let deliveryFee = asNumber(quotedFee, 0)
+  if (membershipPlanId) deliveryFee = 0
 
   let packagingAlreadyIncluded = 20
   const { data: pricing, error: quoteError } = await admin.rpc('calculate_cart_total', {
@@ -89,7 +111,7 @@ export async function quotePaidCheckout(
   } else {
     packagingAlreadyIncluded = packagingFeeFromFoodTotal(foodOnly)
   }
-  const billBeforeCoins = foodOnly + packagingAlreadyIncluded + deliveryFee + tipAmount
+  const mealBill = foodOnly + packagingAlreadyIncluded + deliveryFee + tipAmount
 
   const coinsAllowed = cartItems.every((row) => {
     const flag = row.accepts_hotpot_coins
@@ -99,10 +121,10 @@ export async function quotePaidCheckout(
   let coins = 0
   if (applyCoins && coinsAllowed) {
     const { data: profile } = await admin.from('users').select('hotpot_coins').eq('id', userId).maybeSingle()
-    coins = Math.min(asNumber(profile?.hotpot_coins, 0), billBeforeCoins)
+    coins = Math.min(asNumber(profile?.hotpot_coins, 0), mealBill)
   }
 
-  const grandTotal = Math.max(0, billBeforeCoins - coins)
+  const grandTotal = Math.max(0, mealBill - coins) + membershipFee
   const amountPaise = Math.round(grandTotal * 100)
   if (amountPaise < 100) {
     throw new Error('Payable amount is too small to charge')
@@ -114,6 +136,8 @@ export async function quotePaidCheckout(
     applyCoins: applyCoins && coinsAllowed,
     coinsApplied: coins,
     deliveryFee,
+    membershipFee,
+    membershipPlanId,
     amountPaise,
     dropLat: Number.isFinite(dropLat) ? dropLat : null,
     dropLng: Number.isFinite(dropLng) ? dropLng : null,

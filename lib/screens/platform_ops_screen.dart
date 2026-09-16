@@ -19,6 +19,7 @@ import '../services/auth_session.dart';
 import '../services/alert_service.dart';
 import '../models/app_role.dart';
 import '../utils/helpers.dart';
+import '../utils/membership.dart';
 import '../utils/fssai_certificate_scan.dart';
 import '../utils/kyc_checklist.dart';
 import '../utils/network.dart';
