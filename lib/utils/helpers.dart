@@ -920,6 +920,9 @@ int customerHubTabIndex(String? tab) {
     case 'account':
     case 'profile':
       return 3;
+    case 'alerts':
+    case 'notifications':
+      return 4;
     default:
       return 0;
   }
@@ -960,6 +963,36 @@ bool isPastOrderStatus(String? status) {
       current.contains('cancel') ||
       current.contains('reject') ||
       current.contains('refund');
+}
+
+/// Flatten `user_notifications.data` so [alertOpenPath] can open the matching hub.
+Map<String, String?> alertDataFromNotificationRow(Map<String, dynamic> row) {
+  final data = <String, String?>{
+    'kind': row['kind']?.toString(),
+    'type': row['kind']?.toString(),
+  };
+  for (final key in const [
+    'order_id',
+    'meal_id',
+    'request_id',
+    'lead_id',
+    'chef_id',
+    'kitchen_id',
+    'status',
+    'role',
+  ]) {
+    final value = row[key];
+    if (value == null || value is Map || value is List) continue;
+    data[key] = value.toString();
+  }
+  final extra = row['data'];
+  if (extra is Map) {
+    extra.forEach((key, value) {
+      if (value == null || value is Map || value is List) return;
+      data[key.toString()] = value.toString();
+    });
+  }
+  return data;
 }
 
 /// Chat pushes open the Order# room. Order and lead pushes land on the matching hub tab.
@@ -1138,6 +1171,36 @@ String feedDietChipFromPreference(String? preference) {
   }
 }
 
+/// Home quick chips: Live / Pre-order / Healthy. Default Live keeps the accepting catalog.
+bool mealMatchesHomeMode(
+  Map<String, dynamic> meal, {
+  required String mode,
+  Map<String, dynamic>? chefProfile,
+  DateTime? now,
+}) {
+  switch (mode.trim().toLowerCase()) {
+    case 'preorder':
+    case 'pre-order':
+      return orderIsPreOrderSlot(meal);
+    case 'heat':
+    case 'healthy':
+      if (mealMatchesCuisine(meal, 'Healthy')) return true;
+      final tags = meal['health_tags'];
+      if (tags is List && tags.isNotEmpty) return true;
+      return mealMatchesFeedDiet(meal, 'High-protein') || mealMatchesFeedDiet(meal, 'Millet');
+    case 'live':
+      if (chefProfile?['is_live'] == true) return true;
+      if (isImmediateDeliverySlot(meal['time_slot']?.toString())) return true;
+      final n = now ?? DateTime.now();
+      final day = parseSlotCalendarDay(meal['time_slot']?.toString(), now: n);
+      // Future-dated one-offs belong on Pre-order, not the Live strip.
+      if (day != null && calendarDay(day).isAfter(calendarDay(n))) return false;
+      return true;
+    default:
+      return true;
+  }
+}
+
 bool mealMatchesFeedDiet(Map<String, dynamic> meal, String? diet) {
   final selected = (diet ?? '').trim();
   if (selected.isEmpty || selected == 'All') return true;
@@ -1283,6 +1346,7 @@ FeedEmptyCopy feedEmptyCopy({
   bool hasFollows = false,
   String? offerBrowseGroupKey,
   bool outOfServiceArea = false,
+  String homeMode = 'live',
 }) {
   if (outOfServiceArea) {
     return FeedEmptyCopy(
@@ -1357,6 +1421,20 @@ FeedEmptyCopy feedEmptyCopy({
       message: q.isEmpty
           ? 'Try a different search.'
           : 'Nothing matched "$q". Try another dish name or home chef.',
+    );
+  }
+  final mode = homeMode.trim().toLowerCase();
+  if ((mode == 'heat' || mode == 'healthy') && !hasSearch && !favorites && !following) {
+    return const FeedEmptyCopy(
+      title: 'No healthy plates nearby',
+      message: 'Healthy & Salads, millet, and high-protein tags show here. Try Pre-order for the full menu.',
+      clearCategory: true,
+    );
+  }
+  if ((mode == 'preorder' || mode == 'pre-order') && !hasSearch && !favorites && !following) {
+    return const FeedEmptyCopy(
+      title: 'No pre-order slots nearby',
+      message: 'Kitchens with a booked clock slot show here. Try Live Order for ASAP plates.',
     );
   }
   if (hasChipFilter) {

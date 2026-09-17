@@ -504,6 +504,18 @@ void main() {
     expect(customerHubTabIndex('orders'), 2);
     expect(customerHubTabIndex('account'), 3);
     expect(customerHubTabIndex('profile'), 3);
+    expect(customerHubTabIndex('notifications'), 4);
+    expect(customerHubTabIndex('alerts'), 4);
+    expect(
+      alertOpenPath(
+        alertDataFromNotificationRow({
+          'kind': 'order_update',
+          'data': {'order_id': 'ord-1', 'status': 'Out for Delivery'},
+        }),
+        role: 'Customer',
+      ),
+      '/tracking?orderId=ord-1',
+    );
     expect(chefHubTabIndex('orders'), 1);
     expect(chefHubTabIndex('profile'), 2);
     expect(chefHubTabIndex('leads'), 7);

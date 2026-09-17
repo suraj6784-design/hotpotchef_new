@@ -28,6 +28,8 @@ class AuthScreen extends StatefulWidget {
     this.sheetTitle,
     this.sheetSubtitle,
     this.initialReferralCode,
+    this.initialRole,
+    this.startOnSignup = false,
   });
 
   /// Guest checkout/order uses a modal sheet so the cart stays visible behind.
@@ -35,6 +37,8 @@ class AuthScreen extends StatefulWidget {
   final String? sheetTitle;
   final String? sheetSubtitle;
   final String? initialReferralCode;
+  final String? initialRole;
+  final bool startOnSignup;
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
@@ -68,6 +72,14 @@ class _AuthScreenState extends State<AuthScreen> {
     if (seeded != null) {
       _referralController.text = seeded;
       _isLogin = false;
+    }
+    if (widget.startOnSignup) _isLogin = false;
+    final requested = widget.initialRole?.trim();
+    if (requested != null && requested.isNotEmpty) {
+      final parsed = AppRole.parse(requested);
+      if (kAppStorefront.signupRoles.contains(parsed)) {
+        _selectedRole = parsed;
+      }
     }
   }
 
@@ -1001,7 +1013,7 @@ class _AuthScreenState extends State<AuthScreen> {
           GradientButton(
             label: _phoneOtpAuth
                 ? (_otpSent ? 'Verify OTP' : 'Get OTP')
-                : (_isLogin ? 'Sign In' : 'Register as ${_selectedRole.storageValue}'),
+                : (_isLogin ? 'Sign In' : 'Register as ${_selectedRole.signupLabel}'),
             icon: _phoneOtpAuth
                 ? (_otpSent ? Icons.verified_outlined : Icons.sms_outlined)
                 : (_isLogin ? Icons.login_rounded : Icons.person_add_alt_1_rounded),
@@ -1103,7 +1115,8 @@ class _AuthScreenState extends State<AuthScreen> {
               Icon(icon, size: 20, color: isSelected ? Colors.white : AppTheme.textMuted),
               const SizedBox(height: 4),
               Text(
-                role.storageValue,
+                role.signupLabel,
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,

@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
-import 'app_widgets.dart';
 import 'customer_ui_components.dart';
 
 class RescuedMealsBanner extends StatefulWidget {

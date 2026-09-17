@@ -76,6 +76,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   Stream<List<Map<String, dynamic>>>? _ordersStream;
   Stream<List<Map<String, dynamic>>>? _requestsStream;
   Stream<List<Map<String, dynamic>>>? _myQuotesStream;
+  RealtimeChannel? _kitchenChannel;
 
   // Resolved customer_id -> display name cache (orders only store customer_id).
   final Map<String, String> _customerNameCache = {};
@@ -87,9 +88,16 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     unawaited(AuthSession.ensureHubRole(context, AppRole.chef));
     _ensureHubStreams();
     _loadKitchenStatus();
+    _subscribeKitchenStatus();
     _loadChefPin();
     unawaited(_loadActiveDishCount());
     unawaited(_loadOpsAccess());
+  }
+
+  @override
+  void dispose() {
+    _kitchenChannel?.unsubscribe();
+    super.dispose();
   }
 
   Future<void> _loadOpsAccess() async {
@@ -356,6 +364,33 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     } catch (e) {
       debugPrint('Failed to load kitchen status: $e');
     }
+  }
+
+  void _subscribeKitchenStatus() {
+    if (_currentUserId.isEmpty) return;
+    _kitchenChannel?.unsubscribe();
+    _kitchenChannel = _supabase
+        .channel('public:chef_profiles:$_currentUserId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'chef_profiles',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: _currentUserId,
+          ),
+          callback: (payload) {
+            final record = payload.newRecord;
+            if (!mounted || record.isEmpty) return;
+            setState(() {
+              if (record.containsKey('is_open')) {
+                _isKitchenOpen = record['is_open'] == true;
+              }
+            });
+          },
+        )
+        .subscribe();
   }
 
   Future<void> _toggleKitchenStatus() async {
@@ -986,8 +1021,8 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   ),
                 ),
                 Expanded(
-                  child: GestureDetector(
-                    onTap: () => context.go('/driver-hub'),
+                    child: GestureDetector(
+                    onTap: () => AuthSession.switchPartnerPortal(context, AppRole.driver),
                     child: const Padding(
                       padding: EdgeInsets.symmetric(vertical: 10),
                       child: Text(
@@ -1098,7 +1133,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
           color: AppTheme.primary.withValues(alpha: 0.08),
           borderRadius: AppTheme.radiusLg,
           child: InkWell(
-            onTap: () => context.go('/driver-hub'),
+            onTap: () => AuthSession.switchPartnerPortal(context, AppRole.driver),
             borderRadius: AppTheme.radiusLg,
             child: Padding(
               padding: const EdgeInsets.all(14),

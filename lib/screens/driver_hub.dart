@@ -409,7 +409,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
             onSelected: (value) {
               switch (value) {
                 case 'chef':
-                  context.go('/chef-hub');
+                  AuthSession.switchPartnerPortal(context, AppRole.chef);
                 case 'chats':
                   context.push('/chats');
                 case 'id':
@@ -465,7 +465,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 children: [
                   Expanded(
                     child: GestureDetector(
-                      onTap: () => context.go('/chef-hub'),
+                      onTap: () => AuthSession.switchPartnerPortal(context, AppRole.chef),
                       child: const Padding(
                         padding: EdgeInsets.symmetric(vertical: 10),
                         child: Text(
@@ -581,7 +581,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
             color: AppTheme.primary.withValues(alpha: 0.08),
             borderRadius: AppTheme.radiusLg,
             child: InkWell(
-              onTap: () => context.go('/chef-hub'),
+              onTap: () => AuthSession.switchPartnerPortal(context, AppRole.chef),
               borderRadius: AppTheme.radiusLg,
               child: Padding(
                 padding: const EdgeInsets.all(14),
