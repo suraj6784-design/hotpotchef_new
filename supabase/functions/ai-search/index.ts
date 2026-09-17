@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { filterSellableMeals } from "../_shared/meal_catalog.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -62,7 +63,7 @@ Deno.serve(async (req) => {
           match_count: 10
         })
         if (vectorMeals && vectorMeals.length > 0) {
-          matchedMeals = vectorMeals
+          matchedMeals = filterSellableMeals(vectorMeals)
         }
       }
     } catch (aiError) {
@@ -77,11 +78,12 @@ Deno.serve(async (req) => {
       const { data: textMeals, error: textError } = await supabase
         .from('meals')
         .select('*')
+        .eq('status', 'Available')
         .or(`title.ilike.${searchTerm},description.ilike.${searchTerm},category.ilike.${searchTerm}`)
         .limit(10)
 
       if (!textError && textMeals) {
-        matchedMeals = textMeals
+        matchedMeals = filterSellableMeals(textMeals)
       }
     }
 

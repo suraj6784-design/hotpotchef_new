@@ -23,6 +23,7 @@ import '../screens/chef_analytics_screen.dart';
 import '../screens/chef_academy_screen.dart';
 import '../screens/chef_advertise_screen.dart';
 import '../screens/chef_publish_meal_screen.dart';
+import '../screens/legal_document_screen.dart';
 import '../screens/platform_ops_screen.dart';
 import '../screens/ops_invite_screen.dart';
 import '../screens/referral_screen.dart';
@@ -35,6 +36,8 @@ import '../screens/driver_id_card_screen.dart';
 import '../screens/wrong_storefront_screen.dart';
 import '../services/auth_session.dart';
 import '../widgets/not_found_page.dart';
+import '../legal/legal_documents.dart';
+import '../utils/legal_content.dart';
 import 'app_flavor.dart';
 import 'app_page.dart';
 import 'helpers.dart';
@@ -52,8 +55,33 @@ GoRoute _fadeRoute(
   );
 }
 
+LegalDocumentType? _legalTypeForSlug(String slug) {
+  switch (slug.toLowerCase()) {
+    case 'terms':
+      return LegalDocumentType.terms;
+    case 'privacy':
+      return LegalDocumentType.privacy;
+    case 'faq':
+      return LegalDocumentType.faq;
+    case 'cancellation':
+      return LegalDocumentType.cancellation;
+    default:
+      return null;
+  }
+}
+
 class AppRouter {
   static final AuthRefreshNotifier _authRefresh = AuthRefreshNotifier();
+
+  static void go(String location) => router.go(location);
+
+  static String? currentPath() {
+    try {
+      return router.state.uri.path;
+    } catch (_) {
+      return null;
+    }
+  }
 
   static final GoRouter router = GoRouter(
     initialLocation: kAppStorefront.isPartner ? '/auth' : '/customer-hub',
@@ -187,6 +215,13 @@ class AppRouter {
           child: CartImportScreen(itemsParam: state.uri.queryParameters['items'] ?? ''),
         ),
       ),
+      GoRoute(
+        path: '/app/cart',
+        pageBuilder: (context, state) => appFadeSlidePage(
+          key: state.pageKey,
+          child: CartImportScreen(itemsParam: state.uri.queryParameters['items'] ?? ''),
+        ),
+      ),
       _fadeRoute('/chats', (context, state) => const ChatInboxScreen()),
       _fadeRoute('/chat/:mealId', (context, state) {
         final mealId = state.pathParameters['mealId'] ?? '';
@@ -246,6 +281,23 @@ class AppRouter {
       _fadeRoute('/bulk-request', (context, state) => const CustomerBulkRequestScreen()),
       _fadeRoute('/support-tickets', (context, state) => const CustomerSupportTicketsScreen()),
       _fadeRoute('/notifications', (context, state) => const NotificationsInboxScreen()),
+      GoRoute(
+        path: '/legal/:doc',
+        pageBuilder: (context, state) {
+          final slug = state.pathParameters['doc'] ?? '';
+          final creamType = _legalTypeForSlug(slug);
+          final child = creamType != null
+              ? LegalDocumentScreen(type: creamType)
+              : () {
+                  final doc = LegalDocuments.byPath('/legal/$slug');
+                  if (doc == null) {
+                    return const Scaffold(body: Center(child: Text('Document not found')));
+                  }
+                  return LegalDocumentScreen(document: doc);
+                }();
+          return appFadeSlidePage(key: state.pageKey, child: child);
+        },
+      ),
     ],
   );
 }

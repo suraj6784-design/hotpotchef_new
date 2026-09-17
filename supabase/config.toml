@@ -430,7 +430,8 @@ entrypoint = "./functions/ai-craving-matcher/index.ts"
 
 [functions.push-notifier]
 enabled = true
-verify_jwt = true
+# Auth is X-Webhook-Secret or service_role inside the function (anon JWT is not enough).
+verify_jwt = false
 import_map = "./functions/push-notifier/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
@@ -441,7 +442,8 @@ entrypoint = "./functions/push-notifier/index.ts"
 
 [functions.send-push-notification]
 enabled = true
-verify_jwt = true
+# Auth is X-Webhook-Secret, service_role, or a verified user JWT inside the function.
+verify_jwt = false
 import_map = "./functions/send-push-notification/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx

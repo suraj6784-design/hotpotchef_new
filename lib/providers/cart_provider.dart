@@ -13,6 +13,7 @@ import '../models/cart_enums.dart';
 import '../services/cart_service.dart';
 import '../services/shared_cart_service.dart';
 import '../services/app_analytics.dart';
+import '../utils/cart_merge.dart';
 import '../utils/helpers.dart';
 import '../utils/delivery_fee.dart';
 
@@ -94,9 +95,11 @@ class CartNotifier extends Notifier<CartState> {
         // User had offline items prior to sign-in: push local up
         await _cartService.saveCart(state.items);
       } else if (remoteItems.isNotEmpty) {
-        // Production merge strategy: prefer remote items, resolve collisions
-        state = state.copyWith(items: remoteItems);
+        // Union guest + remote. Remote-wins used to drop guest lines.
+        final merged = CartMerge.merge(guest: state.items, remote: remoteItems);
+        state = state.copyWith(items: merged);
         await _persistLocal();
+        await _cartService.saveCart(merged);
       }
       await fetchUserCoins();
     } catch (e, st) {
@@ -317,7 +320,7 @@ class CartNotifier extends Notifier<CartState> {
         id: '${mealId}_${DateTime.now().microsecondsSinceEpoch}',
         mealId: mealId,
         chefId: chefId,
-        title: meal['title']?.toString() ?? meal['name']?.toString() ?? 'Meal Item',
+        title: mealDisplayTitle(meal, fallback: 'Meal Item'),
         basePrice: basePriceVal,
         discountedPrice: validDiscount,
         quantity: quantity.clamp(1, availableStock),
@@ -544,8 +547,18 @@ class CartNotifier extends Notifier<CartState> {
   Future<void> syncGuestCartToUser() async {
     try {
       final user = _supabase.auth.currentUser;
-      if (user == null || state.isEmpty) return;
-      await _cartService.saveCart(state.items);
+      if (user == null) return;
+      if (!_isInitialized && state.isEmpty) {
+        await _loadLocalCart();
+      }
+      final remoteItems = await _cartService.fetchCart();
+      final merged = CartMerge.merge(guest: state.items, remote: remoteItems);
+      if (!listEquals(merged, state.items)) {
+        state = state.copyWith(items: merged);
+      }
+      await _persistLocal();
+      await _cartService.saveCart(merged);
+      await fetchUserCoins();
     } catch (e, st) {
       _logCartError(e, st, 'Failed to sync guest cart to user');
     }

@@ -8,6 +8,7 @@ import {
   itemsTotalFromLines,
   parseOrderItems,
 } from '../_shared/payout.ts'
+import { authorizeInternalInvoke } from '../_shared/webhook_auth.ts'
 
 function asNumber(value: unknown, fallback = 0) {
   const n = Number(value)
@@ -29,7 +30,9 @@ serve(async (req) => {
     const admin = createClient(supabaseUrl, serviceKey)
 
     const authHeader = req.headers.get('Authorization') ?? ''
-    const isServiceRole = serviceKey.length > 0 && authHeader === `Bearer ${serviceKey}`
+    const internal = authorizeInternalInvoke(req.headers)
+    const isServiceRole =
+      internal.ok || (serviceKey.length > 0 && authHeader === `Bearer ${serviceKey}`)
     let callerId = ''
     if (!isServiceRole) {
       const userClient = createClient(supabaseUrl, anonKey, {

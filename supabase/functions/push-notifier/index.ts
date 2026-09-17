@@ -2,12 +2,14 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts'
 import { adminClient, isServiceRoleRequest, jsonUnauthorized } from '../_shared/guard.ts'
 import { dispatchOrderAlert } from '../_shared/alerts.ts'
+import { authorizeInternalInvoke } from '../_shared/webhook_auth.ts'
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return optionsResponse()
 
   try {
-    if (!isServiceRoleRequest(req)) return jsonUnauthorized()
+    const internal = authorizeInternalInvoke(req.headers)
+    if (!internal.ok && !isServiceRoleRequest(req)) return jsonUnauthorized()
 
     const payload = await req.json()
     const newRecord = payload.record

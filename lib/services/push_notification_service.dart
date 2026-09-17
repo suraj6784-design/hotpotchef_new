@@ -2,11 +2,13 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'alert_service.dart';
+import '../firebase_bootstrap.dart';
 import '../utils/network.dart';
 
 // Top-level background message handler (Required by FCM)
@@ -18,11 +20,16 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 class PushNotificationService {
-  static final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+  static FirebaseMessaging get _messaging => FirebaseMessaging.instance;
   static final _supabase = Supabase.instance.client;
   static Map<String, dynamic>? _pendingData;
 
   static Future<void> initialize() async {
+    if (Firebase.apps.isEmpty) {
+      debugPrint('⚠️ Skipping push notifications because Firebase is not initialized.');
+      return;
+    }
+
     try {
       // 1. Request Permission for iOS / Web / Android 13+
       NotificationSettings settings = await _messaging.requestPermission(
@@ -37,18 +44,33 @@ class PushNotificationService {
         debugPrint('User declined or accepted provisional permissions.');
       }
 
-      // 2. Set background message handler
-      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+      // 2. Set background message handler (not supported on web)
+      if (FirebaseBootstrap.isBackgroundMessagingSupported(isWeb: kIsWeb)) {
+        FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+      }
 
       // 3. Fetch and save the FCM Token to Supabase for the current user
       await syncTokenForCurrentUser();
 
-      // 4. Listen for token refreshes
+      // 4. Re-sync when auth state changes (login after cold start, token refresh)
+      _supabase.auth.onAuthStateChange.listen((data) {
+        switch (data.event) {
+          case AuthChangeEvent.signedIn:
+          case AuthChangeEvent.initialSession:
+          case AuthChangeEvent.userUpdated:
+            _syncFCMTokenToDatabase();
+            break;
+          default:
+            break;
+        }
+      });
+
+      // 5. Listen for token refreshes
       _messaging.onTokenRefresh.listen((newToken) {
         _updateTokenInDatabase(newToken);
       });
 
-      // 5. Handle foreground messages with an in-app banner
+      // 6. Handle foreground messages with an in-app banner
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
         final title = message.notification?.title ?? 'HotPotChef';
         final body = message.notification?.body ?? '';
@@ -74,15 +96,27 @@ class PushNotificationService {
         }
       });
       await AlertService.start();
-
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Error initializing PushNotifications service');
+      _recordNonFatal(e, stack, 'Error initializing PushNotifications service');
       debugPrint('Error initializing PushNotifications: $e');
     }
   }
 
-  static Future<void> syncTokenForCurrentUser() async {
-    await _syncFCMTokenToDatabase();
+  /// Public hook for login / session-sync callers.
+  static Future<void> syncTokenForCurrentUser() => _syncFCMTokenToDatabase();
+
+  static void _recordNonFatal(Object error, StackTrace stack, String reason) {
+    if (!FirebaseBootstrap.isCrashlyticsSupported(
+      isWeb: kIsWeb,
+      platform: defaultTargetPlatform,
+    )) {
+      return;
+    }
+    try {
+      FirebaseCrashlytics.instance.recordError(error, stack, reason: reason);
+    } catch (crashlyticsError) {
+      debugPrint('⚠️ Failed to report to Crashlytics: $crashlyticsError');
+    }
   }
 
   static Future<void> _syncFCMTokenToDatabase() async {
@@ -95,7 +129,7 @@ class PushNotificationService {
         await _updateTokenInDatabase(token);
       }
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Error syncing FCM token to database');
+      _recordNonFatal(e, stack, 'Error syncing FCM token to database');
       debugPrint('Error syncing FCM token: $e');
     }
   }
@@ -112,7 +146,7 @@ class PushNotificationService {
 
       debugPrint('FCM Token successfully updated in Supabase.');
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to update token in database');
+      _recordNonFatal(e, stack, 'Failed to update token in database');
       debugPrint('Failed to update token in database: $e');
     }
   }
@@ -139,7 +173,7 @@ class PushNotificationService {
       }
       await _messaging.deleteToken();
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Error clearing FCM token on logout');
+      _recordNonFatal(e, stack, 'Error clearing FCM token on logout');
       debugPrint('Error clearing FCM token on logout: $e');
     }
   }

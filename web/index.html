@@ -18,8 +18,11 @@
   <title>HotPotChef</title>
   <link rel="manifest" href="manifest.json">
 
-  <!-- Restrict this browser key in Google Cloud. Do not commit a live unrestricted key. -->
-  <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY"></script>
+  <!--
+    Google Maps JavaScript API is NOT loaded with a committed key.
+    Flutter injects the script at startup from GOOGLE_MAPS_API_KEY
+    (see lib/utils/google_maps_js_loader.dart). Do not paste a live key here.
+  -->
 
   
   
