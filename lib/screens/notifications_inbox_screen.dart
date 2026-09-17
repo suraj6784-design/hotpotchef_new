@@ -5,7 +5,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/alert_service.dart';
 import '../services/auth_session.dart';
-import '../utils/app_theme.dart';
 import '../utils/diner_locale.dart';
 import '../utils/helpers.dart';
 import '../utils/network.dart';

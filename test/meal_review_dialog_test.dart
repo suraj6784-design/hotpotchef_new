@@ -26,7 +26,7 @@ void main() {
 
     final title = tester.widget<Text>(find.text('Rate Dal Tadka'));
     expect(title.style?.color, AppTheme.textMain);
-    expect(find.text('How was the food from this home kitchen?'), findsOneWidget);
+    expect(find.text('Tap a star to send. A note is optional.'), findsOneWidget);
   });
 
   testWidgets('review dialog uses dark surface and light title in dark theme', (tester) async {

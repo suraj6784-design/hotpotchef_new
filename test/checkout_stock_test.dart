@@ -23,7 +23,7 @@ void main() {
     test('explains refund when capture already happened', () {
       expect(
         soldOutCheckoutMessage(charged: true, refunded: true),
-        contains('refunded'),
+        contains('Refund started'),
       );
     });
   });
