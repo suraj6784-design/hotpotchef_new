@@ -274,11 +274,47 @@ class AuthSession {
     return true;
   }
 
+  /// Partner APK has Chef + Delivery Partner. Switching portals requires the
+  /// matching `users.role` — bounce to signup instead of a dead hub redirect.
+  static Future<void> switchPartnerPortal(BuildContext context, AppRole target) async {
+    final current = roleFromSession();
+    if (current == target) {
+      if (context.mounted) context.go(target.hubPath);
+      return;
+    }
+    final label = target.signupLabel;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Join as $label?'),
+        content: Text(
+          'This login is a ${current.signupLabel} account. Sign out, then register or sign in as $label to open that portal.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Stay here'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    await logout(
+      context,
+      thenLocation: '/auth?role=${Uri.encodeQueryComponent(target.storageValue)}&signup=1',
+    );
+  }
+
   /// FCM token clear + Supabase signOut + return to the public guest feed
   /// (`/customer-hub`) so users can keep browsing meals after logging out.
   static Future<void> logout(
     BuildContext context, {
     Future<void> Function()? beforeNavigate,
+    String? thenLocation,
   }) async {
     clearOpsCache();
     clearRoleCache();
@@ -299,7 +335,9 @@ class AuthSession {
     }
 
     if (context.mounted) {
-      context.go(kAppStorefront.isPartner ? '/auth' : '/customer-hub');
+      context.go(
+        thenLocation ?? (kAppStorefront.isPartner ? '/auth' : '/customer-hub'),
+      );
     }
   }
 }

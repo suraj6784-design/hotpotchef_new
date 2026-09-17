@@ -833,7 +833,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     try {
       final rows = await Supabase.instance.client
           .from('chef_profiles')
-            .select('user_id, is_open, weekly_hours, default_prep_minutes')
+            .select('user_id, is_open, is_live, weekly_hours, default_prep_minutes')
           .inFilter('user_id', missing.toList());
       var closedChanged = false;
       for (final row in rows) {
@@ -1664,7 +1664,14 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
 
   List<Map<String, dynamic>> _applyFeedChips(List<Map<String, dynamic>> meals) {
     final filtered = meals
-        .where((meal) => mealMatchesFeedDiet(meal, _selectedDiet) && mealMatchesCuisine(meal, _selectedCategory))
+        .where((meal) =>
+            mealMatchesFeedDiet(meal, _selectedDiet) &&
+            mealMatchesCuisine(meal, _selectedCategory) &&
+            mealMatchesHomeMode(
+              meal,
+              mode: _homeMode,
+              chefProfile: _chefKitchenProfiles[meal['chef_id']?.toString()],
+            ))
         .toList();
     WidgetsBinding.instance.addPostFrameCallback((_) => _hydrateChefRatings(filtered));
     return sortFeedMeals(
@@ -1970,8 +1977,6 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           _homeMode = mode;
           if (mode == 'live') _selectedSort = kFeedSortEta;
           if (mode == 'preorder') _selectedSort = kFeedSortNearby;
-          if (mode == 'heat') _selectedDiet = 'Healthy';
-          if (mode != 'heat' && _selectedDiet == 'Healthy') _selectedDiet = 'All';
         });
       },
     );
@@ -2154,6 +2159,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         hasFollows: hasFollows,
         offerBrowseGroupKey: _offerBrowseGroupKey,
         outOfServiceArea: _outOfServiceArea,
+        homeMode: _homeMode,
       );
       return EmptyState(
         icon: copy.promptSignIn || showFollowing

@@ -96,6 +96,48 @@ void main() {
       outOfServiceArea: true,
     );
     expect(outside.title, contains('Pune'));
+    expect(
+      feedEmptyCopy(
+        signedIn: true,
+        favoritesOnly: false,
+        hasFavorites: false,
+        hasSearch: false,
+        homeMode: 'heat',
+      ).title,
+      'No healthy plates nearby',
+    );
+    expect(
+      feedEmptyCopy(
+        signedIn: true,
+        favoritesOnly: false,
+        hasFavorites: false,
+        hasSearch: false,
+        homeMode: 'preorder',
+      ).title,
+      'No pre-order slots nearby',
+    );
+  });
+
+  test('home Live / Pre-order / Healthy chips filter the catalog', () {
+    final now = DateTime(2026, 9, 17);
+    final quinoa = {'title': 'Quinoa bowl', 'category': 'Healthy & Salads'};
+    final ragi = {'title': 'Ragi dosa', 'is_veg': true};
+    final dal = {'title': 'Dal tadka', 'time_slot': 'ASAP'};
+    final booked = {'title': 'Biryani', 'time_slot': '7:00 PM to 8:00 PM'};
+    final futureOneOff = {'title': 'Weekend thali', 'time_slot': '20 Sep, 1:00 PM to 2:00 PM'};
+
+    expect(mealMatchesHomeMode(quinoa, mode: 'heat'), isTrue);
+    expect(mealMatchesHomeMode(ragi, mode: 'healthy'), isTrue);
+    expect(mealMatchesHomeMode(dal, mode: 'heat'), isFalse);
+    expect(mealMatchesHomeMode(booked, mode: 'preorder'), isTrue);
+    expect(mealMatchesHomeMode(dal, mode: 'preorder'), isFalse);
+    expect(mealMatchesHomeMode(dal, mode: 'live'), isTrue);
+    expect(mealMatchesHomeMode(futureOneOff, mode: 'live', now: now), isFalse);
+    expect(mealMatchesHomeMode(futureOneOff, mode: 'preorder', now: now), isTrue);
+    expect(
+      mealMatchesHomeMode(booked, mode: 'live', chefProfile: {'is_live': true}),
+      isTrue,
+    );
   });
 
   test('home sort chips order by price, rating, then distance', () {

@@ -135,6 +135,8 @@ class AppRouter {
       _fadeRoute('/auth',
         (context, state) => AuthScreen(
           initialReferralCode: state.uri.queryParameters['ref'],
+          initialRole: state.uri.queryParameters['role'],
+          startOnSignup: state.uri.queryParameters['signup'] == '1',
         ),
       ),
       _fadeRoute('/wrong-app', (context, state) => const WrongStorefrontScreen()),

@@ -18,6 +18,20 @@ enum AppRole {
     }
   }
 
+  /// Partner signup chip / CTA. Driver is "Delivery Partner" in storefront copy.
+  String get signupLabel {
+    switch (this) {
+      case AppRole.driver:
+        return 'Delivery Partner';
+      case AppRole.chef:
+        return 'Chef';
+      case AppRole.customer:
+        return 'Customer';
+      case AppRole.admin:
+        return 'Admin';
+    }
+  }
+
   /// Only diners invite friends and earn on a first customer order.
   bool get usesReferral => this == AppRole.customer;
 

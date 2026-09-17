@@ -18,6 +18,8 @@ void main() {
       expect(AppRole.parse(null), AppRole.customer);
       expect(AppRole.chef.hubPath, '/chef-hub');
       expect(AppRole.admin.hubPath, '/platform-ops');
+      expect(AppRole.driver.signupLabel, 'Delivery Partner');
+      expect(AppRole.chef.signupLabel, 'Chef');
     });
   });
 

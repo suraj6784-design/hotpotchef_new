@@ -3,8 +3,11 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../services/alert_service.dart';
+import '../services/auth_session.dart';
 import '../utils/app_theme.dart';
 import '../utils/diner_locale.dart';
+import '../utils/helpers.dart';
 import '../utils/network.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/diner_storefront.dart';
@@ -126,6 +129,17 @@ class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
     }
   }
 
+  Future<void> _openRow(Map<String, dynamic> row) async {
+    await _markRead(row);
+    if (!mounted) return;
+    final path = alertOpenPath(
+      alertDataFromNotificationRow(row),
+      role: AuthSession.roleFromSession().storageValue,
+    );
+    if (path == null || path.isEmpty) return;
+    AlertService.openAlertRoute(path);
+  }
+
   Future<void> _markRead(Map<String, dynamic> row) async {
     final id = row['id']?.toString();
     if (id == null || id.isEmpty || row['read_at'] != null) return;
@@ -235,7 +249,7 @@ class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
                             child: DinerAccentCard(
                               accent: _accentFor(row),
                               unread: unreadRow,
-                              onTap: () => _markRead(row),
+                              onTap: () => _openRow(row),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
