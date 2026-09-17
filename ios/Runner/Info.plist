@@ -18,6 +18,22 @@
 		<string>HotPotChef</string>
 		<key>CFBundlePackageType</key>
 		<string>APPL</string>
+		<key>FlutterDeepLinkingEnabled</key>
+		<true/>
+		<key>CFBundleURLTypes</key>
+		<array>
+			<dict>
+				<key>CFBundleTypeRole</key>
+				<string>Editor</string>
+				<key>CFBundleURLName</key>
+				<string>com.hotpotchef.app</string>
+				<key>CFBundleURLSchemes</key>
+				<array>
+					<string>hotpotchef</string>
+					<string>io.supabase.hotpotchef</string>
+				</array>
+			</dict>
+		</array>
 		<key>CFBundleShortVersionString</key>
 		<string>$(FLUTTER_BUILD_NAME)</string>
 		<key>CFBundleSignature</key>
@@ -26,6 +42,14 @@
 		<string>$(FLUTTER_BUILD_NUMBER)</string>
 		<key>LSRequiresIPhoneOS</key>
 		<true/>
+		<key>LSApplicationQueriesSchemes</key>
+		<array>
+			<string>https</string>
+			<string>http</string>
+			<string>mailto</string>
+			<string>tel</string>
+			<string>whatsapp</string>
+		</array>
 		<key>UIApplicationSceneManifest</key>
 		<dict>
 			<key>UIApplicationSupportsMultipleScenes</key>
@@ -66,6 +90,12 @@
 			<string>UIInterfaceOrientationLandscapeLeft</string>
 			<string>UIInterfaceOrientationLandscapeRight</string>
 		</array>
+		<key>NSCameraUsageDescription</key>
+		<string>HotPotChef uses the camera so a chef can live-stream their kitchen, pack a box, or capture a delivery photo.</string>
+		<key>NSFaceIDUsageDescription</key>
+		<string>HotPotChef uses Face ID to unlock your saved UPI ID at checkout.</string>
+		<key>NSMicrophoneUsageDescription</key>
+		<string>HotPotChef uses the microphone so diners can hear the kitchen while it is live.</string>
 		<key>UIStatusBarHidden</key>
 		<true/>
 		<key>UIViewControllerBasedStatusBarAppearance</key>

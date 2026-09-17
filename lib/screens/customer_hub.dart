@@ -1,22 +1,42 @@
 // lib/screens/customer_hub.dart
 
+import 'dart:async';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
+import '../models/app_role.dart';
 import '../providers/cart_provider.dart';
 import '../providers/favorites_provider.dart';
-import '../services/push_notification_service.dart';
-import '../utils/app_theme.dart';
+import '../providers/kitchen_follows_provider.dart';
+import '../providers/last_order_provider.dart';
+import '../providers/meal_plans_provider.dart';
+import '../services/auth_session.dart';
+import '../utils/app_haptics.dart';
+import '../utils/diner_locale.dart';
+import '../utils/helpers.dart';
+import '../widgets/app_widgets.dart';
+import '../widgets/checkout_retry_banner.dart';
+import '../widgets/customer_ui_components.dart';
+import '../widgets/diner_onboarding_coach.dart';
 import 'customer_feed_tab.dart';
 import 'customer_cart_tab.dart';
 import 'customer_orders_tab.dart';
+import 'customer_profile_screen.dart';
+import 'notifications_inbox_screen.dart';
 
 class CustomerHubScreen extends ConsumerStatefulWidget {
   static bool returnToCartAfterLogin = false;
   final int initialTab;
-  const CustomerHubScreen({super.key, this.initialTab = 0});
+  final bool skipHubRoleGuard;
+
+  const CustomerHubScreen({
+    super.key,
+    this.initialTab = 0,
+    this.skipHubRoleGuard = false,
+  });
 
   @override
   ConsumerState<CustomerHubScreen> createState() => _CustomerHubScreenState();
@@ -24,6 +44,7 @@ class CustomerHubScreen extends ConsumerStatefulWidget {
 
 class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
   int _selectedIndex = 0;
+  int _ordersEpoch = 0;
 
   @override
   void initState() {
@@ -33,71 +54,52 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
       _selectedIndex = 1;
       CustomerHubScreen.returnToCartAfterLogin = false;
     }
-  }
-
-  @override
-  void didUpdateWidget(CustomerHubScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.initialTab != widget.initialTab) {
-      _selectedIndex = widget.initialTab;
+    if (!widget.skipHubRoleGuard &&
+        Supabase.instance.client.auth.currentUser != null) {
+      unawaited(AuthSession.ensureHubRole(context, AppRole.customer));
     }
   }
 
   Future<void> _handleLogout() async {
-    await PushNotificationService.clearTokenOnLogout();
-    await Supabase.instance.client.auth.signOut();
-    ref.read(cartProvider.notifier).clearCart();
-    ref.invalidate(favoritesProvider);
-    setState(() => _selectedIndex = 0);
-
-    if (mounted) {
-      context.go('/auth');
-    }
+    final signedOut = await AuthSession.confirmSignOut(context, beforeNavigate: () async {
+      ref.read(cartProvider.notifier).clearCart();
+      ref.invalidate(favoritesProvider);
+      ref.invalidate(kitchenFollowsProvider);
+      ref.invalidate(lastOrderProvider);
+      ref.invalidate(mealPlansProvider);
+    });
+    if (signedOut && mounted) setState(() => _selectedIndex = 0);
   }
 
   void _navigateToProfile() {
-    context.push('/customer-profile').then((result) {
-      if (result == 'go_to_orders') {
-        _onNavigationItemTapped(2);
-      } else {
-        setState(() {});
-      }
-    });
+    _onNavigationItemTapped(3);
   }
 
   void _onNavigationItemTapped(int index) {
-    setState(() => _selectedIndex = index);
+    if (index == 1) {
+      dismissAppSnackBars(context);
+    }
+    setState(() {
+      _selectedIndex = index;
+      if (index == 2) _ordersEpoch++;
+    });
   }
 
-  Widget _buildNavIndicator(int index, IconData outlineIcon, IconData solidIcon, String label, {int badgeCount = 0}) {
-    bool isSelected = _selectedIndex == index;
-    return GestureDetector(
-      onTap: () => _onNavigationItemTapped(index),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-        padding: EdgeInsets.symmetric(horizontal: isSelected ? 20 : 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: isSelected ? AppTheme.primary.withValues(alpha: 0.15) : Colors.transparent,
-          borderRadius: BorderRadius.circular(30),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Badge(
-              label: Text('$badgeCount'),
-              isLabelVisible: badgeCount > 0,
-              child: Icon(isSelected ? solidIcon : outlineIcon,
-                  color: isSelected ? AppTheme.primary : Colors.grey, size: 22),
-            ),
-            if (isSelected) ...[
-              const SizedBox(width: 6),
-              Text(label, style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 13)),
-            ]
-          ],
-        ),
-      ),
-    );
+  int get _dockIndex {
+    switch (_selectedIndex) {
+      case 2:
+        return 1;
+      case 3:
+        return 2;
+      case 4:
+        return 3;
+      default:
+        return 0;
+    }
+  }
+
+  void _onDockTapped(int dock) {
+    _onNavigationItemTapped(const [0, 2, 3, 4][dock]);
   }
 
   @override
@@ -106,12 +108,15 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
     final favoriteSet = ref.watch(favoritesProvider);
     final favoritesList = favoriteSet.keys.toList();
 
+    final sessionKey = Supabase.instance.client.auth.currentUser?.id ?? 'guest';
     final List<Widget> pages = [
       CustomerFeedTab(
         favoriteMeals: favoritesList,
         onToggleFavorite: (id) => ref.read(favoritesProvider.notifier).toggleFavorite(id),
         onProfileTap: _navigateToProfile,
         onLogout: _handleLogout,
+        onGoToCart: () => _onNavigationItemTapped(1),
+        onReorderToOrders: () => _onNavigationItemTapped(2),
       ),
       CustomerCartTab(
         onAddMoreMeals: () => _onNavigationItemTapped(0),
@@ -120,95 +125,160 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
         onLogout: _handleLogout,
       ),
       CustomerOrdersTab(
+        key: ValueKey('orders-$sessionKey'),
+        refreshEpoch: _ordersEpoch,
         onProfileTap: _navigateToProfile,
         onLogout: _handleLogout,
+        onReorderToCart: () => _onNavigationItemTapped(2),
       ),
+      CustomerProfileScreen(
+        key: ValueKey('account-$sessionKey'),
+        embedded: true,
+        onLogout: () async {
+          await _handleLogout();
+          if (mounted) setState(() => _selectedIndex = 0);
+        },
+      ),
+      const NotificationsInboxScreen(embedded: true),
     ];
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: AppTheme.canvasOf(context),
       body: Stack(
         children: [
-          IndexedStack(
+          HubTabSwitcher(
             index: _selectedIndex,
             children: pages,
           ),
+          const Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(bottom: false, child: CheckoutRetryBanner()),
+          ),
 
-          // Floating Cart Bar (Visible only on Home Tab when items exist)
-          if (cartState.items.isNotEmpty && _selectedIndex == 0)
+          if (cartState.items.isNotEmpty && (_selectedIndex == 0 || _selectedIndex == 1))
             Positioned(
               bottom: 92,
               left: 20,
               right: 20,
               child: GestureDetector(
-                onTap: () => _onNavigationItemTapped(1),
+                onTap: () {
+                  AppHaptics.light();
+                  dismissAppSnackBars(context);
+                  _onNavigationItemTapped(1);
+                },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  padding: const EdgeInsets.fromLTRB(12, 10, 16, 10),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [AppTheme.textMain, Color(0xFF424242)]),
-                    borderRadius: BorderRadius.circular(30),
-                    boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 12, offset: Offset(0, 6))],
+                    gradient: AppTheme.primaryGradient,
+                    borderRadius: BorderRadius.circular(22),
+                    boxShadow: AppTheme.brandGlow(opacity: 0.16),
                   ),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: const BoxDecoration(color: Colors.white24, shape: BoxShape.circle),
-                            child: const Icon(Icons.shopping_bag_outlined, color: Colors.white, size: 20),
-                          ),
-                          const SizedBox(width: 12),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text('${cartState.itemCount} Items', style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                              Text('₹${cartState.foodTotal.toStringAsFixed(0)}',
-                                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                            ],
-                          ),
-                        ],
+                      _CartThumbStack(
+                        urls: cartState.items
+                            .map((item) => item.rawMealDetails['image_url']?.toString() ?? '')
+                            .where((url) => url.isNotEmpty)
+                            .take(3)
+                            .toList(),
                       ),
-                      Row(
-                        children: const [
-                          Text('View Cart', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
-                          SizedBox(width: 8),
-                          Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 18),
-                        ],
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              cartState.items.map((item) => item.chefId).toSet().length > 1
+                                  ? '${cartState.itemCount} plates · ${cartState.items.map((item) => item.chefId).toSet().length} kitchens'
+                                  : chefDisplayName(cartState.items.first.rawMealDetails),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTheme.caption.copyWith(color: Colors.white70),
+                            ),
+                            Text(
+                              '₹${cartState.foodTotal.toStringAsFixed(0)} · ${cartState.itemCount} item${cartState.itemCount == 1 ? '' : 's'}',
+                              style: AppTheme.homeCardTitleOf(context).copyWith(color: Colors.white),
+                            ),
+                          ],
+                        ),
                       ),
+                      Text(DinerLocaleController.instance.copy.viewCart, style: AppTheme.listTitleOf(context).copyWith(color: Colors.white, fontSize: 14)),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 18),
                     ],
                   ),
-                ),
+                ).popIn(),
               ),
             ),
 
-          // Bottom Navigation Dock
           Positioned(
-            bottom: 20,
+            bottom: 0,
             left: 0,
             right: 0,
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(40),
-                  boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 20, offset: Offset(0, 8))],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _buildNavIndicator(0, Icons.cottage_outlined, Icons.cottage, 'Home'),
-                    _buildNavIndicator(1, Icons.shopping_basket_outlined, Icons.shopping_basket, 'Cart',
-                        badgeCount: cartState.itemCount),
-                    _buildNavIndicator(2, Icons.receipt_long_outlined, Icons.receipt_long, 'Orders'),
+            child: ListenableBuilder(
+              listenable: DinerLocaleController.instance,
+              builder: (context, _) {
+                final copy = DinerLocaleController.instance.copy;
+                return HubBottomDock(
+                  selectedIndex: _dockIndex,
+                  onSelect: _onDockTapped,
+                  destinations: [
+                    HubDockDestination(icon: Icons.home_outlined, selectedIcon: Icons.home_rounded, label: copy.home),
+                    HubDockDestination(icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: copy.orders),
+                    HubDockDestination(icon: Icons.person_outline, selectedIcon: Icons.person, label: copy.account),
+                    HubDockDestination(icon: Icons.notifications_none, selectedIcon: Icons.notifications, label: copy.notifications),
                   ],
+                );
+              },
+            ),
+          ),
+          DinerOnboardingCoach(
+            onGoHome: () => _onNavigationItemTapped(0),
+            onGoCart: () => _onNavigationItemTapped(1),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CartThumbStack extends StatelessWidget {
+  const _CartThumbStack({required this.urls});
+
+  final List<String> urls;
+
+  @override
+  Widget build(BuildContext context) {
+    if (urls.isEmpty) {
+      return const AppLogo(size: 36, onDark: true);
+    }
+    final show = urls.take(3).toList();
+    return SizedBox(
+      width: 28.0 + (show.length - 1) * 18,
+      height: 36,
+      child: Stack(
+        children: [
+          for (var i = 0; i < show.length; i++)
+            Positioned(
+              left: i * 18.0,
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 1.5),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: CachedNetworkImage(
+                  imageUrl: show[i],
+                  fit: BoxFit.cover,
+                  errorWidget: (_, _, _) => const ColoredBox(color: AppTheme.photoFallback),
                 ),
               ),
             ),
-          ),
         ],
       ),
     );

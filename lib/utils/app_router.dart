@@ -4,24 +4,75 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import '../models/app_role.dart';
 import '../screens/auth_screen.dart';
+import '../screens/reset_password_screen.dart';
 import '../screens/customer_hub.dart';
 import '../screens/chef_hub.dart';
 import '../screens/driver_hub.dart';
 import '../screens/in_app_chat_screen.dart';
+import '../screens/chat_inbox_screen.dart';
+import '../screens/meal_link_screen.dart';
+import '../screens/chef_link_screen.dart';
+import '../screens/cart_import_screen.dart';
 import '../screens/live_tracking_screen.dart';
 import '../screens/chef_profile_screen.dart';
 import '../screens/driver_profile_screen.dart';
 import '../screens/customer_profile_screen.dart';
 import '../screens/chef_analytics_screen.dart';
+import '../screens/chef_academy_screen.dart';
+import '../screens/chef_advertise_screen.dart';
 import '../screens/chef_publish_meal_screen.dart';
 import '../screens/legal_document_screen.dart';
 import '../screens/platform_ops_screen.dart';
-import '../screens/reset_password_screen.dart';
-import 'route_authz.dart';
+import '../screens/ops_invite_screen.dart';
+import '../screens/referral_screen.dart';
+import '../screens/customer_order_history_screen.dart';
+import '../screens/customer_bulk_request_screen.dart';
+import '../screens/customer_meal_plans_screen.dart';
+import '../screens/customer_support_tickets_screen.dart';
+import '../screens/notifications_inbox_screen.dart';
+import '../screens/driver_id_card_screen.dart';
+import '../screens/wrong_storefront_screen.dart';
+import '../services/auth_session.dart';
+import '../widgets/not_found_page.dart';
 import '../legal/legal_documents.dart';
+import '../utils/legal_content.dart';
+import 'app_flavor.dart';
+import 'app_page.dart';
+import 'helpers.dart';
+
+GoRoute _fadeRoute(
+  String path,
+  Widget Function(BuildContext context, GoRouterState state) builder,
+) {
+  return GoRoute(
+    path: path,
+    pageBuilder: (context, state) => appFadeSlidePage(
+      key: state.pageKey,
+      child: builder(context, state),
+    ),
+  );
+}
+
+LegalDocumentType? _legalTypeForSlug(String slug) {
+  switch (slug.toLowerCase()) {
+    case 'terms':
+      return LegalDocumentType.terms;
+    case 'privacy':
+      return LegalDocumentType.privacy;
+    case 'faq':
+      return LegalDocumentType.faq;
+    case 'cancellation':
+      return LegalDocumentType.cancellation;
+    default:
+      return null;
+  }
+}
 
 class AppRouter {
+  static final AuthRefreshNotifier _authRefresh = AuthRefreshNotifier();
+
   static void go(String location) => router.go(location);
 
   static String? currentPath() {
@@ -33,145 +84,218 @@ class AppRouter {
   }
 
   static final GoRouter router = GoRouter(
-    initialLocation: '/customer-hub',
+    initialLocation: kAppStorefront.isPartner ? '/auth' : '/customer-hub',
+    refreshListenable: _authRefresh,
     errorBuilder: (context, state) {
       final user = Supabase.instance.client.auth.currentUser;
-      final home = RouteAuthz.hubForRole(
-        RouteAuthz.parseRole(
-          user?.userMetadata?['role']?.toString(),
-          email: user?.email,
-        ),
-      );
+      final role = AuthSession.roleForUser(user);
 
-      return Scaffold(
-        backgroundColor: const Color(0xFF121212),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.error_outline, size: 64, color: Colors.deepOrange),
-                const SizedBox(height: 16),
-                const Text('Page not found', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                const Text('The page you are looking for does not exist or has been moved.',
-                    textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 13)),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white),
-                  onPressed: () => context.go(home),
-                  child: const Text('Return Home'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
+      return NotFoundPage(onHome: () => context.go(role.hubPath));
     },
     redirect: (context, state) {
       final session = Supabase.instance.client.auth.currentSession;
-      return RouteAuthz.resolveRedirect(
-        isAuthenticated: session != null,
-        rawRole: session?.user.userMetadata?['role']?.toString(),
-        email: session?.user.email,
-        path: state.uri.path,
-      );
+      final isAuthenticated = session != null;
+      final path = state.uri.path;
+      final role = AuthSession.roleForUser(session?.user);
+
+      const signedInOnlyRoutes = {
+        ...kChefOnlyRoutes,
+        ...kDriverOnlyRoutes,
+        '/customer-profile',
+        '/customer-plans',
+        '/referral',
+        '/order-history',
+        '/bulk-request',
+        '/chats',
+        '/platform-ops',
+        '/support-tickets',
+        '/notifications',
+      };
+      if (!isAuthenticated &&
+          (signedInOnlyRoutes.contains(path) || path.startsWith('/chat/'))) {
+        return '/auth';
+      }
+
+      // Recovery session is authenticated — stay on the new-password screen.
+      if (isPasswordRecoveryPath(path)) {
+        return path == '/reset-callback' ? '/reset-password' : null;
+      }
+
+      if (path == '/wrong-app') {
+        if (!isAuthenticated) {
+          return kAppStorefront.isPartner ? '/auth' : '/customer-hub';
+        }
+        if (kAppStorefront.allowsRole(role)) {
+          return role.hubPath;
+        }
+        return null;
+      }
+
+      if (isAuthenticated && !kAppStorefront.allowsRole(role)) {
+        return '/wrong-app';
+      }
+
+      if (!isAuthenticated &&
+          kAppStorefront.isPartner &&
+          (path == '/customer-hub' || path == '/referral' || path == '/customer-plans')) {
+        return '/auth';
+      }
+
+      if (isAuthenticated) {
+        if (path == '/auth') {
+          return role.hubPath;
+        }
+        if (adminShouldSkipCustomerHome(
+          role,
+          path,
+          preview: state.uri.queryParameters['preview'],
+        )) {
+          return AppRole.admin.hubPath;
+        }
+        if (!roleCanOpenAuthenticatedPath(role, path)) {
+          return role.hubPath;
+        }
+      }
+
+      return null;
     },
     routes: [
-      GoRoute(
-        path: '/auth',
-        builder: (context, state) => const AuthScreen(),
+      _fadeRoute('/auth',
+        (context, state) => AuthScreen(
+          initialReferralCode: state.uri.queryParameters['ref'],
+          initialRole: state.uri.queryParameters['role'],
+          startOnSignup: state.uri.queryParameters['signup'] == '1',
+        ),
       ),
-      GoRoute(
-        path: '/reset-password',
-        builder: (context, state) => const ResetPasswordScreen(),
+      _fadeRoute('/wrong-app', (context, state) => const WrongStorefrontScreen()),
+      _fadeRoute('/reset-password', (context, state) => const ResetPasswordScreen()),
+      _fadeRoute('/reset-callback', (context, state) => const ResetPasswordScreen()),
+      _fadeRoute(
+        '/customer-hub',
+        (context, state) {
+          final userId = Supabase.instance.client.auth.currentUser?.id ?? 'guest';
+          final tab = state.uri.queryParameters['tab'];
+          return CustomerHubScreen(
+            key: ValueKey('customer-$userId-${tab ?? ''}-${state.uri.queryParameters['preview'] ?? ''}'),
+            initialTab: userId == 'guest' ? 0 : customerHubTabIndex(tab),
+            skipHubRoleGuard:
+                state.uri.queryParameters['preview'] == kCustomerHubAdminPreviewValue,
+          );
+        },
       ),
-      GoRoute(
-        path: '/reset-callback',
-        redirect: (context, state) => '/reset-password',
+      _fadeRoute(
+        '/chef-hub',
+        (context, state) => ChefDashboardScreen(
+          key: ValueKey('chef-${state.uri.query}'),
+          initialTab: chefHubTabIndex(state.uri.queryParameters['tab']),
+        ),
       ),
-      GoRoute(
-        path: '/customer-hub',
-        builder: (context, state) => const CustomerHubScreen(),
+      _fadeRoute('/driver-hub', (context, state) => const DriverHubScreen()),
+      _fadeRoute('/chef-publish-meal', (context, state) {
+        final extra = state.extra;
+        final meal = extra is Map<String, dynamic>
+            ? extra
+            : extra is Map
+                ? Map<String, dynamic>.from(extra)
+                : null;
+        return ChefPublishMealScreen(existingMeal: meal);
+      }),
+      _fadeRoute(
+        '/meal/:mealId',
+        (context, state) => MealLinkScreen(mealId: state.pathParameters['mealId'] ?? ''),
+      ),
+      _fadeRoute(
+        '/chef/:chefId',
+        (context, state) => ChefLinkScreen(chefId: state.pathParameters['chefId'] ?? ''),
       ),
       GoRoute(
         path: '/cart',
-        builder: (context, state) => const CustomerHubScreen(initialTab: 1),
+        pageBuilder: (context, state) => appFadeSlidePage(
+          key: state.pageKey,
+          child: CartImportScreen(itemsParam: state.uri.queryParameters['items'] ?? ''),
+        ),
       ),
       GoRoute(
         path: '/app/cart',
-        builder: (context, state) => const CustomerHubScreen(initialTab: 1),
+        pageBuilder: (context, state) => appFadeSlidePage(
+          key: state.pageKey,
+          child: CartImportScreen(itemsParam: state.uri.queryParameters['items'] ?? ''),
+        ),
       ),
+      _fadeRoute('/chats', (context, state) => const ChatInboxScreen()),
+      _fadeRoute('/chat/:mealId', (context, state) {
+        final mealId = state.pathParameters['mealId'] ?? '';
+        return InAppChatScreen(
+          mealId: mealId,
+          roomName: state.uri.queryParameters['roomName'] ?? 'Chat',
+          otherUserId: state.uri.queryParameters['otherUserId'],
+          memberIds: parseChatMemberIds(state.uri.queryParameters['memberIds']),
+          isGroup: state.uri.queryParameters['group'] == '1',
+        );
+      }),
+      _fadeRoute('/tracking', (context, state) {
+        try {
+          final extra = state.extra;
+          final mapExtra = extra is Map ? Map<String, dynamic>.from(extra) : <String, dynamic>{};
+          final orderId = state.uri.queryParameters['orderId'];
+          final order = mapExtra['order'] is Map
+              ? Map<String, dynamic>.from(mapExtra['order'] as Map)
+              : (orderId != null && orderId.isNotEmpty)
+                  ? <String, dynamic>{'id': orderId, 'order_id': orderId}
+                  : <String, dynamic>{};
+          return LiveTrackingScreen(
+            order: order,
+            isDriver: mapExtra['isDriver'] == true,
+            isDineInNavigation: mapExtra['isDineInNavigation'] == true,
+          );
+        } catch (e, stack) {
+          FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Tracking route parameter parsing failure');
+          return const Scaffold(body: Center(child: Text('Invalid tracking parameters')));
+        }
+      }),
+      _fadeRoute('/customer-profile', (context, state) => const CustomerProfileScreen()),
+      _fadeRoute('/customer-plans', (context, state) => const CustomerMealPlansScreen()),
+      _fadeRoute('/chef-profile', (context, state) => const ChefProfileScreen()),
+      _fadeRoute('/driver-profile', (context, state) => const DriverProfileScreen()),
+      _fadeRoute('/driver-id-card', (context, state) {
+        final extra = state.extra is Map ? Map<String, dynamic>.from(state.extra as Map) : <String, dynamic>{};
+        return DriverIdCardScreen(
+          driverName: extra['name']?.toString() ?? 'Delivery Partner',
+          driverPhone: extra['phone']?.toString() ?? '',
+          avatarUrl: extra['avatarUrl']?.toString(),
+        );
+      }),
+      _fadeRoute('/chef-analytics', (context, state) => const ChefAnalyticsScreen()),
+      _fadeRoute('/chef-academy', (context, state) => const ChefAcademyScreen()),
+      _fadeRoute('/chef-advertise', (context, state) => const ChefAdvertiseScreen()),
+      _fadeRoute('/platform-ops', (context, state) => const PlatformOpsScreen()),
       GoRoute(
-        path: '/chef-hub',
-        builder: (context, state) => const ChefDashboardScreen(),
+        path: '/ops-invite',
+        pageBuilder: (context, state) => appFadeSlidePage(
+          key: state.pageKey,
+          child: OpsInviteScreen(initialCode: state.uri.queryParameters['code']),
+        ),
       ),
-      GoRoute(
-        path: '/driver-hub',
-        builder: (context, state) => const DriverHubScreen(),
-      ),
-      GoRoute(
-        path: '/chef-publish-meal',
-        builder: (context, state) => const ChefPublishMealScreen(),
-      ),
-      GoRoute(
-        path: '/chat/:mealId',
-        builder: (context, state) {
-          final mealId = state.pathParameters['mealId'] ?? '';
-          final roomName = state.uri.queryParameters['roomName'] ?? 'Chat';
-          return InAppChatScreen(mealId: mealId, roomName: roomName);
-        },
-      ),
-      GoRoute(
-        path: '/tracking',
-        builder: (context, state) {
-          try {
-            final extra = state.extra;
-            final mapExtra = extra is Map<String, dynamic> ? extra : <String, dynamic>{};
-
-            final order = mapExtra['order'] is Map<String, dynamic>
-                ? Map<String, dynamic>.from(mapExtra['order'])
-                : <String, dynamic>{};
-            final isDriver = mapExtra['isDriver'] == true;
-            final isDineInNavigation = mapExtra['isDineInNavigation'] == true;
-
-            return LiveTrackingScreen(order: order, isDriver: isDriver, isDineInNavigation: isDineInNavigation);
-          } catch (e, stack) {
-            FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Tracking route parameter parsing failure');
-            return const Scaffold(body: Center(child: Text('Invalid tracking parameters')));
-          }
-        },
-      ),
-      GoRoute(
-        path: '/customer-profile',
-        builder: (context, state) => const CustomerProfileScreen(),
-      ),
-      GoRoute(
-        path: '/chef-profile',
-        builder: (context, state) => const ChefProfileScreen(),
-      ),
-      GoRoute(
-        path: '/driver-profile',
-        builder: (context, state) => const DriverProfileScreen(),
-      ),
-      GoRoute(
-        path: '/chef-analytics',
-        builder: (context, state) => const ChefAnalyticsScreen(),
-      ),
-      GoRoute(
-        path: '/platform-ops',
-        builder: (context, state) => const PlatformOpsScreen(),
-      ),
+      _fadeRoute('/referral', (context, state) => const ReferralScreen()),
+      _fadeRoute('/order-history', (context, state) => const CustomerOrderHistoryScreen()),
+      _fadeRoute('/bulk-request', (context, state) => const CustomerBulkRequestScreen()),
+      _fadeRoute('/support-tickets', (context, state) => const CustomerSupportTicketsScreen()),
+      _fadeRoute('/notifications', (context, state) => const NotificationsInboxScreen()),
       GoRoute(
         path: '/legal/:doc',
-        builder: (context, state) {
-          final path = '/legal/${state.pathParameters['doc'] ?? ''}';
-          final doc = LegalDocuments.byPath(path);
-          if (doc == null) {
-            return const Scaffold(body: Center(child: Text('Document not found')));
-          }
-          return LegalDocumentScreen(document: doc);
+        pageBuilder: (context, state) {
+          final slug = state.pathParameters['doc'] ?? '';
+          final creamType = _legalTypeForSlug(slug);
+          final child = creamType != null
+              ? LegalDocumentScreen(type: creamType)
+              : () {
+                  final doc = LegalDocuments.byPath('/legal/$slug');
+                  if (doc == null) {
+                    return const Scaffold(body: Center(child: Text('Document not found')));
+                  }
+                  return LegalDocumentScreen(document: doc);
+                }();
+          return appFadeSlidePage(key: state.pageKey, child: child);
         },
       ),
     ],

@@ -6,7 +6,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/helpers.dart';
-import '../utils/app_theme.dart';
+import '../utils/network.dart';
+import '../widgets/app_widgets.dart';
 import 'map_picker_screen.dart';
 
 class CustomerBulkRequestScreen extends StatefulWidget {
@@ -25,14 +26,26 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
   final _qtyController = TextEditingController(text: '10');
   final _budgetController = TextEditingController();
   final _addressController = TextEditingController();
+  final _chefSearchController = TextEditingController();
 
-  String _selectedServiceType = 'Delivery (Platform)';
+  String _selectedServiceType = 'Delivery Partner';
   DateTime _targetDate = DateTime.now().add(const Duration(days: 1));
   TimeOfDay _targetTime = const TimeOfDay(hour: 13, minute: 0);
   bool _isLoading = false;
+  bool _broadcastAll = true;
+  bool _chefsLoading = false;
+  String? _chefsError;
+  List<_BulkChefOption> _chefs = const [];
+  final Set<String> _selectedChefIds = <String>{};
 
   double? _latitude;
   double? _longitude;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadChefs();
+  }
 
   @override
   void dispose() {
@@ -41,7 +54,119 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
     _qtyController.dispose();
     _budgetController.dispose();
     _addressController.dispose();
+    _chefSearchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadChefs() async {
+    setState(() {
+      _chefsLoading = true;
+      _chefsError = null;
+    });
+    try {
+      final kitchens = await _supabase
+          .from('chef_profiles')
+          .select('user_id, local_kitchen_name, is_open')
+          .limit(250)
+          .withTimeout(NetworkTimeouts.standard);
+      final kitchenRows = List<Map<String, dynamic>>.from(kitchens as List);
+      final kitchenNames = <String, String>{};
+      final kitchenOpen = <String, bool>{};
+      for (final row in kitchenRows) {
+        final id = row['user_id']?.toString() ?? '';
+        if (id.isEmpty) continue;
+        kitchenNames[id] = row['local_kitchen_name']?.toString().trim() ?? '';
+        kitchenOpen[id] = row['is_open'] != false;
+      }
+
+      var userRows = <Map<String, dynamic>>[];
+      try {
+        final users = await _supabase
+            .from('users')
+            .select('id, name, full_name, city, role')
+            .inFilter('role', kStoredChefRoles)
+            .limit(250)
+            .withTimeout(NetworkTimeouts.standard);
+        userRows = List<Map<String, dynamic>>.from(users as List);
+      } catch (e, stack) {
+        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Bulk chef list users query');
+        if (kitchenNames.isNotEmpty) {
+          final extra = await _supabase
+              .from('users')
+              .select('id, name, full_name, city, role')
+              .inFilter('id', kitchenNames.keys.toList())
+              .inFilter('role', kStoredChefRoles)
+              .withTimeout(NetworkTimeouts.standard);
+          userRows = List<Map<String, dynamic>>.from(extra as List);
+        }
+      }
+
+      final followed = <String>{};
+      try {
+        final uid = _supabase.auth.currentUser?.id;
+        if (uid != null) {
+          final follows = await _supabase
+              .from('kitchen_follows')
+              .select('chef_id')
+              .eq('customer_id', uid)
+              .withTimeout(NetworkTimeouts.short);
+          for (final row in List<Map<String, dynamic>>.from(follows as List)) {
+            final id = row['chef_id']?.toString() ?? '';
+            if (id.isNotEmpty) followed.add(id);
+          }
+        }
+      } catch (e, stack) {
+        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Bulk chef follows query');
+      }
+
+      final byId = <String, _BulkChefOption>{};
+      for (final row in userRows) {
+        if (!isChefAccount(row)) continue;
+        final id = row['id']?.toString() ?? '';
+        if (id.isEmpty) continue;
+        final kitchen = kitchenNames[id] ?? '';
+        final name = chefDisplayName(
+          {...row, if (kitchen.isNotEmpty) 'kitchen_name': kitchen},
+          fallback: kitchen.isNotEmpty ? kitchen : 'Home kitchen',
+        );
+        byId[id] = _BulkChefOption(
+          id: id,
+          name: name,
+          kitchen: kitchen,
+          city: row['city']?.toString().trim() ?? '',
+          followed: followed.contains(id),
+          isOpen: kitchenOpen[id] ?? true,
+        );
+      }
+      final list = byId.values.toList()
+        ..sort((a, b) {
+          if (a.followed != b.followed) return a.followed ? -1 : 1;
+          return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+        });
+
+      if (!mounted) return;
+      setState(() {
+        _chefs = list;
+        _chefsLoading = false;
+      });
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Bulk chef list failed');
+      if (!mounted) return;
+      setState(() {
+        _chefsLoading = false;
+        _chefsError = 'Could not load kitchens. Try again or broadcast to all nearby chefs.';
+      });
+    }
+  }
+
+  List<_BulkChefOption> get _filteredChefs {
+    final q = _chefSearchController.text.trim().toLowerCase();
+    if (q.isEmpty) return _chefs;
+    return _chefs.where((chef) {
+      return chef.name.toLowerCase().contains(q) ||
+          chef.kitchen.toLowerCase().contains(q) ||
+          chef.city.toLowerCase().contains(q);
+    }).toList();
   }
 
   Future<void> _broadcastRequest() async {
@@ -49,6 +174,11 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
 
     if (_latitude == null || _longitude == null) {
       _showSnackBar('Please pin your delivery or event location on the map.', isError: true);
+      return;
+    }
+
+    if (!_broadcastAll && _selectedChefIds.isEmpty) {
+      _showSnackBar('Select at least one kitchen, or switch to all nearby chefs.', isError: true);
       return;
     }
 
@@ -84,7 +214,6 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
           user.email?.split('@')[0] ??
           'Customer';
 
-      // Standardized ISO 8601 UTC timestamp generation
       final targetDateTime = DateTime(
         _targetDate.year,
         _targetDate.month,
@@ -97,7 +226,7 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
         throw Exception('The requested event time must be set in the future.');
       }
 
-      final payload = {
+      final payload = <String, dynamic>{
         'customer_id': user.id,
         'customer_name': customerName,
         'customer_email': user.email ?? '',
@@ -105,30 +234,123 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
         'title': _titleController.text.trim(),
         'description': _descController.text.trim(),
         'quantity': quantity,
-        'remaining_quantity': quantity,
         'target_date_time': targetDateTime.toUtc().toIso8601String(),
         'budget': budget,
         'service_type': _selectedServiceType,
         'delivery_address': _addressController.text.trim(),
-        'latitude': _latitude,
-        'longitude': _longitude,
         'status': 'Open',
-        'accepted_chefs': [],
         'created_at': DateTime.now().toIso8601String(),
       };
+      final extras = <String, dynamic>{
+        'remaining_quantity': quantity,
+        'latitude': _latitude,
+        'longitude': _longitude,
+      };
+      if (!_broadcastAll) {
+        extras['target_chef_ids'] = _selectedChefIds.toList();
+      }
 
-      await _supabase.from('customer_requests').insert(payload);
+      await _insertCustomerRequest(
+        payload,
+        extras,
+        requireTargetChefs: !_broadcastAll,
+      );
 
       if (mounted) {
-        _showSnackBar('Bulk request broadcasted successfully! Local chefs have been notified. 🎉');
+        final message = _broadcastAll
+            ? 'Bulk request broadcasted successfully! Local chefs have been notified. 🎉'
+            : 'Request sent to ${_selectedChefIds.length} kitchen${_selectedChefIds.length == 1 ? '' : 's'}. 🎉';
+        _showSnackBar(message);
         Navigator.pop(context);
       }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Bulk Request Broadcast Failure');
-      _showSnackBar('Failed to broadcast request: $e', isError: true);
+      _showSnackBar(_broadcastError(e), isError: true);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _insertCustomerRequest(
+    Map<String, dynamic> payload,
+    Map<String, dynamic> extras, {
+    bool requireTargetChefs = false,
+  }) async {
+    final inserted = await _insertKnownColumns(payload);
+    if (extras.isEmpty) return;
+
+    final requestId = inserted?['id']?.toString();
+    var body = Map<String, dynamic>.from(extras);
+    for (var attempt = 0; attempt < 6; attempt++) {
+      try {
+        final query = _supabase.from('customer_requests').update(body);
+        if (requestId != null && requestId.isNotEmpty) {
+          await query.eq('id', requestId);
+        } else {
+          await query
+              .eq('customer_id', payload['customer_id'])
+              .eq('title', payload['title'])
+              .eq('created_at', payload['created_at']);
+        }
+        return;
+      } on PostgrestException catch (e) {
+        if (e.code != 'PGRST204') return;
+        final missing = _missingSchemaColumn(e.message);
+        if (missing == null || !body.containsKey(missing)) return;
+        if (requireTargetChefs && missing == 'target_chef_ids') {
+          throw Exception(
+            'Selected kitchens could not be saved yet. Broadcast to all nearby chefs, or try again after the app update is applied.',
+          );
+        }
+        body.remove(missing);
+        if (body.isEmpty) return;
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>?> _insertKnownColumns(Map<String, dynamic> payload) async {
+    final body = Map<String, dynamic>.from(payload);
+    Object? lastError;
+    for (var attempt = 0; attempt < 8; attempt++) {
+      try {
+        try {
+          return await _supabase.from('customer_requests').insert(body).select('id').maybeSingle();
+        } on PostgrestException catch (e) {
+          if (e.code == 'PGRST204') rethrow;
+          await _supabase.from('customer_requests').insert(body);
+          return null;
+        }
+      } on PostgrestException catch (e) {
+        lastError = e;
+        if (e.code != 'PGRST204') rethrow;
+        final missing = _missingSchemaColumn(e.message);
+        if (missing == null || !body.containsKey(missing)) rethrow;
+        body.remove(missing);
+      }
+    }
+    throw lastError ??
+        const PostgrestException(
+          message: 'Could not save this request',
+          code: 'PGRST204',
+        );
+  }
+
+  String? _missingSchemaColumn(String? message) {
+    final match = RegExp(r"Could not find the '([^']+)' column").firstMatch(message ?? '');
+    return match?.group(1);
+  }
+
+  String _broadcastError(Object error) {
+    if (error is Exception) {
+      final text = error.toString().replaceFirst('Exception: ', '');
+      if (text.contains('future') ||
+          text.contains('sign in') ||
+          text.contains('Authentication') ||
+          text.contains('Selected kitchens')) {
+        return text;
+      }
+    }
+    return 'Could not broadcast this request. Please try again.';
   }
 
   void _showSnackBar(String text, {bool isError = false}) {
@@ -144,14 +366,19 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final selectedCount = _selectedChefIds.length;
+    final submitLabel = _broadcastAll
+        ? 'Broadcast to Local Chefs'
+        : 'Send to $selectedCount kitchen${selectedCount == 1 ? '' : 's'}';
+
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: AppTheme.canvasOf(context),
       appBar: AppBar(
         title: Row(
           children: [
-            ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.asset('assets/app_icon.png', height: 24, width: 24)),
+            const AppLogo(size: 24),
             const SizedBox(width: 8),
-            const Text('Broadcast Bulk Pre-Order', style: TextStyle(color: AppTheme.textMain, fontWeight: FontWeight.bold)),
+            Text('Broadcast Bulk Pre-Order', style: TextStyle(color: AppTheme.onSurfaceOf(context), fontWeight: FontWeight.bold)),
           ],
         ),
         backgroundColor: Colors.transparent,
@@ -164,7 +391,7 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
           padding: const EdgeInsets.all(20),
           children: [
             const Text(
-              'Organizing catering, family gatherings, or office tiffins? Broadcast your requirement to all nearby home chefs. Multiple kitchens can coordinate to fulfill large orders together!',
+              'Organizing catering, family gatherings, or office tiffins? Send your requirement to all nearby home chefs, or pick the kitchens you already trust.',
               style: TextStyle(color: AppTheme.textMuted, fontSize: 13, height: 1.4),
             ),
             const SizedBox(height: 24),
@@ -212,7 +439,6 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Date & Time Selectors
             Row(
               children: [
                 Expanded(
@@ -222,7 +448,7 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     icon: const Icon(Icons.calendar_month, size: 16, color: AppTheme.primary),
-                    label: Text(formatFriendlyDate(_targetDate), style: const TextStyle(fontSize: 13, color: AppTheme.textMain)),
+                    label: Text(formatFriendlyDate(_targetDate), style: TextStyle(fontSize: 13, color: AppTheme.onSurfaceOf(context))),
                     onPressed: () async {
                       final picked = await showDatePicker(
                         context: context,
@@ -242,7 +468,7 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     icon: const Icon(Icons.access_time, size: 16, color: AppTheme.primary),
-                    label: Text(_targetTime.format(context), style: const TextStyle(fontSize: 13, color: AppTheme.textMain)),
+                    label: Text(_targetTime.format(context), style: TextStyle(fontSize: 13, color: AppTheme.onSurfaceOf(context))),
                     onPressed: () async {
                       final picked = await showTimePicker(context: context, initialTime: _targetTime);
                       if (picked != null) setState(() => _targetTime = picked);
@@ -255,8 +481,10 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
 
             DropdownButtonFormField<String>(
               initialValue: _selectedServiceType,
+              dropdownColor: AppTheme.surfaceOf(context),
+              style: TextStyle(fontSize: 14, color: AppTheme.onSurfaceOf(context)),
               decoration: _inputStyle('Fulfillment Type'),
-              items: ['Delivery (Platform)', 'Chef Self-Delivery', 'Customer Pickup', 'Dine-in']
+              items: ['Delivery Partner', 'Chef-Self', 'Customer Pickup', 'Dine In']
                   .map((s) => DropdownMenuItem(value: s, child: Text(s, style: const TextStyle(fontSize: 14))))
                   .toList(),
               onChanged: (val) => setState(() => _selectedServiceType = val!),
@@ -269,9 +497,9 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
               maxLines: 2,
               decoration: InputDecoration(
                 labelText: 'Delivery / Event Address *',
-                labelStyle: const TextStyle(fontSize: 13, color: Colors.grey),
+                labelStyle: const TextStyle(fontSize: 13, color: AppTheme.textMuted),
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: AppTheme.surfaceOf(context),
                 prefixIcon: const Icon(Icons.location_on, color: AppTheme.primary),
                 suffixIcon: IconButton(
                   icon: const Icon(Icons.map, color: AppTheme.primary),
@@ -293,10 +521,117 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
                   },
                 ),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppTheme.hairlineOf(context))),
                 focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppTheme.primary, width: 1.5)),
               ),
             ),
+            const SizedBox(height: 20),
+
+            Text(
+              'Who should see this?',
+              style: TextStyle(fontWeight: FontWeight.w800, color: AppTheme.onSurfaceOf(context)),
+            ),
+            const SizedBox(height: 8),
+            SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(
+                  value: true,
+                  label: Text('All nearby'),
+                  icon: Icon(Icons.campaign_outlined, size: 16),
+                ),
+                ButtonSegment(
+                  value: false,
+                  label: Text('Choose kitchens'),
+                  icon: Icon(Icons.storefront_outlined, size: 16),
+                ),
+              ],
+              selected: {_broadcastAll},
+              onSelectionChanged: (s) => setState(() => _broadcastAll = s.first),
+            ),
+            if (!_broadcastAll) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: _chefSearchController,
+                onChanged: (_) => setState(() {}),
+                decoration: _inputStyle('Search kitchen or chef').copyWith(
+                  prefixIcon: const Icon(Icons.search, color: AppTheme.primary),
+                ),
+              ),
+              const SizedBox(height: 8),
+              if (_chefsLoading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                )
+              else if (_chefsError != null)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(_chefsError!, style: const TextStyle(color: AppTheme.textMuted, fontSize: 13)),
+                    IconButton(
+                      tooltip: 'Retry',
+                      onPressed: _loadChefs,
+                      icon: const Icon(Icons.refresh, color: AppTheme.primary),
+                    ),
+                  ],
+                )
+              else if (_filteredChefs.isEmpty)
+                const Text(
+                  'No kitchens match that search yet.',
+                  style: TextStyle(color: AppTheme.textMuted, fontSize: 13),
+                )
+              else
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 280),
+                  decoration: BoxDecoration(
+                    color: AppTheme.surfaceOf(context),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppTheme.hairlineOf(context)),
+                  ),
+                  child: ListView.separated(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    itemCount: _filteredChefs.length,
+                    separatorBuilder: (_, __) => Divider(height: 1, color: AppTheme.hairlineOf(context)),
+                    itemBuilder: (context, index) {
+                      final chef = _filteredChefs[index];
+                      final selected = _selectedChefIds.contains(chef.id);
+                      final subtitleParts = [
+                        if (chef.kitchen.isNotEmpty && chef.kitchen != chef.name) chef.kitchen,
+                        if (chef.city.isNotEmpty) chef.city,
+                        if (chef.followed) 'Following',
+                        if (!chef.isOpen) 'Currently offline',
+                      ];
+                      return CheckboxListTile(
+                        value: selected,
+                        dense: true,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        activeColor: AppTheme.primary,
+                        title: Text(chef.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                        subtitle: subtitleParts.isEmpty
+                            ? null
+                            : Text(subtitleParts.join(' · '), style: AppTheme.caption),
+                        onChanged: (on) {
+                          setState(() {
+                            if (on == true) {
+                              _selectedChefIds.add(chef.id);
+                            } else {
+                              _selectedChefIds.remove(chef.id);
+                            }
+                          });
+                        },
+                      );
+                    },
+                  ),
+                ),
+              if (selectedCount > 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    '$selectedCount kitchen${selectedCount == 1 ? '' : 's'} selected',
+                    style: AppTheme.caption,
+                  ),
+                ),
+            ],
             const SizedBox(height: 32),
 
             ElevatedButton(
@@ -309,7 +644,7 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
               onPressed: _isLoading ? null : _broadcastRequest,
               child: _isLoading
                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Text('Broadcast to Local Chefs', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  : Text(submitLabel, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             ),
           ],
         ),
@@ -320,12 +655,30 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
   InputDecoration _inputStyle(String label) {
     return InputDecoration(
       labelText: label,
-      labelStyle: const TextStyle(fontSize: 13, color: Colors.grey),
+      labelStyle: const TextStyle(fontSize: 13, color: AppTheme.textMuted),
       filled: true,
-      fillColor: Colors.white,
+      fillColor: AppTheme.surfaceOf(context),
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppTheme.hairlineOf(context))),
       focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppTheme.primary, width: 1.5)),
     );
   }
+}
+
+class _BulkChefOption {
+  const _BulkChefOption({
+    required this.id,
+    required this.name,
+    required this.kitchen,
+    required this.city,
+    required this.followed,
+    required this.isOpen,
+  });
+
+  final String id;
+  final String name;
+  final String kitchen;
+  final String city;
+  final bool followed;
+  final bool isOpen;
 }

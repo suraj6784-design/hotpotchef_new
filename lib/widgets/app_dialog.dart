@@ -45,7 +45,7 @@ class AppDialog {
         content: Text(
           message,
           style: TextStyle(
-            color: isDark ? Colors.grey.shade300 : AppTheme.textMuted,
+            color: AppTheme.textMuted,
             fontSize: 14,
             height: 1.4,
           ),
@@ -56,7 +56,7 @@ class AppDialog {
             child: Text(
               'Cancel',
               style: TextStyle(
-                color: isDark ? Colors.grey.shade400 : AppTheme.textMuted,
+                color: isDark ? AppTheme.textMuted : AppTheme.textMuted,
                 fontWeight: FontWeight.w600,
               ),
             ),

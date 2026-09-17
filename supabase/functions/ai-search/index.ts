@@ -13,6 +13,18 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const authHeader = req.headers.get('Authorization')
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+    const gateUrl = Deno.env.get('SUPABASE_URL') ?? ''
+    let signedIn = false
+    if (authHeader) {
+      const userClient = createClient(gateUrl, anonKey, {
+        global: { headers: { Authorization: authHeader } },
+      })
+      const { data: userData } = await userClient.auth.getUser()
+      signedIn = Boolean(userData.user)
+    }
+
     const { prompt } = await req.json()
     if (!prompt) {
       throw new Error('Search prompt is required')
@@ -25,6 +37,9 @@ Deno.serve(async (req) => {
     let matchedMeals = []
 
     try {
+      if (!signedIn) {
+        throw new Error('skip-embedding-for-guest')
+      }
       // 1. Try Google Gemini AI Vector Embedding Search first
       const geminiApiKey = Deno.env.get('GEMINI_API_KEY')
       const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${geminiApiKey}`
@@ -52,7 +67,9 @@ Deno.serve(async (req) => {
         }
       }
     } catch (aiError) {
-      console.error("AI Embedding step failed, falling back to text search:", aiError)
+      if (String(aiError) !== 'Error: skip-embedding-for-guest') {
+        console.error("AI Embedding step failed, falling back to text search:", aiError)
+      }
     }
 
     // 2. Fallback or Secondary Check: Direct Text Search if vector search returned nothing

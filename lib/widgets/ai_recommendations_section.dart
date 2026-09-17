@@ -6,7 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/app_theme.dart';
-import '../utils/meal_catalog.dart';
+import '../utils/helpers.dart';
 import '../widgets/customer_ui_components.dart';
 
 class AiRecommendationsSection extends ConsumerStatefulWidget {
@@ -36,36 +36,51 @@ class _AiRecommendationsSectionState extends ConsumerState<AiRecommendationsSect
         return;
       }
 
-      final email = user.email ?? '';
       final pastOrders = await _supabase
-          .from('meals')
-          .select('category, title')
-          .eq('customer_name', email);
+          .from('orders')
+          .select('items')
+          .eq('customer_id', user.id)
+          .limit(30);
 
       if (!mounted) return;
 
-      Map<String, int> categoryCounts = {};
-      for (var order in pastOrders) {
-        String cat = order['category']?.toString() ?? 'Maharashtrian';
-        categoryCounts[cat] = (categoryCounts[cat] ?? 0) + 1;
+      final pastItems = <Map<String, dynamic>>[];
+      final mealIds = <String>{};
+      for (final order in pastOrders) {
+        for (final item in parseOrderItemsList(order['items'])) {
+          pastItems.add(item);
+          final mealId = mealIdFromOrderItem(item);
+          if (mealId != null) mealIds.add(mealId);
+        }
       }
 
-      if (categoryCounts.isNotEmpty) {
-        _favoriteCategory = categoryCounts.entries.reduce((a, b) => a.value > b.value ? a : b).key;
+      var favorite = favoriteCategoryFromPastItems(pastItems);
+      if ((favorite == null || favorite.isEmpty) && mealIds.isNotEmpty) {
+        final pastMeals = await _supabase
+            .from('meals')
+            .select('category')
+            .inFilter('id', mealIds.toList());
+        favorite = favoriteCategoryFromPastItems(
+          List<Map<String, dynamic>>.from(pastMeals),
+        );
+      }
+      if (favorite != null && favorite.isNotEmpty) {
+        _favoriteCategory = favorite;
       }
 
       final mealsResponse = await _supabase
           .from('meals')
           .select()
-          .eq('status', MealCatalog.availableStatus)
           .ilike('category', '%$_favoriteCategory%')
           .limit(5);
 
       if (!mounted) return;
 
-      final validMeals = List<Map<String, dynamic>>.from(mealsResponse)
-          .where(MealCatalog.isSellable)
-          .toList();
+      final validMeals = List<Map<String, dynamic>>.from(mealsResponse).where((m) {
+        final status = m['status']?.toString().toLowerCase() ?? '';
+        final isInventory = (m['customer_name'] == null || m['customer_name'].toString().isEmpty);
+        return isInventory && status != 'paused' && status != 'cancelled';
+      }).toList();
 
       if (mounted) {
         setState(() {
@@ -90,11 +105,13 @@ class _AiRecommendationsSectionState extends ConsumerState<AiRecommendationsSect
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
           child: Row(
             children: [
-              const Icon(Icons.auto_awesome, color: Colors.purpleAccent, size: 20),
+              const Icon(Icons.auto_awesome, color: AppTheme.primary, size: 20),
               const SizedBox(width: 8),
-              Text(
-                'Because you like $_favoriteCategory ✨',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppTheme.textMain),
+              Flexible(
+                child: Text(
+                  'Because you like $_favoriteCategory',
+                  style: AppTheme.homeSectionLabelOf(context).copyWith(fontSize: 16),
+                ),
               ),
             ],
           ),
@@ -135,7 +152,7 @@ class _AiRecommendationsSectionState extends ConsumerState<AiRecommendationsSect
                               : null,
                         ),
                         child: (imageUrl == null || imageUrl.isEmpty)
-                            ? const Icon(Icons.restaurant, color: Colors.grey)
+                            ? const Icon(Icons.restaurant, color: AppTheme.textMuted)
                             : null,
                       ),
                       Padding(
@@ -151,8 +168,8 @@ class _AiRecommendationsSectionState extends ConsumerState<AiRecommendationsSect
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              meal['chef_name']?.toString() ?? 'Home Chef',
-                              style: const TextStyle(color: AppTheme.textMuted, fontSize: 11),
+                              chefDisplayName(meal),
+                              style: AppTheme.micro,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -161,7 +178,7 @@ class _AiRecommendationsSectionState extends ConsumerState<AiRecommendationsSect
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text('₹${price.toStringAsFixed(0)}',
-                                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: AppTheme.primary)),
+                                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: AppTheme.link)),
                                 Container(
                                   padding: const EdgeInsets.all(4),
                                   decoration: BoxDecoration(

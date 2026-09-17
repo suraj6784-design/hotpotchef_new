@@ -1,0 +1,82 @@
+[build]
+  publish = "."
+
+[[headers]]
+  for = "/.well-known/assetlinks.json"
+  [headers.values]
+    Content-Type = "application/json"
+
+[[headers]]
+  for = "/.well-known/apple-app-site-association"
+  [headers.values]
+    Content-Type = "application/json"
+
+[[redirects]]
+  from = "/meal/*"
+  to = "/meal.html"
+  status = 200
+
+[[redirects]]
+  from = "/chef/*"
+  to = "/chef.html"
+  status = 200
+
+[[redirects]]
+  from = "/cart"
+  to = "/cart.html"
+  status = 200
+
+[[redirects]]
+  from = "/cart/"
+  to = "/cart.html"
+  status = 200
+
+[[redirects]]
+  from = "/auth"
+  to = "/auth.html"
+  status = 200
+
+[[redirects]]
+  from = "/auth/"
+  to = "/auth.html"
+  status = 200
+
+[[redirects]]
+  from = "/checkout"
+  to = "/checkout.html"
+  status = 200
+
+[[redirects]]
+  from = "/checkout/"
+  to = "/checkout.html"
+  status = 200
+
+[[redirects]]
+  from = "/terms"
+  to = "/legal.html"
+  status = 200
+
+[[redirects]]
+  from = "/privacy"
+  to = "/legal.html"
+  status = 200
+
+[[redirects]]
+  from = "/faq"
+  to = "/legal.html"
+  status = 200
+
+[[redirects]]
+  from = "/faqs"
+  to = "/legal.html"
+  status = 200
+
+[[redirects]]
+  from = "/cancellation"
+  to = "/legal.html"
+  status = 200
+
+[[redirects]]
+  from = "/help"
+  to = "/legal.html"
+  status = 200

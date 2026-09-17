@@ -1,38 +1,66 @@
 // lib/screens/customer_orders_tab.dart
 
-import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:pdf/pdf.dart' as pw;
-import 'package:pdf/widgets.dart' as pw;
-import 'package:path_provider/path_provider.dart';
-import 'package:open_file/open_file.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'dart:convert';
+import '../utils/app_page.dart';
 import '../utils/helpers.dart';
-import '../utils/chat_ids.dart';
+import '../utils/network.dart';
+import '../utils/support.dart';
+import '../utils/diner_locale.dart';
 import '../widgets/customer_ui_components.dart';
+import '../widgets/diner_order_progress.dart';
+import '../widgets/app_widgets.dart';
+import '../widgets/last_order_banner.dart';
+import '../widgets/diner_storefront.dart';
+import '../widgets/order_slot_banner.dart';
+import '../widgets/meal_review_dialog.dart';
+import '../services/chef_directory.dart';
+import '../services/order_lifecycle.dart';
+import '../services/reorder_service.dart';
+import '../services/invoice_pdf_service.dart';
+import '../providers/cart_provider.dart';
+import '../providers/last_order_provider.dart';
+import 'checkout_screen.dart';
 
-class CustomerOrdersTab extends StatefulWidget {
+class CustomerOrdersTab extends ConsumerStatefulWidget {
   final VoidCallback onProfileTap;
   final VoidCallback onLogout;
+  final VoidCallback? onReorderToCart;
+  final int refreshEpoch;
 
-  const CustomerOrdersTab({super.key, required this.onProfileTap, required this.onLogout});
+  const CustomerOrdersTab({
+    super.key,
+    required this.onProfileTap,
+    required this.onLogout,
+    this.onReorderToCart,
+    this.refreshEpoch = 0,
+  });
 
   @override
-  State<CustomerOrdersTab> createState() => _CustomerOrdersTabState();
+  ConsumerState<CustomerOrdersTab> createState() => _CustomerOrdersTabState();
 }
 
-class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKeepAliveClientMixin {
+class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with AutomaticKeepAliveClientMixin {
   List<Map<String, dynamic>> _activeOrders = [];
+  List<Map<String, dynamic>> _pastOrders = [];
   List<Map<String, dynamic>> _activeRequests = [];
+  Map<String, dynamic>? _savedDropoffAddress;
   bool _isLoading = true;
+  bool _showPast = false;
+  final Map<String, List<Map<String, dynamic>>> _quotesByRequest = {};
 
   StreamSubscription? _ordersSub;
   StreamSubscription? _reqsSub;
+  StreamSubscription? _quotesSub;
+
+  PreferredSizeWidget _ordersAppBar() {
+    return const HubAppBar(title: 'My Orders');
+  }
 
   @override
   bool get wantKeepAlive => true;
@@ -40,79 +68,185 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
   @override
   void initState() {
     super.initState();
+    DinerLocaleController.instance.addListener(_onDinerLocale);
     _initScopedStreams();
+  }
+
+  void _onDinerLocale() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void didUpdateWidget(CustomerOrdersTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshEpoch != widget.refreshEpoch) {
+      unawaited(_fetchActiveOrders(showSpinner: false));
+    }
   }
 
   @override
   void dispose() {
+    DinerLocaleController.instance.removeListener(_onDinerLocale);
     _ordersSub?.cancel();
     _reqsSub?.cancel();
+    _quotesSub?.cancel();
     super.dispose();
   }
 
-  // --- Scoped Realtime Subscriptions with Fallbacks ---
+  bool _isActiveStatus(String? status) {
+    final value = status?.toString().toLowerCase() ?? '';
+    return !value.contains('delivered') &&
+        !value.contains('completed') &&
+        !value.contains('cancelled') &&
+        !value.contains('rejected');
+  }
 
-  void _initScopedStreams() async {
+  List<Map<String, dynamic>> _activeRows(Iterable<dynamic> rows) {
+    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).where((row) {
+      return _isActiveStatus(row['status']?.toString());
+    }).toList();
+  }
+
+  List<Map<String, dynamic>> _pastRows(Iterable<dynamic> rows) {
+    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).where((row) {
+      return !_isActiveStatus(row['status']?.toString());
+    }).take(24).toList();
+  }
+
+  List<Map<String, dynamic>> _cateringRows(Iterable<dynamic> rows) {
+    return _activeRows(rows).where((row) => !isPackagingSupplyRequest(row)).toList();
+  }
+
+  void _applyQuotes(Iterable<dynamic> rows, {bool replaceAll = true}) {
+    final next = <String, List<Map<String, dynamic>>>{};
+    for (final row in rows.whereType<Map>()) {
+      final map = Map<String, dynamic>.from(row);
+      final rid = map['request_id']?.toString() ?? '';
+      if (rid.isEmpty) continue;
+      next.putIfAbsent(rid, () => <Map<String, dynamic>>[]).add(map);
+    }
+    for (final entry in next.entries) {
+      next[entry.key] = cateringQuotesSorted(entry.value);
+    }
+    if (replaceAll) {
+      _quotesByRequest
+        ..clear()
+        ..addAll(next);
+    } else {
+      _quotesByRequest.addAll(next);
+    }
+  }
+
+  Future<void> _refreshQuotes({Iterable<String>? requestIds}) async {
+    final ids = (requestIds ?? _activeRequests.map((r) => r['id']?.toString() ?? ''))
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+    if (ids.isEmpty) {
+      if (mounted) setState(() => _quotesByRequest.clear());
+      return;
+    }
+    try {
+      final rows = await Supabase.instance.client
+          .from('customer_request_quotes')
+          .select()
+          .inFilter('request_id', ids);
+      if (!mounted) return;
+      setState(() => _applyQuotes(rows as List));
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Catering quotes refresh failed');
+    }
+  }
+
+  Future<void> _fetchActiveOrders({bool showSpinner = true}) async {
     final supabase = Supabase.instance.client;
     final user = supabase.auth.currentUser;
+    if (user == null) {
+      if (mounted) {
+        setState(() {
+          _activeOrders = [];
+          _pastOrders = [];
+          _activeRequests = [];
+          _isLoading = false;
+        });
+      }
+      return;
+    }
 
+    if (showSpinner && mounted) setState(() => _isLoading = true);
+
+    try {
+      List<dynamic> orderRows = const [];
+      try {
+        orderRows = await supabase
+            .from('orders')
+            .select()
+            .eq('customer_id', user.id)
+            .order('created_at', ascending: false);
+      } catch (_) {
+        orderRows = await supabase
+            .from('orders')
+            .select()
+            .or('customer_id.eq.${user.id},user_id.eq.${user.id}')
+            .order('created_at', ascending: false);
+      }
+
+      List<dynamic> requestRows = const [];
+      try {
+        requestRows = await supabase
+            .from('customer_requests')
+            .select()
+            .eq('customer_id', user.id)
+            .order('created_at', ascending: false);
+      } catch (_) {}
+
+      await _loadSavedDropoffAddress(user.id);
+
+      if (!mounted) return;
+      setState(() {
+        _activeOrders = _activeRows(orderRows);
+        _pastOrders = _pastRows(orderRows);
+        _activeRequests = _cateringRows(requestRows);
+        _isLoading = false;
+      });
+      unawaited(_refreshQuotes());
+      unawaited(ref.read(lastOrderProvider.notifier).fetchLastOrder());
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Customer orders refresh failed');
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _initScopedStreams() {
+    final supabase = Supabase.instance.client;
+    final user = supabase.auth.currentUser;
     if (user == null) {
       if (mounted) setState(() => _isLoading = false);
       return;
     }
 
-    final userId = user.id;
+    unawaited(_fetchActiveOrders());
 
-    try {
-      // 1. Initial manual fetch to guarantee data loads even if stream delays or misses
-      final initialOrders = await supabase
-          .from('orders')
-          .select()
-          .or('customer_id.eq.$userId,user_id.eq.$userId')
-          .order('created_at', ascending: false);
+    _ordersSub?.cancel();
+    _reqsSub?.cancel();
+    _quotesSub?.cancel();
 
-      if (mounted) {
-        final active = (initialOrders as List).where((order) {
-          final status = order['status']?.toString().toLowerCase() ?? '';
-          return !status.contains('delivered') && 
-                 !status.contains('completed') && 
-                 !status.contains('cancelled') && 
-                 !status.contains('rejected');
-        }).map((e) => Map<String, dynamic>.from(e)).toList();
-
-        setState(() {
-          _activeOrders = active;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      debugPrint('Initial orders fetch fallback error: $e');
-    }
-
-    // 2. Scoped Orders Realtime Stream
     _ordersSub = supabase
         .from('orders')
         .stream(primaryKey: ['id'])
         .order('created_at', ascending: false)
         .listen(
       (data) {
-        if (mounted) {
-          final active = data.where((order) {
-            final orderCustomer = order['customer_id']?.toString() ?? order['user_id']?.toString() ?? '';
-            if (orderCustomer != userId) return false;
-
-            final status = order['status']?.toString().toLowerCase() ?? '';
-            return !status.contains('delivered') && 
-                   !status.contains('completed') && 
-                   !status.contains('cancelled') && 
-                   !status.contains('rejected');
-          }).toList();
-
-          setState(() {
-            _activeOrders = active;
-            _isLoading = false;
-          });
-        }
+        if (!mounted) return;
+        final mine = data.where((order) {
+          final owner = order['customer_id']?.toString() ?? order['user_id']?.toString() ?? '';
+          return owner == user.id;
+        });
+        setState(() {
+          _activeOrders = _activeRows(mine);
+          _pastOrders = _pastRows(mine);
+          _isLoading = false;
+        });
       },
       onError: (e, stack) {
         FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Customer orders stream error');
@@ -120,92 +254,115 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
       },
     );
 
-    // 3. Scoped Bulk Requests Stream
     _reqsSub = supabase
         .from('customer_requests')
         .stream(primaryKey: ['id'])
-        .eq('customer_id', userId)
+        .eq('customer_id', user.id)
         .order('created_at', ascending: false)
         .listen(
       (data) {
-        if (mounted) {
-          final active = data.where((req) {
-            final status = req['status']?.toString().toLowerCase() ?? '';
-            return !status.contains('delivered') && 
-                   !status.contains('completed') && 
-                   !status.contains('cancelled') && 
-                   !status.contains('rejected');
-          }).toList();
-
-          setState(() {
-            _activeRequests = active;
-            _isLoading = false;
-          });
-        }
+        if (!mounted) return;
+        setState(() {
+          _activeRequests = _cateringRows(data);
+          _isLoading = false;
+        });
+        unawaited(_refreshQuotes());
       },
       onError: (e, stack) {
         FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Customer bulk requests stream error');
       },
     );
+
+    _quotesSub = supabase
+        .from('customer_request_quotes')
+        .stream(primaryKey: ['id'])
+        .listen(
+      (data) {
+        if (!mounted) return;
+        final mineRequestIds = _activeRequests.map((r) => r['id']?.toString() ?? '').where((id) => id.isNotEmpty).toSet();
+        // Avoid wiping the quote map before requests have loaded.
+        if (mineRequestIds.isEmpty) return;
+        final relevant = data.where((row) {
+          final rid = row['request_id']?.toString() ?? '';
+          return mineRequestIds.contains(rid);
+        });
+        setState(() => _applyQuotes(relevant));
+      },
+      onError: (e, stack) {
+        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Customer catering quotes stream error');
+      },
+    );
+
+    // Orders stream already covers live updates; skip a second postgres channel.
   }
 
-  String _getMonthName(int month) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return months[month - 1];
+  Future<void> _loadSavedDropoffAddress(String userId) async {
+    try {
+      final rows = await Supabase.instance.client.from('user_addresses').select().eq('user_id', userId);
+      _savedDropoffAddress = preferredCheckoutAddress(
+        uniqueSavedAddresses(List<Map<String, dynamic>>.from(rows as List)),
+      );
+    } catch (_) {}
+    if (_savedDropoffAddress != null) return;
+    try {
+      final profile = await Supabase.instance.client
+          .from('users')
+          .select('address, house_no, street, city, state, pincode, lat, lng, latitude, longitude')
+          .eq('id', userId)
+          .maybeSingle();
+      _savedDropoffAddress = checkoutAddressFromUserProfile(profile);
+    } catch (_) {}
   }
 
-  String _getSmartTimeSlot(String? originalSlot, DateTime placedDate, {String? selectedDateStr}) {
-    String slot = originalSlot ?? 'ASAP';
+  String _dropoffLabel(Map<String, dynamic> order, List<Map<String, dynamic>> items) {
+    final value = orderDropoffAddress(order, items: items, fallbackAddress: _savedDropoffAddress);
+    return value.isEmpty ? 'Unknown Location' : value;
+  }
 
-    if (selectedDateStr != null &&
-        selectedDateStr.isNotEmpty &&
-        selectedDateStr.toLowerCase() != 'today' &&
-        selectedDateStr.toLowerCase() != 'tomorrow') {
-      if (slot.toLowerCase().contains('today')) {
-        slot = slot.replaceAll(RegExp('today', caseSensitive: false), selectedDateStr);
-      } else if (slot.toLowerCase().contains('tomorrow')) {
-        slot = slot.replaceAll(RegExp('tomorrow', caseSensitive: false), selectedDateStr);
-      } else if (!slot.contains(selectedDateStr)) {
-        slot = '$selectedDateStr | $slot';
-      }
-      return slot;
-    }
+  String _pickupLabel(Map<String, dynamic> order, List<Map<String, dynamic>> items) {
+    final value = orderPickupAddress(order, items: items);
+    return value.isEmpty ? 'Kitchen Location' : value;
+  }
 
-    if (slot.toLowerCase().contains('today')) {
-      final dateStr = "${placedDate.day} ${_getMonthName(placedDate.month)}";
-      slot = slot.replaceAll(RegExp('today', caseSensitive: false), dateStr);
-    } else if (slot.toLowerCase().contains('tomorrow')) {
-      final tmrw = placedDate.add(const Duration(days: 1));
-      final dateStr = "${tmrw.day} ${_getMonthName(tmrw.month)}";
-      slot = slot.replaceAll(RegExp('tomorrow', caseSensitive: false), dateStr);
-    }
-    return slot;
+  // Delegates to the shared helper so slot resolution (including the
+  // "delivery date is never before the order date" guard) stays consistent
+  // across every screen.
+  String _slotLabel(Map<String, dynamic> item, {List<Map<String, dynamic>>? orderItems}) {
+    return formatDeliverySlotLabel({
+      ...item,
+      if (orderItems != null) 'items': orderItems,
+    });
   }
 
   bool _canCancelOrder(Map<String, dynamic> order) {
-    final status = order['status']?.toString().toLowerCase() ?? '';
-    if (status.contains('cancelled') ||
-        status.contains('delivered') ||
-        status.contains('completed') ||
-        status.contains('preparing') ||
-        status.contains('ready') ||
-        status.contains('out')) {
-      return false;
-    }
-    return true;
+    return OrderLifecycle.canCustomerCancelOrder(order);
   }
 
   Future<void> _cancelOrderGroup(List<Map<String, dynamic>> groupItems) async {
+    final hasDelivery = groupItems.any((item) {
+      final service = item['service_type']?.toString().toLowerCase() ?? '';
+      return service.contains('delivery');
+    });
+    final bill = orderBillBreakdown(
+      items: groupItems,
+      order: groupItems.isNotEmpty ? groupItems.first : null,
+      hasDelivery: hasDelivery,
+    );
+    final refundRupees = bill.grandTotal.toInt();
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: AppTheme.dialogShape,
         title: const Row(children: [
           Icon(Icons.warning_amber_rounded, color: Colors.orange),
           SizedBox(width: 8),
           Text('Cancel Order'),
         ]),
-        content: const Text('Are you sure you want to completely cancel this order?'),
+        content: Text(
+          'You can cancel until the chef starts cooking, or until your delivery slot begins.\n\n'
+          'Refund ₹$refundRupees will be sent to the original payment method (usually 5–7 business days).',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -222,14 +379,18 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
 
     if (confirm == true) {
       try {
-        final supabase = Supabase.instance.client;
-        final String orderId = groupItems.first['order_id'].toString();
-
-        await supabase.from('orders').update({'status': 'Cancelled'}).eq('id', orderId);
+        final String orderId = groupItems.first['order_id']?.toString() ?? groupItems.first['id'].toString();
+        await OrderLifecycle().cancel(
+          orderId: orderId,
+          reason: 'Cancelled by customer',
+        );
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Order Cancelled Successfully'), backgroundColor: Colors.orange),
+            const SnackBar(
+              content: Text('Order cancelled. Refund is on the way if you paid online.'),
+              backgroundColor: Colors.orange,
+            ),
           );
         }
       } catch (e) {
@@ -240,93 +401,40 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
     }
   }
 
-  void _showReviewDialog(BuildContext context, Map order) {
-    int selectedRating = 5;
-    final reviewController = TextEditingController();
-    bool isSubmitting = false;
-
-    showDialog(
+  Future<void> _showReviewDialog(Map item, {String? orderId, String? chefId}) async {
+    final submitted = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppTheme.surfaceDark,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Rate ${order['title']}', style: const TextStyle(color: Colors.white)),
-        content: StatefulBuilder(
-          builder: (context, setDialogState) {
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('How was the food from this home kitchen?', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(5, (index) {
-                    return IconButton(
-                      icon: Icon(index < selectedRating ? Icons.star : Icons.star_border, color: Colors.amber, size: 32),
-                      onPressed: () => setDialogState(() => selectedRating = index + 1),
-                    );
-                  }),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: reviewController,
-                  maxLines: 3,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(
-                    labelText: 'Leave a review (optional)',
-                    labelStyle: TextStyle(color: Colors.grey),
-                    alignLabelWithHint: true,
-                  ),
-                ),
-              ],
+      builder: (dialogContext) => MealReviewDialog(
+        mealTitle: item['title']?.toString() ?? item['name']?.toString() ?? 'this meal',
+        onSubmit: (rating, comment) async {
+          final supabase = Supabase.instance.client;
+          final user = supabase.auth.currentUser;
+          if (user == null) throw Exception('Please log in to rate meals.');
+
+          try {
+            await submitMealReview(
+              item: Map<String, dynamic>.from(item),
+              customerId: user.id,
+              chefId: chefId ?? item['chef_id']?.toString(),
+              orderId: orderId ?? item['order_id']?.toString(),
+              rating: rating,
+              comment: comment,
             );
-          },
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Skip', style: TextStyle(color: Colors.grey))),
-          StatefulBuilder(
-            builder: (context, setBtnState) {
-              return ElevatedButton(
-                onPressed: isSubmitting
-                    ? null
-                    : () async {
-                        setBtnState(() => isSubmitting = true);
-                        try {
-                          final supabase = Supabase.instance.client;
-                          final user = supabase.auth.currentUser;
-                          if (user == null) throw Exception('Please log in to rate meals.');
-
-                          await supabase.from('reviews').insert({
-                            'meal_id': ChatIds.mealRoomId(Map<String, dynamic>.from(order)),
-                            'customer_id': user.id,
-                            'chef_id': order['chef_id'],
-                            'rating': selectedRating,
-                            'comment': reviewController.text.trim(),
-                          });
-
-                          if (dialogContext.mounted) {
-                            Navigator.pop(dialogContext);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Review submitted!'), backgroundColor: Colors.green),
-                            );
-                          }
-                        } catch (e) {
-                          setBtnState(() => isSubmitting = false);
-                          if (dialogContext.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red),
-                            );
-                          }
-                        }
-                      },
-                child: isSubmitting
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : const Text('Submit'),
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(networkErrorMessage(e)), backgroundColor: Colors.red),
               );
-            },
-          ),
-        ],
+            }
+            rethrow;
+          }
+        },
       ),
+    );
+
+    if (!mounted || submitted != true) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Review submitted!'), backgroundColor: Colors.green),
     );
   }
 
@@ -338,108 +446,21 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
     double itemsTotal,
     double packagingFee,
     double deliveryFee,
-    double grandTotal,
-  ) async {
-    showDialog(
+    double grandTotal, {
+    double tipAmount = 0,
+    double coinsApplied = 0,
+  }) {
+    return InvoicePdfService.download(
       context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const Center(child: CircularProgressIndicator(color: AppTheme.primary)),
+      orderId: orderId,
+      date: date,
+      items: items,
+      itemsTotal: itemsTotal,
+      packagingFee: packagingFee,
+      deliveryFee: deliveryFee,
+      tipAmount: tipAmount,
+      coinsApplied: coinsApplied,
     );
-
-    try {
-      final pdf = pw.Document();
-      pdf.addPage(
-        pw.Page(
-          pageFormat: pw.PdfPageFormat.a4,
-          build: (pw.Context context) {
-            return pw.Padding(
-              padding: const pw.EdgeInsets.all(24),
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Text('HOTPOTCHEF INVOICE', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
-                  pw.SizedBox(height: 12),
-                  pw.Text('Order ID: $orderId'),
-                  pw.Text('Date: $date'),
-                  pw.SizedBox(height: 20),
-                  pw.Divider(),
-                  ...items.map((item) {
-                    double price = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
-                    int qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
-                    return pw.Padding(
-                      padding: const pw.EdgeInsets.symmetric(vertical: 4),
-                      child: pw.Row(
-                        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                        children: [
-                          pw.Text('$qty x ${item['title']}'),
-                          pw.Text('Rs. ${(price * qty).toInt()}'),
-                        ],
-                      ),
-                    );
-                  }),
-                  pw.Divider(),
-                  pw.SizedBox(height: 10),
-                  pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('Items Total'), pw.Text('Rs. ${itemsTotal.toInt()}')]),
-                  pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('Packaging'), pw.Text('Rs. ${packagingFee.toInt()}')]),
-                  pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('Delivery'), pw.Text('Rs. ${deliveryFee.toInt()}')]),
-                  pw.Divider(thickness: 2),
-                  pw.Row(
-                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                    children: [
-                      pw.Text('Grand Total', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                      pw.Text('Rs. ${grandTotal.toInt()}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                    ],
-                  ),
-                  pw.SizedBox(height: 10),
-                  pw.Center(child: pw.Text('Payment Mode: Online / Prepaid', style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
-                  pw.Center(child: pw.Text('Payment Status: PAID', style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
-                ],
-              ),
-            );
-          },
-        ),
-      );
-
-      final bytes = await pdf.save();
-      final dir = await getTemporaryDirectory();
-      final filePath = '${dir.path}/HotPotChef_Invoice_$orderId.pdf';
-
-      final file = File(filePath);
-      await file.writeAsBytes(bytes);
-
-      if (context.mounted) Navigator.pop(context);
-
-      if (context.mounted) {
-        showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Row(children: [Icon(Icons.check_circle, color: Colors.green), SizedBox(width: 8), Text('Invoice Ready')]),
-            content: const Text('Your invoice has been generated securely. You can open it to view, save, or share it.',
-                style: TextStyle(fontSize: 13, color: AppTheme.textMain)),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Dismiss', style: TextStyle(color: Colors.grey))),
-              ElevatedButton.icon(
-                icon: const Icon(Icons.picture_as_pdf, size: 16),
-                label: const Text('Open Invoice'),
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  OpenFile.open(filePath);
-                },
-              ),
-            ],
-          ),
-        );
-      }
-    } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'PDF invoice generation error');
-      if (context.mounted) Navigator.pop(context);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to generate invoice: $e'), backgroundColor: Colors.red),
-        );
-      }
-    }
   }
 
   void _showOrderDetailsBottomSheet(
@@ -456,10 +477,22 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
     bool isDelivered,
     Map<String, dynamic>? trackableItem,
   ) {
-    final chefName = items.first['chef_name'] ?? 'Home Chef';
-    final chefId = items.first['chef_id'] ?? '';
+    final chefId = items.first['chef_id']?.toString() ?? '';
     final status = items.first['status']?.toString() ?? 'Pending';
+    final bill = orderBillBreakdown(
+      items: items,
+      order: items.first,
+      hasDelivery: (items.first['service_type']?.toString().toLowerCase() ?? '').contains('delivery'),
+    );
+    itemsTotal = bill.itemsTotal;
+    packagingFee = bill.packagingFee;
+    deliveryFee = bill.deliveryFee;
+    finalGrandTotal = bill.grandTotal;
     final orderType = items.first['service_type']?.toString() ?? 'Delivery';
+    final slotLabel = formatDeliverySlotLabel({
+      ...items.first,
+      'items': items,
+    });
 
     IconData statusIcon = Icons.hourglass_empty;
     Color statusColor = Colors.orange;
@@ -473,25 +506,37 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
       statusIcon = Icons.cancel;
       statusColor = Colors.red;
       statusText = 'Order Cancelled';
-    } else if (status.toLowerCase().contains('ready') || status.toLowerCase().contains('out')) {
+    } else if (status.toLowerCase().contains('out') || status.toLowerCase().contains('assigned')) {
       statusIcon = Icons.delivery_dining;
       statusColor = AppTheme.primary;
-      statusText = 'Order is on the way / ready';
+      statusText = 'Order is on the way';
+    } else if (hasDispatchPhoto(items.first) || status.toLowerCase().contains('ready')) {
+      statusIcon = Icons.inventory_2_outlined;
+      statusColor = AppTheme.success;
+      statusText = dispatchPackedLabel(takenAt: orderDispatchPhotoAt(items.first));
     } else if (status.toLowerCase().contains('preparing')) {
       statusIcon = Icons.soup_kitchen;
       statusColor = Colors.orange;
       statusText = 'Chef is preparing your food';
+    } else if (status.toLowerCase().contains('confirm')) {
+      statusIcon = Icons.thumb_up_alt_outlined;
+      statusColor = AppTheme.success;
+      statusText = 'Chef accepted your order';
+    } else if (OrderLifecycle.isPendingKitchen(status)) {
+      statusIcon = Icons.hourglass_empty;
+      statusColor = Colors.orange;
+      statusText = 'Waiting for the chef to accept';
     }
 
     final bool isCancelled = status.toLowerCase().contains('cancelled') || status.toLowerCase().contains('rejected');
-    final bool isTrackable = (status.toLowerCase().contains('out') || status.toLowerCase().contains('ready')) && trackableItem != null;
+    final bool isTrackable = OrderLifecycle.isTrackable(status) && trackableItem != null;
 
     final serviceTypeStr = items.first['service_type']?.toString().toLowerCase() ?? '';
     final isPickupOrDineIn = serviceTypeStr.contains('pickup') || serviceTypeStr.contains('dine');
     final addressLabel = isPickupOrDineIn ? 'Pickup Location' : 'Delivery Address';
     final addressValue = isPickupOrDineIn
-        ? (items.first['hosting_address'] ?? items.first['chef_address'] ?? 'Kitchen Location')
-        : (items.first['delivery_address'] ?? 'Unknown Location');
+        ? _pickupLabel(items.first, items)
+        : _dropoffLabel(items.first, items);
 
     showModalBottomSheet(
       context: context,
@@ -500,25 +545,32 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
       builder: (ctx) {
         return Container(
           height: MediaQuery.of(context).size.height * 0.92,
-          decoration: BoxDecoration(color: AppTheme.background, borderRadius: const BorderRadius.vertical(top: Radius.circular(20))),
+          decoration: AppTheme.bottomSheetDecoration(isDark: Theme.of(context).brightness == Brightness.dark),
           child: Column(
             children: [
               Container(
-                decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceOf(context),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(AppTheme.rXl)),
+                ),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Row(
                       children: [
-                        GestureDetector(onTap: () => Navigator.pop(ctx), child: const Icon(Icons.arrow_back, color: AppTheme.textMain)),
+                        GestureDetector(onTap: () => Navigator.pop(ctx), child: Icon(Icons.arrow_back, color: AppTheme.onSurfaceOf(context))),
                         const SizedBox(width: 12),
-                        const Text('Order Details', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+                        Text('Order details', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                       ],
                     ),
                     GestureDetector(
-                      onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Support chat coming soon!'))),
-                      child: const Text('Support', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 14)),
+                      onTap: () => showContactSupportSheet(
+                        ctx,
+                        orderNumber: displayOrderIdStr,
+                        orderUuid: items.first['order_id']?.toString() ?? items.first['id']?.toString(),
+                      ),
+                      child: Text(DinerLocaleController.instance.copy.help, style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 14)),
                     )
                   ],
                 ),
@@ -536,18 +588,49 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                             children: [
                               Icon(statusIcon, color: statusColor, size: 24),
                               const SizedBox(width: 12),
-                              Expanded(child: Text(statusText, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain))),
+                              Expanded(child: Text(statusText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.onSurfaceOf(context)))),
                             ],
                           ),
-                          const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: Colors.black12)),
+                          const SizedBox(height: 16),
+                          DinerOrderProgress(status: status),
+                          if (hasDispatchPhoto(items.first)) ...[
+                            const SizedBox(height: 12),
+                            DispatchPackedPhoto(
+                              url: orderDispatchPhotoUrl(items.first)!,
+                              caption: dispatchPackedLabel(takenAt: orderDispatchPhotoAt(items.first)),
+                            ),
+                          ],
+                          if (hasPodPhoto(items.first)) ...[
+                            const SizedBox(height: 12),
+                            DispatchPackedPhoto(
+                              url: orderPodPhotoUrl(items.first)!,
+                              caption: deliveryPodLabel(takenAt: orderPodPhotoAt(items.first)),
+                            ),
+                          ],
+                          if (!orderAllowsPartyChat(status)) ...[
+                            const SizedBox(height: 12),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppTheme.primary.withValues(alpha: 0.08),
+                                borderRadius: AppTheme.radiusSm,
+                              ),
+                              child: const Text(
+                                'Order chat with the kitchen and delivery partner is closed. Tap Help above for any post-delivery issues.',
+                                style: TextStyle(fontSize: 12, height: 1.35, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ],
+                          Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: AppTheme.hairlineOf(context))),
                           
                           // Timings & Delivery Type in Details Sheet
                           Row(
                             children: [
                               const Icon(Icons.local_shipping_outlined, size: 14, color: AppTheme.primary),
                               const SizedBox(width: 6),
-                              const Text('Type: ', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
-                              Text(orderType, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+                              Text('Type: ', style: AppTheme.caption),
+                              Text(orderType, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                             ],
                           ),
                           const SizedBox(height: 6),
@@ -555,8 +638,8 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                             children: [
                               const Icon(Icons.access_time, size: 14, color: AppTheme.textMuted),
                               const SizedBox(width: 6),
-                              const Text('Placed: ', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
-                              Text(dateTimeString, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppTheme.textMain)),
+                              Text('Placed: ', style: AppTheme.caption),
+                              Text(dateTimeString, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppTheme.onSurfaceOf(context))),
                             ],
                           ),
                           const SizedBox(height: 6),
@@ -564,10 +647,45 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                             children: [
                               const Icon(Icons.event_available, size: 14, color: Colors.green),
                               const SizedBox(width: 6),
-                              const Text('Delivery Slot: ', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
-                              Text(deliveryTimeStr, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
+                              Text('Promised slot: ', style: AppTheme.caption),
+                              Expanded(
+                                child: Text(slotLabel, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
+                              ),
                             ],
                           ),
+                          if (dinerSlotCountdownActive(status)) ...[
+                            const SizedBox(height: 10),
+                            OrderSlotBanner(order: {...items.first, 'items': items}, diner: true),
+                          ],
+                          if (!isDelivered) ...[
+                            Builder(
+                              builder: (_) {
+                                final pin = items.first['delivery_otp']?.toString().trim() ?? '';
+                                if (pin.isEmpty) return const SizedBox.shrink();
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 12),
+                                  child: Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.primary.withValues(alpha: 0.08),
+                                      borderRadius: AppTheme.radiusMd,
+                                      border: Border.all(color: AppTheme.primary.withValues(alpha: 0.25)),
+                                    ),
+                                    child: Text(
+                                      'Delivery PIN: $pin — share with driver at the door',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w800,
+                                        color: AppTheme.onSurfaceOf(context),
+                                        height: 1.35,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
                           const SizedBox(height: 8),
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -576,7 +694,7 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                               const SizedBox(width: 6),
                               Expanded(
                                 child: Text('$addressLabel: $addressValue',
-                                    style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                                    style: AppTheme.caption,
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis),
                               ),
@@ -589,26 +707,38 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                               children: [
                                 const Icon(Icons.done_all, size: 14, color: Colors.green),
                                 const SizedBox(width: 6),
-                                Text('Delivered at: ${formatOrderDate(items.first['updated_at']?.toString() ?? items.first['created_at']?.toString())}',
-                                    style: const TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.bold)),
+                                Text(
+                                  'Delivered: ${formatOrderDate(items.first['delivered_at']?.toString() ?? items.first['updated_at']?.toString() ?? items.first['created_at']?.toString())}',
+                                  style: const TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.bold),
+                                ),
                               ],
                             ),
                           ],
                           if (isTrackable) ...[
                             const SizedBox(height: 16),
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton.icon(
-                                icon: const Icon(Icons.map, size: 20),
-                                label: const Text('Track Live Location'),
-                                onPressed: () {
-                                  context.push('/tracking', extra: {
-                                    'order': trackableItem,
-                                    'isDriver': false,
-                                    'isDineInNavigation': status.toLowerCase().contains('ready') &&
-                                        !(items.first['service_type']?.toString().toLowerCase().contains('delivery') ?? false),
-                                  });
-                                },
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Row(
+                                children: [
+                                  AppIconAction(
+                                    icon: Icons.map_outlined,
+                                    tooltip: DinerLocaleController.instance.copy.track,
+                                    onPressed: () {
+                                      Navigator.pop(ctx);
+                                      _openTracking(trackableItem, items);
+                                    },
+                                  ),
+                                  const SizedBox(width: 8),
+                                  AppIconAction(
+                                    icon: Icons.support_agent_outlined,
+                                    tooltip: DinerLocaleController.instance.copy.help,
+                                    onPressed: () => showContactSupportSheet(
+                                      ctx,
+                                      orderNumber: displayOrderIdStr,
+                                      orderUuid: items.first['order_id']?.toString() ?? items.first['id']?.toString(),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
@@ -629,8 +759,18 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(chefName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain)),
-                                    const Text('Home Kitchen', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+                                    FutureBuilder<String>(
+                                      future: lookupChefDisplayName(chefId, hint: items.first),
+                                      builder: (context, snap) {
+                                        final name = snap.data ??
+                                            chefDisplayName(items.first, fallback: 'Loading chef...');
+                                        return Text(
+                                          name,
+                                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.onSurfaceOf(context)),
+                                        );
+                                      },
+                                    ),
+                                    Text('Home kitchen', style: AppTheme.caption),
                                   ],
                                 ),
                               ]),
@@ -638,41 +778,103 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                                 children: [
                                   GestureDetector(
                                     onTap: () {
-                                      final roomId = ChatIds.mealRoomId(items.first);
-                                      if (roomId.isEmpty) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(content: Text('Chat is unavailable for this order.')),
+                                      if (!orderAllowsPartyChat(status)) {
+                                        showContactSupportSheet(
+                                          ctx,
+                                          orderNumber: displayOrderIdStr,
+                                          orderUuid: items.first['order_id']?.toString() ?? items.first['id']?.toString(),
                                         );
                                         return;
                                       }
-                                      context.push(ChatIds.location(roomId, roomName: 'Order $displayOrderIdStr'));
+                                      context.push(chatPath(
+                                        items.first['order_id']?.toString() ?? items.first['id']?.toString() ?? '',
+                                        roomName: 'Order $displayOrderIdStr',
+                                        otherUserId: chefId,
+                                        memberIds: orderChatMemberIds(items.first),
+                                        isGroup: true,
+                                      ));
                                     },
-                                    child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.grey.shade300)), child: const Icon(Icons.chat_bubble_outline, color: AppTheme.primary, size: 18)),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: AppTheme.hairlineOf(context)),
+                                        color: orderAllowsPartyChat(status) ? null : AppTheme.surfaceMutedOf(context),
+                                      ),
+                                      child: Icon(
+                                        Icons.chat_bubble_outline,
+                                        color: orderAllowsPartyChat(status) ? AppTheme.primary : Colors.grey,
+                                        size: 18,
+                                      ),
+                                    ),
                                   ),
                                   const SizedBox(width: 8),
                                   GestureDetector(
-                                    onTap: () => _initiateCall(chefId),
-                                    child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.grey.shade300)), child: const Icon(Icons.phone_outlined, color: Colors.redAccent, size: 18)),
+                                    onTap: orderAllowsPhoneCall(status)
+                                        ? () => _initiateCall(chefId)
+                                        : () {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(
+                                                content: Text('Phone is for active prep/delivery. Prefer Chat.'),
+                                                backgroundColor: Colors.orange,
+                                              ),
+                                            );
+                                          },
+                                    child: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: AppTheme.hairlineOf(context)),
+                                        color: orderAllowsPhoneCall(status) ? null : AppTheme.surfaceMutedOf(context),
+                                      ),
+                                      child: Icon(
+                                        Icons.phone_outlined,
+                                        color: orderAllowsPhoneCall(status) ? Colors.redAccent : Colors.grey,
+                                        size: 18,
+                                      ),
+                                    ),
                                   ),
+                                  if (_driverIdOf(items.first) != null) ...[
+                                    const SizedBox(width: 8),
+                                    GestureDetector(
+                                      onTap: orderAllowsPhoneCall(status)
+                                          ? () => _initiateCall(_driverIdOf(items.first)!)
+                                          : () {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text('Phone is for active prep/delivery. Prefer Chat.'),
+                                                  backgroundColor: Colors.orange,
+                                                ),
+                                              );
+                                            },
+                                      child: Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: Border.all(color: AppTheme.hairlineOf(context)),
+                                          color: orderAllowsPhoneCall(status) ? null : AppTheme.surfaceMutedOf(context),
+                                        ),
+                                        child: Icon(
+                                          Icons.sports_motorsports_outlined,
+                                          color: orderAllowsPhoneCall(status) ? Colors.blueAccent : Colors.grey,
+                                          size: 18,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               )
                             ],
                           ),
-                          const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider(height: 1, color: Colors.black12)),
-                          Row(
-                            children: [
-                              Text('Order ID: $displayOrderIdStr', style: const TextStyle(color: AppTheme.textMuted, fontSize: 13, fontWeight: FontWeight.bold)),
-                              const SizedBox(width: 8),
-                              const Icon(Icons.copy, size: 14, color: AppTheme.textMuted)
-                            ],
-                          ),
+                          Padding(padding: const EdgeInsets.symmetric(vertical: 16), child: Divider(height: 1, color: AppTheme.hairlineOf(context))),
+                          orderIdCopyRow(context, displayOrderIdStr),
                           const SizedBox(height: 16),
                           ...items.map((item) {
-                            double parsedPrice = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+                            double parsedPrice = lineItemListPrice(item);
                             int parsedQty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
 
-                            final truePlacedDate = getTrueOrderDateTime(item['order_id']?.toString() ?? '', item['created_at']?.toString());
-                            final smartSlot = _getSmartTimeSlot(item['time_slot'], truePlacedDate, selectedDateStr: item['selected_date']?.toString());
+                            final smartSlot = _slotLabel(item, orderItems: items);
+                            final shownSlot = smartSlot == 'ASAP' ? slotLabel : smartSlot;
 
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 12),
@@ -696,9 +898,9 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text('${item['quantity']} x ${item['title']}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+                                        Text('${item['quantity']} x ${item['title']}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                                         const SizedBox(height: 2),
-                                        Text('Slot: $smartSlot', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+                                        Text('Slot: $shownSlot', style: AppTheme.caption),
                                       ],
                                     ),
                                   ),
@@ -725,7 +927,18 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                               ]),
                               if (isDelivered)
                                 GestureDetector(
-                                  onTap: () => _downloadInvoicePDF(context, displayOrderIdStr, dateTimeString, items, itemsTotal, packagingFee, deliveryFee, finalGrandTotal),
+                                  onTap: () => _downloadInvoicePDF(
+                                    context,
+                                    displayOrderIdStr,
+                                    dateTimeString,
+                                    items,
+                                    itemsTotal,
+                                    packagingFee,
+                                    deliveryFee,
+                                    finalGrandTotal,
+                                    tipAmount: bill.tipAmount,
+                                    coinsApplied: bill.coinsApplied,
+                                  ),
                                   child: Container(
                                     padding: const EdgeInsets.all(6),
                                     decoration: BoxDecoration(
@@ -738,45 +951,59 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                             ],
                           ),
                           const SizedBox(height: 16),
-                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Item total', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)), Text('₹${itemsTotal.toInt()}', style: const TextStyle(color: AppTheme.textMain, fontSize: 13, fontWeight: FontWeight.w500))]),
+                          ...orderBillItemRows(context, bill),
                           const SizedBox(height: 10),
-                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Packaging fees', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)), Text('₹${packagingFee.toInt()}', style: const TextStyle(color: AppTheme.textMain, fontSize: 13, fontWeight: FontWeight.w500))]),
+                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Packaging fees', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)), Text('₹${packagingFee.toInt()}', style: TextStyle(color: AppTheme.onSurfaceOf(context), fontSize: 13, fontWeight: FontWeight.w500))]),
                           const SizedBox(height: 10),
-                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Delivery fee', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)), Text('₹${deliveryFee.toInt()}', style: const TextStyle(color: AppTheme.textMain, fontSize: 13, fontWeight: FontWeight.w500))]),
-                          const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: Colors.black12)),
-                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Grand total', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.textMain)), Text('₹${finalGrandTotal.toInt()}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.textMain))]),
+                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Delivery fee', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)), Text('₹${deliveryFee.toInt()}', style: TextStyle(color: AppTheme.onSurfaceOf(context), fontSize: 13, fontWeight: FontWeight.w500))]),
+                          ...orderBillAdjustmentRows(context, bill),
+                          Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: AppTheme.hairlineOf(context))),
+                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Grand total', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.onSurfaceOf(context))), Text('₹${finalGrandTotal.toInt()}', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.onSurfaceOf(context)))]),
+                          if (isCancelled) ...[
+                            const SizedBox(height: 10),
+                            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Refund amount', style: TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold)), Text('₹${finalGrandTotal.toInt()}', style: const TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold))]),
+                          ],
                         ],
                       ),
                     ),
                     if (isDelivered)
                       Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: AppIconAction(
+                            icon: Icons.ios_share,
+                            tooltip: 'Share your plate',
+                            onPressed: () => showPlateShareSheet(
+                              ctx,
+                              items: items,
+                              chefId: chefId,
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (isDelivered || isCancelled)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.replay, size: 18),
+                          label: const Text('Reorder these meals'),
+                          onPressed: () => _reorderItems(items),
+                        ),
+                      ),
+                    if (isDelivered)
+                      Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        child: FutureBuilder<Map<String, dynamic>?>(
-                          future: Supabase.instance.client
-                              .from('reviews')
-                              .select()
-                              .eq('meal_id', ChatIds.mealRoomId(items.first))
-                              .eq('customer_id', Supabase.instance.client.auth.currentUser?.id ?? '')
-                              .maybeSingle(),
-                          builder: (context, reviewSnap) {
-                            if (reviewSnap.connectionState == ConnectionState.waiting) return const SizedBox();
-                            final existingReview = reviewSnap.data;
-                            if (existingReview != null) {
-                              return OutlinedButton.icon(
-                                icon: const Icon(Icons.star, size: 18),
-                                label: Text('Rated ${existingReview['rating']}/5 Stars'),
-                                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('You have already rated this meal!')),
-                                ),
-                              );
-                            }
-                            return OutlinedButton.icon(
-                              icon: const Icon(Icons.star_border, size: 18),
-                              label: const Text('Rate this meal'),
-                              onPressed: () {
-                                Navigator.pop(ctx);
-                                _showReviewDialog(context, items.first);
-                              },
+                        child: OrderItemReviewButtons(
+                          items: items,
+                          orderId: items.first['id']?.toString(),
+                          onRate: (item) {
+                            Navigator.pop(ctx);
+                            if (!mounted) return;
+                            _showReviewDialog(
+                              item,
+                              orderId: items.first['id']?.toString(),
+                              chefId: chefId,
                             );
                           },
                         ),
@@ -802,6 +1029,117 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
     );
   }
 
+  Future<void> _reorderItems(List<Map<String, dynamic>> items) async {
+    final result = await ReorderService.addOrderItemsToCart(
+      cart: ref.read(cartProvider.notifier),
+      items: items,
+    );
+    if (!mounted) return;
+    if (result.added <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(ReorderService.resultMessage(result))),
+      );
+      return;
+    }
+    Navigator.of(context).maybePop();
+    widget.onReorderToCart?.call();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(ReorderService.resultMessage(result))),
+    );
+  }
+
+  Future<void> _selectCateringQuote(Map<String, dynamic> request, Map<String, dynamic> quote) async {
+    final quoteId = quote['id']?.toString() ?? '';
+    if (quoteId.isEmpty) return;
+    try {
+      final ok = await Supabase.instance.client.rpc(
+            'select_customer_request_quote',
+            params: {'p_quote_id': quoteId},
+          ) ==
+          true;
+      if (!mounted) return;
+      if (!ok) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not select that kitchen. Try again.')),
+        );
+        return;
+      }
+      await _fetchActiveOrders(showSpinner: false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${cateringQuoteChefLabel(quote)} selected. Confirm & pay when ready.',
+          ),
+        ),
+      );
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Select catering quote failed');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not select kitchen: $e')),
+      );
+    }
+  }
+
+  Future<void> _payCateringRequest(Map<String, dynamic> request) async {
+    final chefId = request['accepted_chef_id']?.toString() ?? '';
+    if (chefId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pick a kitchen quote first.')),
+      );
+      return;
+    }
+    final items = checkoutItemsFromCateringRequest(request);
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      appMaterialRoute(
+        CheckoutScreen(
+          cartItems: items,
+          sourceRequestId: request['id']?.toString(),
+          preferredAddress: {
+            'address': request['delivery_address'],
+            'street': request['delivery_address'],
+            'latitude': request['latitude'],
+            'longitude': request['longitude'],
+          },
+          onOrderPlacedSuccess: () {
+            unawaited(_fetchActiveOrders(showSpinner: false));
+          },
+        ),
+      ),
+    );
+  }
+
+  String? _driverIdOf(Map<String, dynamic> item) {
+    final driverId = item['driver_id']?.toString() ?? item['delivery_partner_id']?.toString() ?? '';
+    return driverId.isEmpty ? null : driverId;
+  }
+
+  void _openTracking(Map<String, dynamic> trackableItem, List<Map<String, dynamic>> items) {
+    final orderUuid = resolvedOrderId(trackableItem) ?? resolvedOrderId(items.first);
+    Map<String, dynamic>? fullOrder;
+    for (final row in _activeOrders) {
+      if (row['id']?.toString() == orderUuid) {
+        fullOrder = row;
+        break;
+      }
+    }
+    final status = items.first['status']?.toString() ?? '';
+    context.push('/tracking', extra: {
+      'order': fullOrder ??
+          {
+            ...trackableItem,
+            'id': orderUuid,
+            'order_id': orderUuid,
+          },
+      'isDriver': false,
+      'isDineInNavigation': status.toLowerCase().contains('ready') &&
+          !(items.first['service_type']?.toString().toLowerCase().contains('delivery') ?? false),
+    });
+  }
+
   Future<void> _initiateCall(String targetUserId) async {
     try {
       final userDoc = await Supabase.instance.client.from('users').select('phone').eq('id', targetUserId).maybeSingle();
@@ -824,13 +1162,17 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
 
   Widget _buildBulkRequestCard(Map<String, dynamic> req) {
     final status = req['status']?.toString() ?? 'Open';
+    final isOpen = status.toLowerCase() == 'open';
     final isAccepted = status.toLowerCase() == 'accepted';
+    final isOrdered = status.toLowerCase() == 'ordered' || status.toLowerCase() == 'paid';
     final isCancelled = status.toLowerCase() == 'cancelled';
     final chefName = req['accepted_chef_name'] ?? 'Pending Chef Acceptance';
     final chefId = req['accepted_chef_id'];
+    final requestId = req['id']?.toString() ?? '';
+    final quotes = _quotesByRequest[requestId] ?? const <Map<String, dynamic>>[];
 
-    final rawRequestId = req['id']?.toString() ?? '';
-    final displayRequestId = rawRequestId.length > 8 ? 'REQ-${rawRequestId.substring(0, 8).toUpperCase()}' : 'REQ-$rawRequestId';
+    final displayRequestId =
+        requestId.length > 8 ? 'REQ-${requestId.substring(0, 8).toUpperCase()}' : 'REQ-$requestId';
 
     return AppCard(
       margin: const EdgeInsets.only(bottom: 16),
@@ -844,8 +1186,8 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                 children: [
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(color: Colors.purple.shade50, borderRadius: BorderRadius.circular(8)),
-                    child: Text('Bulk Broadcast', style: TextStyle(color: Colors.purple.shade700, fontWeight: FontWeight.bold, fontSize: 11)),
+                    decoration: BoxDecoration(color: AppTheme.primary.withValues(alpha: 0.12), borderRadius: AppTheme.radiusSm),
+                    child: const Text('Bulk broadcast', style: TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 11)),
                   ),
                   const SizedBox(width: 8),
                   Text(displayRequestId, style: const TextStyle(color: AppTheme.textMuted, fontWeight: FontWeight.bold, fontSize: 11)),
@@ -859,36 +1201,130 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
             ],
           ),
           const SizedBox(height: 12),
-          Text('${req['quantity']}x ${req['title']}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+          Text('${req['quantity']}x ${req['title']}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
           const SizedBox(height: 4),
-          Text('Budget: ₹${req['budget']}', style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 14)),
+          Text(
+            cateringPayableTotal(req) > 0 &&
+                    cateringPayableTotal(req) != parseMoney(req['budget'])
+                ? 'Selected quote: ₹${cateringPayableTotal(req).toStringAsFixed(0)}  (budget ₹${req['budget']})'
+                : 'Budget: ₹${req['budget']}',
+            style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 14),
+          ),
           const SizedBox(height: 8),
-          Row(children: [const Icon(Icons.calendar_today, size: 14, color: AppTheme.textMuted), const SizedBox(width: 6), Text('Needed By: ${req['target_date_time']}', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12))]),
-          if (isAccepted) ...[
-            const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: Colors.black12)),
+          Row(children: [const Icon(Icons.calendar_today, size: 14, color: AppTheme.textMuted), const SizedBox(width: 6), Text('Needed By: ${req['target_date_time']}', style: AppTheme.caption)]),
+          if ((isOpen || isAccepted) && !isCancelled) ...[
+            Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: AppTheme.hairlineOf(context))),
+            Text(
+              quotes.isEmpty
+                  ? 'Waiting for kitchen quotes…'
+                  : '${quotes.length} quote${quotes.length == 1 ? '' : 's'} — pick one',
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+            ),
+            if (quotes.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  'Nearby chefs can bid. You choose who cooks, then pay.',
+                  style: AppTheme.caption,
+                ),
+              )
+            else
+              ...quotes.map((quote) {
+                final amount = parseMoney(quote['quoted_total']);
+                final selected = quote['status']?.toString().toLowerCase() == 'selected' ||
+                    (isAccepted && quote['chef_id']?.toString() == chefId?.toString());
+                final label = cateringQuoteChefLabel(quote);
+                return Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      borderRadius: AppTheme.radiusMd,
+                      border: Border.all(
+                        color: selected ? AppTheme.primary : AppTheme.hairlineOf(context),
+                        width: selected ? 1.5 : 1,
+                      ),
+                      color: selected ? AppTheme.primary.withValues(alpha: 0.06) : null,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                              const SizedBox(height: 2),
+                              Text(
+                                '₹${amount.toStringAsFixed(0)}',
+                                style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.w800),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (selected)
+                          const Text('Selected', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12))
+                        else
+                          TextButton(
+                            onPressed: () => _selectCateringQuote(req, quote),
+                            child: const Text('Select'),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+          ],
+          if (isAccepted || isOrdered) ...[
+            Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: AppTheme.hairlineOf(context))),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(children: [const Icon(Icons.person, size: 16, color: Colors.green), const SizedBox(width: 6), Text('Accepted by: $chefName', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13))]),
+                Row(children: [const Icon(Icons.person, size: 16, color: Colors.green), const SizedBox(width: 6), Text('Kitchen: $chefName', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13))]),
                 Row(
                   children: [
                     GestureDetector(
-                      onTap: () => _initiateCall(chefId),
-                      child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.teal.withValues(alpha: 0.15), shape: BoxShape.circle), child: const Icon(Icons.phone, color: Colors.teal, size: 16)),
+                      onTap: () => _initiateCall(chefId?.toString() ?? ''),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.teal.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AppTheme.hairlineOf(context)),
+                        ),
+                        child: const Icon(Icons.phone, color: Colors.teal, size: 16),
+                      ),
                     ),
                     const SizedBox(width: 8),
                     GestureDetector(
-                      onTap: () {
-                        final roomId = ChatIds.bulkRequestRoomId(req['id']);
-                        if (roomId.isEmpty) return;
-                        context.push(ChatIds.location(roomId, roomName: chefName.toString()));
-                      },
-                      child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.15), shape: BoxShape.circle), child: const Icon(Icons.chat_bubble, color: Colors.blue, size: 16)),
+                      onTap: () => context.push(chatPath(
+                        req['id'].toString(),
+                        roomName: chefName.toString(),
+                        otherUserId: chefId?.toString(),
+                      )),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AppTheme.hairlineOf(context)),
+                        ),
+                        child: const Icon(Icons.chat_bubble, color: Colors.blue, size: 16),
+                      ),
                     ),
                   ],
                 )
               ],
             ),
+            const SizedBox(height: 12),
+            if (isAccepted)
+              GradientButton(
+                label: 'Confirm & pay chef',
+                icon: Icons.payments_outlined,
+                onPressed: () => _payCateringRequest(req),
+              )
+            else
+              Text('Paid. This catering job is now a regular kitchen order.',
+                  style: AppTheme.caption),
           ] else if (!isCancelled) ...[
             const SizedBox(height: 12),
             SizedBox(
@@ -898,6 +1334,7 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                   await Supabase.instance.client.from('customer_requests').update({'status': 'Cancelled'}).eq('id', req['id']);
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Broadcast cancelled'), backgroundColor: Colors.orange));
+                    unawaited(_fetchActiveOrders(showSpinner: false));
                   }
                 },
                 child: const Text('Cancel Broadcast', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
@@ -916,98 +1353,83 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
 
     if (user == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('My Orders')),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(padding: const EdgeInsets.all(24), decoration: BoxDecoration(color: Colors.grey.shade200, shape: BoxShape.circle), child: Icon(Icons.receipt_long_outlined, size: 64, color: Colors.grey.shade500)),
-              const SizedBox(height: 24),
-              const Text('Please log in to view your orders.', style: TextStyle(fontSize: 16, color: AppTheme.textMuted)),
-              const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: () => context.go('/auth'),
-                child: const Text('Sign In'),
-              ),
-            ],
-          ),
+        backgroundColor: AppTheme.canvasOf(context),
+        appBar: const HubAppBar(title: 'My Orders'),
+        body: EmptyState(
+          icon: Icons.receipt_long_outlined,
+          title: 'Sign in to track orders',
+          message: 'Your live kitchen and delivery updates will show up here.',
+          actionLabel: 'Sign In',
+          onAction: () => showAuthBottomSheet(context, () {
+            setState(() => _isLoading = true);
+            _initScopedStreams();
+          }),
         ),
       );
     }
 
     if (_isLoading) {
       return Scaffold(
-        appBar: AppBar(title: const Text('My Orders')),
+        backgroundColor: AppTheme.canvasOf(context),
+        appBar: _ordersAppBar(),
         body: const Center(child: CircularProgressIndicator(color: AppTheme.primary)),
       );
     }
 
-    if (_activeOrders.isEmpty && _activeRequests.isEmpty) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('My Orders')),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Text('You have no active orders right now.', textAlign: TextAlign.center, style: TextStyle(color: AppTheme.textMuted, fontSize: 15)),
-                const SizedBox(height: 16),
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.refresh, size: 16),
-                  label: const Text('Refresh Orders'),
-                  onPressed: () {
-                    setState(() => _isLoading = true);
-                    _initScopedStreams();
-                  },
-                )
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    Map<String, List<Map<String, dynamic>>> groupedOrders = {};
-    for (var order in _activeOrders) {
+    final groupedOrders = <String, List<Map<String, dynamic>>>{};
+    for (final order in (_showPast ? _pastOrders : _activeOrders)) {
       final rawId = order['id'].toString();
-      List<dynamic> parsedItems = [];
-      try {
-        parsedItems = jsonDecode(order['items']?.toString() ?? '[]');
-      } catch (_) {}
+      final parsedMaps = parseOrderItemsList(order['items']);
+      final resolvedDropoff = orderDropoffAddress(
+        order,
+        items: parsedMaps,
+        fallbackAddress: _savedDropoffAddress,
+      );
 
       List<Map<String, dynamic>> enrichedItems = [];
-      for (var item in parsedItems) {
-        if (item is Map) {
-          enrichedItems.add({
-            ...item.cast<String, dynamic>(),
-            'order_id': order['id'],
-            'chef_id': order['chef_id'],
-            'status': order['status'] ?? 'New Order',
-            'service_type': order['order_type'] ?? order['service_type'] ?? 'Delivery',
-            'delivery_address': order['delivery_address'],
-            'driver_id': order['delivery_partner_id'],
-            'created_at': order['created_at'] ?? DateTime.now().toIso8601String(),
-            'source_meal_id': item['source_meal_id'] ?? item['mealId'] ?? item['meal_id'] ?? order['source_meal_id'],
-            'mealId': item['mealId'] ?? item['meal_id'] ?? item['source_meal_id'] ?? order['source_meal_id'],
-          });
-        }
+      for (var item in parsedMaps) {
+        enrichedItems.add({
+          ...item,
+          'order_id': order['id'],
+          'customer_id': order['customer_id'] ?? order['user_id'],
+          'chef_id': order['chef_id'],
+          'status': order['status'] ?? 'New Order',
+          'service_type': order['order_type'] ?? order['service_type'] ?? 'Delivery',
+          'delivery_address': resolvedDropoff.isEmpty ? order['delivery_address'] : resolvedDropoff,
+          'driver_id': order['driver_id'] ?? order['delivery_partner_id'],
+          'delivery_otp': order['delivery_otp'],
+          'created_at': order['created_at'] ?? DateTime.now().toIso8601String(),
+          'updated_at': order['updated_at'],
+          'delivered_at': order['delivered_at'],
+          'total_price': order['total_price'],
+          'delivery_fee': order['delivery_fee'],
+          'packaging_fee': order['packaging_fee'],
+          'tip_amount': order['tip_amount'],
+          'coins_applied': order['coins_applied'],
+        });
       }
 
       if (enrichedItems.isEmpty) {
         enrichedItems.add({
           'order_id': order['id'],
+          'customer_id': order['customer_id'] ?? order['user_id'],
           'chef_id': order['chef_id'],
           'status': order['status'] ?? 'New Order',
           'service_type': order['order_type'] ?? 'Delivery',
-          'delivery_address': order['delivery_address'],
-          'driver_id': order['delivery_partner_id'],
+          'delivery_address': resolvedDropoff.isEmpty ? order['delivery_address'] : resolvedDropoff,
+          'driver_id': order['driver_id'] ?? order['delivery_partner_id'],
+          'delivery_otp': order['delivery_otp'],
           'created_at': order['created_at'] ?? DateTime.now().toIso8601String(),
+          'updated_at': order['updated_at'],
+          'delivered_at': order['delivered_at'],
           'title': order['title'] ?? 'Custom Order',
           'quantity': 1,
-          'price': order['total_price'] ?? order['price'] ?? 0,
-          'source_meal_id': order['source_meal_id'],
-          'mealId': order['source_meal_id'] ?? order['meal_id'],
+          'price': order['price'] ?? 0,
+          'total_price': order['total_price'],
+          'delivery_fee': order['delivery_fee'],
+          'packaging_fee': order['packaging_fee'],
+          'tip_amount': order['tip_amount'],
+          'coins_applied': order['coins_applied'],
         });
       }
 
@@ -1017,36 +1439,53 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
     final sortedKeys = groupedOrders.keys.toList();
 
     return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: [
-            ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.asset('assets/app_icon.png', height: 24, width: 24)),
-            const SizedBox(width: 8),
-            const Text('My Orders'),
-          ],
-        ),
-        actions: [
-          IconButton(icon: const Icon(Icons.person, color: AppTheme.primary), onPressed: widget.onProfileTap),
-          IconButton(icon: const Icon(Icons.logout, color: Colors.grey), onPressed: widget.onLogout),
-        ],
-      ),
+      backgroundColor: AppTheme.canvasOf(context),
+      appBar: _ordersAppBar(),
       body: RefreshIndicator(
-        onRefresh: () async => _initScopedStreams(),
+        onRefresh: () => _fetchActiveOrders(showSpinner: false),
         color: AppTheme.primary,
         child: ListView(
           padding: const EdgeInsets.only(left: 20, right: 20, top: 20, bottom: 100),
           children: [
-            if (_activeRequests.isNotEmpty) ...[
-              const Text('My Broadcasts & Catering', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppTheme.textMain)),
+            DinerSegmentTabs(
+              leftLabel: 'Active (${_activeOrders.length})',
+              rightLabel: 'Past Orders',
+              showRight: _showPast,
+              onChanged: (past) => setState(() => _showPast = past),
+            ),
+            const SizedBox(height: 16),
+            if (!_showPast)
+              LastOrderReorderBanner(
+                compact: true,
+                onAddedToCart: widget.onReorderToCart,
+              ),
+            if (!_showPast && _activeRequests.isNotEmpty) ...[
+              Text('My broadcasts & catering', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppTheme.onSurfaceOf(context))),
               const SizedBox(height: 12),
               ..._activeRequests.map((req) => _buildBulkRequestCard(req)),
               const SizedBox(height: 24),
-              const Divider(color: Colors.black12, thickness: 1.5),
+              Divider(color: AppTheme.hairlineOf(context), thickness: 1.5),
               const SizedBox(height: 24),
             ],
-            if (sortedKeys.isNotEmpty) ...[
-              const Text('Regular Orders', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppTheme.textMain)),
-              const SizedBox(height: 12),
+            if (sortedKeys.isEmpty)
+              EmptyState(
+                icon: Icons.soup_kitchen_outlined,
+                title: _showPast ? 'No past orders yet' : 'No active orders',
+                message: _showPast
+                    ? 'Delivered and cancelled plates will show here.'
+                    : 'Placed meals show up here with live kitchen and delivery status.',
+                actionLabel: _showPast ? 'Refresh' : 'View past orders',
+                onAction: _showPast
+                    ? () => unawaited(_fetchActiveOrders())
+                    : () => setState(() => _showPast = true),
+              )
+            else ...[
+              if (_showPast) ...[
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 12),
+                  child: Text('Past Orders', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+                ),
+              ],
               ...sortedKeys.map((key) {
                 final rawOrderIdStr = key;
                 final items = groupedOrders[rawOrderIdStr]!;
@@ -1060,10 +1499,6 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                 Map<String, dynamic>? trackableItem;
 
                 for (var item in items) {
-                  double itemPrice = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
-                  int itemQty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
-                  itemsTotal += (itemPrice * itemQty);
-
                   if (!_canCancelOrder(item)) canCancelGroup = false;
 
                   final status = item['status']?.toString().toLowerCase() ?? '';
@@ -1073,17 +1508,20 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                   if (!status.contains('cancelled') && !status.contains('rejected')) allCancelled = false;
                   if (status.contains('delivered') || status.contains('completed')) isDelivered = true;
 
-                  if (status.contains('out') || status.contains('ready')) {
+                  if (OrderLifecycle.isTrackable(item['status']?.toString())) {
                     trackableItem = item;
                   }
                 }
                 if (allCancelled) canCancelGroup = false;
 
-                double packagingFee = 20.0;
-                double deliveryFee = hasDelivery ? 40.0 : 0.0;
-                double finalGrandTotal = itemsTotal + packagingFee + deliveryFee;
+                final bill = orderBillBreakdown(items: items, order: items.first, hasDelivery: hasDelivery);
+                itemsTotal = bill.itemsTotal;
+                final packagingFee = bill.packagingFee;
+                final deliveryFee = bill.deliveryFee;
+                final finalGrandTotal = bill.grandTotal;
 
                 String dateTimeString = formatOrderDate(items.first['created_at']?.toString());
+                final String smartTimeSlot = _slotLabel(items.first, orderItems: items);
 
                 final groupStatus = items.first['status']?.toString() ?? 'Pending';
                 Color statusColor = Colors.green;
@@ -1092,16 +1530,13 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                 }
                 if (groupStatus.toLowerCase().contains('cancel') || groupStatus.toLowerCase().contains('reject')) statusColor = Colors.red;
 
-                final DateTime truePlacedDate = getTrueOrderDateTime(rawOrderIdStr, items.first['created_at']?.toString());
-                final String smartTimeSlot = _getSmartTimeSlot(items.first['time_slot'], truePlacedDate, selectedDateStr: items.first['selected_date']?.toString());
-
                 final orderType = items.first['service_type']?.toString() ?? 'Delivery';
                 final serviceTypeStr = orderType.toLowerCase();
                 final isPickupOrDineIn = serviceTypeStr.contains('pickup') || serviceTypeStr.contains('dine');
                 final addressLabel = isPickupOrDineIn ? 'Pickup: ' : 'Dropoff: ';
                 final addressValue = isPickupOrDineIn
-                    ? (items.first['hosting_address'] ?? items.first['chef_address'] ?? 'Kitchen Location')
-                    : (items.first['delivery_address'] ?? 'Unknown Location');
+                    ? _pickupLabel(items.first, items)
+                    : _dropoffLabel(items.first, items);
 
                 return GestureDetector(
                   onTap: () => _showOrderDetailsBottomSheet(
@@ -1128,24 +1563,52 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      displayOrderIdStr,
+                                      style: TextStyle(
+                                        color: AppTheme.textMuted,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 11,
+                                        letterSpacing: 0.6,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      chefDisplayName(items.first),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w800,
+                                        color: AppTheme.onSurfaceOf(context),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                 decoration: BoxDecoration(
-                                  color: AppTheme.background,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.grey.shade300),
+                                  color: (isDelivered ? AppTheme.live : AppTheme.primary).withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(999),
                                 ),
-                                child: Text(displayOrderIdStr,
-                                    style: const TextStyle(
-                                        color: AppTheme.textMain, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 1.0)),
+                                child: Text(
+                                  isDelivered
+                                      ? 'Delivered'
+                                      : allCancelled
+                                          ? 'Cancelled'
+                                          : (trackableItem != null ? 'On the way' : groupStatus),
+                                  style: TextStyle(
+                                    color: isDelivered ? AppTheme.live : AppTheme.primary,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 11,
+                                  ),
+                                ),
                               ),
-                              if (items.isNotEmpty)
-                                DeliveryCountdownSticker(
-                                  timeSlot: smartTimeSlot,
-                                  status: items.first['status'],
-                                  createdAt: items.first['created_at']?.toString(),
-                                  orderId: items.first['order_id']?.toString(),
-                                ),
                             ],
                           ),
                           const SizedBox(height: 16),
@@ -1157,19 +1620,22 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text('${items.first['quantity']}x ${items.first['title']}',
-                                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+                                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                                     if (items.length > 1) ...[
                                       const SizedBox(height: 4),
                                       Text('+ ${items.length - 1} more items', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12, fontStyle: FontStyle.italic)),
                                     ],
                                     const SizedBox(height: 4),
-                                    Text('Status: $groupStatus',
+                                    Text(
+                                        hasDispatchPhoto(items.first)
+                                            ? dispatchPackedLabel(takenAt: orderDispatchPhotoAt(items.first))
+                                            : 'Status: $groupStatus',
                                         style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.w700)),
                                   ],
                                 ),
                               ),
                               Text('₹${finalGrandTotal.toInt()}',
-                                  style: const TextStyle(color: Colors.black38, fontSize: 14, fontWeight: FontWeight.bold)),
+                                  style: TextStyle(color: AppTheme.onSurfaceOf(context).withValues(alpha: 0.55), fontSize: 14, fontWeight: FontWeight.bold)),
                             ],
                           ),
                           const SizedBox(height: 12),
@@ -1179,8 +1645,8 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                             children: [
                               const Icon(Icons.local_shipping_outlined, size: 14, color: AppTheme.primary),
                               const SizedBox(width: 6),
-                              const Text('Type: ', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
-                              Text(orderType, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+                              Text('Type: ', style: AppTheme.caption),
+                              Text(orderType, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                             ],
                           ),
                           const SizedBox(height: 4),
@@ -1190,18 +1656,16 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                             children: [
                               const Icon(Icons.access_time, size: 14, color: AppTheme.textMuted),
                               const SizedBox(width: 6),
-                              const Text('Placed: ', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
-                              Text(dateTimeString, style: const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                              Text('Placed: ', style: AppTheme.caption),
+                              Text(dateTimeString, style: AppTheme.caption),
                             ],
                           ),
                           const SizedBox(height: 4),
-
-                          // 🌟 3. Order Delivery Time (Selected Slot)
                           Row(
                             children: [
                               const Icon(Icons.event_available, size: 14, color: Colors.green),
                               const SizedBox(width: 6),
-                              const Text('Delivery Slot: ', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                              Text('Delivery Slot: ', style: AppTheme.caption),
                               Text(smartTimeSlot, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
                             ],
                           ),
@@ -1209,7 +1673,11 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                           const SizedBox(height: 12),
                           Container(
                             padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(color: AppTheme.background, borderRadius: BorderRadius.circular(8)),
+                            decoration: BoxDecoration(
+                              color: AppTheme.surfaceOf(context),
+                              borderRadius: AppTheme.radiusSm,
+                              border: Border.all(color: AppTheme.hairlineOf(context)),
+                            ),
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -1218,22 +1686,88 @@ class _CustomerOrdersTabState extends State<CustomerOrdersTab> with AutomaticKee
                                 const SizedBox(width: 6),
                                 Expanded(
                                   child: Text('$addressLabel$addressValue',
-                                      style: const TextStyle(fontSize: 12, color: AppTheme.textMain),
+                                      style: TextStyle(fontSize: 12, color: AppTheme.onSurfaceOf(context)),
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis),
                                 ),
                               ],
                             ),
                           ),
-                          const SizedBox(height: 12),
-                          const Divider(height: 1, color: Colors.black12),
-                          const SizedBox(height: 8),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: const [
-                              Text('Tap for full details →', style: TextStyle(color: AppTheme.primary, fontSize: 12, fontWeight: FontWeight.bold)),
-                            ],
-                          ),
+                          if (!isDelivered) ...[
+                            Builder(
+                              builder: (_) {
+                                final pin = items.first['delivery_otp']?.toString().trim() ?? '';
+                                if (pin.isEmpty) return const SizedBox.shrink();
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 12),
+                                  child: Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.primary.withValues(alpha: 0.08),
+                                      borderRadius: AppTheme.radiusMd,
+                                      border: Border.all(color: AppTheme.primary.withValues(alpha: 0.25)),
+                                    ),
+                                    child: Text(
+                                      'Delivery PIN: $pin — share with driver at the door',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w800,
+                                        color: AppTheme.onSurfaceOf(context),
+                                        height: 1.35,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                          if (trackableItem != null) ...[
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: FilledButton(
+                                onPressed: () => _openTracking(trackableItem!, items),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: AppTheme.primary,
+                                  minimumSize: const Size.fromHeight(46),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                ),
+                                child: const Text('Track Live Order'),
+                              ),
+                            ),
+                          ] else if (_showPast || isDelivered) ...[
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton(
+                                onPressed: () => _reorderItems(items),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: AppTheme.primary,
+                                  side: const BorderSide(color: AppTheme.primary),
+                                  minimumSize: const Size.fromHeight(46),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                ),
+                                child: const Text('Reorder', style: TextStyle(fontWeight: FontWeight.w800)),
+                              ),
+                            ),
+                          ],
+                          if (!_showPast && trackableItem == null && !isDelivered) ...[
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                AppIconAction(
+                                  icon: Icons.support_agent_outlined,
+                                  tooltip: DinerLocaleController.instance.copy.help,
+                                  onPressed: () => showContactSupportSheet(
+                                    context,
+                                    orderNumber: displayOrderIdStr,
+                                    orderUuid: items.first['order_id']?.toString() ?? items.first['id']?.toString(),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
                     ),

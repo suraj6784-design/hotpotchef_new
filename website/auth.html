@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sign in · HotPotChef</title>
+    <meta name="theme-color" content="#1a1410" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Figtree:wght@500;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/css/site.css?v=20260909b" />
+  </head>
+  <body>
+    <div class="wrap site-top">
+      <a href="/">HotPot<strong>Chef</strong></a>
+      <a class="cart-link" href="/cart">Cart <span data-cart-count hidden></span></a>
+    </div>
+
+    <main class="meal-page">
+      <div class="wrap">
+        <article class="meal-card">
+          <p class="meal-kicker">Account</p>
+          <h1 class="meal-title" id="auth-title">Welcome back</h1>
+          <p class="meal-meta" id="auth-meta">Use the same email and password as the HotPotChef app.</p>
+
+          <form class="auth-form" id="auth-form">
+            <label>
+              Name
+              <input id="auth-name" type="text" autocomplete="name" hidden />
+            </label>
+            <label id="auth-ref-wrap" hidden>
+              Referral code
+              <input id="auth-ref" type="text" autocomplete="off" spellcheck="false" />
+            </label>
+            <label>
+              Email
+              <input id="auth-email" type="email" required autocomplete="email" />
+            </label>
+            <label>
+              Password
+              <input id="auth-password" type="password" required minlength="6" autocomplete="current-password" />
+            </label>
+            <label class="auth-check" id="auth-terms-wrap" hidden>
+              <input id="auth-terms" type="checkbox" />
+              I agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy policy</a>
+            </label>
+            <p class="status" id="auth-status" hidden></p>
+            <div class="cta-row">
+              <button class="btn btn-primary" type="submit" id="auth-submit">Sign in</button>
+              <button class="btn btn-ghost" type="button" id="auth-toggle">Create account</button>
+            </div>
+          </form>
+          <p class="cta-row" id="auth-open-wrap" hidden>
+            <a class="btn btn-primary" id="open-app" href="#">Open in HotPotChef</a>
+          </p>
+        </article>
+      </div>
+    </main>
+
+    <nav class="site-footer-links" aria-label="Policies">
+      <a href="/terms">Terms</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/faq">FAQs</a>
+      <a href="/cancellation">Cancellation</a>
+    </nav>
+
+    <script src="/js/config.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/cart.js"></script>
+    <script src="/js/auth-page.js?v=20260911a"></script>
+  </body>
+</html>

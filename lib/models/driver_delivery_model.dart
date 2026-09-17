@@ -1,10 +1,13 @@
 // lib/models/driver_delivery_model.dart
 
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
-import '../utils/order_status.dart';
+import '../utils/helpers.dart';
 
 enum DeliveryStatus {
+  waitingKitchen,
   readyForPickup,
   accepted,
   pickedUp,
@@ -13,40 +16,35 @@ enum DeliveryStatus {
   cancelled;
 
   static DeliveryStatus fromString(String? val) {
-    switch (OrderStatus.parse(val)) {
-      case OrderStatus.readyForPickup:
-        return DeliveryStatus.readyForPickup;
-      case OrderStatus.accepted:
-      case OrderStatus.driverAssigned:
-        return DeliveryStatus.accepted;
-      case OrderStatus.pickedUp:
-        return DeliveryStatus.pickedUp;
-      case OrderStatus.outForDelivery:
-        return DeliveryStatus.outForDelivery;
-      case OrderStatus.delivered:
-      case OrderStatus.completed:
-        return DeliveryStatus.delivered;
-      case OrderStatus.cancelled:
-        return DeliveryStatus.cancelled;
-      default:
-        return DeliveryStatus.readyForPickup;
+    final s = val?.toLowerCase().trim() ?? '';
+    if (s.contains('cancel')) return DeliveryStatus.cancelled;
+    if (s.contains('out')) return DeliveryStatus.outForDelivery;
+    if (s.contains('delivered') || s.contains('completed')) return DeliveryStatus.delivered;
+    if (s.contains('assigned') || s == 'accepted') return DeliveryStatus.accepted;
+    if (s.contains('ready')) return DeliveryStatus.readyForPickup;
+    if (s.contains('pickup') || s.contains('picked')) return DeliveryStatus.pickedUp;
+    if (s.contains('pending') || s.contains('confirm') || s.contains('prepar') || s == 'placed' || s == 'new') {
+      return DeliveryStatus.waitingKitchen;
     }
+    return DeliveryStatus.waitingKitchen;
   }
 
   String toDbValue() {
     switch (this) {
+      case DeliveryStatus.waitingKitchen:
+        return 'Pending Chef Approval';
       case DeliveryStatus.readyForPickup:
-        return 'ready_for_pickup';
+        return 'Ready for Pickup';
       case DeliveryStatus.accepted:
-        return 'accepted';
+        return 'Driver Assigned';
       case DeliveryStatus.pickedUp:
-        return 'picked_up';
+        return 'Ready for Pickup';
       case DeliveryStatus.outForDelivery:
-        return 'out_for_delivery';
+        return 'Out for Delivery';
       case DeliveryStatus.delivered:
-        return 'delivered';
+        return 'Delivered';
       case DeliveryStatus.cancelled:
-        return 'cancelled';
+        return 'Cancelled';
     }
   }
 }
@@ -54,42 +52,205 @@ enum DeliveryStatus {
 @immutable
 class DriverDeliveryModel {
   final String orderId;
+  final String orderNumber;
   final String chefId;
   final String chefName;
   final String pickupAddress;
   final String customerAddress;
+  final String customerId;
+  final String chatRoomId;
+  final String itemsSummary;
   final double payout;
   final double distanceKm;
   final int totalItemsCount;
   final DeliveryStatus status;
+  final String statusLabel;
   final DateTime createdAt;
+  final String timeSlot;
+  final String? selectedDate;
+  final double? pickupLat;
+  final double? pickupLng;
+  final double? deliveryLat;
+  final double? deliveryLng;
+  final String? gateInstructions;
+  final String? deliveryOtp;
+  final String? specialInstructions;
 
   const DriverDeliveryModel({
     required this.orderId,
+    this.orderNumber = '',
     required this.chefId,
     required this.chefName,
     required this.pickupAddress,
     required this.customerAddress,
+    this.customerId = '',
+    this.chatRoomId = '',
+    this.itemsSummary = '',
     required this.payout,
     this.distanceKm = 0.0,
     this.totalItemsCount = 1,
     required this.status,
+    this.statusLabel = '',
     required this.createdAt,
+    this.timeSlot = '',
+    this.selectedDate,
+    this.pickupLat,
+    this.pickupLng,
+    this.deliveryLat,
+    this.deliveryLng,
+    this.gateInstructions,
+    this.deliveryOtp,
+    this.specialInstructions,
   });
 
+  bool get hasDropoffNotes {
+    final gate = gateInstructions?.trim() ?? '';
+    final otp = deliveryOtp?.trim() ?? '';
+    final notes = specialInstructions?.trim() ?? '';
+    return gate.isNotEmpty || otp.isNotEmpty || notes.isNotEmpty;
+  }
+
+  String get displayOrderNumber =>
+      orderNumber.isNotEmpty ? orderNumber : formatOrderId(null, orderId);
+
+  String get dropoffBrief => briefDriverAddress(customerAddress);
+
+  /// One-line reference under the kitchen name on Home history.
+  String get driverHistoryDetail {
+    final parts = <String>[];
+    if (itemsSummary.isNotEmpty) parts.add(itemsSummary);
+    if (dropoffBrief.isNotEmpty) parts.add(dropoffBrief);
+    return parts.join(' · ');
+  }
+
+  Map<String, dynamic> get slotSource => {
+        'created_at': createdAt.toIso8601String(),
+        'time_slot': timeSlot,
+        if (selectedDate != null && selectedDate!.isNotEmpty) 'selected_date': selectedDate,
+      };
+
+  /// After Start Delivery / Out for Delivery → navigate to customer; before that → kitchen.
+  bool get navigateToCustomer => driverRunIsOutForDelivery(statusLabel.isEmpty ? status.toDbValue() : statusLabel);
+
+  String get navigateLeg => navigateToCustomer ? 'dropoff' : 'pickup';
+
+  String get navigateButtonLabel =>
+      navigateToCustomer ? 'Navigate to customer' : 'Navigate to kitchen';
+
+  String get activeStepTitle =>
+      navigateToCustomer ? 'Deliver to customer' : 'Pickup from $chefName';
+
+  String get pickupCoordLabel => formatMapCoordinateLabel(pickupLat, pickupLng);
+
+  String get dropoffCoordLabel => formatMapCoordinateLabel(deliveryLat, deliveryLng);
+
+  Map<String, dynamic> toTrackingOrderExtra() => {
+        'id': orderId,
+        'status': statusLabel.isEmpty ? status.toDbValue() : statusLabel,
+        'delivery_address': customerAddress,
+        'pickup_address': pickupAddress,
+        'chef_address': pickupAddress,
+        'hosting_address': pickupAddress,
+        'title': chefName,
+        'chef_id': chefId,
+        'customer_id': customerId,
+        'navigate_leg': navigateLeg,
+        if (pickupLat != null) 'pickup_lat': pickupLat,
+        if (pickupLng != null) 'pickup_lng': pickupLng,
+        if (pickupLat != null) 'chef_lat': pickupLat,
+        if (pickupLng != null) 'chef_lng': pickupLng,
+        if (deliveryLat != null) 'delivery_lat': deliveryLat,
+        if (deliveryLng != null) 'delivery_lng': deliveryLng,
+      };
+
   factory DriverDeliveryModel.fromJson(Map<String, dynamic> json) {
+    final chef = _embeddedMap(json['chefs'] ?? json['chef'] ?? json['_chef_pin']);
+    final items = _itemsFrom(json['items'] ?? json['cart_items'] ?? json['order_items']);
+    final first = items.isNotEmpty ? items.first : const <String, dynamic>{};
+    final nestedMeal = first['rawMealDetails'] ?? first['mealDetails'] ?? first['meal_details'];
+    final mealMap = nestedMeal is Map ? Map<String, dynamic>.from(nestedMeal) : const <String, dynamic>{};
+    final itemsSummary = driverOrderItemsSummary(items);
+    final totalQty = items.fold<int>(0, (sum, item) {
+      final qty = int.tryParse(item['quantity']?.toString() ?? '') ?? 1;
+      return sum + (qty < 1 ? 1 : qty);
+    });
+
+    final pickup = orderPickupAddress(json, items: [...items, mealMap, if (chef != null) chef]);
+    final chefFormatted = formatSavedAddress(chef);
+    final resolvedPickup = pickup.isNotEmpty
+        ? pickup
+        : (chefFormatted.isNotEmpty
+            ? chefFormatted
+            : (chef?['address']?.toString().trim() ?? ''));
+
+    final dropoff = orderDropoffAddress(json, items: items);
+    final resolvedDropoff = dropoff.isNotEmpty ? dropoff : (json['delivery_address']?.toString() ?? '');
+
+    final pickupLat = kitchenCoordinate(json, latitude: true) ??
+        kitchenCoordinate(first, latitude: true) ??
+        kitchenCoordinate(mealMap, latitude: true) ??
+        kitchenCoordinate(chef, latitude: true);
+    final pickupLng = kitchenCoordinate(json, latitude: false) ??
+        kitchenCoordinate(first, latitude: false) ??
+        kitchenCoordinate(mealMap, latitude: false) ??
+        kitchenCoordinate(chef, latitude: false);
+
+    final dropLat = double.tryParse(json['delivery_lat']?.toString() ?? '') ??
+        addressCoordinate({
+          'lat': json['customer_lat'],
+          'latitude': json['customer_lat'],
+        }, latitude: true);
+    final dropLng = double.tryParse(json['delivery_lng']?.toString() ?? '') ??
+        addressCoordinate({
+          'lng': json['customer_lng'],
+          'longitude': json['customer_lng'],
+        }, latitude: false);
+
+    final orderId = json['id']?.toString() ?? '';
+    final special = json['special_instructions']?.toString();
+    var gate = json['gate_instructions']?.toString();
+    var otp = json['delivery_otp']?.toString();
+    if ((gate == null || gate.trim().isEmpty) && special != null) {
+      final gateMatch = RegExp(r'Gate:\s*(.+?)(?:\s*·|$)', caseSensitive: false).firstMatch(special);
+      if (gateMatch != null) gate = gateMatch.group(1)?.trim();
+    }
+    if ((otp == null || otp.trim().isEmpty) && special != null) {
+      final otpMatch = RegExp(r'(?:Delivery PIN|OTP):\s*(\d{4})', caseSensitive: false).firstMatch(special);
+      if (otpMatch != null) otp = otpMatch.group(1);
+    }
     return DriverDeliveryModel(
-      orderId: json['id']?.toString() ?? '',
+      orderId: orderId,
+      orderNumber: formatOrderId(json['order_id']?.toString(), orderId),
       chefId: json['chef_id']?.toString() ?? '',
-      chefName: json['chef_name']?.toString() ?? json['chefs']?['business_name']?.toString() ?? 'Chef Kitchen',
-      pickupAddress: json['pickup_address']?.toString() ?? json['chefs']?['pickup_address']?.toString() ?? '',
-      customerAddress: json['delivery_address']?.toString() ?? '',
-      payout: (json['driver_payout'] as num?)?.toDouble() ?? 
-              (json['delivery_fee'] as num?)?.toDouble() ?? 40.0,
+      chefName: json['chef_name']?.toString() ??
+          chef?['business_name']?.toString() ??
+          chef?['name']?.toString() ??
+          chef?['full_name']?.toString() ??
+          'Chef Kitchen',
+      pickupAddress: resolvedPickup.isEmpty ? 'Kitchen address pending' : resolvedPickup,
+      customerAddress: resolvedDropoff.isEmpty ? 'Customer address pending' : resolvedDropoff,
+      customerId: json['customer_id']?.toString() ?? json['user_id']?.toString() ?? '',
+      chatRoomId: orderChatRoomId(json, items: items),
+      itemsSummary: itemsSummary,
+      payout: driverPayoutFromOrder(json),
       distanceKm: (json['estimated_distance_km'] as num?)?.toDouble() ?? 0.0,
-      totalItemsCount: (json['order_items'] as List?)?.length ?? 1,
+      totalItemsCount: totalQty > 0 ? totalQty : (items.isEmpty ? 1 : items.length),
       status: DeliveryStatus.fromString(json['status']?.toString()),
+      statusLabel: json['status']?.toString() ?? '',
       createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ?? DateTime.now(),
+      timeSlot: json['time_slot']?.toString() ??
+          first['time_slot']?.toString() ??
+          first['timeSlot']?.toString() ??
+          json['delivery_slot']?.toString() ??
+          '',
+      selectedDate: json['selected_date']?.toString() ?? first['selected_date']?.toString(),
+      pickupLat: pickupLat,
+      pickupLng: pickupLng,
+      deliveryLat: dropLat,
+      deliveryLng: dropLng,
+      gateInstructions: gate,
+      deliveryOtp: otp,
+      specialInstructions: kitchenFacingOrderNotes(special),
     );
   }
 
@@ -103,6 +264,25 @@ class DriverDeliveryModel {
 
   @override
   int get hashCode => orderId.hashCode ^ status.hashCode;
+}
+
+Map<String, dynamic>? _embeddedMap(dynamic raw) {
+  if (raw is Map) return Map<String, dynamic>.from(raw);
+  if (raw is List && raw.isNotEmpty && raw.first is Map) {
+    return Map<String, dynamic>.from(raw.first as Map);
+  }
+  return null;
+}
+
+List<Map<String, dynamic>> _itemsFrom(dynamic raw) {
+  if (raw == null) return const [];
+  try {
+    final decoded = raw is String ? jsonDecode(raw) : raw;
+    if (decoded is List) {
+      return decoded.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    }
+  } catch (_) {}
+  return const [];
 }
 
 @immutable

@@ -1,16 +1,27 @@
 // lib/screens/chef_profile_screen.dart
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:geocoding/geocoding.dart'; // 🌟 Added for reverse geocoding
-
 import 'map_picker_screen.dart';
-import '../utils/chef_payout_status.dart';
+import '../utils/app_page.dart';
 import '../utils/helpers.dart';
+import '../utils/fssai_certificate_scan.dart';
+import '../utils/pinned_address.dart';
+import '../utils/gst_invoice.dart';
+import '../utils/network.dart';
 import '../widgets/avatar_upload.dart';
+import '../widgets/change_password_dialog.dart';
+import '../widgets/premium_profile_template.dart';
+import '../services/kitchen_media.dart';
+import '../services/fssai_certificate_ocr.dart';
+import '../services/auth_session.dart';
+import 'package:go_router/go_router.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class ChefReviewModel {
   final String id;
@@ -45,7 +56,9 @@ class ChefReviewModel {
 }
 
 class ChefProfileScreen extends StatefulWidget {
-  const ChefProfileScreen({super.key});
+  const ChefProfileScreen({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   State<ChefProfileScreen> createState() => _ChefProfileScreenState();
@@ -59,12 +72,22 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
   bool _isLoading = true;
   bool _isSaving = false;
   bool _isSettingUpPayout = false;
-  ChefPayoutLinkKind _payoutKind = ChefPayoutLinkKind.missing;
+  bool _payoutEnabled = false;
+  bool _uploadingFssaiProof = false;
+  bool _isPlatformOps = false;
+  String? _fssaiProofUrl;
+  String _fssaiVerificationStatus = 'unsubmitted';
+  String? _fssaiReviewNote;
 
   // Controllers
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _fssaiController = TextEditingController();
+  final _fssaiLegalNameController = TextEditingController();
+  final _fssaiAddressController = TextEditingController();
+  DateTime? _fssaiValidUntil;
+  final _gstinController = TextEditingController();
+  final _panController = TextEditingController();
   final _gatewayAccountController = TextEditingController();
 
   final _bankAccountController = TextEditingController();
@@ -76,8 +99,16 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
   final _cityController = TextEditingController();
   final _stateController = TextEditingController();
   final _pincodeController = TextEditingController();
+  final _storyController = TextEditingController();
+  final _hygieneController = TextEditingController();
+  final _localNameController = TextEditingController();
+  final _instagramController = TextEditingController();
+  final _youtubeController = TextEditingController();
+  final _facebookController = TextEditingController();
+  String _cardLocale = 'en';
 
   String? _avatarUrl;
+  List<String> _kitchenPhotos = [];
   double? _latitude;
   double? _longitude;
   List<ChefReviewModel> _reviews = [];
@@ -97,6 +128,10 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     _nameController.dispose();
     _phoneController.dispose();
     _fssaiController.dispose();
+    _fssaiLegalNameController.dispose();
+    _fssaiAddressController.dispose();
+    _gstinController.dispose();
+    _panController.dispose();
     _gatewayAccountController.dispose();
     _bankAccountController.dispose();
     _ifscController.dispose();
@@ -106,69 +141,256 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     _cityController.dispose();
     _stateController.dispose();
     _pincodeController.dispose();
+    _storyController.dispose();
+    _hygieneController.dispose();
+    _localNameController.dispose();
+    _instagramController.dispose();
+    _youtubeController.dispose();
+    _facebookController.dispose();
     super.dispose();
   }
 
-  // --- Optimized Data Loading with Single-Pass Relational Join ---
+  // --- Profile + reviews load independently so a reviews join cannot blank the form ---
+
+  void _applyUserProfile(Map<String, dynamic>? userData, User user) {
+    _nameController.text = userData?['name']?.toString() ??
+        userData?['full_name']?.toString() ??
+        user.userMetadata?['name']?.toString() ??
+        '';
+    _phoneController.text = userData?['phone']?.toString() ?? user.userMetadata?['phone']?.toString() ?? '';
+    _fssaiController.text = userData?['fssai_number']?.toString() ?? '';
+    _fssaiLegalNameController.text = userData?['fssai_legal_name']?.toString() ?? '';
+    _fssaiAddressController.text = userData?['fssai_registered_address']?.toString() ?? '';
+    _fssaiValidUntil = parseStoredFssaiValidUntil(userData?['fssai_valid_until']);
+    _gstinController.text = userData?['gstin']?.toString() ?? '';
+    _panController.text = maskPan(userData?['pan_number']?.toString());
+    _gatewayAccountController.text = userData?['gateway_account_id']?.toString() ?? '';
+
+    _beneficiaryNameController.text = userData?['beneficiary_name']?.toString() ?? '';
+    final bankMasked = userData?['bank_account_masked']?.toString().trim() ?? '';
+    final bankFull = userData?['bank_account_number']?.toString() ?? '';
+    _bankAccountController.text = bankMasked.isNotEmpty
+        ? bankMasked
+        : maskBankAccount(bankFull);
+    _ifscController.text = userData?['bank_ifsc']?.toString() ?? '';
+
+    _avatarUrl = userData?['avatar_url']?.toString();
+    _payoutEnabled = userData?['payout_enabled'] == true || _gatewayAccountController.text.isNotEmpty;
+    _fssaiProofUrl = userData?['fssai_proof_url']?.toString();
+    _fssaiVerificationStatus = normalizeFssaiVerificationStatus(userData?['fssai_verification_status']?.toString());
+    _fssaiReviewNote = userData?['fssai_review_note']?.toString();
+
+    _latitude = (userData?['lat'] as num?)?.toDouble() ??
+        (userData?['latitude'] as num?)?.toDouble();
+    _longitude = (userData?['lng'] as num?)?.toDouble() ??
+        (userData?['longitude'] as num?)?.toDouble();
+
+    _houseController.text = userData?['house_no']?.toString() ?? '';
+    _streetController.text = userData?['street']?.toString() ?? userData?['address']?.toString() ?? '';
+    _cityController.text = userData?['city']?.toString() ?? '';
+    _stateController.text = userData?['state']?.toString() ?? '';
+    _pincodeController.text = userData?['pincode']?.toString() ?? userData?['postal_code']?.toString() ?? '';
+    if (_latitude != null &&
+        _longitude != null &&
+        (_cityController.text.trim().isEmpty ||
+            _stateController.text.trim().isEmpty ||
+            _pincodeController.text.trim().isEmpty)) {
+      unawaited(_fillAddressFromPin());
+    }
+  }
 
   Future<void> _loadProfileAndReviews() async {
     setState(() => _isLoading = true);
+    final user = _supabase.auth.currentUser;
+    if (user == null) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+
     try {
-      final user = _supabase.auth.currentUser;
-      if (user == null) return;
-
-      final results = await Future.wait([
-        // 1. Chef profile with structured columns
-        _supabase.from('users').select().eq('id', user.id).maybeSingle(),
-        // 2. Relational Reviews query (0 N+1 overhead)
-        _supabase
-            .from('reviews')
-            .select('*, customer:users(name, full_name), meal:meals(title)')
-            .eq('chef_id', user.id)
-            .order('created_at', ascending: false)
-            .limit(20),
-      ]);
-
-      final userData = results[0] as Map<String, dynamic>?;
-      final rawReviews = results[1] as List<dynamic>? ?? [];
-
-      if (userData != null && mounted) {
-        _nameController.text = userData['name'] ?? userData['full_name'] ?? user.userMetadata?['name'] ?? '';
-        _phoneController.text = userData['phone'] ?? user.userMetadata?['phone'] ?? '';
-        _fssaiController.text = userData['fssai_number'] ?? '';
-        _gatewayAccountController.text = userData['gateway_account_id']?.toString() ?? '';
-
-        _beneficiaryNameController.text = userData['beneficiary_name']?.toString() ?? '';
-        _bankAccountController.text = userData['bank_account_masked']?.toString() ??
-            userData['bank_account_number']?.toString() ?? '';
-        _ifscController.text = userData['bank_ifsc']?.toString() ?? '';
-
-        _avatarUrl = userData['avatar_url']?.toString();
-        _payoutKind = ChefPayoutStatus.classify(
-          accountId: _gatewayAccountController.text,
-        );
-
-        _latitude = (userData['lat'] as num?)?.toDouble();
-        _longitude = (userData['lng'] as num?)?.toDouble();
-
-        // Load structured address fields directly
-        _houseController.text = userData['house_no']?.toString() ?? '';
-        _streetController.text = userData['street']?.toString() ?? userData['address']?.toString() ?? '';
-        _cityController.text = userData['city']?.toString() ?? '';
-        _stateController.text = userData['state']?.toString() ?? '';
-        _pincodeController.text = userData['pincode']?.toString() ?? userData['postal_code']?.toString() ?? '';
-      }
-
-      if (mounted) {
-        setState(() {
-          _reviews = rawReviews.map((r) => ChefReviewModel.fromJson(Map<String, dynamic>.from(r))).toList();
-          _isLoading = false;
-        });
-      }
+      final userData = await _supabase
+          .from('users')
+          .select()
+          .eq('id', user.id)
+          .maybeSingle()
+          .withTimeout(NetworkTimeouts.standard);
+      if (mounted) _applyUserProfile(userData, user);
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chef Profile Loading Error');
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) _applyUserProfile(null, user);
     }
+
+    try {
+      final kitchen = await _supabase
+          .from('chef_profiles')
+          .select(
+            'kitchen_story, hygiene_note, kitchen_photos, card_locale, local_kitchen_name, instagram_url, youtube_url, facebook_url',
+          )
+          .eq('user_id', user.id)
+          .maybeSingle()
+          .withTimeout(NetworkTimeouts.standard);
+      if (mounted && kitchen != null) {
+        _storyController.text = kitchen['kitchen_story']?.toString() ?? '';
+        _hygieneController.text = kitchen['hygiene_note']?.toString() ?? '';
+        _localNameController.text = kitchen['local_kitchen_name']?.toString() ?? '';
+        _instagramController.text = kitchen['instagram_url']?.toString() ?? '';
+        _youtubeController.text = kitchen['youtube_url']?.toString() ?? '';
+        _facebookController.text = kitchen['facebook_url']?.toString() ?? '';
+        _cardLocale = normalizeChefCardLocale(kitchen['card_locale']?.toString());
+        _kitchenPhotos = kitchenPhotosFrom(kitchen['kitchen_photos']);
+      }
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chef kitchen story loading error');
+    }
+
+    List<ChefReviewModel> reviews = [];
+    try {
+      final rawReviews = await _supabase
+          .from('reviews')
+          .select('*, customer:users!customer_id(name, full_name), meal:meals(title)')
+          .eq('chef_id', user.id)
+          .order('created_at', ascending: false)
+          .limit(20)
+          .withTimeout(NetworkTimeouts.standard);
+      reviews = (rawReviews as List<dynamic>)
+          .map((r) => ChefReviewModel.fromJson(Map<String, dynamic>.from(r)))
+          .toList();
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chef reviews loading error');
+      try {
+        final rawReviews = await _supabase
+            .from('reviews')
+            .select()
+            .eq('chef_id', user.id)
+            .order('created_at', ascending: false)
+            .limit(20)
+            .withTimeout(NetworkTimeouts.standard);
+        reviews = (rawReviews as List<dynamic>)
+            .map((r) => ChefReviewModel.fromJson(Map<String, dynamic>.from(r)))
+            .toList();
+      } catch (fallbackError, fallbackStack) {
+        FirebaseCrashlytics.instance.recordError(
+          fallbackError,
+          fallbackStack,
+          reason: 'Chef reviews fallback loading error',
+        );
+      }
+    }
+
+    if (mounted) {
+      final ops = await AuthSession.isPlatformOps();
+      if (!mounted) return;
+      setState(() {
+        _reviews = reviews;
+        _isPlatformOps = ops;
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _uploadFssaiProof() async {
+    final source = await pickKitchenImageSource(context);
+    if (source == null || !mounted) return;
+    setState(() => _uploadingFssaiProof = true);
+    try {
+      final uploaded = await pickAndUploadKitchenImage(
+        source: source,
+        folder: 'fssai',
+        fileKey: 'licence',
+        imageQuality: 98,
+        maxWidth: 4096,
+      );
+      if (uploaded == null || !mounted) return;
+      var scan = const FssaiCertificateScan();
+      try {
+        scan = await scanFssaiCertificateImage(uploaded.localPath);
+      } catch (e, stack) {
+        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'FSSAI certificate scan failed');
+      }
+      setState(() {
+        _isEditing = true;
+        _fssaiProofUrl = uploaded.url;
+        _fssaiVerificationStatus = 'pending';
+        _fssaiReviewNote = fssaiLicenceIsExpired(scan.validUntil)
+            ? 'Scanned licence is expired. Upload a current FSSAI certificate.'
+            : null;
+        if ((scan.registrationNumber ?? '').isNotEmpty) {
+          _fssaiController.text = scan.registrationNumber!;
+        }
+        if ((scan.legalName ?? '').isNotEmpty) {
+          _fssaiLegalNameController.text = scan.legalName!;
+        }
+        if ((scan.address ?? '').isNotEmpty) {
+          _fssaiAddressController.text = scan.address!;
+        }
+        if (scan.validUntil != null) {
+          _fssaiValidUntil = scan.validUntil;
+        }
+      });
+      await _persistFssaiDetails(proofUrl: uploaded.url);
+      if (!mounted) return;
+      if (!scan.hasAnyField) {
+        _showSnackBar(
+          'Certificate uploaded. We could not read the card — type Reg No, name, address, and validity, then Save.',
+        );
+      } else if (!scan.hasCoreFields) {
+        _showSnackBar(
+          'Certificate uploaded. Fill any blank FSSAI fields from the photo, then Save.',
+        );
+      } else if (fssaiLicenceIsExpired(scan.validUntil)) {
+        _showSnackBar(
+          'This certificate is expired. Upload a current FSSAI licence. Details were sent to HotPotChef for review.',
+          isError: true,
+        );
+      } else {
+        _showSnackBar(
+          'FSSAI details scanned. Check the fields, then wait for HotPotChef to verify — typically 1 business day.',
+        );
+      }
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'FSSAI proof upload failed');
+      if (mounted) _showSnackBar('Could not upload FSSAI proof. Try again.', isError: true);
+    } finally {
+      if (mounted) setState(() => _uploadingFssaiProof = false);
+    }
+  }
+
+  Map<String, dynamic> _fssaiDetailFields({String? proofUrl}) {
+    final expired = fssaiLicenceIsExpired(_fssaiValidUntil);
+    return {
+      'fssai_number': _fssaiController.text.trim(),
+      'fssai_proof_url': proofUrl ?? _fssaiProofUrl,
+      'fssai_legal_name': _fssaiLegalNameController.text.trim(),
+      'fssai_registered_address': _fssaiAddressController.text.trim(),
+      'fssai_valid_until': _fssaiValidUntil == null ? null : fssaiValidUntilIsoDate(_fssaiValidUntil),
+      'fssai_verification_status': (proofUrl ?? _fssaiProofUrl ?? '').trim().isEmpty
+          ? 'unsubmitted'
+          : (_fssaiVerificationStatus == 'verified' && !expired ? 'verified' : 'pending'),
+      if (expired)
+        'fssai_review_note': 'FSSAI licence validity ended. Upload a current certificate.',
+    };
+  }
+
+  Future<void> _persistFssaiDetails({String? proofUrl}) async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) return;
+    try {
+      await _supabase.from('users').update(_fssaiDetailFields(proofUrl: proofUrl)).eq('id', user.id);
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'FSSAI scanned fields save failed');
+    }
+  }
+
+  Future<void> _pickFssaiValidUntil() async {
+    if (!_isEditing && (_fssaiProofUrl ?? '').isEmpty) return;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _fssaiValidUntil ?? DateTime.now(),
+      firstDate: DateTime(2015),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 8)),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _fssaiValidUntil = DateTime(picked.year, picked.month, picked.day));
   }
 
   // --- Secure Server-Side Payout Provisioning ---
@@ -203,33 +425,28 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
           'bank_account': accNum,
           'ifsc_code': ifsc,
           'beneficiary_name': beneficiary,
-          'house': _houseController.text.trim(),
-          'street': _streetController.text.trim(),
-          'city': _cityController.text.trim(),
-          'state': _stateController.text.trim(),
-          'postal_code': _pincodeController.text.trim(),
         },
-      );
+      ).withTimeout(NetworkTimeouts.payment);
 
       if (response.status == 200 && response.data != null && response.data['success'] == true) {
-        final accountId = response.data['account_id']?.toString() ?? '';
-        final kind = ChefPayoutStatus.classify(
-          accountId: accountId,
-          mockFlag: response.data['mock'] == true,
-          mode: response.data['mode']?.toString(),
-        );
+        final pending = response.data['pending'] == true;
         setState(() {
-          _payoutKind = kind;
-          if (accountId.isNotEmpty) {
-            _gatewayAccountController.text = accountId;
+          _payoutEnabled = response.data['payout_enabled'] == true;
+          if (response.data['account_id'] != null) {
+            _gatewayAccountController.text = response.data['account_id'].toString();
           }
         });
-        _showSnackBar(ChefPayoutStatus.snackBarMessage(kind));
+        _showSnackBar(
+          pending
+              ? (response.data['message']?.toString() ??
+                  'Bank details saved. Chef settlements start after Razorpay Route is activated on this account.')
+              : 'Payout account linked for settlements.',
+        );
       } else {
         throw Exception(response.data?['error'] ?? 'Settlement routing rejected');
       }
     } catch (e) {
-      _showSnackBar('Payout Setup Failed: $e', isError: true);
+      _showSnackBar('Payout Setup Failed: ${networkErrorMessage(e)}', isError: true);
     } finally {
       if (mounted) setState(() => _isSettingUpPayout = false);
     }
@@ -242,8 +459,8 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
 
     final dynamic result = await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => MapPickerScreen(
+      appMaterialRoute(
+        MapPickerScreen(
           initialLat: _latitude,
           initialLng: _longitude,
         ),
@@ -251,39 +468,45 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     );
 
     if (result != null) {
-      setState(() {
-        if (result is Map) {
-          _latitude = (result['latitude'] as num?)?.toDouble();
-          _longitude = (result['longitude'] as num?)?.toDouble();
-        } else {
-          _latitude = result.latitude;
-          _longitude = result.longitude;
-        }
-      });
-
-      // 🌟 Reverse Geocoding to automatically populate city, state, pin, and street/address fields
-      if (_latitude != null && _longitude != null) {
-        try {
-          List<Placemark> placemarks = await placemarkFromCoordinates(_latitude!, _longitude!);
-          if (placemarks.isNotEmpty) {
-            Placemark place = placemarks[0];
-            setState(() {
-              _streetController.text = [place.street, place.subLocality]
-                  .where((e) => e != null && e.isNotEmpty)
-                  .join(', ');
-              _cityController.text = place.locality ?? place.subAdministrativeArea ?? _cityController.text;
-              _stateController.text = place.administrativeArea ?? _stateController.text;
-              _pincodeController.text = place.postalCode ?? _pincodeController.text;
-            });
-          }
-        } catch (e) {
-          debugPrint('Geocoding failed: $e');
-        }
+      if (result is Map) {
+        _latitude = (result['latitude'] as num?)?.toDouble();
+        _longitude = (result['longitude'] as num?)?.toDouble();
+        _applyPinnedParts(PinnedAddressParts.fromMap(result), overwriteStreet: false);
+      } else {
+        _latitude = result.latitude;
+        _longitude = result.longitude;
       }
-
+      await _fillAddressFromPin();
       if (mounted) {
         _showSnackBar('Location pin attached and address details auto-filled!');
       }
+    }
+  }
+
+  void _applyPinnedParts(PinnedAddressParts parts, {bool overwriteStreet = false}) {
+    if (!mounted) return;
+    setState(() {
+      if (parts.street.isNotEmpty && (overwriteStreet || _streetController.text.trim().isEmpty)) {
+        _streetController.text = parts.street;
+      }
+      if (parts.city.isNotEmpty) _cityController.text = parts.city;
+      if (parts.state.isNotEmpty) _stateController.text = parts.state;
+      if (parts.pincode.isNotEmpty) _pincodeController.text = parts.pincode;
+    });
+  }
+
+  Future<void> _fillAddressFromPin() async {
+    if (_latitude == null || _longitude == null) return;
+    if (_cityController.text.trim().isNotEmpty &&
+        _stateController.text.trim().isNotEmpty &&
+        _pincodeController.text.trim().isNotEmpty) {
+      return;
+    }
+    try {
+      final parts = await reverseGeocodeLatLng(_latitude!, _longitude!);
+      _applyPinnedParts(parts);
+    } catch (e) {
+      debugPrint('Geocoding failed: $e');
     }
   }
 
@@ -314,11 +537,13 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
       if (user == null) throw 'Session expired';
 
       final updateData = {
-        'id': user.id,
         'name': name,
         'full_name': name,
         'phone': phone,
         'fssai_number': fssai,
+        ..._fssaiDetailFields(),
+        'gstin': _gstinController.text.trim().toUpperCase(),
+        if (isValidPan(_panController.text)) 'pan_number': _panController.text.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase(),
         'address': formattedAddress,
         'house_no': house,
         'street': street,
@@ -327,17 +552,42 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
         'pincode': pin,
         'lat': _latitude,
         'lng': _longitude,
+        'latitude': _latitude,
+        'longitude': _longitude,
         if (_avatarUrl != null) 'avatar_url': _avatarUrl,
-        'role': 'Chef',
         'updated_at': DateTime.now().toIso8601String(),
       };
 
-      await _supabase.from('users').upsert(updateData);
-      await _supabase.auth.updateUser(UserAttributes(data: {
-        'name': name,
-        'phone': phone,
-        'role': 'Chef',
-      }));
+      await _supabase.from('users').update(updateData).eq('id', user.id);
+      await _supabase.auth.updateUser(UserAttributes(data: {'name': name, 'phone': phone}));
+      try {
+        await _supabase.from('chef_profiles').upsert({
+          'user_id': user.id,
+          'kitchen_story': _storyController.text.trim(),
+          'hygiene_note': _hygieneController.text.trim(),
+          'kitchen_photos': _kitchenPhotos,
+          'card_locale': normalizeChefCardLocale(_cardLocale),
+          'local_kitchen_name': _localNameController.text.trim(),
+          'instagram_url': sanitizeChefSocialUrl(_instagramController.text, ChefSocialPlatform.instagram) ?? '',
+          'youtube_url': sanitizeChefSocialUrl(_youtubeController.text, ChefSocialPlatform.youtube) ?? '',
+          'facebook_url': sanitizeChefSocialUrl(_facebookController.text, ChefSocialPlatform.facebook) ?? '',
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        });
+      } catch (e, stack) {
+        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chef kitchen story save failed');
+      }
+      try {
+        await _supabase
+            .from('meals')
+            .update({
+              ...kitchenPinMealFields(_latitude!, _longitude!),
+              'fssai_number': fssai,
+              'hosting_address': formattedAddress,
+            })
+            .eq('chef_id', user.id);
+      } catch (e, stack) {
+        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chef kitchen pin meal sync failed');
+      }
 
       if (mounted) {
         setState(() => _isEditing = false);
@@ -345,7 +595,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
       }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chef Profile Save Failure');
-      _showSnackBar('Failed to update profile: $e', isError: true);
+      _showSnackBar('Could not save your profile. Please try again.', isError: true);
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -354,75 +604,29 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
   // --- Secure Password Update ---
 
   void _showChangePasswordDialog() {
-    final newPasswordController = TextEditingController();
-    final confirmPasswordController = TextEditingController();
-    bool isSubmitting = false;
-
-    showDialog(
+    showDialog<bool>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: const Color(0xFF1E1E1E),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Change Password', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: newPasswordController,
-                obscureText: true,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(labelText: 'New Password (min 8 chars)', prefixIcon: Icon(Icons.lock_outline, color: Colors.deepOrange)),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: confirmPasswordController,
-                obscureText: true,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(labelText: 'Confirm New Password', prefixIcon: Icon(Icons.lock_reset, color: Colors.deepOrange)),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white),
-              onPressed: isSubmitting
-                  ? null
-                  : () async {
-                      final newPass = newPasswordController.text.trim();
-                      final confirmPass = confirmPasswordController.text.trim();
-
-                      if (newPass.length < 8) {
-                        _showSnackBar('Password must be at least 8 characters long.', isError: true);
-                        return;
-                      }
-                      if (newPass != confirmPass) {
-                        _showSnackBar('Passwords do not match.', isError: true);
-                        return;
-                      }
-
-                      setDialogState(() => isSubmitting = true);
-                      try {
-                        await _supabase.auth.updateUser(UserAttributes(password: newPass));
-                        if (ctx.mounted) {
-                          Navigator.pop(ctx);
-                          _showSnackBar('Password updated successfully!');
-                        }
-                      } catch (e) {
-                        _showSnackBar('Failed to change password: $e', isError: true);
-                      } finally {
-                        setDialogState(() => isSubmitting = false);
-                      }
-                    },
-              child: isSubmitting
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Text('Update'),
-            ),
-          ],
-        ),
+      builder: (ctx) => ChangePasswordDialog(
+        onSubmit: ({required currentPassword, required newPassword}) async {
+          final user = _supabase.auth.currentUser;
+          if (user == null || user.email == null) {
+            throw Exception('Not logged in');
+          }
+          try {
+            await _supabase.auth.signInWithPassword(
+              email: user.email!,
+              password: currentPassword,
+            );
+            await _supabase.auth.updateUser(UserAttributes(password: newPassword));
+          } catch (e, stack) {
+            FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chef password change failure');
+            rethrow;
+          }
+        },
       ),
-    );
+    ).then((ok) {
+      if (ok == true) _showSnackBar('Password updated successfully!');
+    });
   }
 
   void _showSnackBar(String message, {bool isError = false}) {
@@ -438,79 +642,137 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
 
   // --- UI Layout ---
 
+  Widget _chefBadge(String label, IconData icon, bool earned) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: earned ? AppTheme.live.withValues(alpha: 0.10) : AppTheme.surfaceOf(context),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: earned ? AppTheme.live.withValues(alpha: 0.35) : AppTheme.hairlineOf(context)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: earned ? AppTheme.live : AppTheme.textMuted),
+          const SizedBox(width: 6),
+          Text(label, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: earned ? AppTheme.live : AppTheme.textMuted)),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = _supabase.auth.currentUser;
     final email = user?.email ?? 'No Email';
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surface = isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight;
+    final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
+    final muted = isDark ? AppTheme.textMuted : AppTheme.textMuted;
+    final divider = isDark ? Colors.white24 : Colors.black12;
+    final avgRating = _reviews.isEmpty
+        ? '—'
+        : (_reviews.map((r) => r.rating).reduce((a, b) => a + b) / _reviews.length).toStringAsFixed(1);
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF121212),
-      appBar: AppBar(
-        title: const Text('Chef Profile & Settings', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: const Color(0xFF1A1A1A),
-        elevation: 0,
-        actions: [
-          TextButton.icon(
-            icon: Icon(_isEditing ? Icons.close : Icons.edit, color: Colors.deepOrange, size: 18),
-            label: Text(_isEditing ? 'Cancel' : 'Edit', style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold)),
-            onPressed: () => setState(() => _isEditing = !_isEditing),
-          ),
-        ],
+    return PremiumProfileScaffold(
+      workspace: ProfileWorkspace.chef,
+      displayName: _nameController.text.isEmpty ? 'Home kitchen partner' : _nameController.text,
+      avatar: AvatarUploadWidget(
+        initialAvatarUrl: _avatarUrl,
+        isEditing: _isEditing,
+        onUploadComplete: (newUrl) => setState(() => _avatarUrl = newUrl),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.deepOrange))
-          : Form(
-              key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
+      loading: _isLoading,
+      onBack: widget.embedded ? null : () {
+        if (context.canPop()) {
+          context.pop();
+        } else {
+          context.go('/chef-hub');
+        }
+      },
+      headerActions: [
+        TextButton(
+          onPressed: () => setState(() => _isEditing = !_isEditing),
+          child: Text(_isEditing ? 'Cancel' : 'Edit', style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.w800)),
+        ),
+      ],
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.only(bottom: 28),
+          children: [
+            PremiumProfileHero(
+              workspace: ProfileWorkspace.chef,
+              displayName: _nameController.text.isEmpty ? 'Home kitchen partner' : _nameController.text,
+              subtitle: 'Certified Indian Home Chef',
+              meta: email,
+              badgeLabel: fssaiLicenceIsExpired(_fssaiValidUntil)
+                  ? 'FSSAI expired — update certificate'
+                  : fssaiVerificationLabel(_fssaiVerificationStatus),
+              avatar: AvatarUploadWidget(
+                initialAvatarUrl: _avatarUrl,
+                isEditing: _isEditing,
+                onUploadComplete: (newUrl) => setState(() => _avatarUrl = newUrl),
+              ),
+              onEdit: () => setState(() => _isEditing = !_isEditing),
+              editLabel: _isEditing ? 'Stop editing' : 'Edit kitchen card',
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Profile Identity Header Card
-                  Card(
-                    color: const Color(0xFF1E1E1E),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Row(
-                        children: [
-                          AvatarUploadWidget(
-                            initialAvatarUrl: _avatarUrl,
-                            isEditing: _isEditing,
-                            onUploadComplete: (newUrl) => setState(() => _avatarUrl = newUrl),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _nameController.text.isEmpty ? 'Home Kitchen Partner' : _nameController.text,
-                                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(email, style: const TextStyle(color: Colors.grey, fontSize: 13)),
-                                const SizedBox(height: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: Colors.green.withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: const Text('Verified Food Partner',
-                                      style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold)),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
+                  Text('Hygiene & Authenticity Badges', style: AppTheme.homeSectionLabelOf(context).copyWith(fontSize: 14)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _chefBadge('Certified', Icons.verified_outlined, true),
+                      _chefBadge(
+                        'FSSAI',
+                        Icons.health_and_safety_outlined,
+                        dinerFssaiIsVerified(_fssaiVerificationStatus, validUntil: _fssaiValidUntil),
                       ),
-                    ),
+                      _chefBadge('Home Kitchen', Icons.cottage_outlined, true),
+                    ],
                   ),
-                  const SizedBox(height: 24),
-
-                  // Personal Information Section
-                  const Text('Kitchen & Business Credentials',
-                      style: TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold, fontSize: 15)),
-                  const SizedBox(height: 12),
+                ],
+              ),
+            ),
+            PremiumProfileSection(
+              title: 'Earnings Overview',
+              children: [
+                PremiumProfileTile(
+                  icon: Icons.payments_outlined,
+                  title: 'Kitchen take-home',
+                  subtitle: 'Today and completed sales in ₹',
+                  onTap: () => context.push('/chef-analytics'),
+                  showDivider: false,
+                ),
+              ],
+            ),
+            PremiumProfileStatsRow(
+              stats: [
+                PremiumProfileStat(
+                  label: 'FSSAI',
+                  value: fssaiLicenceIsExpired(_fssaiValidUntil)
+                      ? 'Expired'
+                      : switch (normalizeFssaiVerificationStatus(_fssaiVerificationStatus)) {
+                          'verified' => 'Verified',
+                          'pending' => 'Review',
+                          'rejected' => 'Retry',
+                          _ => 'Needed',
+                        },
+                ),
+                PremiumProfileStat(label: 'Rating', value: avgRating),
+                PremiumProfileStat(label: 'Pickup', value: _latitude != null ? 'Pinned' : 'Needed'),
+              ],
+            ),
+            PremiumProfileFormSection(
+              title: 'Kitchen credentials',
+              caption: 'Your diner-facing kitchen name and phone. FSSAI details are scanned from the licence photo.',
+              children: [
                   _buildValidatedTextField(
                     controller: _nameController,
                     label: 'Kitchen / Display Name *',
@@ -525,52 +787,321 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                     keyboardType: TextInputType.phone,
                     validator: (v) => v == null || v.trim().length < 10 ? 'Enter valid 10-digit number' : null,
                   ),
-                  const SizedBox(height: 12),
+              ],
+            ),
+            PremiumProfileFormSection(
+              title: 'Documents & Licences',
+              caption: 'Upload a clear licence photo. We scan Registration No, name, address, and validity, then send the same fields to HotPotChef for verification.',
+              children: [
+                  if (fssaiLicenceIsExpired(_fssaiValidUntil))
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Text(
+                        'This licence expired on ${formatAppDate(_fssaiValidUntil!)}. Upload a current certificate to keep publishing.',
+                        style: const TextStyle(color: AppTheme.error, fontSize: 13, fontWeight: FontWeight.w700, height: 1.35),
+                      ),
+                    ),
                   _buildValidatedTextField(
                     controller: _fssaiController,
-                    label: '14-Digit FSSAI License Number *',
+                    label: 'Registration no (14-digit FSSAI) *',
                     prefixIcon: Icons.verified_user_outlined,
                     keyboardType: TextInputType.number,
                     maxLength: 14,
                     validator: (v) {
-                      if (v == null || v.isEmpty) return 'FSSAI License is legally mandatory';
-                      if (!_fssaiRegex.hasMatch(v)) return 'Invalid 14-digit FSSAI format (Starts with 1 or 2)';
+                      if (v == null || v.isEmpty) {
+                        return 'FSSAI licence is required before you publish meals';
+                      }
+                      if (!_fssaiRegex.hasMatch(v)) {
+                        return 'Enter a valid 14-digit FSSAI number (starts with 1 or 2)';
+                      }
                       return null;
                     },
+                  ),
+                  const SizedBox(height: 12),
+                  _buildValidatedTextField(
+                    controller: _fssaiLegalNameController,
+                    label: 'Name on licence',
+                    prefixIcon: Icons.badge_outlined,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildValidatedTextField(
+                    controller: _fssaiAddressController,
+                    label: 'Address on licence',
+                    prefixIcon: Icons.home_outlined,
+                    maxLines: 3,
+                  ),
+                  const SizedBox(height: 12),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      Icons.event_outlined,
+                      color: fssaiLicenceIsExpired(_fssaiValidUntil) ? AppTheme.error : AppTheme.primary,
+                    ),
+                    title: Text(
+                      _fssaiValidUntil == null
+                          ? 'Validity (valid upto)'
+                          : 'Valid upto ${formatAppDate(_fssaiValidUntil!)}',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: Text(
+                      _fssaiValidUntil == null
+                          ? 'Scanned from the certificate, or tap to set'
+                          : (fssaiLicenceIsExpired(_fssaiValidUntil) ? 'Expired — update the certificate' : 'Sent to ops with your proof'),
+                    ),
+                    onTap: _pickFssaiValidUntil,
+                  ),
+                  const SizedBox(height: 8),
+                  if ((_fssaiProofUrl ?? '').isNotEmpty)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: CachedNetworkImage(
+                        imageUrl: _fssaiProofUrl!,
+                        height: 140,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  if ((_fssaiReviewNote ?? '').trim().isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        _fssaiReviewNote!,
+                        style: const TextStyle(color: AppTheme.error, fontSize: 12),
+                      ),
+                    ),
+                  if (_fssaiVerificationStatus == 'pending' &&
+                      (_fssaiProofUrl ?? '').trim().isNotEmpty &&
+                      !fssaiLicenceIsExpired(_fssaiValidUntil))
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: Text(
+                        'Under review — typically 1 business day. You can publish after HotPotChef verifies.',
+                        style: TextStyle(fontSize: 12, color: Colors.orange, height: 1.35, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: _uploadingFssaiProof ? null : _uploadFssaiProof,
+                    icon: _uploadingFssaiProof
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.document_scanner_outlined),
+                    label: Text((_fssaiProofUrl ?? '').isEmpty ? 'Scan FSSAI certificate' : 'Replace and re-scan certificate'),
                   ),
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
                       onPressed: () => launchUrl(Uri.parse('https://foscos.fssai.gov.in/'), mode: LaunchMode.externalApplication),
-                      child: const Text('Apply or Verify FSSAI License ↗',
+                      child: const Text('Apply or verify on FoSCoS ↗',
                           style: TextStyle(color: Colors.blueAccent, fontSize: 12, decoration: TextDecoration.underline)),
                     ),
                   ),
-                  const Divider(height: 32, color: Colors.white24),
-
-                  // Kitchen Dispatch Address Section
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  if (_isPlatformOps)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.admin_panel_settings_outlined, color: AppTheme.primary),
+                      title: const Text('Open platform ops desk', style: TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: const Text('Packaging inbox and FSSAI review'),
+                      onTap: () => context.go('/platform-ops'),
+                    ),
+                  _buildValidatedTextField(
+                    controller: _gstinController,
+                    label: 'GSTIN (for tax invoices)',
+                    prefixIcon: Icons.receipt_long_outlined,
+                    maxLength: 15,
+                    validator: (v) {
+                      final value = v?.trim() ?? '';
+                      if (value.isEmpty) return null;
+                      if (!isValidGstin(value)) return 'Enter a valid 15-character GSTIN';
+                      return null;
+                    },
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4, bottom: 8),
+                    child: Text(
+                      'GSTIN is only needed when you want tax invoices. Leave blank for a bill of supply. FSSAI verification is still required before you can publish meals.',
+                      style: AppTheme.micro,
+                    ),
+                  ),
+                  _buildValidatedTextField(
+                    controller: _panController,
+                    label: 'PAN (optional, for payouts)',
+                    prefixIcon: Icons.badge_outlined,
+                    maxLength: 10,
+                    validator: (v) {
+                      final value = v?.trim() ?? '';
+                      if (value.isEmpty || value.contains('*')) return null;
+                      if (!isValidPan(value)) return 'Enter a valid 10-character PAN';
+                      return null;
+                    },
+                  ),
+              ],
+            ),
+            PremiumProfileFormSection(
+              title: 'Kitchen story',
+              caption: 'Diners see this on your kitchen card. Keep it short and true.',
+              children: [
+                  Text('Card language (Pune-first)', style: TextStyle(color: muted, fontSize: 12, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
                     children: [
-                      const Text('Kitchen Pickup Address',
-                          style: TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold, fontSize: 15)),
-                      Row(
-                        children: [
-                          Icon(_latitude != null ? Icons.check_circle : Icons.warning_amber_rounded,
-                              size: 14, color: _latitude != null ? Colors.green : Colors.orange),
-                          const SizedBox(width: 4),
-                          Text(
-                            _latitude != null ? 'Coordinates Pinned' : 'Coordinates Missing',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _latitude != null ? Colors.green : Colors.orange),
+                      for (final locale in kChefCardLocales)
+                        ChoiceChip(
+                          label: Text(chefCardLocaleLabel(locale)),
+                          selected: _cardLocale == locale,
+                          onSelected: _isEditing ? (_) => setState(() => _cardLocale = locale) : null,
+                          selectedColor: AppTheme.primary.withValues(alpha: 0.18),
+                          labelStyle: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: _cardLocale == locale ? AppTheme.linkOf(context) : AppTheme.textMuted,
                           ),
-                        ],
-                      ),
+                        ),
                     ],
                   ),
-                  const SizedBox(height: 4),
-                  const Text('Drivers navigate to these coordinates for food collection.', style: TextStyle(color: Colors.grey, fontSize: 12)),
                   const SizedBox(height: 12),
-
+                  _buildValidatedTextField(
+                    controller: _localNameController,
+                    label: _cardLocale == 'mr'
+                        ? 'Local kitchen name (मराठी)'
+                        : (_cardLocale == 'hi' ? 'Local kitchen name (हिन्दी)' : 'Local kitchen name (optional)'),
+                    prefixIcon: Icons.translate_outlined,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildValidatedTextField(
+                    controller: _storyController,
+                    label: 'Who cooks here, and what is tonight\'s story?',
+                    prefixIcon: Icons.menu_book_outlined,
+                    maxLines: 3,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildValidatedTextField(
+                    controller: _hygieneController,
+                    label: 'Hygiene note (gloves, oil, separate veg board…)',
+                    prefixIcon: Icons.health_and_safety_outlined,
+                    maxLines: 2,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Your favourite social media chef on HotPotChef',
+                    style: TextStyle(color: muted, fontSize: 12, fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Paste the public YouTube, Instagram, or Facebook page where people already follow your recipes. Diners see these on your kitchen card. FSSAI still comes first.',
+                    style: AppTheme.micro,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildValidatedTextField(
+                    controller: _instagramController,
+                    label: 'Instagram (@handle or profile link)',
+                    prefixIcon: Icons.camera_alt_outlined,
+                    validator: (v) {
+                      final value = v?.trim() ?? '';
+                      if (value.isEmpty) return null;
+                      if (sanitizeChefSocialUrl(value, ChefSocialPlatform.instagram) == null) {
+                        return 'Paste a public Instagram profile or @handle';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _buildValidatedTextField(
+                    controller: _youtubeController,
+                    label: 'YouTube channel or video link',
+                    prefixIcon: Icons.play_circle_outline_rounded,
+                    validator: (v) {
+                      final value = v?.trim() ?? '';
+                      if (value.isEmpty) return null;
+                      if (sanitizeChefSocialUrl(value, ChefSocialPlatform.youtube) == null) {
+                        return 'Paste a full YouTube or youtu.be link';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _buildValidatedTextField(
+                    controller: _facebookController,
+                    label: 'Facebook page link',
+                    prefixIcon: Icons.public_outlined,
+                    validator: (v) {
+                      final value = v?.trim() ?? '';
+                      if (value.isEmpty) return null;
+                      if (sanitizeChefSocialUrl(value, ChefSocialPlatform.facebook) == null) {
+                        return 'Paste a full Facebook page link';
+                      }
+                      return null;
+                    },
+                  ),
+                  if (_kitchenPhotos.isNotEmpty || _isEditing) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 72,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        children: [
+                          ..._kitchenPhotos.asMap().entries.map((entry) {
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: Stack(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: Image.network(
+                                      entry.value,
+                                      width: 72,
+                                      height: 72,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, _, _) => Container(
+                                        width: 72,
+                                        height: 72,
+                                        color: AppTheme.photoFallback,
+                                        alignment: Alignment.center,
+                                        child: const Icon(Icons.photo_outlined, size: 22),
+                                      ),
+                                    ),
+                                  ),
+                                  if (_isEditing)
+                                    Positioned(
+                                      right: 0,
+                                      top: 0,
+                                      child: GestureDetector(
+                                        onTap: () => setState(() => _kitchenPhotos.removeAt(entry.key)),
+                                        child: const CircleAvatar(
+                                          radius: 10,
+                                          backgroundColor: Colors.black54,
+                                          child: Icon(Icons.close, size: 12, color: Colors.white),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            );
+                          }),
+                          if (_isEditing && _kitchenPhotos.length < 3)
+                            GestureDetector(
+                              onTap: _addKitchenPhoto,
+                              child: Container(
+                                width: 72,
+                                height: 72,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: AppTheme.primary),
+                                ),
+                                child: const Icon(Icons.add_a_photo_outlined, color: AppTheme.primary),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+              ],
+            ),
+            PremiumProfileFormSection(
+              title: 'Kitchen pickup',
+              caption: _latitude != null
+                  ? 'Coordinates pinned — drivers navigate here for collection.'
+                  : 'Pin the kitchen so drivers can collect without calling around.',
+              children: [
                   if (_isEditing)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
@@ -579,13 +1110,13 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                         child: OutlinedButton.icon(
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 14),
-                            side: BorderSide(color: _latitude == null ? Colors.deepOrange : Colors.green),
+                            side: BorderSide(color: _latitude == null ? AppTheme.primary : Colors.green),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
-                          icon: Icon(Icons.pin_drop, color: _latitude == null ? Colors.deepOrange : Colors.green),
+                          icon: Icon(Icons.pin_drop, color: _latitude == null ? AppTheme.primary : Colors.green),
                           label: Text(
                             _latitude == null ? 'Pin Exact Kitchen on Map *' : 'Location Pinned (Tap to update)',
-                            style: TextStyle(fontWeight: FontWeight.bold, color: _latitude == null ? Colors.deepOrange : Colors.green),
+                            style: TextStyle(fontWeight: FontWeight.bold, color: _latitude == null ? AppTheme.linkOf(context) : Colors.green),
                           ),
                           onPressed: _openMapPicker,
                         ),
@@ -637,59 +1168,39 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                       ),
                     ],
                   ),
-                  const Divider(height: 36, color: Colors.white24),
-
-                  // Automated Settlements & Payout Section
-                  const Text('Automated Bank Payout Routing',
-                      style: TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold, fontSize: 15)),
-                  const SizedBox(height: 12),
-                  Card(
-                    color: const Color(0xFF1E1E1E),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        children: [
+              ],
+            ),
+            PremiumProfileFormSection(
+              title: 'Bank Details',
+              caption: 'Earnings settle to your linked bank account.',
+              children: [
                           ListTile(
                             contentPadding: EdgeInsets.zero,
                             leading: Icon(
-                              _payoutKind == ChefPayoutLinkKind.missing
-                                  ? Icons.account_balance
-                                  : Icons.account_balance_wallet,
-                              color: switch (_payoutKind) {
-                                ChefPayoutLinkKind.liveLinked => Colors.greenAccent,
-                                ChefPayoutLinkKind.testLinked => Colors.lightBlueAccent,
-                                ChefPayoutLinkKind.mock => Colors.amberAccent,
-                                ChefPayoutLinkKind.missing => Colors.orangeAccent,
-                              },
+                              _payoutEnabled ? Icons.account_balance_wallet : Icons.account_balance,
+                              color: _payoutEnabled ? Colors.green : Colors.orange,
                             ),
                             title: Text(
-                              ChefPayoutStatus.title(_payoutKind),
-                              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                              _payoutEnabled ? 'Direct Settlement Active' : 'Configure Settlement Account',
+                              style: TextStyle(color: titleColor, fontSize: 14, fontWeight: FontWeight.bold),
                             ),
                             subtitle: Text(
-                              ChefPayoutStatus.subtitle(_payoutKind),
-                              style: const TextStyle(color: Colors.grey, fontSize: 12),
+                              _payoutEnabled
+                                  ? 'Earnings settle automatically to your registered account.'
+                                  : 'Required for automated split payouts via Razorpay Route.',
+                              style: TextStyle(color: muted, fontSize: 12),
                             ),
-                            trailing: ChefPayoutStatus.canRelink(_payoutKind)
-                                ? ElevatedButton(
-                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange),
+                            trailing: _payoutEnabled
+                                ? const Chip(backgroundColor: Colors.green, label: Text('Active', style: TextStyle(color: Colors.white, fontSize: 11)))
+                                : ElevatedButton(
+                                    style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
                                     onPressed: _isSettingUpPayout ? null : _setupChefPayout,
                                     child: _isSettingUpPayout
                                         ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                                         : const Text('Link', style: TextStyle(color: Colors.white, fontSize: 12)),
-                                  )
-                                : Chip(
-                                    backgroundColor: _payoutKind == ChefPayoutLinkKind.liveLinked
-                                        ? Colors.green
-                                        : Colors.blueGrey,
-                                    label: Text(
-                                      ChefPayoutStatus.chipLabel(_payoutKind),
-                                      style: const TextStyle(color: Colors.white, fontSize: 11),
-                                    ),
                                   ),
                           ),
-                          const Divider(color: Colors.white12),
+                          Divider(color: divider.withValues(alpha: 0.5)),
                           _buildValidatedTextField(controller: _beneficiaryNameController, label: 'Account Holder Name'),
                           const SizedBox(height: 10),
                           _buildValidatedTextField(controller: _bankAccountController, label: 'Bank Account Number', keyboardType: TextInputType.number),
@@ -700,34 +1211,28 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                             maxLength: 11,
                             inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]'))],
                           ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Account Security Card
-                  Card(
-                    color: const Color(0xFF1E1E1E),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    child: ListTile(
-                      leading: const Icon(Icons.security, color: Colors.white70),
-                      title: const Text('Security & Credentials', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
-                      subtitle: const Text('Update login password', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                      trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-                      onTap: _showChangePasswordDialog,
-                    ),
-                  ),
-                  const SizedBox(height: 28),
-
-                  // Customer Reviews Section
-                  const Text('Customer Reviews & Ratings',
-                      style: TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold, fontSize: 15)),
-                  const SizedBox(height: 12),
+              ],
+            ),
+            PremiumProfileSection(
+              title: 'Help & Chef Support',
+              children: [
+                PremiumProfileTile(
+                  icon: Icons.lock_reset_rounded,
+                  title: 'Change password',
+                  subtitle: 'Update login credentials',
+                  onTap: _showChangePasswordDialog,
+                  showDivider: false,
+                ),
+              ],
+            ),
+            PremiumProfileFormSection(
+              title: 'Diner reviews',
+              caption: _reviews.isEmpty ? 'New kitchens earn trust with the first plated reviews.' : null,
+              children: [
                   if (_reviews.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 16),
-                      child: Center(child: Text('No reviews received yet.', style: TextStyle(color: Colors.grey, fontSize: 13))),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text('No reviews received yet.', style: TextStyle(color: muted, fontSize: 13)),
                     )
                   else
                     ListView.builder(
@@ -737,7 +1242,8 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                       itemBuilder: (context, index) {
                         final rev = _reviews[index];
                         return Card(
-                          color: const Color(0xFF1E1E1E),
+                          color: surface,
+                          elevation: isDark ? 0 : 1,
                           margin: const EdgeInsets.only(bottom: 10),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           child: Padding(
@@ -754,17 +1260,17 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                                         (i) => Icon(i < rev.rating ? Icons.star : Icons.star_border, color: Colors.amber, size: 15),
                                       ),
                                     ),
-                                    Text(formatOrderDate(rev.createdAt.toIso8601String()), style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                                    Text(formatOrderDate(rev.createdAt.toIso8601String()), style: TextStyle(color: muted, fontSize: 11)),
                                   ],
                                 ),
                                 const SizedBox(height: 6),
                                 Text('Dish: ${rev.mealTitle}',
-                                    style: const TextStyle(color: Colors.deepOrangeAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                                    style: const TextStyle(color: AppTheme.link, fontSize: 12, fontWeight: FontWeight.bold)),
                                 const SizedBox(height: 2),
-                                Text(rev.customerName, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                                Text(rev.customerName, style: TextStyle(color: titleColor, fontSize: 13, fontWeight: FontWeight.w600)),
                                 if (rev.comment.isNotEmpty) ...[
                                   const SizedBox(height: 4),
-                                  Text('"${rev.comment}"', style: const TextStyle(color: Colors.white70, fontSize: 12, fontStyle: FontStyle.italic)),
+                                  Text('"${rev.comment}"', style: TextStyle(color: muted, fontSize: 12, fontStyle: FontStyle.italic)),
                                 ],
                               ],
                             ),
@@ -772,13 +1278,14 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                         );
                       },
                     ),
-
-                  const SizedBox(height: 24),
-
-                  if (_isEditing)
-                    ElevatedButton.icon(
+              ],
+            ),
+            if (_isEditing)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.deepOrange,
+                        backgroundColor: AppTheme.primary,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -786,14 +1293,32 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                       icon: const Icon(Icons.save_outlined),
                       label: _isSaving
                           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : const Text('Save Profile Changes', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          : const Text('Save kitchen profile', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                       onPressed: _isSaving ? null : _saveProfile,
                     ),
-                  const SizedBox(height: 20),
-                ],
               ),
-            ),
+            const PremiumProfileVersionFooter(),
+          ],
+        ),
+      ),
     );
+  }
+
+  Future<void> _addKitchenPhoto() async {
+    final source = await pickKitchenImageSource(context);
+    if (source == null) return;
+    try {
+      final url = await uploadKitchenImage(source: source);
+      if (url == null || !mounted) return;
+      setState(() {
+        if (!_kitchenPhotos.contains(url) && _kitchenPhotos.length < 3) {
+          _kitchenPhotos = [..._kitchenPhotos, url];
+        }
+      });
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chef kitchen photo add failed');
+      if (mounted) _showSnackBar('Could not add that kitchen photo.', isError: true);
+    }
   }
 
   Widget _buildValidatedTextField({
@@ -802,28 +1327,37 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     IconData? prefixIcon,
     TextInputType keyboardType = TextInputType.text,
     int? maxLength,
+    int maxLines = 1,
     String? Function(String?)? validator,
     List<TextInputFormatter>? inputFormatters,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
+    final muted = isDark ? AppTheme.textMuted : AppTheme.textMuted;
+    final fill = isDark ? AppTheme.surfaceMutedDark : Colors.white;
+    final border = isDark ? Colors.white12 : Colors.grey.shade300;
+
     return TextFormField(
       controller: controller,
-      enabled: _isEditing,
-      keyboardType: keyboardType,
+      readOnly: !_isEditing,
+      enableInteractiveSelection: true,
+      keyboardType: maxLines > 1 ? TextInputType.multiline : keyboardType,
       maxLength: maxLength,
+      maxLines: maxLines,
       validator: validator,
       inputFormatters: inputFormatters,
-      style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+      style: TextStyle(color: titleColor, fontSize: 14, fontWeight: FontWeight.w500),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: Colors.grey, fontSize: 13),
-        floatingLabelStyle: const TextStyle(color: Colors.deepOrange, fontSize: 14, fontWeight: FontWeight.bold),
-        prefixIcon: prefixIcon != null ? Icon(prefixIcon, color: Colors.deepOrange, size: 20) : null,
+        labelStyle: TextStyle(color: muted, fontSize: 13),
+        floatingLabelStyle: const TextStyle(color: AppTheme.link, fontSize: 14, fontWeight: FontWeight.bold),
+        prefixIcon: prefixIcon != null ? Icon(prefixIcon, color: AppTheme.primary, size: 20) : null,
         filled: true,
-        fillColor: const Color(0xFF2A2A2A),
+        fillColor: fill,
         counterText: '',
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.white12)),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.deepOrange, width: 2)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: border)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppTheme.primary, width: 2)),
         disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
         errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.redAccent)),
       ),

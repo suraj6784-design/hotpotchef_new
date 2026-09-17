@@ -1,19 +1,25 @@
 // lib/widgets/daily_streak_banner.dart
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
+import '../providers/cart_provider.dart';
 import '../utils/app_theme.dart';
+import '../utils/helpers.dart';
+import 'app_widgets.dart';
 
-class DailyStreakBanner extends StatefulWidget {
-  const DailyStreakBanner({super.key});
+class DailyStreakBanner extends ConsumerStatefulWidget {
+  const DailyStreakBanner({super.key, this.compact = false});
+
+  final bool compact;
 
   @override
-  State<DailyStreakBanner> createState() => _DailyStreakBannerState();
+  ConsumerState<DailyStreakBanner> createState() => _DailyStreakBannerState();
 }
 
-class _DailyStreakBannerState extends State<DailyStreakBanner> {
+class _DailyStreakBannerState extends ConsumerState<DailyStreakBanner> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
   int _currentStreak = 0;
@@ -43,16 +49,7 @@ class _DailyStreakBannerState extends State<DailyStreakBanner> {
 
       if (res != null) {
         final lastDateStr = res['last_check_in_date']?.toString();
-        final lastDate = lastDateStr != null ? DateTime.tryParse(lastDateStr) : null;
-        final today = DateTime.now();
-
-        bool alreadyClaimed = false;
-        if (lastDate != null) {
-          final localLast = lastDate.toLocal();
-          alreadyClaimed = localLast.year == today.year &&
-              localLast.month == today.month &&
-              localLast.day == today.day;
-        }
+        final alreadyClaimed = claimedStreakOnIstDate(lastDateStr);
 
         setState(() {
           _currentStreak = (res['current_streak'] as num?)?.toInt() ?? 0;
@@ -87,8 +84,10 @@ class _DailyStreakBannerState extends State<DailyStreakBanner> {
         });
 
         _showSnackBar('Streak Claimed! +$reward HotPot Coins Added! 🎉', isError: false);
+        await ref.read(cartProvider.notifier).fetchUserCoins();
       } else {
-        final message = response?['message']?.toString() ?? 'Already claimed today!';
+        final message = response?['message']?.toString() ??
+            'Already claimed today. Coins stay in your wallet until you spend them at checkout.';
         _showSnackBar(message, isError: true);
       }
     } catch (e, stack) {
@@ -113,8 +112,8 @@ class _DailyStreakBannerState extends State<DailyStreakBanner> {
     if (_isLoading) return const SizedBox.shrink();
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      padding: const EdgeInsets.all(20),
+      margin: EdgeInsets.fromLTRB(20, widget.compact ? 2 : 12, 20, widget.compact ? 8 : 12),
+      padding: EdgeInsets.all(widget.compact ? 16 : 20),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [Color(0xFFFF5722), Color(0xFFFF9800)],
@@ -132,7 +131,7 @@ class _DailyStreakBannerState extends State<DailyStreakBanner> {
             children: [
               Row(
                 children: const [
-                  Icon(Icons.local_fire_department, color: Colors.white, size: 24),
+                  AppLogo(size: 26, onDark: true),
                   SizedBox(width: 8),
                   Text('Daily Streak Rewards',
                       style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),

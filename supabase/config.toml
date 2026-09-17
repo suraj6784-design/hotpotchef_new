@@ -160,7 +160,11 @@ site_url = "http://127.0.0.1:3000"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+additional_redirect_urls = [
+  "https://127.0.0.1:3000",
+  "hotpotchef://app/reset-password",
+  "io.supabase.hotpotchef://reset-callback/",
+]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
@@ -179,10 +183,10 @@ enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts
 enable_manual_linking = false
 # Passwords shorter than this value will be rejected as weak. Minimum 6, recommended 8 or more.
-minimum_password_length = 6
+minimum_password_length = 8
 # Passwords that do not meet the following requirements will be rejected as weak. Supported values
 # are: `letters_digits`, `lower_upper_letters_digits`, `lower_upper_letters_digits_symbols`
-password_requirements = ""
+password_requirements = "letters_digits"
 
 # Configure passkey sign-ins.
 # [auth.passkey]
@@ -438,7 +442,7 @@ entrypoint = "./functions/push-notifier/index.ts"
 
 [functions.send-push-notification]
 enabled = true
-# Auth is X-Webhook-Secret or service_role inside the function (anon JWT is not enough).
+# Auth is X-Webhook-Secret, service_role, or a verified user JWT inside the function.
 verify_jwt = false
 import_map = "./functions/send-push-notification/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
@@ -448,25 +452,72 @@ entrypoint = "./functions/send-push-notification/index.ts"
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/send-push-notification/*.html" ]
 
-[functions.release-chef-payout]
+[functions.create-split-order]
 enabled = true
-verify_jwt = false
-entrypoint = "./functions/release-chef-payout/index.ts"
+verify_jwt = true
+entrypoint = "./functions/create-split-order/index.ts"
+
+[functions.recover-payment]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/recover-payment/index.ts"
+
+[functions.cancel-order]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/cancel-order/index.ts"
 
 [functions.razorpay-webhook]
 enabled = true
-# Razorpay HMAC (RAZORPAY_WEBHOOK_SECRET), not a Supabase user JWT.
 verify_jwt = false
 entrypoint = "./functions/razorpay-webhook/index.ts"
+
+[functions.release-chef-payout]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/release-chef-payout/index.ts"
+
+[functions.create-chef-account]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/create-chef-account/index.ts"
+
+[functions.manage-helper-account]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/manage-helper-account/index.ts"
+
+[functions.ai-tag-meal]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/ai-tag-meal/index.ts"
 
 [functions.ai-search]
 enabled = true
 verify_jwt = true
 entrypoint = "./functions/ai-search/index.ts"
 
-# JWT at the gateway is not sufficient by itself (the anon key is a valid JWT).
-# The function still verifies the user with auth.getUser and authorizes chef self-service.
-[functions.create-chef-account]
+[functions.meal-boost]
 enabled = true
 verify_jwt = true
-entrypoint = "./functions/create-chef-account/index.ts"
+entrypoint = "./functions/meal-boost/index.ts"
+
+[functions.ops-cron]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/ops-cron/index.ts"
+
+[functions.retry-failed-refunds]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/retry-failed-refunds/index.ts"
+
+[functions.place-coins-order]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/place-coins-order/index.ts"
+
+[functions.set-ad-campaign-status]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/set-ad-campaign-status/index.ts"

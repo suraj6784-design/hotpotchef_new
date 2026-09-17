@@ -9,15 +9,19 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'firebase_bootstrap.dart';
+import 'utils/app_env.dart';
+import 'utils/app_flavor.dart';
 import 'utils/helpers.dart';
 import 'utils/app_theme.dart';
 import 'utils/app_router.dart';
+import 'utils/diner_locale.dart';
 import 'utils/google_maps_js_loader.dart';
 import 'services/push_notification_service.dart';
 import 'services/deep_link_coordinator.dart';
+import 'widgets/offline_banner.dart';
 
 // Global Messenger Key to show Push Notifications across all screens
 final GlobalKey<ScaffoldMessengerState> globalMessengerKey =
@@ -26,41 +30,41 @@ final GlobalKey<ScaffoldMessengerState> globalMessengerKey =
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. Load environment variables first
-  await dotenv.load(fileName: ".env");
-  await loadGoogleMapsJsIfNeeded(dotenv.env['GOOGLE_MAPS_API_KEY'] ?? '');
+  try {
+    await loadAppEnv();
+    await loadGoogleMapsJsIfNeeded(appEnv('GOOGLE_MAPS_API_KEY'));
 
-  final firebaseReady = await FirebaseBootstrap.initializeApp();
-  _attachCrashlyticsIfSupported(firebaseReady);
+    final firebaseReady = await FirebaseBootstrap.initializeApp();
+    _attachCrashlyticsIfSupported(firebaseReady);
+    GoogleFonts.config.allowRuntimeFetching = false;
 
-  // 2. Validate environment credentials
-  final supabaseUrl = dotenv.env['SUPABASE_URL'];
-  final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'];
+    final supabaseUrl = appEnv('SUPABASE_URL');
+    final supabaseAnonKey = appEnv('SUPABASE_ANON_KEY');
 
-  if (supabaseUrl == null || supabaseUrl.isEmpty) {
-    throw Exception(
-      "FATAL: SUPABASE_URL is missing or empty in your .env file!",
+    if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
+      throw StateError(
+        'Missing backend config. Rebuild with --dart-define-from-file=.env',
+      );
+    }
+
+    await Supabase.initialize(
+      url: supabaseUrl,
+      anonKey: supabaseAnonKey,
     );
-  }
-  if (supabaseAnonKey == null || supabaseAnonKey.isEmpty) {
-    throw Exception(
-      "FATAL: SUPABASE_ANON_KEY is missing or empty in your .env file!",
-    );
-  }
 
-  // 3. Initialize Supabase
-  await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
+    if (firebaseReady) {
+      await PushNotificationService.initialize();
+    } else {
+      debugPrint(
+        '⚠️ Skipping push notifications because Firebase is not initialized.',
+      );
+    }
 
-  // 4. Initialize Push Notifications cleanly via centralized service
-  if (firebaseReady) {
-    await PushNotificationService.initialize();
-  } else {
-    debugPrint(
-      '⚠️ Skipping push notifications because Firebase is not initialized.',
-    );
+    runApp(const ProviderScope(child: HotPotChefApp()));
+  } catch (error, stack) {
+    debugPrint('HotPotChef failed to start: $error\n$stack');
+    runApp(_StartupFailedApp(message: error.toString()));
   }
-
-  runApp(const ProviderScope(child: HotPotChefApp()));
 }
 
 void _attachCrashlyticsIfSupported(bool firebaseReady) {
@@ -75,12 +79,52 @@ void _attachCrashlyticsIfSupported(bool firebaseReady) {
   try {
     FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
     PlatformDispatcher.instance.onError = (error, stack) {
-      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: false);
       return true;
     };
   } catch (error, stack) {
     debugPrint('⚠️ Crashlytics handlers were not attached: $error');
     debugPrint('$stack');
+  }
+}
+
+/// Shown instead of a blank window when Firebase/Supabase init fails.
+class _StartupFailedApp extends StatelessWidget {
+  const _StartupFailedApp({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        backgroundColor: const Color(0xFFF7F3EE),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'HotPotChef could not start',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF241F1C),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  message,
+                  style: const TextStyle(fontSize: 14, height: 1.4, color: Color(0xFF5C564F)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -97,6 +141,10 @@ class _HotPotChefAppState extends State<HotPotChefApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      PushNotificationService.openPendingAlert();
+    });
+    unawaited(DinerLocaleController.instance.load());
     final appLinks = AppLinks();
     _deepLinks = DeepLinkCoordinator(
       navigate: AppRouter.go,
@@ -124,14 +172,16 @@ class _HotPotChefAppState extends State<HotPotChefApp> {
       splitScreenMode: true,
       builder: (context, child) {
         return MaterialApp.router(
-          title: 'HotPotChef',
+          title: kAppStorefront.appName,
           scaffoldMessengerKey: globalMessengerKey,
           debugShowCheckedModeBanner: false,
           theme: AppTheme.lightTheme,
           darkTheme: AppTheme.darkTheme,
-          themeMode:
-              ThemeMode.system, // Respect system light/dark mode settings
+          themeMode: ThemeMode.system, // Respect system light/dark mode settings
           routerConfig: AppRouter.router,
+          builder: (context, child) {
+            return OfflineBannerHost(child: child ?? const SizedBox.shrink());
+          },
         );
       },
     );

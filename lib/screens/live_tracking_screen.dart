@@ -1,6 +1,7 @@
 // lib/screens/live_tracking_screen.dart
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -9,9 +10,14 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../utils/app_env.dart';
+import 'package:go_router/go_router.dart';
 
+import '../services/order_lifecycle.dart';
 import '../utils/helpers.dart';
+import '../utils/support.dart';
+import '../utils/diner_locale.dart';
+import '../widgets/diner_order_progress.dart';
 
 class LiveTrackingScreen extends StatefulWidget {
   final Map<String, dynamic> order;
@@ -45,14 +51,140 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
 
   String _etaText = 'Calculating ETA...';
   bool _isLoading = true;
+  late Map<String, dynamic> _order;
+
+  // Legacy orders only store `customer_id`; contact + saved location come from users.
+  Map<String, dynamic>? _customerRow;
+  Map<String, dynamic>? _chefRow;
 
   static const double _distanceRatio = 1.3;
   static const double _speedKmPerMin = 0.5; // Average city driving speed
 
+  bool get _driverGoingToKitchen {
+    if (!widget.isDriver || widget.isDineInNavigation) return widget.isDineInNavigation;
+    final leg = (_order['navigate_leg'] ?? '').toString().toLowerCase().trim();
+    if (leg == 'dropoff' || leg == 'customer') return false;
+    if (leg == 'pickup' || leg == 'kitchen') return true;
+    return !driverRunIsOutForDelivery(_order['status']?.toString());
+  }
+
+  String get _destinationTitle =>
+      _driverGoingToKitchen || widget.isDineInNavigation ? 'Chef kitchen' : 'Customer drop-off';
+
   @override
   void initState() {
     super.initState();
+    _order = Map<String, dynamic>.from(widget.order);
     _initializeTracking();
+  }
+
+  Future<void> _hydrateOrderIfNeeded() async {
+    final id = resolvedOrderId(_order);
+    if (id == null || id.isEmpty) return;
+
+    try {
+      final row = await _supabase.from('orders').select().eq('id', id).maybeSingle();
+      if (row != null) {
+        final preservedLeg = _order['navigate_leg'];
+        _order = {..._order, ...row, 'id': row['id']};
+        if (driverRunIsOutForDelivery(_order['status']?.toString())) {
+          _order['navigate_leg'] = 'dropoff';
+        } else if (preservedLeg != null) {
+          _order['navigate_leg'] = preservedLeg;
+        }
+      } else {
+        _order['id'] = id;
+      }
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed hydrating tracking order');
+      _order['id'] = id;
+    }
+
+    await _loadCustomerInfo();
+    await _loadChefKitchenInfo();
+  }
+
+  Future<void> _loadCustomerInfo() async {
+    final customerId = _order['customer_id']?.toString() ?? '';
+    if (customerId.isEmpty || _customerRow != null) return;
+    try {
+      final row = await _supabase
+          .from('users')
+          .select('name, full_name, email, phone, address, lat, lng, latitude, longitude')
+          .eq('id', customerId)
+          .maybeSingle();
+      if (row != null) {
+        _customerRow = Map<String, dynamic>.from(row);
+      }
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed loading tracking customer info');
+    }
+  }
+
+  Future<void> _loadChefKitchenInfo() async {
+    final chefId = _order['chef_id']?.toString() ?? '';
+    if (chefId.isEmpty || _chefRow != null) return;
+    try {
+      final row = await _supabase
+          .from('users')
+          .select(
+            'name, full_name, address, house_no, street, landmark, city, state, postal_code, pincode, lat, lng, latitude, longitude',
+          )
+          .eq('id', chefId)
+          .maybeSingle();
+      if (row != null) {
+        _chefRow = Map<String, dynamic>.from(row);
+        if ((_order['chef_address'] ?? _order['pickup_address'] ?? '').toString().trim().isEmpty) {
+          final formatted = formatSavedAddress(_chefRow);
+          if (formatted.isNotEmpty) {
+            _order['chef_address'] = formatted;
+            _order['pickup_address'] = formatted;
+          }
+        }
+        if (kitchenCoordinate(_order, latitude: true) == null) {
+          final lat = kitchenCoordinate(_chefRow, latitude: true);
+          final lng = kitchenCoordinate(_chefRow, latitude: false);
+          if (lat != null && lng != null) {
+            _order['pickup_lat'] = lat;
+            _order['pickup_lng'] = lng;
+            _order['chef_lat'] = lat;
+            _order['chef_lng'] = lng;
+          }
+        }
+      }
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed loading tracking chef kitchen');
+    }
+  }
+
+  // --- Legacy-order data helpers ---
+
+  List<Map<String, dynamic>> _parseItems(dynamic raw) {
+    if (raw == null) return const [];
+    try {
+      final decoded = raw is String ? jsonDecode(raw) : raw;
+      if (decoded is List) {
+        return decoded.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      }
+    } catch (_) {
+      // Malformed JSON — ignore.
+    }
+    return const [];
+  }
+
+  double? _asDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString());
+  }
+
+  String? _deliveryAddress() {
+    final value = orderDropoffAddress(
+      _order,
+      items: _parseItems(_order['items']),
+      fallbackAddress: checkoutAddressFromUserProfile(_customerRow),
+    );
+    return value.isEmpty ? null : value;
   }
 
   @override
@@ -65,6 +197,8 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
 
   Future<void> _initializeTracking() async {
     try {
+      await _hydrateOrderIfNeeded();
+
       // 1. Verify and request GPS location permissions
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
@@ -138,33 +272,51 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
 
   Future<LatLng?> _resolveDestinationCoordinates() async {
     try {
-      if (widget.isDineInNavigation) {
-        final latStr = widget.order['chef_lat']?.toString() ?? widget.order['hosting_lat']?.toString();
-        final lngStr = widget.order['chef_lng']?.toString() ?? widget.order['hosting_lng']?.toString();
-
-        if (latStr != null && lngStr != null && latStr.isNotEmpty && lngStr.isNotEmpty) {
-          return LatLng(double.parse(latStr), double.parse(lngStr));
+      if (widget.isDineInNavigation || (widget.isDriver && _driverGoingToKitchen)) {
+        final lat = _asDouble(
+          _order['pickup_lat'] ?? _order['chef_lat'] ?? _order['hosting_lat'] ?? _order['kitchen_lat'],
+        );
+        final lng = _asDouble(
+          _order['pickup_lng'] ?? _order['chef_lng'] ?? _order['hosting_lng'] ?? _order['kitchen_lng'],
+        );
+        if (lat != null && lng != null && lat != 0 && lng != 0) {
+          return LatLng(lat, lng);
         }
 
-        final chefAddress = widget.order['chef_address']?.toString() ?? widget.order['hosting_address']?.toString();
-        if (chefAddress != null && chefAddress.isNotEmpty) {
+        final chefLat = kitchenCoordinate(_chefRow, latitude: true);
+        final chefLng = kitchenCoordinate(_chefRow, latitude: false);
+        if (chefLat != null && chefLng != null) {
+          return LatLng(chefLat, chefLng);
+        }
+
+        final chefAddress = _order['chef_address']?.toString() ??
+            _order['hosting_address']?.toString() ??
+            _order['pickup_address']?.toString() ??
+            formatSavedAddress(_chefRow);
+        if (chefAddress.trim().isNotEmpty) {
           List<Location> locs = await locationFromAddress(chefAddress);
           if (locs.isNotEmpty) return LatLng(locs.first.latitude, locs.first.longitude);
         }
-      } else {
-        final latStr = widget.order['delivery_lat']?.toString() ?? widget.order['customer_lat']?.toString();
-        final lngStr = widget.order['delivery_lng']?.toString() ?? widget.order['customer_lng']?.toString();
+        return null;
+      }
 
-        if (latStr != null && lngStr != null && latStr.isNotEmpty && lngStr.isNotEmpty) {
-          return LatLng(double.parse(latStr), double.parse(lngStr));
-        }
+      // Customer drop-off (diner tracking, or driver after Start Delivery).
+      final lat = _asDouble(_order['delivery_lat'] ?? _order['customer_lat']);
+      final lng = _asDouble(_order['delivery_lng'] ?? _order['customer_lng']);
+      if (lat != null && lng != null) {
+        return LatLng(lat, lng);
+      }
 
-        final addressStr = widget.order['delivery_address']?.toString();
-        if (addressStr != null && addressStr.isNotEmpty) {
-          List<Location> locs = await locationFromAddress(addressStr);
+      final addressStr = _deliveryAddress();
+      if (addressStr != null && addressStr.isNotEmpty) {
+        try {
+          final locs = await locationFromAddress(addressStr);
           if (locs.isNotEmpty) return LatLng(locs.first.latitude, locs.first.longitude);
+        } catch (_) {
+          // Geocoding can fail on messy/free-form addresses.
         }
       }
+      return null;
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Destination coordinate resolution failed');
     }
@@ -206,8 +358,12 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
           Marker(
             markerId: const MarkerId('destination_pin'),
             position: destination,
-            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-            infoWindow: const InfoWindow(title: 'Destination'),
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+              _driverGoingToKitchen || widget.isDineInNavigation
+                  ? BitmapDescriptor.hueAzure
+                  : BitmapDescriptor.hueRed,
+            ),
+            infoWindow: InfoWindow(title: _destinationTitle),
           ),
       };
     });
@@ -215,7 +371,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
 
   Future<void> _fetchPolylineRoute(LatLng origin, LatLng destination) async {
     try {
-      final apiKey = dotenv.env['GOOGLE_MAPS_API_KEY'] ?? '';
+      final apiKey = appEnv('GOOGLE_MAPS_API_KEY');
       if (apiKey.isEmpty) return;
 
       PolylinePoints polylinePoints = PolylinePoints(apiKey: apiKey);
@@ -272,6 +428,12 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
       distanceFilter: 15, // Throttle pings to 15-meter movements to save quota
     );
 
+    final orderId = resolvedOrderId(_order);
+    if (orderId != null && orderId.isNotEmpty) {
+      _locationChannel ??= _supabase.channel('order_$orderId');
+      _locationChannel!.subscribe();
+    }
+
     _positionStream = Geolocator.getPositionStream(locationSettings: locationSettings).listen((Position position) {
       if (!mounted) return;
       LatLng newPos = LatLng(position.latitude, position.longitude);
@@ -283,7 +445,9 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
       }
 
       // Broadcast telemetry over Supabase Realtime channel
-      _locationChannel ??= _supabase.channel('order_${widget.order['id']}');
+      final orderId = resolvedOrderId(_order);
+      if (orderId == null || orderId.isEmpty) return;
+      _locationChannel ??= _supabase.channel('order_$orderId');
       _locationChannel!.sendBroadcastMessage(
         event: 'location_update',
         payload: {'lat': position.latitude, 'lng': position.longitude},
@@ -292,7 +456,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   }
 
   void _listenToDriverTelemetry() {
-    final orderId = widget.order['id']?.toString() ?? '';
+    final orderId = resolvedOrderId(_order) ?? '';
     if (orderId.isEmpty) return;
 
     _locationChannel = _supabase.channel('order_$orderId');
@@ -323,21 +487,30 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   // --- Order Summary Modal ---
 
   void _showOrderSummaryModal() {
-    final double itemPrice = (widget.order['price'] as num?)?.toDouble() ?? 250.0;
-    final int qty = (widget.order['quantity'] as num?)?.toInt() ?? 1;
-    final double basketValue = itemPrice * qty;
-    final double billTotal = basketValue + 20.0; // Packaging fee fallback
+    final items = _parseItems(_order['items']);
+    final int qty = items.isNotEmpty
+        ? items.fold<int>(0, (sum, it) => sum + ((_asDouble(it['quantity']) ?? 1).toInt()))
+        : ((_order['quantity'] as num?)?.toInt() ?? 1);
+    final double? orderTotal = _asDouble(_order['total_price'] ?? _order['total_amount']);
+    final double basketValue = (orderTotal != null && orderTotal > 0)
+        ? orderTotal
+        : ((items.isNotEmpty ? _asDouble(items.first['price']) : null) ?? 250.0) * qty;
+    final String title = items.isNotEmpty
+        ? (items.first['title']?.toString() ?? 'Meal Order')
+        : (_order['title']?.toString() ?? 'Meal Order');
 
-    final String customerName = widget.order['customer_name']?.toString() ?? 'Customer';
-    final String customerPhone = widget.order['customer_phone']?.toString() ?? '';
-    final String deliveryAddress = widget.order['delivery_address']?.toString() ?? 'Delivery Address';
-    final String orderIdStr = formatOrderId(widget.order['order_id']?.toString(), widget.order['id'].toString());
-    final String orderDate = formatOrderDate(widget.order['created_at']?.toString());
+    final String customerName =
+        (_customerRow?['name'] ?? _customerRow?['full_name'] ?? _customerRow?['email'] ?? _order['customer_name'] ?? 'Customer')
+            .toString();
+    final String customerPhone = (_customerRow?['phone'] ?? _order['customer_phone'] ?? '').toString();
+    final String deliveryAddress = _deliveryAddress() ?? 'Delivery Address';
+    final String orderIdStr = formatOrderId(_order['order_id']?.toString(), _order['id'].toString());
+    final String orderDate = formatOrderDate(_order['created_at']?.toString());
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.surfaceOf(context),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => DraggableScrollableSheet(
         initialChildSize: 0.65,
@@ -348,13 +521,13 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
           controller: scrollController,
           padding: const EdgeInsets.all(24),
           children: [
-            Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)))),
+            Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: AppTheme.hairlineOf(context), borderRadius: BorderRadius.circular(2)))),
             const SizedBox(height: 16),
             Row(
               children: [
                 Container(
                   padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(10)),
+                  decoration: BoxDecoration(color: AppTheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
                   child: const Icon(Icons.fastfood, color: AppTheme.primary, size: 24),
                 ),
                 const SizedBox(width: 12),
@@ -362,23 +535,31 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('${widget.order['title'] ?? 'Meal Order'} (x$qty)',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain)),
+                      Text('$title (x$qty)',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.onSurfaceOf(context))),
                       const SizedBox(height: 2),
                       Text('Order confirmed & dispatched',
-                          style: TextStyle(color: Colors.green.shade700, fontSize: 12, fontWeight: FontWeight.w600)),
+                          style: TextStyle(color: AppTheme.success, fontSize: 12, fontWeight: FontWeight.w600)),
                     ],
                   ),
                 ),
-                Text('₹${basketValue.toInt()}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textMain)),
+                Text('₹${basketValue.toInt()}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.onSurfaceOf(context))),
               ],
             ),
-            const Divider(height: 32, color: Colors.black12),
-            const Text('Delivery details', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain)),
+            Divider(height: 32, color: AppTheme.hairlineOf(context)),
+            Text('Delivery details', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.onSurfaceOf(context))),
             const SizedBox(height: 12),
             _buildDetailTile(icon: Icons.person_outline, title: customerName, subtitle: customerPhone),
             const SizedBox(height: 10),
-            _buildDetailTile(icon: Icons.location_on_outlined, title: deliveryAddress, subtitle: 'Destination address'),
+            _buildDetailTile(icon: Icons.location_on_outlined, title: deliveryAddress, subtitle: 'Paid checkout address'),
+            if (!widget.isDriver && (_order['delivery_otp']?.toString().trim().length ?? 0) >= 4) ...[
+              const SizedBox(height: 10),
+              _buildDetailTile(
+                icon: Icons.pin_outlined,
+                title: _order['delivery_otp'].toString(),
+                subtitle: 'Share this PIN with the driver at the door',
+              ),
+            ],
             const SizedBox(height: 10),
             _buildDetailTile(icon: Icons.confirmation_number_outlined, title: orderIdStr, subtitle: 'Order reference'),
             const SizedBox(height: 10),
@@ -395,17 +576,17 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
       children: [
         Container(
           padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(color: Colors.grey.shade100, shape: BoxShape.circle),
-          child: Icon(icon, size: 18, color: AppTheme.textMain),
+          decoration: BoxDecoration(color: AppTheme.primary.withValues(alpha: 0.08), shape: BoxShape.circle),
+          child: Icon(icon, size: 18, color: AppTheme.onSurfaceOf(context)),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppTheme.textMain)),
+              Text(title, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppTheme.onSurfaceOf(context))),
               const SizedBox(height: 1),
-              Text(subtitle, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+              Text(subtitle, style: AppTheme.micro),
             ],
           ),
         ),
@@ -413,35 +594,129 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
     );
   }
 
+  void _openOrderGroup() {
+    if (!orderAllowsPartyChat(_order['status']?.toString())) {
+      showContactSupportSheet(
+        context,
+        orderNumber: formatOrderId(_order['order_id']?.toString(), resolvedOrderId(_order) ?? ''),
+        orderUuid: resolvedOrderId(_order),
+      );
+      return;
+    }
+    final roomId = resolvedOrderId(_order) ?? '';
+    if (roomId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Chat is not available for this order.'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
+    final label = formatOrderId(_order['order_id']?.toString(), roomId);
+    final otherId = widget.isDriver
+        ? (_order['customer_id']?.toString() ?? _order['user_id']?.toString() ?? '')
+        : (_order['chef_id']?.toString() ?? '');
+    context.push(chatPath(
+      roomId,
+      roomName: 'Order $label',
+      otherUserId: otherId,
+      memberIds: orderChatMemberIds(_order),
+      isGroup: true,
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
+    final chatOpen = orderAllowsPartyChat(_order['status']?.toString());
     return Scaffold(
       appBar: AppBar(
-        title: Text(_etaText, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
-        elevation: 1,
+        title: Text(
+          widget.isDriver
+              ? (_driverGoingToKitchen ? 'To kitchen · $_etaText' : 'To customer · $_etaText')
+              : (_etaText.toLowerCase().startsWith('arriving')
+                  ? _etaText
+                  : 'Arriving · $_etaText'),
+        ),
         actions: [
           IconButton(
+            tooltip: chatOpen
+                ? 'Order group'
+                : 'Chat closed — use ${widget.isDriver ? 'Support' : DinerLocaleController.instance.copy.help}',
+            icon: Icon(
+              Icons.chat_bubble_outline,
+              color: chatOpen ? AppTheme.primary : Colors.grey,
+            ),
+            onPressed: chatOpen
+                ? _openOrderGroup
+                : () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          widget.isDriver
+                              ? 'Order chat closed after delivery. Use Support for issues.'
+                              : 'Order chat closed after delivery. Use ${DinerLocaleController.instance.copy.help} for issues.',
+                        ),
+                      ),
+                    );
+                  },
+          ),
+          IconButton(
+            tooltip: widget.isDriver ? 'Support' : DinerLocaleController.instance.copy.help,
             icon: const Icon(Icons.support_agent, color: AppTheme.primary),
             onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Connecting to support...')));
+              showContactSupportSheet(
+                context,
+                orderNumber: formatOrderId(_order['order_id']?.toString(), resolvedOrderId(_order) ?? ''),
+                orderUuid: resolvedOrderId(_order),
+              );
             },
           ),
         ],
       ),
-      body: _isLoading || _currentPosition == null
-          ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
-          : Stack(
-              children: [
-                GoogleMap(
-                  initialCameraPosition: CameraPosition(target: _currentPosition!, zoom: 15),
-                  markers: _markers,
-                  polylines: _polylines,
-                  myLocationEnabled: true,
-                  myLocationButtonEnabled: true,
-                  onMapCreated: (controller) => _mapController = controller,
-                ),
+      body: Column(
+        children: [
+          if (!widget.isDriver)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: DinerOrderProgress(status: _order['status']?.toString()),
+            ),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
+                : _currentPosition == null
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(28),
+                          child: Text(
+                            OrderLifecycle.dinerProgressStep(_order['status']?.toString()) < 2
+                                ? 'Kitchen has your order. The map opens when a rider is on the way.'
+                                : 'Waiting for a live location. Status still updates above.',
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      )
+                    : Stack(
+                        children: [
+                if (googleMapsApiKeyConfigured())
+                  GoogleMap(
+                    initialCameraPosition: CameraPosition(target: _currentPosition!, zoom: 15),
+                    markers: _markers,
+                    polylines: _polylines,
+                    myLocationEnabled: true,
+                    myLocationButtonEnabled: true,
+                    onMapCreated: (controller) => _mapController = controller,
+                  )
+                else
+                  const ColoredBox(
+                    color: Color(0xFFF7F3EE),
+                    child: Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(28),
+                        child: Text(
+                          'Live map needs a Maps key on this build. Distance and drop-off details still show below.',
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                  ),
                 Positioned(
                   top: 16,
                   left: 16,
@@ -449,9 +724,9 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 4))],
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: AppTheme.radiusLg,
+                      boxShadow: AppTheme.softShadow,
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -463,14 +738,22 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(_etaText, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textMain)),
-                                const Text('Live route tracking active', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                                Text(_etaText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.onSurfaceOf(context))),
+                                if (!widget.isDriver && dinerPromisedSlotCopy(_order).isNotEmpty)
+                                  Text(dinerPromisedSlotCopy(_order), style: AppTheme.micro)
+                                else
+                                  Text('Live route tracking active', style: AppTheme.micro),
+                                if (!widget.isDriver && (_order['delivery_otp']?.toString().trim().length ?? 0) >= 4)
+                                  Text(
+                                    'Delivery PIN: ${_order['delivery_otp']} — share at the door',
+                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppTheme.primary),
+                                  ),
                               ],
                             ),
                           ],
                         ),
                         TextButton(
-                          style: TextButton.styleFrom(foregroundColor: AppTheme.primary),
+                          style: TextButton.styleFrom(foregroundColor: AppTheme.linkOf(context)),
                           onPressed: _showOrderSummaryModal,
                           child: const Text('Details', style: TextStyle(fontWeight: FontWeight.bold)),
                         ),
@@ -478,8 +761,11 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                     ),
                   ),
                 ),
-              ],
-            ),
+                        ],
+                      ),
+          ),
+        ],
+      ),
     );
   }
 }

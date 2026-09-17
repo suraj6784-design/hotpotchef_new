@@ -7,9 +7,33 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
-import '../utils/app_theme.dart';
+import '../utils/network.dart';
+import '../utils/helpers.dart';
+import '../utils/fssai_certificate_scan.dart';
+import '../utils/pricing_calculator.dart';
+import '../utils/meal_nutrition.dart';
 import '../models/cart_enums.dart';
 import '../models/pricing_models.dart';
+import '../models/app_role.dart';
+import '../services/auth_session.dart';
+import '../services/reorder_service.dart';
+import '../services/kitchen_media.dart';
+
+class _AddOnDraft {
+  _AddOnDraft({String? id, String title = '', String price = ''})
+      : id = id ?? 'addon_${DateTime.now().microsecondsSinceEpoch}',
+        title = TextEditingController(text: title),
+        price = TextEditingController(text: price);
+
+  final String id;
+  final TextEditingController title;
+  final TextEditingController price;
+
+  void dispose() {
+    title.dispose();
+    price.dispose();
+  }
+}
 
 class ChefPublishMealScreen extends StatefulWidget {
   final Map<String, dynamic>? existingMeal;
@@ -21,8 +45,6 @@ class ChefPublishMealScreen extends StatefulWidget {
 }
 
 class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
-  static final _fssaiRegex = RegExp(r'^[1-2][0-9]{13}$');
-
   final _supabase = Supabase.instance.client;
   final _formKey = GlobalKey<FormState>();
 
@@ -31,14 +53,24 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
   final _descriptionController = TextEditingController();
   final _priceController = TextEditingController();
   final _quantityController = TextEditingController();
+  final _caloriesController = TextEditingController();
+  final _weightController = TextEditingController();
+  final _proteinController = TextEditingController();
+  final _carbsController = TextEditingController();
+  final _fatController = TextEditingController();
+  final _fiberController = TextEditingController();
   final _fssaiController = TextEditingController();
   final _hostingAddressController = TextEditingController();
+  final _societyLabelController = TextEditingController();
+  final _shelfKindController = TextEditingController();
 
   // Promotions & Discounts
   OfferType _selectedOfferType = OfferType.none;
   final _discountController = TextEditingController();
   final _maxDiscountCapController = TextEditingController();
   final _promoController = TextEditingController();
+  final _promoDiscountController = TextEditingController();
+  OfferType _promoExtraType = OfferType.none;
   bool _acceptsHotpotCoins = true;
 
   DateTime? _offerEndDate;
@@ -47,10 +79,17 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
   // Media
   XFile? _selectedImageFile;
   String? _existingImageUrl;
+  String? _fssaiProofUrl;
+  String _fssaiVerificationStatus = 'unsubmitted';
+  DateTime? _fssaiValidUntil;
 
   // Meal Specifications
   bool _isLoading = false;
   bool _isVeg = true;
+  bool _isHamper = false;
+  bool _isSocietyNight = false;
+  bool _isShelfItem = false;
+  final Set<String> _dietTags = {};
   String _selectedCategory = 'Maharashtrian';
   String _activeTimeSlot = '';
 
@@ -62,21 +101,26 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     'Punjabi',
     'South Indian',
     'North Indian',
+    'Festival Hamper',
+    'Society Night',
+    'Shelf',
     'Snacks',
     'Desserts',
     'Healthy & Salads'
   ];
 
   final Set<ServiceType> _selectedServices = {ServiceType.deliveryPlatform};
+  final List<_AddOnDraft> _addOns = [];
+  int _publishStep = 0;
+  bool _promoAdvanced = false;
 
   @override
   void initState() {
     super.initState();
     if (widget.existingMeal != null) {
       _initializeExistingMeal(widget.existingMeal!);
-    } else {
-      _autoFillChefDetails();
     }
+    _autoFillChefDetails();
   }
 
   void _initializeExistingMeal(Map<String, dynamic> meal) {
@@ -84,11 +128,38 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     _descriptionController.text = meal['description']?.toString() ?? '';
     _priceController.text = meal['price']?.toString() ?? '';
     _quantityController.text = meal['quantity']?.toString() ?? '';
+    final nutrition = mealNutritionFacts(meal);
+    _caloriesController.text = nutrition.caloriesKcal?.toString() ?? '';
+    _weightController.text = nutrition.weightG?.toString() ?? '';
+    _proteinController.text = nutrition.proteinG?.toString() ?? '';
+    _carbsController.text = nutrition.carbsG?.toString() ?? '';
+    _fatController.text = nutrition.fatG?.toString() ?? '';
+    _fiberController.text = nutrition.fiberG?.toString() ?? '';
     _fssaiController.text = meal['fssai_number']?.toString() ?? '';
     _hostingAddressController.text = meal['hosting_address']?.toString() ?? '';
 
     _isVeg = meal['is_veg'] ?? true;
+    _isHamper = isFestivalHamper(meal);
+    _isSocietyNight = isSocietyNight(meal);
+    _isShelfItem = isShelfItem(meal);
+    _societyLabelController.text = meal['society_label']?.toString() ?? '';
+    _shelfKindController.text = meal['shelf_kind']?.toString() ?? '';
+    _dietTags
+      ..clear()
+      ..addAll(_dietTagsFromMeal(meal));
     _selectedCategory = meal['category']?.toString() ?? 'Maharashtrian';
+    if (_isHamper && !_categories.contains(_selectedCategory)) {
+      _selectedCategory = 'Festival Hamper';
+    }
+    if (_isSocietyNight && !_categories.contains(_selectedCategory)) {
+      _selectedCategory = 'Society Night';
+    }
+    if (_isShelfItem && !_categories.contains(_selectedCategory)) {
+      _selectedCategory = 'Shelf';
+    }
+    if (!_categories.contains(_selectedCategory)) {
+      _selectedCategory = _categories.first;
+    }
     _activeTimeSlot = meal['time_slot']?.toString() ?? '';
     _existingImageUrl = meal['image_url']?.toString();
     _acceptsHotpotCoins = meal['accepts_hotpot_coins'] ?? true;
@@ -97,13 +168,16 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
 
     // Offer fields
     final offerStr = meal['offer_type']?.toString() ?? 'none';
-    _selectedOfferType = OfferType.values.firstWhere(
-      (e) => e.name.toLowerCase() == offerStr.toLowerCase(),
-      orElse: () => OfferType.none,
-    );
+    _selectedOfferType = OfferType.fromString(offerStr);
     _discountController.text = meal['discount_value']?.toString() ?? '';
     _maxDiscountCapController.text = meal['max_discount_cap']?.toString() ?? '';
     _promoController.text = meal['promo_code']?.toString() ?? '';
+    _promoDiscountController.text = meal['promo_discount_value']?.toString() ?? '';
+    final extraType = OfferType.fromString(meal['promo_discount_type']?.toString());
+    _promoExtraType = extraType == OfferType.flat ? OfferType.flat : extraType == OfferType.percentage
+        ? OfferType.percentage
+        : OfferType.none;
+    _promoAdvanced = _promoController.text.trim().isNotEmpty || _promoExtraType != OfferType.none;
 
     // Offer validity timestamp
     final validUntilStr = meal['offer_valid_until']?.toString();
@@ -118,13 +192,21 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     // Service types
     final rawServices = meal['service_type']?.toString() ?? '';
     _selectedServices.clear();
-    for (var st in ServiceType.values) {
-      if (rawServices.contains(st.toDisplayString())) {
-        _selectedServices.add(st);
-      }
+    for (final part in rawServices.split(',')) {
+      if (part.trim().isEmpty) continue;
+      _selectedServices.add(ServiceType.fromString(part.trim()));
     }
     if (_selectedServices.isEmpty) {
       _selectedServices.add(ServiceType.deliveryPlatform);
+    }
+
+    final existingAddOns = ReorderService.parseMealAddOns(meal['add_ons'] ?? meal['addons']);
+    for (final addon in existingAddOns) {
+      _addOns.add(_AddOnDraft(
+        id: addon.id.isEmpty ? null : addon.id,
+        title: addon.title,
+        price: addon.price > 0 ? addon.price.toStringAsFixed(0) : '',
+      ));
     }
   }
 
@@ -134,11 +216,23 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     _descriptionController.dispose();
     _priceController.dispose();
     _quantityController.dispose();
+    _caloriesController.dispose();
+    _weightController.dispose();
+    _proteinController.dispose();
+    _carbsController.dispose();
+    _fatController.dispose();
+    _fiberController.dispose();
     _fssaiController.dispose();
     _hostingAddressController.dispose();
+    _societyLabelController.dispose();
+    _shelfKindController.dispose();
     _discountController.dispose();
     _maxDiscountCapController.dispose();
     _promoController.dispose();
+    _promoDiscountController.dispose();
+    for (final addon in _addOns) {
+      addon.dispose();
+    }
     super.dispose();
   }
 
@@ -151,21 +245,49 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
 
       final chefProfile = await _supabase
           .from('users')
-          .select('fssai_number, address, lat, lng')
+          .select('fssai_number, fssai_proof_url, fssai_verification_status, fssai_valid_until, address, lat, lng')
           .eq('id', user.id)
           .maybeSingle();
 
       if (chefProfile != null && mounted) {
         setState(() {
-          _fssaiController.text = chefProfile['fssai_number']?.toString() ?? '';
-          _hostingAddressController.text = chefProfile['address']?.toString() ?? '';
-          _pickupLat = (chefProfile['lat'] as num?)?.toDouble();
-          _pickupLng = (chefProfile['lng'] as num?)?.toDouble();
+          if (_fssaiController.text.trim().isEmpty) {
+            _fssaiController.text = chefProfile['fssai_number']?.toString() ?? '';
+          }
+          if (_hostingAddressController.text.trim().isEmpty) {
+            _hostingAddressController.text = chefProfile['address']?.toString() ?? '';
+          }
+          _pickupLat ??= (chefProfile['lat'] as num?)?.toDouble();
+          _pickupLng ??= (chefProfile['lng'] as num?)?.toDouble();
+          _fssaiProofUrl = chefProfile['fssai_proof_url']?.toString();
+          _fssaiVerificationStatus = normalizeFssaiVerificationStatus(
+            chefProfile['fssai_verification_status']?.toString(),
+          );
+          _fssaiValidUntil = parseStoredFssaiValidUntil(chefProfile['fssai_valid_until']);
         });
       }
     } catch (e, st) {
       FirebaseCrashlytics.instance.recordError(e, st, reason: 'Chef Autofill Error');
     }
+  }
+
+  Set<String> _dietTagsFromMeal(Map<String, dynamic> meal) {
+    final raw = meal['health_tags'] ?? meal['tags'];
+    final values = raw is Iterable ? raw : const [];
+    return {
+      for (final tag in values)
+        for (final known in kChefDietTags)
+          if (known.toLowerCase() == tag.toString().trim().toLowerCase()) known,
+    };
+  }
+
+  List<dynamic> _mergedHealthTags(List<dynamic> healthTags) {
+    final knownLower = {for (final tag in kChefDietTags) tag.toLowerCase()};
+    return [
+      for (final tag in healthTags)
+        if (!knownLower.contains(tag.toString().trim().toLowerCase())) tag,
+      ..._dietTags,
+    ];
   }
 
   // --- Optimized Image Picker ---
@@ -182,6 +304,46 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     if (pickedFile != null && mounted) {
       setState(() => _selectedImageFile = pickedFile);
     }
+  }
+
+  bool _plateStepReady() {
+    if (_titleController.text.trim().isEmpty) {
+      _showSnackBar('Enter the name of your dish.', isError: true);
+      return false;
+    }
+    if (_descriptionController.text.trim().length < 10) {
+      _showSnackBar('Describe ingredients and flavor (min 10 characters).', isError: true);
+      return false;
+    }
+    final price = double.tryParse(_priceController.text.trim()) ?? 0;
+    final quantity = int.tryParse(_quantityController.text.trim()) ?? 0;
+    if (price <= 0 || quantity <= 0) {
+      _showSnackBar('Price and portions must both be greater than zero.', isError: true);
+      return false;
+    }
+    return true;
+  }
+
+  bool _slotStepReady() {
+    if (_activeTimeSlot.isEmpty) {
+      _showSnackBar('Please set an availability schedule for this meal.', isError: true);
+      return false;
+    }
+    if (_selectedServices.isEmpty) {
+      _showSnackBar('Select at least one delivery or dining method.', isError: true);
+      return false;
+    }
+    return true;
+  }
+
+  void _goPublishNext() {
+    if (_publishStep == 0 && !_plateStepReady()) return;
+    if (_publishStep == 1 && !_slotStepReady()) return;
+    if (_publishStep >= 2) {
+      _publishMeal();
+      return;
+    }
+    setState(() => _publishStep++);
   }
 
   // --- Meal Publication / Update Logic ---
@@ -207,14 +369,48 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
       return;
     }
 
-    // FSSAI is collected on chef profile (not this form) and autofilled.
-    // Refuse to list a meal without a valid 14-digit license.
-    final fssai = _fssaiController.text.trim();
-    if (!_fssaiRegex.hasMatch(fssai)) {
+    final kitchenAddress = _hostingAddressController.text.trim();
+    if (kitchenAddress.isEmpty || _pickupLat == null || _pickupLng == null) {
       _showSnackBar(
-        'Add a valid 14-digit FSSAI license on your chef profile before publishing.',
+        'Add your kitchen address and map pin in Chef Profile, then try publishing again.',
         isError: true,
       );
+      return;
+    }
+
+    try {
+      final uid = _supabase.auth.currentUser?.id;
+      if (uid != null) {
+        final live = await _supabase
+            .from('users')
+            .select('fssai_number, fssai_proof_url, fssai_verification_status, fssai_valid_until')
+            .eq('id', uid)
+            .maybeSingle()
+            .withTimeout(NetworkTimeouts.short);
+        if (live != null && mounted) {
+          _fssaiProofUrl = live['fssai_proof_url']?.toString() ?? _fssaiProofUrl;
+          _fssaiVerificationStatus = normalizeFssaiVerificationStatus(
+            live['fssai_verification_status']?.toString(),
+          );
+          _fssaiValidUntil = parseStoredFssaiValidUntil(live['fssai_valid_until']) ?? _fssaiValidUntil;
+          if (_fssaiController.text.trim().isEmpty) {
+            _fssaiController.text = live['fssai_number']?.toString() ?? '';
+          }
+        }
+      }
+    } catch (e, st) {
+      FirebaseCrashlytics.instance.recordError(e, st, reason: 'Live FSSAI gate lookup failed');
+    }
+
+    final fssai = _fssaiController.text.trim();
+    final blocked = chefFssaiPublishBlockReason(
+      fssaiNumber: fssai,
+      proofUrl: _fssaiProofUrl,
+      verificationStatus: _fssaiVerificationStatus,
+      validUntil: _fssaiValidUntil,
+    );
+    if (blocked != null) {
+      _showSnackBar(blocked, isError: true);
       return;
     }
 
@@ -223,10 +419,24 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     try {
       final user = _supabase.auth.currentUser;
       if (user == null) throw Exception('Authentication session expired');
+      final role = await AuthSession.resolveRole();
+      if (role != AppRole.chef) {
+        throw Exception('Only chef accounts can publish meals.');
+      }
 
-      final chefName = user.userMetadata?['name']?.toString() ??
-          user.userMetadata?['full_name']?.toString() ??
-          'Chef Kitchen';
+      var chefName = chefDisplayName({
+        'name': user.userMetadata?['name'],
+        'full_name': user.userMetadata?['full_name'],
+        'email': user.email,
+      }, fallback: 'Home Kitchen');
+      try {
+        final profile = await _supabase
+            .from('users')
+            .select('name, full_name, email')
+            .eq('id', user.id)
+            .maybeSingle();
+        chefName = chefDisplayName(profile, fallback: chefName);
+      } catch (_) {}
 
       String? imageUrl = _existingImageUrl;
 
@@ -254,7 +464,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
             'title': _titleController.text.trim(),
             'description': _descriptionController.text.trim(),
           },
-        );
+        ).withTimeout(NetworkTimeouts.payment);
         if (aiResponse.status == 200 && aiResponse.data != null) {
           healthTags = aiResponse.data['tags'] as List<dynamic>? ?? healthTags;
         }
@@ -281,8 +491,24 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
         offerExpiryIso = localExpiry.toUtc().toIso8601String();
       }
 
-      final discountVal = double.tryParse(_discountController.text.trim()) ?? 0.0;
+      final promoCode = _promoController.text.trim().toUpperCase();
+      var discountVal = double.tryParse(_discountController.text.trim()) ?? 0.0;
+      if (discountVal <= 0 &&
+          (_selectedOfferType == OfferType.percentage ||
+              _selectedOfferType == OfferType.flashSale ||
+              _selectedOfferType == OfferType.flat)) {
+        final hinted = PricingCalculator.numericSuffixFromPromoCode(promoCode);
+        if (hinted != null &&
+            (_selectedOfferType == OfferType.flat || hinted <= 90)) {
+          discountVal = hinted;
+        }
+      }
       final maxCapVal = double.tryParse(_maxDiscountCapController.text.trim()) ?? 0.0;
+      final promoExtraVal = double.tryParse(_promoDiscountController.text.trim()) ?? 0.0;
+      final hasPromoExtra = _promoExtraType != OfferType.none && promoExtraVal > 0;
+      final hamperOn = _isHamper || _selectedCategory == 'Festival Hamper';
+      final societyOn = _isSocietyNight || _selectedCategory == 'Society Night';
+      final shelfOn = _isShelfItem || _selectedCategory == 'Shelf';
 
       final mealPayload = {
         'chef_id': user.id,
@@ -293,6 +519,11 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
         'quantity': quantity,
         'category': _selectedCategory,
         'is_veg': _isVeg,
+        'is_hamper': hamperOn,
+        'is_society_night': societyOn,
+        'society_label': societyOn ? _societyLabelController.text.trim() : '',
+        'is_shelf_item': shelfOn,
+        'shelf_kind': shelfOn ? _shelfKindController.text.trim() : '',
         'time_slot': _activeTimeSlot,
         'service_type': _selectedServices.map((s) => s.toDisplayString()).join(', '),
         'fssai_number': _fssaiController.text.trim(),
@@ -301,25 +532,34 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
         'pickup_lng': _pickupLng,
         'status': widget.existingMeal != null ? (widget.existingMeal!['status'] ?? 'Available') : 'Available',
         'image_url': imageUrl,
-        'health_tags': healthTags,
+        'health_tags': _mergedHealthTags(healthTags),
+        ...mealNutritionPayload(
+          caloriesKcal: parseMealNutritionNumber(_caloriesController.text),
+          weightG: parseMealNutritionNumber(_weightController.text),
+          proteinG: parseMealNutritionNumber(_proteinController.text),
+          carbsG: parseMealNutritionNumber(_carbsController.text),
+          fatG: parseMealNutritionNumber(_fatController.text),
+          fiberG: parseMealNutritionNumber(_fiberController.text),
+        ),
         'offer_type': _selectedOfferType.name,
         'discount_value': discountVal,
         'max_discount_cap': maxCapVal > 0 ? maxCapVal : null,
-        'promo_code': _promoController.text.trim().toUpperCase(),
+        'promo_code': promoCode,
+        'promo_discount_type': hasPromoExtra ? _promoExtraType.name : null,
+        'promo_discount_value': hasPromoExtra ? promoExtraVal : null,
         'accepts_hotpot_coins': _acceptsHotpotCoins,
         'offer_valid_until': offerExpiryIso,
-        'updated_at': DateTime.now().toIso8601String(),
+        'add_ons': _addOns
+            .where((addon) => addon.title.text.trim().isNotEmpty)
+            .map((addon) => {
+                  'id': addon.id,
+                  'title': addon.title.text.trim(),
+                  'price': double.tryParse(addon.price.text.trim()) ?? 0,
+                })
+            .toList(),
       };
 
-      if (widget.existingMeal != null && widget.existingMeal!['id'] != null) {
-        await _supabase
-            .from('meals')
-            .update(mealPayload)
-            .eq('id', widget.existingMeal!['id']);
-      } else {
-        mealPayload['created_at'] = DateTime.now().toIso8601String();
-        await _supabase.from('meals').insert(mealPayload);
-      }
+      await _saveMealPayload(mealPayload);
 
       if (mounted) {
         _showSnackBar(
@@ -338,6 +578,57 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     }
   }
 
+  Future<void> _saveMealPayload(Map<String, dynamic> payload) async {
+    final body = Map<String, dynamic>.from(payload);
+    final requestedFeatureKeys = {
+      for (final key in const [
+        'is_hamper',
+        'is_society_night',
+        'society_label',
+        'is_shelf_item',
+        'shelf_kind',
+        'calories_kcal',
+        'portion_weight_g',
+        'protein_g',
+        'carbs_g',
+        'fat_g',
+        'fiber_g',
+      ])
+        if (payload.containsKey(key)) key,
+    };
+    final stripped = <String>{};
+    Object? lastError;
+    for (var attempt = 0; attempt < 6; attempt++) {
+      try {
+        final id = widget.existingMeal?['id'];
+        if (id != null) {
+          await _supabase.from('meals').update(body).eq('id', id);
+        } else {
+          await _supabase.from('meals').insert(body);
+        }
+        if (stripped.isNotEmpty && mounted) {
+          final lost = stripped.intersection(requestedFeatureKeys);
+          if (lost.isNotEmpty) {
+            _showSnackBar(
+              'Meal saved, but some specialty fields could not sync yet (${lost.join(', ')}). Pull to refresh schema or re-save after DB migrate.',
+              isError: true,
+            );
+          }
+        }
+        return;
+      } on PostgrestException catch (e) {
+        lastError = e;
+        if (e.code != 'PGRST204') rethrow;
+        final match = RegExp(r"Could not find the '([^']+)' column").firstMatch(e.message);
+        final missing = match?.group(1);
+        if (missing == null || !body.containsKey(missing)) rethrow;
+        stripped.add(missing);
+        body.remove(missing);
+      }
+    }
+    throw lastError ?? Exception('Could not save this meal');
+  }
+
   void _showSnackBar(String text, {bool isError = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -354,13 +645,16 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.existingMeal != null;
+    final titleColor = AppTheme.onSurfaceOf(context);
+    final surface = AppTheme.surfaceOf(context);
+    final hairline = AppTheme.hairlineOf(context);
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: AppTheme.canvasOf(context),
       appBar: AppBar(
         title: Text(
           isEditing ? 'Edit Meal' : 'Publish New Meal',
-          style: const TextStyle(color: AppTheme.textMain, fontWeight: FontWeight.bold),
+          style: TextStyle(color: AppTheme.onSurfaceOf(context), fontWeight: FontWeight.bold),
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -368,19 +662,70 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
       ),
       body: Form(
         key: _formKey,
-        child: ListView(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Row(
+                children: [
+                  for (var i = 0; i < 3; i++) ...[
+                    if (i > 0)
+                      Expanded(
+                        child: Container(
+                          height: 2,
+                          color: i <= _publishStep ? AppTheme.primary : hairline,
+                        ),
+                      ),
+                    GestureDetector(
+                      onTap: () {
+                        if (i < _publishStep) setState(() => _publishStep = i);
+                      },
+                      child: CircleAvatar(
+                        radius: 14,
+                        backgroundColor: i <= _publishStep ? AppTheme.primary : hairline,
+                        child: Text(
+                          '${i + 1}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: i <= _publishStep ? Colors.white : AppTheme.textMuted,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                _publishStep == 0
+                    ? 'Plate'
+                    : _publishStep == 1
+                        ? 'Slot & delivery'
+                        : 'Offers',
+                style: TextStyle(fontWeight: FontWeight.w700, color: titleColor),
+              ),
+            ),
+            Expanded(
+              child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
+            if (_publishStep == 0) ...[
             // Meal Image Banner
             GestureDetector(
               onTap: _pickImage,
-              child: Container(
+              child: Semantics(
+                button: true,
+                label: 'Add meal photo',
+                child: Container(
                 height: 190,
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: surface,
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.grey.shade300),
+                  border: Border.all(color: hairline),
                   image: _selectedImageFile != null
                       ? DecorationImage(
                           image: FileImage(File(_selectedImageFile!.path)),
@@ -402,16 +747,52 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                           SizedBox(height: 8),
                           Text('Add Appealing Meal Photo',
                               style: TextStyle(color: AppTheme.textMuted, fontWeight: FontWeight.w600)),
-                          Text('JPEG, PNG under 5MB', style: TextStyle(color: Colors.grey, fontSize: 11)),
+                          Text('JPEG, PNG under 5MB', style: TextStyle(color: AppTheme.textMuted, fontSize: 11)),
                         ],
                       )
                     : null,
               ),
+              ),
+            ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => showKitchenPhotoChecklist(context),
+                icon: const Icon(Icons.checklist_outlined, size: 18),
+                label: const Text('Photo checklist'),
+              ),
             ),
             const SizedBox(height: 24),
 
+            if (isEditing) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.primary.withValues(alpha: 0.25)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Editing published dish',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: AppTheme.link),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Update quantity, time slots, delivery options, price, and offers below, then tap Update Meal.',
+                      style: TextStyle(fontSize: 12, height: 1.35, color: AppTheme.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
+
             // Basics
-            const Text('Meal Identity', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain)),
+            Text('Meal Identity', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor)),
             const SizedBox(height: 12),
             TextFormField(
               controller: _titleController,
@@ -450,6 +831,63 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Text(
+                  'Add-ons (optional)',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: AppTheme.onSurfaceOf(context)),
+                ),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: () => setState(() => _addOns.add(_AddOnDraft())),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add extra'),
+                ),
+              ],
+            ),
+            Text(
+              'Customers can pick these on the dish page. Leave empty if this meal has no extras.',
+              style: AppTheme.caption,
+            ),
+            const SizedBox(height: 8),
+            ..._addOns.asMap().entries.map((entry) {
+              final index = entry.key;
+              final addon = entry.value;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: TextFormField(
+                        controller: addon.title,
+                        decoration: _inputStyle('Extra name (e.g. Extra raita)'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextFormField(
+                        controller: addon.price,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
+                        decoration: _inputStyle('₹'),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Remove extra',
+                      onPressed: () {
+                        setState(() {
+                          addon.dispose();
+                          _addOns.removeAt(index);
+                        });
+                      },
+                      icon: const Icon(Icons.close, color: AppTheme.textMuted),
+                    ),
+                  ],
+                ),
+              );
+            }),
             const SizedBox(height: 16),
 
             // Category & Veg Filter
@@ -460,18 +898,25 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: surface,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade300),
+                      border: Border.all(color: hairline),
                     ),
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<String>(
                         value: _selectedCategory,
                         isExpanded: true,
+                        dropdownColor: surface,
+                        style: TextStyle(fontSize: 14, color: titleColor),
                         items: _categories
                             .map((c) => DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontSize: 14))))
                             .toList(),
-                        onChanged: (v) => setState(() => _selectedCategory = v!),
+                        onChanged: (v) => setState(() {
+                          _selectedCategory = v!;
+                          if (v == 'Festival Hamper') _isHamper = true;
+                          if (v == 'Society Night') _isSocietyNight = true;
+                          if (v == 'Shelf') _isShelfItem = true;
+                        }),
                       ),
                     ),
                   ),
@@ -504,28 +949,228 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 8),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _isHamper,
+              activeThumbColor: AppTheme.primary,
+              title: Text('Festival hamper', style: TextStyle(fontWeight: FontWeight.w800, color: titleColor, fontSize: 14)),
+              subtitle: Text(
+                'Gift box for Diwali / festivals — shows on diner Home under Festival Hampers.',
+                style: AppTheme.caption,
+              ),
+              onChanged: (v) => setState(() {
+                _isHamper = v;
+                if (!v && _selectedCategory == 'Festival Hamper') {
+                  _selectedCategory = 'Maharashtrian';
+                }
+              }),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _isSocietyNight,
+              activeThumbColor: AppTheme.primary,
+              title: Text('Society / RWA night', style: TextStyle(fontWeight: FontWeight.w800, color: titleColor, fontSize: 14)),
+              subtitle: Text(
+                'One building, one drop — shows on diner Home under Society Nights.',
+                style: AppTheme.caption,
+              ),
+              onChanged: (v) => setState(() {
+                _isSocietyNight = v;
+                if (!v && _selectedCategory == 'Society Night') {
+                  _selectedCategory = 'Maharashtrian';
+                }
+              }),
+            ),
+            if (_isSocietyNight || _selectedCategory == 'Society Night') ...[
+              const SizedBox(height: 4),
+              TextFormField(
+                controller: _societyLabelController,
+                decoration: InputDecoration(
+                  labelText: 'Society / building name',
+                  hintText: 'e.g. Green Valley A-wing',
+                  filled: true,
+                  fillColor: surface,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                textCapitalization: TextCapitalization.words,
+              ),
+            ],
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _isShelfItem,
+              activeThumbColor: AppTheme.primary,
+              title: Text('Shelf / pantry item', style: TextStyle(fontWeight: FontWeight.w800, color: titleColor, fontSize: 14)),
+              subtitle: Text(
+                'Pickle, masala, papad — shows on diner Home under Shelf from Home.',
+                style: AppTheme.caption,
+              ),
+              onChanged: (v) => setState(() {
+                _isShelfItem = v;
+                if (!v) {
+                  if (_selectedCategory == 'Shelf') _selectedCategory = 'Maharashtrian';
+                }
+              }),
+            ),
+            if (_isShelfItem || _selectedCategory == 'Shelf') ...[
+              const SizedBox(height: 4),
+              TextFormField(
+                controller: _shelfKindController,
+                decoration: InputDecoration(
+                  labelText: 'Shelf kind',
+                  hintText: 'e.g. Pickle, Masala, Papad',
+                  filled: true,
+                  fillColor: surface,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                textCapitalization: TextCapitalization.words,
+              ),
+            ],
+            const SizedBox(height: 16),
+            Text('Diet tags', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor)),
+            const SizedBox(height: 4),
+            Text(
+              'Diners can filter Home by these tags. Leave blank if they do not apply.',
+              style: AppTheme.caption,
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final tag in kChefDietTags)
+                  FilterChip(
+                    label: Text(tag),
+                    selected: _dietTags.contains(tag),
+                    selectedColor: AppTheme.primary.withValues(alpha: 0.18),
+                    checkmarkColor: AppTheme.primary,
+                    onSelected: (selected) {
+                      setState(() {
+                        if (selected) {
+                          _dietTags.add(tag);
+                        } else {
+                          _dietTags.remove(tag);
+                        }
+                      });
+                    },
+                  ),
+              ],
+            ),
             const SizedBox(height: 24),
-
+            Text('Nutrition (per portion)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor)),
+            const SizedBox(height: 4),
+            Text(
+              'Shown on the diner meal card. Leave blank if you are not sure — do not guess.',
+              style: AppTheme.caption,
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: _caloriesController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,1}'))],
+                    validator: (v) => _optionalNutrition(v, max: 5000),
+                    decoration: _inputStyle('Cal (kcal)'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextFormField(
+                    controller: _weightController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,1}'))],
+                    validator: (v) => _optionalNutrition(v, max: 5000),
+                    decoration: _inputStyle('Wt (g)'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextFormField(
+                    controller: _proteinController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,1}'))],
+                    validator: (v) => _optionalNutrition(v, max: 400),
+                    decoration: _inputStyle('Protein (g)'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: _carbsController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,1}'))],
+                    validator: (v) => _optionalNutrition(v, max: 400),
+                    decoration: _inputStyle('Carbs (g)'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextFormField(
+                    controller: _fatController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,1}'))],
+                    validator: (v) => _optionalNutrition(v, max: 400),
+                    decoration: _inputStyle('Fat (g)'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextFormField(
+                    controller: _fiberController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,1}'))],
+                    validator: (v) => _optionalNutrition(v, max: 100),
+                    decoration: _inputStyle('Fiber (g)'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            ],
+            if (_publishStep == 1) ...[
             // Logistics & Schedule
-            const Text('Fulfillment & Prep Schedule', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain)),
+            Text('Time slots', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor)),
+            const SizedBox(height: 4),
+            Text(
+              'When this dish can be ordered and served.',
+              style: AppTheme.caption,
+            ),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: surface,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade300),
+                border: Border.all(color: hairline),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    _activeTimeSlot.isEmpty ? 'No delivery window assigned' : 'Slot: $_activeTimeSlot',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: _activeTimeSlot.isEmpty ? AppTheme.textMuted : AppTheme.primary,
-                    ),
+                  Row(
+                    children: [
+                      Icon(
+                        _activeTimeSlot.isEmpty ? Icons.schedule_outlined : Icons.schedule,
+                        size: 18,
+                        color: _activeTimeSlot.isEmpty ? AppTheme.textMuted : AppTheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _activeTimeSlot.isEmpty ? 'No time slot assigned yet' : _activeTimeSlot,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: _activeTimeSlot.isEmpty ? AppTheme.textMuted : AppTheme.linkOf(context),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 10),
                   SizedBox(
@@ -536,28 +1181,39 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       ),
                       icon: const Icon(Icons.schedule, size: 16, color: AppTheme.primary),
-                      label: const Text('Configure Cooking & Serving Schedule', style: TextStyle(color: AppTheme.primary)),
+                      label: Text(
+                        _activeTimeSlot.isEmpty ? 'Set cooking & serving slot' : 'Change time slot',
+                        style: const TextStyle(color: AppTheme.link),
+                      ),
                       onPressed: _openScheduleBuilder,
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 20),
 
-            // Service Types
+            Text('Delivery options', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor)),
+            const SizedBox(height: 4),
+            Text(
+              'How customers can receive this dish. Select every option you can offer.',
+              style: AppTheme.caption,
+            ),
+            const SizedBox(height: 12),
             Container(
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: surface,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade300),
+                border: Border.all(color: hairline),
               ),
               child: Column(
                 children: ServiceType.values.map((option) {
                   return CheckboxListTile(
                     dense: true,
                     activeColor: AppTheme.primary,
-                    title: Text(option.toDisplayString(), style: const TextStyle(fontSize: 13, color: AppTheme.textMain)),
+                    secondary: Icon(_serviceIcon(option), color: AppTheme.primary, size: 22),
+                    title: Text(option.toDisplayString(), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: titleColor)),
+                    subtitle: Text(option.chefHelpText, style: AppTheme.micro),
                     value: _selectedServices.contains(option),
                     onChanged: (val) {
                       setState(() {
@@ -573,22 +1229,25 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
               ),
             ),
             const SizedBox(height: 24),
-
+            ],
+            if (_publishStep == 2) ...[
             // Pricing Calculator Offer Section
-            const Text('Promotions & Discounts', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain)),
+            Text('Promotions & Discounts', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor)),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: surface,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade300),
+                border: Border.all(color: hairline),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   DropdownButtonFormField<OfferType>(
                     value: _selectedOfferType,
+                    dropdownColor: surface,
+                    style: TextStyle(color: titleColor, fontSize: 14),
                     decoration: _inputStyle('Select Promotion Rule'),
                     items: const [
                       DropdownMenuItem(value: OfferType.none, child: Text('No Offer (Regular Price)')),
@@ -676,36 +1335,144 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                     ),
                   ],
 
+                  const SizedBox(height: 16),
+                  if (_selectedOfferType != OfferType.none && _promoExtraType != OfferType.none)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Text(
+                        'Both the automatic offer and the extra code discount apply. Kitchen take-home follows the reduced food price.',
+                        style: TextStyle(fontSize: 12, height: 1.35, color: AppTheme.warning, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    value: _promoAdvanced,
+                    activeColor: AppTheme.primary,
+                    title: const Text('Checkout code (optional)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                    subtitle: Text(
+                      'Off by default. Turn on only if diners must type a code. Extra % / ₹ on top of an automatic offer stacks — use one or the other.',
+                      style: AppTheme.micro,
+                    ),
+                    onChanged: (val) => setState(() {
+                      _promoAdvanced = val;
+                      if (!val) {
+                        _promoController.clear();
+                        _promoDiscountController.clear();
+                        _promoExtraType = OfferType.none;
+                      }
+                    }),
+                  ),
+                  if (_promoAdvanced) ...[
+                  TextFormField(
+                    controller: _promoController,
+                    textCapitalization: TextCapitalization.characters,
+                    decoration: _inputStyle('Promo code (e.g. HOME20)'),
+                    validator: (v) {
+                      if (!_promoAdvanced || _promoExtraType == OfferType.none) return null;
+                      if ((v ?? '').trim().isEmpty) return 'Add a code for the extra stacked discount';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Code with no extra discount unlocks the offer above at checkout. Extra % or ₹ is a second cut — not a replacement.',
+                    style: TextStyle(fontSize: 11, color: AppTheme.textMuted, height: 1.35),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<OfferType>(
+                    value: _promoExtraType == OfferType.flat ? OfferType.flat : _promoExtraType == OfferType.percentage
+                        ? OfferType.percentage
+                        : OfferType.none,
+                    dropdownColor: surface,
+                    style: TextStyle(color: titleColor, fontSize: 14),
+                    decoration: _inputStyle('Extra discount on this code'),
+                    items: const [
+                      DropdownMenuItem(value: OfferType.none, child: Text('No extra — code unlocks the offer')),
+                      DropdownMenuItem(value: OfferType.percentage, child: Text('Extra percentage off (stacks)')),
+                      DropdownMenuItem(value: OfferType.flat, child: Text('Extra flat ₹ off this dish (stacks)')),
+                    ],
+                    onChanged: (val) => setState(() => _promoExtraType = val ?? OfferType.none),
+                  ),
+                  if (_promoExtraType == OfferType.percentage || _promoExtraType == OfferType.flat) ...[
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _promoDiscountController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: _inputStyle(
+                        _promoExtraType == OfferType.percentage
+                            ? 'Extra percent (e.g. 10)'
+                            : 'Extra ₹ off this dish (e.g. 50)',
+                      ),
+                      validator: (v) {
+                        if (_promoExtraType == OfferType.none) return null;
+                        final parsed = double.tryParse(v ?? '');
+                        if (parsed == null || parsed <= 0) return 'Enter the extra promo discount';
+                        if (_promoExtraType == OfferType.percentage && parsed > 90) {
+                          return 'Extra percent cannot exceed 90';
+                        }
+                        return null;
+                      },
+                    ),
+                  ],
+                  ],
+
                   const SizedBox(height: 12),
                   SwitchListTile.adaptive(
                     contentPadding: EdgeInsets.zero,
                     activeColor: AppTheme.primary,
                     title: const Text('Accept HotPot Reward Coins', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                    subtitle: const Text('Customers can use platform coins to discount this dish', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                    subtitle: Text('Customers can use platform coins to discount this dish', style: AppTheme.micro),
                     value: _acceptsHotpotCoins,
                     onChanged: (val) => setState(() => _acceptsHotpotCoins = val),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 32),
-
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              ),
-              onPressed: _isLoading ? null : _publishMeal,
-              child: _isLoading
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : Text(
-                      isEditing ? 'Update Meal' : 'Publish Meal to Menu',
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
+            const SizedBox(height: 12),
+            Text(
+              'Orders from HotPotChef diners must stay on the app (Razorpay checkout). Off-app WhatsApp/UPI deals can pause boosts and Support.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12, height: 1.35, color: AppTheme.textMuted, fontWeight: FontWeight.w600),
             ),
-            const SizedBox(height: 40),
+            const SizedBox(height: 24),
+            ],
+          ],
+        ),
+            ),
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: Row(
+                  children: [
+                    if (_publishStep > 0)
+                      TextButton(
+                        onPressed: _isLoading ? null : () => setState(() => _publishStep--),
+                        child: const Text('Back'),
+                      ),
+                    if (_publishStep > 0) const SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        onPressed: _isLoading ? null : _goPublishNext,
+                        child: _isLoading
+                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                            : Text(
+                                _publishStep < 2
+                                    ? 'Next'
+                                    : (isEditing ? 'Update Meal' : 'Publish Meal to Menu'),
+                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -799,14 +1566,36 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     });
   }
 
+  IconData _serviceIcon(ServiceType type) {
+    switch (type) {
+      case ServiceType.deliveryPlatform:
+        return Icons.delivery_dining_rounded;
+      case ServiceType.deliverySelf:
+        return Icons.two_wheeler_rounded;
+      case ServiceType.pickup:
+        return Icons.storefront_rounded;
+      case ServiceType.dineIn:
+        return Icons.restaurant_rounded;
+    }
+  }
+
+  String? _optionalNutrition(String? raw, {required double max}) {
+    final text = (raw ?? '').trim();
+    if (text.isEmpty) return null;
+    final value = parseMealNutritionNumber(text);
+    if (value == null) return 'Enter a number greater than 0';
+    if (value > max) return 'That value looks too high';
+    return null;
+  }
+
   InputDecoration _inputStyle(String label) {
     return InputDecoration(
       labelText: label,
-      labelStyle: const TextStyle(fontSize: 13, color: Colors.grey),
+      labelStyle: TextStyle(fontSize: 13, color: AppTheme.textMuted),
       filled: true,
-      fillColor: Colors.white,
+      fillColor: AppTheme.surfaceOf(context),
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppTheme.hairlineOf(context))),
       focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppTheme.primary, width: 1.5)),
     );
   }

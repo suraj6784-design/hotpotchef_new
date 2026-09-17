@@ -1,41 +1,108 @@
-// supabase/functions/create-chef-account/index.ts
-// Auth model: chef self-service. JWT required; chef_id is derived from auth.uid().
-// Route linked accounts: uses RAZORPAY_KEY_ID + RAZORPAY_KEY_SECRET (Test keys).
-// Mock acc_mock_* is only created when those secrets are missing.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { handleCreateChefAccount, jsonResponse } from './handler.mjs'
+import { jsonResponse, optionsResponse } from '../_shared/cors.ts'
+import { createRouteLinkedAccount } from '../_shared/razorpay.ts'
 
 serve(async (req) => {
-  try {
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-    )
+  if (req.method === 'OPTIONS') return optionsResponse()
 
-    return await handleCreateChefAccount(req, {
-      async getUser(token) {
-        const { data, error } = await supabaseAdmin.auth.getUser(token)
-        if (error || !data.user) return null
-        return data.user
-      },
-      async findCallerRow(userId) {
-        const { data } = await supabaseAdmin
-          .from('users')
-          .select('gateway_account_id, role')
-          .eq('id', userId)
-          .maybeSingle()
-        return data
-      },
-      async enablePayout(chefId, accountId) {
-        await supabaseAdmin.from('users').update({
-          gateway_account_id: accountId,
-          payout_enabled: true,
-        }).eq('id', chefId)
-      },
+  try {
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader) return jsonResponse({ success: false, error: 'Unauthorized' }, 401)
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+
+    const userClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
     })
+    const { data: userData, error: userError } = await userClient.auth.getUser()
+    if (userError || !userData.user) {
+      return jsonResponse({ success: false, error: 'Unauthorized' }, 401)
+    }
+
+    const body = await req.json().catch(() => ({}))
+    const chefId = String(body.chef_id ?? userData.user.id)
+    if (chefId !== userData.user.id) {
+      return jsonResponse({ success: false, error: 'You can only link your own payout account' }, 403)
+    }
+
+    const admin = createClient(supabaseUrl, serviceKey)
+    const bankAccount = String(body.bank_account ?? '').replace(/\s+/g, '')
+    const ifsc = String(body.ifsc_code ?? '').trim().toUpperCase()
+    const beneficiary = String(body.beneficiary_name ?? '').trim()
+    if (!bankAccount || !ifsc || !beneficiary) {
+      return jsonResponse({ success: false, error: 'Beneficiary name, account number, and IFSC are required' }, 400)
+    }
+
+    const { data: existing } = await admin
+      .from('users')
+      .select('gateway_account_id, payout_enabled, email, phone, name, pan_number, gstin, address, city')
+      .eq('id', chefId)
+      .maybeSingle()
+
+    const currentAccount = existing?.gateway_account_id?.toString() ?? ''
+    const isLiveAccount = currentAccount.startsWith('acc_') && !currentAccount.startsWith('acc_mock_')
+
+    const bankPatch = {
+      bank_account_number: bankAccount,
+      bank_ifsc: ifsc,
+      beneficiary_name: beneficiary,
+      updated_at: new Date().toISOString(),
+    }
+
+    if (isLiveAccount) {
+      await admin.from('users').update({
+        ...bankPatch,
+        payout_enabled: true,
+      }).eq('id', chefId)
+      return jsonResponse({
+        success: true,
+        pending: false,
+        payout_enabled: true,
+        account_id: currentAccount,
+      })
+    }
+
+    try {
+      const linked = await createRouteLinkedAccount({
+        chefId,
+        email: String(body.email || existing?.email || userData.user.email || ''),
+        phone: String(body.phone || existing?.phone || ''),
+        name: String(body.name || existing?.name || beneficiary),
+        bankAccount,
+        ifsc,
+        beneficiary,
+        pan: String(existing?.pan_number || body.pan || '').toUpperCase(),
+        gstin: String(existing?.gstin || body.gstin || ''),
+        street: String(existing?.address || ''),
+        city: String(existing?.city || 'Pune'),
+      })
+      await admin.from('users').update({
+        ...bankPatch,
+        gateway_account_id: linked.accountId,
+        payout_enabled: true,
+      }).eq('id', chefId)
+      return jsonResponse({
+        success: true,
+        pending: false,
+        payout_enabled: true,
+        account_id: linked.accountId,
+      })
+    } catch (routeErr) {
+      await admin.from('users').update({
+        ...bankPatch,
+        payout_enabled: false,
+      }).eq('id', chefId)
+      return jsonResponse({
+        success: true,
+        pending: true,
+        payout_enabled: false,
+        message: `Bank details saved. Razorpay Route is not active yet: ${routeErr?.message ?? routeErr}`,
+      })
+    }
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Bad request'
-    return jsonResponse({ error: message }, 400)
+    return jsonResponse({ success: false, error: err?.message ?? String(err) }, 400)
   }
 })

@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/app_theme.dart';
+import '../widgets/app_widgets.dart';
 
 class DriverIdCardScreen extends StatefulWidget {
   final String driverName;
@@ -86,13 +87,18 @@ class _DriverIdCardScreenState extends State<DriverIdCardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? AppTheme.backgroundDark : AppTheme.background;
+    final surface = isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight;
+    final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: bg,
       appBar: AppBar(
-        title: const Text('Digital ID Card', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: const Color(0xFF1E1E1E),
+        title: Text('Digital ID Card', style: TextStyle(color: titleColor, fontWeight: FontWeight.bold)),
+        backgroundColor: surface,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: IconThemeData(color: titleColor),
       ),
       body: Center(
         child: SingleChildScrollView(
@@ -123,12 +129,7 @@ class _DriverIdCardScreenState extends State<DriverIdCardScreen> {
                         ),
                         child: Column(
                           children: [
-                            Image.asset(
-                              'assets/app_icon.png',
-                              height: 40,
-                              width: 40,
-                              errorBuilder: (c, e, s) => const Icon(Icons.delivery_dining, color: Colors.white, size: 40),
-                            ),
+                            const AppLogo(size: 40, onDark: true),
                             const SizedBox(height: 8),
                             const Text(
                               'HOTPOTCHEF',
@@ -166,7 +167,7 @@ class _DriverIdCardScreenState extends State<DriverIdCardScreen> {
                           backgroundColor: Colors.grey.shade300,
                           backgroundImage: widget.avatarUrl != null ? NetworkImage(widget.avatarUrl!) : null,
                           child: widget.avatarUrl == null
-                              ? const Icon(Icons.person, size: 50, color: Colors.grey)
+                              ? const Icon(Icons.person, size: 50, color: AppTheme.textMuted)
                               : null,
                         ),
                       ),

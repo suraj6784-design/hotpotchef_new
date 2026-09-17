@@ -1,104 +1,49 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
 import 'package:hotpotchef_new/screens/reset_password_screen.dart';
-import 'package:hotpotchef_new/utils/helpers.dart';
+
+Widget _wrap(Widget child) {
+  return MaterialApp(
+    theme: ThemeData(brightness: Brightness.light),
+    home: child,
+  );
+}
 
 void main() {
-  group('Validators.confirmPassword', () {
-    test('requires a matching confirmation', () {
-      expect(Validators.password('short'), isNotNull);
-      expect(Validators.password('longenough'), isNull);
-      expect(Validators.confirmPassword(null, 'longenough'), isNotNull);
-      expect(Validators.confirmPassword('otherpass', 'longenough'), isNotNull);
-      expect(Validators.confirmPassword('longenough', 'longenough'), isNull);
-    });
-  });
-
-  testWidgets('shows validation errors for a short or mismatched password', (
-    tester,
-  ) async {
-    await tester.pumpWidget(_resetHarness(updatePassword: (_) async {}));
-
-    await tester.tap(find.text('Update password'));
-    await tester.pump();
-    expect(find.text('Password must be at least 8 characters'), findsOneWidget);
-
-    await tester.enterText(find.byType(TextFormField).at(0), 'longenough');
-    await tester.enterText(find.byType(TextFormField).at(1), 'different1');
-    await tester.tap(find.text('Update password'));
-    await tester.pump();
-    expect(find.text('Passwords do not match'), findsOneWidget);
-  });
-
-  testWidgets('submits a valid password and continues to the hub', (
-    tester,
-  ) async {
-    String? submitted;
-    final router = _resetRouter(
-      updatePassword: (password) async {
-        submitted = password;
-      },
-      hubLocation: () => '/customer-hub',
-    );
-
-    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-
-    await tester.enterText(find.byType(TextFormField).at(0), 'longenough');
-    await tester.enterText(find.byType(TextFormField).at(1), 'longenough');
-    await tester.tap(find.text('Update password'));
-    await tester.pumpAndSettle();
-
-    expect(submitted, 'longenough');
-    expect(find.text('customer-hub'), findsOneWidget);
-  });
-
-  testWidgets('shows an error when password update fails', (tester) async {
+  testWidgets('asks the user to open the email link when there is no recovery session', (tester) async {
     await tester.pumpWidget(
-      _resetHarness(
-        updatePassword: (_) async {
-          throw Exception('session expired');
-        },
-      ),
+      _wrap(const ResetPasswordScreen(hasRecoverySession: false)),
     );
 
-    await tester.enterText(find.byType(TextFormField).at(0), 'longenough');
-    await tester.enterText(find.byType(TextFormField).at(1), 'longenough');
-    await tester.tap(find.text('Update password'));
-    await tester.pump();
-
-    expect(find.textContaining('Could not update password'), findsOneWidget);
-    expect(find.textContaining('session expired'), findsOneWidget);
-    expect(find.text('Set a new password'), findsOneWidget);
+    expect(find.textContaining('Open the reset link from your email'), findsOneWidget);
+    expect(find.text('Old password'), findsNothing);
+    expect(find.text('Save password'), findsNothing);
   });
-}
 
-Widget _resetHarness({
-  required Future<void> Function(String password) updatePassword,
-}) {
-  return MaterialApp.router(
-    routerConfig: _resetRouter(updatePassword: updatePassword),
-  );
-}
-
-GoRouter _resetRouter({
-  required Future<void> Function(String password) updatePassword,
-  String Function()? hubLocation,
-}) {
-  return GoRouter(
-    initialLocation: '/reset-password',
-    routes: [
-      GoRoute(
-        path: '/reset-password',
-        builder: (context, state) => ResetPasswordScreen(
-          updatePassword: updatePassword,
-          hubLocation: hubLocation ?? () => '/customer-hub',
+  testWidgets('recovery form sets a new password without asking for the old one', (tester) async {
+    String? saved;
+    await tester.pumpWidget(
+      _wrap(
+        ResetPasswordScreen(
+          hasRecoverySession: true,
+          onSubmit: (password) async => saved = password,
         ),
       ),
-      GoRoute(
-        path: '/customer-hub',
-        builder: (context, state) => const Scaffold(body: Text('customer-hub')),
-      ),
-    ],
-  );
+    );
+
+    expect(find.text('Old password'), findsNothing);
+    expect(find.text('New password (min 8 chars)'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField).at(0), 'newpass12');
+    await tester.enterText(find.byType(TextField).at(1), 'mismatch1');
+    await tester.tap(find.text('Save password'));
+    await tester.pump();
+    expect(find.text('Passwords do not match.'), findsOneWidget);
+    expect(saved, isNull);
+
+    await tester.enterText(find.byType(TextField).at(1), 'newpass12');
+    await tester.tap(find.text('Save password'));
+    await tester.pump();
+    expect(saved, 'newpass12');
+  });
 }

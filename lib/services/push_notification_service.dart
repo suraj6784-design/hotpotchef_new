@@ -1,11 +1,15 @@
 // lib/services/push_notification_service.dart
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'alert_service.dart';
 import '../firebase_bootstrap.dart';
+import '../utils/network.dart';
 
 // Top-level background message handler (Required by FCM)
 @pragma('vm:entry-point')
@@ -18,6 +22,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 class PushNotificationService {
   static FirebaseMessaging get _messaging => FirebaseMessaging.instance;
   static final _supabase = Supabase.instance.client;
+  static Map<String, dynamic>? _pendingData;
 
   static Future<void> initialize() async {
     if (Firebase.apps.isEmpty) {
@@ -45,7 +50,7 @@ class PushNotificationService {
       }
 
       // 3. Fetch and save the FCM Token to Supabase for the current user
-      await _syncFCMTokenToDatabase();
+      await syncTokenForCurrentUser();
 
       // 4. Re-sync when auth state changes (login after cold start, token refresh)
       _supabase.auth.onAuthStateChange.listen((data) {
@@ -65,10 +70,32 @@ class PushNotificationService {
         _updateTokenInDatabase(newToken);
       });
 
-      // 6. Handle foreground messages
+      // 6. Handle foreground messages with an in-app banner
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-        debugPrint('Received foreground message: ${message.notification?.title}');
+        final title = message.notification?.title ?? 'HotPotChef';
+        final body = message.notification?.body ?? '';
+        final id = message.data['alert_id'] ??
+            message.data['message_id'] ??
+            message.data['order_id'] ??
+            message.messageId ??
+            title;
+        AlertService.showBanner(id, title, body, data: message.data);
       });
+
+      FirebaseMessaging.onMessageOpenedApp.listen(openFromMessage);
+      final initial = await _messaging.getInitialMessage();
+      if (initial != null) {
+        _pendingData = Map<String, dynamic>.from(initial.data);
+      }
+
+      _supabase.auth.onAuthStateChange.listen((data) {
+        if (data.session != null) {
+          AlertService.start();
+        } else {
+          AlertService.stop();
+        }
+      });
+      await AlertService.start();
     } catch (e, stack) {
       _recordNonFatal(e, stack, 'Error initializing PushNotifications service');
       debugPrint('Error initializing PushNotifications: $e');
@@ -97,7 +124,7 @@ class PushNotificationService {
       final user = _supabase.auth.currentUser;
       if (user == null) return;
 
-      String? token = await _messaging.getToken();
+      String? token = await _messaging.getToken().withTimeout(NetworkTimeouts.short);
       if (token != null) {
         await _updateTokenInDatabase(token);
       }
@@ -115,13 +142,24 @@ class PushNotificationService {
       // Save token inside the users table column 'fcm_token'
       await _supabase.from('users').update({
         'fcm_token': token,
-      }).eq('id', user.id);
+      }).eq('id', user.id).withTimeout(NetworkTimeouts.short);
 
       debugPrint('FCM Token successfully updated in Supabase.');
     } catch (e, stack) {
       _recordNonFatal(e, stack, 'Failed to update token in database');
       debugPrint('Failed to update token in database: $e');
     }
+  }
+
+  static void openFromMessage(RemoteMessage message) {
+    unawaited(AlertService.openFromData(Map<String, dynamic>.from(message.data)));
+  }
+
+  static void openPendingAlert() {
+    final data = _pendingData;
+    _pendingData = null;
+    if (data == null || data.isEmpty) return;
+    unawaited(AlertService.openFromData(data));
   }
 
   // Clear token on logout so notifications don't go to a signed-out device

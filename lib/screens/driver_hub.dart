@@ -1,18 +1,32 @@
 // lib/screens/driver_hub.dart
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../utils/helpers.dart';
+import '../utils/app_flavor.dart';
 import '../widgets/customer_ui_components.dart';
+import '../widgets/app_widgets.dart';
+import '../widgets/app_status_badge.dart';
+import '../widgets/order_slot_banner.dart';
 import '../providers/driver_dashboard_provider.dart';
+import '../models/app_role.dart';
 import '../models/driver_delivery_model.dart';
-import '../services/push_notification_service.dart';
+import '../services/auth_session.dart';
+import '../services/delivery_estimator_service.dart';
+import '../services/kitchen_media.dart';
+import '../services/order_lifecycle.dart';
+import '../widgets/driver_payout_cadence_card.dart';
+import '../widgets/kyc_reminder_banner.dart';
+import '../widgets/diner_storefront.dart';
 import 'driver_profile_screen.dart';
+import 'notifications_inbox_screen.dart';
 
 class DriverHubScreen extends ConsumerStatefulWidget {
   const DriverHubScreen({super.key});
@@ -23,7 +37,256 @@ class DriverHubScreen extends ConsumerStatefulWidget {
 
 class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
   int _selectedIndex = 0;
+  int _ordersStage = 0;
   bool _isOnline = true;
+  String? _busyOrderId;
+  String _welcomeName = 'Partner';
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(AuthSession.ensureHubRole(context, AppRole.driver));
+    _loadAvailability();
+  }
+
+  Future<void> _loadAvailability() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+    try {
+      final row = await Supabase.instance.client
+          .from('driver_profiles')
+          .select('is_available')
+          .eq('user_id', user.id)
+          .maybeSingle();
+      final userRow = await Supabase.instance.client
+          .from('users')
+          .select('name, full_name')
+          .eq('id', user.id)
+          .maybeSingle();
+      if (mounted) {
+        setState(() {
+          if (row != null) _isOnline = row['is_available'] != false;
+          final raw = userRow?['name']?.toString() ?? userRow?['full_name']?.toString() ?? '';
+          if (raw.trim().isNotEmpty) _welcomeName = raw.trim().split(' ').first;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _toggleOnline() async {
+    final next = !_isOnline;
+    setState(() => _isOnline = next);
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+    try {
+      await Supabase.instance.client.from('driver_profiles').upsert({
+        'user_id': user.id,
+        'is_available': next,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      });
+    } catch (_) {
+      try {
+        await Supabase.instance.client
+            .from('driver_profiles')
+            .update({'is_available': next})
+            .eq('user_id', user.id);
+      } catch (e) {
+        if (mounted) {
+          setState(() => _isOnline = !next);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not update availability: $e'), backgroundColor: Colors.red),
+          );
+          return;
+        }
+      }
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(next ? 'Online • Receiving dispatches' : 'You are offline'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  Future<void> _callCustomer(String customerId) async {
+    if (customerId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No customer contact on this order.'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
+    try {
+      final userDoc = await Supabase.instance.client.from('users').select('phone').eq('id', customerId).maybeSingle();
+      final phoneStr = userDoc?['phone']?.toString() ?? '';
+      if (phoneStr.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No phone number available.'), backgroundColor: Colors.orange),
+          );
+        }
+        return;
+      }
+      final uri = Uri(scheme: 'tel', path: phoneStr);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open phone dialer.'), backgroundColor: Colors.red),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      }
+    }
+  }
+
+  Future<void> _openNavigation(DriverDeliveryModel delivery) async {
+    if (!mounted) return;
+    context.push('/tracking', extra: {
+      'order': delivery.toTrackingOrderExtra(),
+      'isDriver': true,
+    });
+  }
+
+  Future<void> _openExternalMaps(DriverDeliveryModel delivery) async {
+    final toCustomer = delivery.navigateToCustomer;
+    final mapsUri = googleMapsDirectionsUri(
+      lat: toCustomer ? delivery.deliveryLat : delivery.pickupLat,
+      lng: toCustomer ? delivery.deliveryLng : delivery.pickupLng,
+      address: toCustomer ? delivery.customerAddress : delivery.pickupAddress,
+      preferAddress: toCustomer,
+    );
+    if (mapsUri == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            toCustomer
+                ? 'Customer pin missing — use the address on the card.'
+                : 'Kitchen pin missing — use the pickup address on the card.',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    try {
+      await launchUrl(mapsUri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open Maps: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Widget _addressBlock({
+    required String title,
+    required String address,
+    required String coordLabel,
+    required bool active,
+    required IconData icon,
+  }) {
+    final color = active ? AppTheme.primary : AppTheme.textMuted;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: active ? AppTheme.primary.withValues(alpha: 0.06) : AppTheme.surfaceOf(context),
+        borderRadius: AppTheme.radiusLg,
+        border: Border.all(
+          color: active ? AppTheme.primary.withValues(alpha: 0.35) : AppTheme.hairlineOf(context),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: AppTheme.homeKickerOf(context).copyWith(color: color),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  address,
+                  style: AppTheme.bodyOf(context),
+                ),
+                if (coordLabel.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Pinned $coordLabel',
+                    style: AppTheme.micro,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _dropoffNotesCard(DriverDeliveryModel delivery) {
+    final gate = delivery.gateInstructions?.trim() ?? '';
+    var notes = driverFacingOrderNotes(delivery.specialInstructions);
+    if (notes.isNotEmpty) {
+      notes = notes
+          .split('\n')
+          .map((line) => line.trim())
+          .where((line) {
+            if (line.isEmpty) return false;
+            final lower = line.toLowerCase();
+            if (gate.isNotEmpty && lower.startsWith('gate:')) return false;
+            return true;
+          })
+          .join('\n')
+          .trim();
+    }
+    if (gate.isEmpty && notes.isEmpty) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.accent.withValues(alpha: 0.10),
+        borderRadius: AppTheme.radiusLg,
+        border: Border.all(color: AppTheme.accent.withValues(alpha: 0.45)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'GATE / DELIVERY NOTES',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.6,
+              color: AppTheme.onSurfaceOf(context),
+            ),
+          ),
+          if (gate.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text('Gate instructions', style: TextStyle(fontSize: 11, color: AppTheme.textMuted, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 2),
+            Text(gate, style: TextStyle(fontSize: 13, height: 1.35, color: AppTheme.onSurfaceOf(context), fontWeight: FontWeight.w600)),
+          ],
+          if (notes.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text('Special instructions', style: TextStyle(fontSize: 11, color: AppTheme.textMuted, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 2),
+            Text(notes, style: TextStyle(fontSize: 13, height: 1.35, color: AppTheme.onSurfaceOf(context))),
+          ],
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,9 +294,10 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
     final notifier = ref.read(driverDashboardProvider.notifier);
 
     final List<Widget> pages = [
-      _buildDashboardTab(dashboardState),
-      _buildAvailableTab(dashboardState.availableDeliveries, notifier),
-      _buildActiveDeliveryTab(dashboardState.activeDeliveries, notifier),
+      _buildHomeTab(dashboardState),
+      _buildOrdersWorkspace(dashboardState, notifier),
+      const DriverProfileScreen(embedded: true),
+      const NotificationsInboxScreen(embedded: true, partnerInbox: true),
     ];
 
     return PopScope(
@@ -44,16 +308,14 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
         final shouldExit = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
-            backgroundColor: AppTheme.surfaceDark,
-            title: const Text('Exit App', style: TextStyle(color: Colors.white)),
-            content: const Text('Are you sure you want to exit?', style: TextStyle(color: Colors.white70)),
+            title: const Text('Exit App'),
+            content: const Text('Are you sure you want to exit?'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                child: const Text('Cancel'),
               ),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary, foregroundColor: Colors.white),
                 onPressed: () => Navigator.pop(ctx, true),
                 child: const Text('Exit'),
               ),
@@ -66,129 +328,53 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
         }
       },
       child: Scaffold(
-        backgroundColor: AppTheme.background,
-        body: Column(
+        backgroundColor: AppTheme.canvasOf(context),
+        resizeToAvoidBottomInset: false,
+        body: Stack(
           children: [
-            Container(
-              padding: EdgeInsets.only(
-                top: MediaQuery.of(context).padding.top + 16,
-                left: 24,
-                right: 24,
-                bottom: 24,
-              ),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [AppTheme.primary, AppTheme.primaryGradientEnd],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(32),
-                  bottomRight: Radius.circular(32),
-                ),
-                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4))],
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Delivery Partner',
-                          style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 12),
-                      GestureDetector(
-                        onTap: () {
-                          setState(() => _isOnline = !_isOnline);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(_isOnline ? '🟢 Online • Receiving Dispatches' : '🔴 Offline'),
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: Colors.white54),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.circle, color: _isOnline ? Colors.greenAccent : Colors.redAccent, size: 10),
-                              const SizedBox(width: 6),
-                              Text(
-                                _isOnline ? 'Online • Live Feed' : 'Offline',
-                                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
+            Column(
+              children: [
+            if (_selectedIndex != 2 && _selectedIndex != 3) _buildPartnerHeader(),
+                if (_selectedIndex == 0) const KycReminderBanner(profilePath: '/driver-profile'),
+                Expanded(
+                  child: HubTabSwitcher(
+                    index: _selectedIndex,
+                    children: pages,
                   ),
-                  Row(
-                    children: [
-                      GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const DriverProfileScreen()),
-                          );
-                        },
-                        child: const CircleAvatar(
-                          backgroundColor: Colors.white,
-                          radius: 20,
-                          child: Icon(Icons.person, color: AppTheme.primary, size: 20),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      GestureDetector(
-                        onTap: () async {
-                          try {
-                            await PushNotificationService.clearTokenOnLogout();
-                            await Supabase.instance.client.auth.signOut();
-                            if (mounted) context.go('/auth');
-                          } catch (e, stack) {
-                            FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Driver signout failure');
-                          }
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle),
-                          child: const Icon(Icons.logout, color: Colors.white, size: 20),
-                        ),
-                      ),
-                    ],
+                ),
+              ],
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: HubBottomDock(
+                selectedIndex: _selectedIndex,
+                onSelect: (idx) => setState(() => _selectedIndex = idx),
+                destinations: [
+                  const HubDockDestination(
+                    icon: Icons.home_outlined,
+                    selectedIcon: Icons.home_rounded,
+                    label: 'Home',
+                  ),
+                  HubDockDestination(
+                    icon: Icons.receipt_long_outlined,
+                    selectedIcon: Icons.receipt_long,
+                    label: 'Orders',
+                    badgeCount: dashboardState.availableDeliveries.length,
+                  ),
+                  const HubDockDestination(
+                    icon: Icons.person_outline_rounded,
+                    selectedIcon: Icons.person_rounded,
+                    label: 'Profile',
+                  ),
+                  const HubDockDestination(
+                    icon: Icons.notifications_none_rounded,
+                    selectedIcon: Icons.notifications_rounded,
+                    label: 'Alerts',
                   ),
                 ],
               ),
-            ),
-            Expanded(child: pages[_selectedIndex]),
-          ],
-        ),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: _selectedIndex,
-          onDestinationSelected: (idx) => setState(() => _selectedIndex = idx),
-          backgroundColor: Colors.white,
-          indicatorColor: AppTheme.primary.withValues(alpha: 0.15),
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.dashboard_outlined),
-              selectedIcon: Icon(Icons.dashboard, color: AppTheme.primary),
-              label: 'Dashboard',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.list_alt_outlined),
-              selectedIcon: Icon(Icons.list_alt, color: AppTheme.primary),
-              label: 'Available',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.map_outlined),
-              selectedIcon: Icon(Icons.map, color: AppTheme.primary),
-              label: 'Active',
             ),
           ],
         ),
@@ -198,19 +384,386 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
 
   // --- Sub-Tabs ---
 
+  Widget _buildPartnerHeader() {
+    final top = MediaQuery.of(context).padding.top;
+    return Container(
+      color: AppTheme.canvasOf(context),
+      padding: EdgeInsets.fromLTRB(16, top + 8, 8, 8),
+      child: Row(
+        children: [
+          if (_selectedIndex == 0) ...[
+            const AppLogo(size: 26),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'HotPotChef Partner',
+                style: AppTheme.sectionTitleOf(context).copyWith(color: AppTheme.primary, fontSize: 18),
+              ),
+            ),
+          ] else
+            Expanded(
+              child: Text('Delivery Orders', style: AppTheme.sectionTitleOf(context)),
+            ),
+          PopupMenuButton<String>(
+            tooltip: 'More',
+            onSelected: (value) {
+              switch (value) {
+                case 'chef':
+                  AuthSession.switchPartnerPortal(context, AppRole.chef);
+                case 'chats':
+                  context.push('/chats');
+                case 'id':
+                  context.push('/driver-id-card');
+                case 'logout':
+                  AuthSession.confirmSignOut(context);
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: 'chef', child: Text('Chef portal')),
+              const PopupMenuItem(value: 'id', child: Text('Digital ID')),
+              const PopupMenuItem(value: 'chats', child: Text('Order chats')),
+              const PopupMenuItem(value: 'logout', child: Text('Log out')),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHomeTab(DriverDashboardState state) {
+    final now = DateTime.now();
+    final todayEarn = state.recentDeliveries.where((d) {
+      final local = d.createdAt.toLocal();
+      return local.year == now.year && local.month == now.month && local.day == now.day;
+    }).fold<double>(0, (sum, d) => sum + d.payout);
+
+    return RefreshIndicator(
+      onRefresh: () => ref.read(driverDashboardProvider.notifier).loadDashboardData(),
+      color: AppTheme.primary,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+        children: [
+          if (state.errorMessage != null) ...[
+            EmptyState(
+              icon: Icons.wifi_off_rounded,
+              title: "Couldn't load jobs",
+              message: state.errorMessage,
+              actionLabel: 'Retry',
+              onAction: () => ref.read(driverDashboardProvider.notifier).loadDashboardData(),
+            ),
+            const SizedBox(height: 16),
+          ],
+          if (kAppStorefront.isPartner) ...[
+            Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceOf(context),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: AppTheme.hairlineOf(context)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => AuthSession.switchPartnerPortal(context, AppRole.chef),
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 10),
+                        child: Text(
+                          'Chef Portal',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primary,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: const Text(
+                        'Delivery Partner',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Welcome back, $_welcomeName!', style: AppTheme.sectionTitleOf(context).copyWith(fontSize: 22)),
+                    const SizedBox(height: 4),
+                    Text(
+                      _isOnline ? 'Online · nearby kitchens can dispatch to you' : 'Offline · you will not see new jobs',
+                      style: AppTheme.caption,
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                children: [
+                  Switch.adaptive(
+                    value: _isOnline,
+                    activeThumbColor: AppTheme.live,
+                    onChanged: (_) => _toggleOnline(),
+                  ),
+                  Text(
+                    _isOnline ? 'Go Offline' : 'Go Online',
+                    style: AppTheme.microOf(context).copyWith(fontWeight: FontWeight.w800),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text("Today's Summary", style: AppTheme.homeSectionLabelOf(context)),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _driverStatCard('Open Jobs', '${state.availableDeliveries.length}', onTap: () {
+                  setState(() {
+                    _selectedIndex = 1;
+                    _ordersStage = 0;
+                  });
+                }),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _driverStatCard('Total Earnings', '₹${todayEarn.toStringAsFixed(0)}', onTap: () {
+                  setState(() {
+                    _selectedIndex = 1;
+                    _ordersStage = 2;
+                  });
+                }),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const DriverPayoutCadenceCard(),
+          const SizedBox(height: 18),
+          Text('Quick Driver Tools', style: AppTheme.homeSectionLabelOf(context)),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _driverToolCard(
+                  icon: Icons.radar_rounded,
+                  label: 'Scan Jobs',
+                  onTap: () => setState(() {
+                    _selectedIndex = 1;
+                    _ordersStage = 0;
+                  }),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _driverToolCard(
+                  icon: Icons.badge_outlined,
+                  label: 'Digital ID',
+                  onTap: () => context.push('/driver-id-card'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Material(
+            color: AppTheme.primary.withValues(alpha: 0.08),
+            borderRadius: AppTheme.radiusLg,
+            child: InkWell(
+              onTap: () => AuthSession.switchPartnerPortal(context, AppRole.chef),
+              borderRadius: AppTheme.radiusLg,
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Row(
+                  children: [
+                    const Icon(Icons.soup_kitchen_outlined, color: AppTheme.primary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Want to cook instead? Switch to the chef portal and publish plates from your kitchen.',
+                        style: AppTheme.caption.copyWith(fontWeight: FontWeight.w700, color: AppTheme.onSurfaceOf(context)),
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right_rounded, color: AppTheme.primary),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _driverStatCard(String label, String value, {VoidCallback? onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceOf(context),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppTheme.hairlineOf(context)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: AppTheme.microOf(context)),
+            const SizedBox(height: 6),
+            Text(value, style: AppTheme.sectionTitleOf(context).copyWith(fontSize: 22)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _driverToolCard({required IconData icon, required String label, required VoidCallback onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceOf(context),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppTheme.hairlineOf(context)),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: AppTheme.primary, size: 28),
+            const SizedBox(height: 8),
+            Text(label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOrdersWorkspace(DriverDashboardState state, DriverDashboardNotifier notifier) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: DinerSegmentBar(
+            labels: [
+              'Available (${state.availableDeliveries.length})',
+              'Active (${state.activeDeliveries.length})',
+              'Completed',
+            ],
+            index: _ordersStage,
+            onChanged: (index) => setState(() => _ordersStage = index),
+          ),
+        ),
+        Expanded(
+          child: _ordersStage == 0
+              ? _buildAvailableTab(state.availableDeliveries, notifier)
+              : _ordersStage == 1
+                  ? _buildActiveDeliveryTab(state.activeDeliveries, notifier)
+                  : _buildCompletedRuns(state),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCompletedRuns(DriverDashboardState state) {
+    if (state.recentDeliveries.isEmpty) {
+      return const EmptyState(
+        icon: Icons.local_shipping_outlined,
+        title: 'No delivery history yet',
+        message: 'Completed runs will show up here with payouts in ₹.',
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+      children: [
+        AppCard(
+          child: Column(
+            children: [
+              Text('Run wallet', style: AppTheme.metaOf(context)),
+              const SizedBox(height: 6),
+              Text(
+                '₹${state.totalEarnings.toStringAsFixed(0)}',
+                style: AppTheme.sectionTitleOf(context).copyWith(color: AppTheme.success, fontSize: 28),
+              ),
+              Text(
+                '${state.completedCount} completed · delivery fee + tip. Bank payout is arranged by ops after KYC.',
+                textAlign: TextAlign.center,
+                style: AppTheme.metaOf(context),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        ...state.recentDeliveries.asMap().entries.map((entry) {
+          final delivery = entry.value;
+          return AppCard(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(delivery.chefName, style: AppTheme.listTitleOf(context)),
+                      const SizedBox(height: 4),
+                      Text('Order #${delivery.displayOrderNumber}', style: AppTheme.caption),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '+₹${delivery.payout.toStringAsFixed(0)}',
+                      style: const TextStyle(fontWeight: FontWeight.w800, color: AppTheme.live),
+                    ),
+                    Text(formatOrderDate(delivery.createdAt.toIso8601String()), style: AppTheme.microOf(context)),
+                  ],
+                ),
+              ],
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  // ignore: unused_element
   Widget _buildDashboardTab(DriverDashboardState state) {
     return RefreshIndicator(
       onRefresh: () => ref.read(driverDashboardProvider.notifier).loadDashboardData(),
       color: AppTheme.primary,
       child: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
         children: [
+          if (state.errorMessage != null) ...[
+            EmptyState(
+              icon: Icons.wifi_off_rounded,
+              title: 'Couldn\'t load jobs',
+              message: state.errorMessage,
+              actionLabel: 'Retry',
+              onAction: () => ref.read(driverDashboardProvider.notifier).loadDashboardData(),
+            ),
+            const SizedBox(height: 16),
+          ],
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [AppTheme.primary, AppTheme.primaryGradientEnd]),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4))],
+              gradient: AppTheme.primaryGradient,
+              borderRadius: AppTheme.radiusLg,
+              boxShadow: AppTheme.brandGlow(opacity: 0.3),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -224,16 +777,22 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('${state.completedCount} Successful Deliveries',
+                    Text(
+                        '${state.completedCount} Successful ${state.completedCount == 1 ? 'Delivery' : 'Deliveries'}',
                         style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                    const Text('Payout: Weekly',
-                        style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
                   ],
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Wallet = delivery fee + tip on completed runs. Bank payout is arranged by ops after KYC — not an automatic weekly transfer.',
+                  style: TextStyle(color: Colors.white70, fontSize: 11, height: 1.35),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
+          const DriverPayoutCadenceCard(),
+          const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
@@ -244,9 +803,9 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                       const Icon(Icons.local_shipping, color: AppTheme.primary, size: 24),
                       const SizedBox(height: 12),
                       Text('${state.activeDeliveries.length}',
-                          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+                          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                       const SizedBox(height: 4),
-                      const Text('Active Runs', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                      Text('Active Runs', style: AppTheme.caption),
                     ],
                   ),
                 ),
@@ -260,9 +819,9 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                       const Icon(Icons.inventory_2_outlined, color: Colors.blue, size: 24),
                       const SizedBox(height: 12),
                       Text('${state.availableDeliveries.length}',
-                          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+                          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                       const SizedBox(height: 4),
-                      const Text('Available Pool', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                      Text('Available Pool', style: AppTheme.caption),
                     ],
                   ),
                 ),
@@ -270,50 +829,82 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
             ],
           ),
           const SizedBox(height: 24),
-          const Text('Recent Completed Deliveries',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+          Text('Recent completed deliveries', style: AppTheme.homeSectionLabelOf(context)),
           const SizedBox(height: 12),
           if (state.recentDeliveries.isEmpty)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.all(32),
-                child: Text('No delivery history yet.', style: TextStyle(color: AppTheme.textMuted)),
+            const SizedBox(
+              height: 260,
+              child: EmptyState(
+                icon: Icons.local_shipping_outlined,
+                title: 'No delivery history yet',
+                message: 'Completed runs will show up here with payouts.',
               ),
             )
           else
-            ...state.recentDeliveries.map((delivery) => AppCard(
+            ...state.recentDeliveries.asMap().entries.map((entry) {
+              final delivery = entry.value;
+              final detail = delivery.driverHistoryDetail;
+              return AppCard(
                   margin: const EdgeInsets.only(bottom: 12),
                   padding: const EdgeInsets.all(16),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          const CircleAvatar(
-                            backgroundColor: Colors.green,
-                            radius: 16,
-                            child: Icon(Icons.check, color: Colors.white, size: 16),
-                          ),
-                          const SizedBox(width: 12),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(delivery.chefName,
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.textMain)),
-                              const SizedBox(height: 2),
-                              Text(formatOrderDate(delivery.createdAt.toIso8601String()),
-                                  style: const TextStyle(color: AppTheme.textMuted, fontSize: 11)),
-                            ],
-                          ),
-                        ],
+                      CircleAvatar(
+                        backgroundColor: AppTheme.success.withValues(alpha: 0.15),
+                        radius: 16,
+                        child: const Icon(Icons.check, color: AppTheme.success, size: 16),
                       ),
-                      Text(
-                        '+₹${delivery.payout.toStringAsFixed(0)}',
-                        style: const TextStyle(fontWeight: FontWeight.w900, color: Colors.green, fontSize: 15),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    'Order #${delivery.displayOrderNumber}',
+                                    style: AppTheme.listTitleOf(context),
+                                  ),
+                                ),
+                                Text(
+                                  '+₹${delivery.payout.toStringAsFixed(0)}',
+                                  style: AppTheme.priceOf(context).copyWith(color: AppTheme.success, fontSize: 15),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                delivery.chefName,
+                style: AppTheme.caption,
+              ),
+                            if (detail.isNotEmpty) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                detail,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  height: 1.35,
+                                  color: AppTheme.onSurfaceOf(context).withValues(alpha: 0.78),
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 4),
+                            Text(
+                              formatOrderDate(delivery.createdAt.toIso8601String()),
+                              style: AppTheme.micro,
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
-                )),
+                ).entrance(index: entry.key);
+            }),
         ],
       ),
     );
@@ -321,14 +912,24 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
 
   Widget _buildAvailableTab(List<DriverDeliveryModel> available, DriverDashboardNotifier notifier) {
     if (!_isOnline) {
-      return const Center(child: Text('Go Online to receive orders.', style: TextStyle(color: Colors.grey, fontSize: 16)));
+      return const EmptyState(
+        icon: Icons.wifi_off_rounded,
+        title: 'You\'re offline',
+        message: 'Go online from the header to receive nearby dispatches.',
+      );
     }
     if (available.isEmpty) {
-      return const Center(child: Text('Scanning for nearby orders...', style: TextStyle(color: AppTheme.textMuted)));
+      return EmptyState(
+        icon: Icons.radar_rounded,
+        title: 'Scanning nearby kitchens',
+        message: 'Jobs appear here after a chef confirms the order and marks it Ready for Pickup.',
+        actionLabel: 'Refresh Jobs',
+        onAction: () => ref.read(driverDashboardProvider.notifier).loadDashboardData(),
+      );
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
       itemCount: available.length,
       itemBuilder: (context, index) {
         final delivery = available[index];
@@ -341,53 +942,169 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Order #${delivery.orderId.substring(0, 6).toUpperCase()}',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
+                  Text('Order #${formatOrderId(null, delivery.orderId)}',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textMuted)),
                   Text('+₹${delivery.payout.toStringAsFixed(0)} Payout',
                       style: const TextStyle(fontWeight: FontWeight.w900, color: Colors.green, fontSize: 14)),
                 ],
               ),
+              const SizedBox(height: 8),
+              Text(
+                delivery.statusLabel.isEmpty ? delivery.status.toDbValue() : delivery.statusLabel,
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.link),
+              ),
               const SizedBox(height: 10),
               Text('Pickup: ${delivery.chefName}',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textMain)),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.onSurfaceOf(context))),
+              if (delivery.itemsSummary.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(delivery.itemsSummary,
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.onSurfaceOf(context))),
+              ],
               const SizedBox(height: 4),
-              Text(delivery.pickupAddress, style: const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+              Text(delivery.pickupAddress, style: AppTheme.caption),
+              if (delivery.pickupCoordLabel.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text('Pinned ${delivery.pickupCoordLabel}',
+                    style: AppTheme.micro),
+              ],
               const SizedBox(height: 8),
-              Text('Dropoff: ${delivery.customerAddress}', style: const TextStyle(fontSize: 12, color: AppTheme.textMain)),
+              Text('Dropoff: ${delivery.customerAddress}', style: TextStyle(fontSize: 12, color: AppTheme.onSurfaceOf(context))),
+              if (delivery.dropoffCoordLabel.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text('Pinned ${delivery.dropoffCoordLabel}',
+                    style: AppTheme.micro),
+              ],
+              if (delivery.distanceKm > 0) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '${delivery.distanceKm.toStringAsFixed(1)} km • ~${DeliveryEstimatorService.estimateEtaMinutes(delivery.distanceKm)} min',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.link),
+                ),
+              ],
               const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary, foregroundColor: Colors.white),
-                  onPressed: () async {
+              GradientButton(
+                label: 'Accept Delivery',
+                icon: Icons.check_rounded,
+                onPressed: () async {
                     final success = await notifier.acceptOrder(delivery.orderId);
                     if (success && mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Order accepted successfully! Check Active tab.'), backgroundColor: Colors.green),
+                        const SnackBar(content: Text('Order accepted. Open Active to navigate.'), backgroundColor: Colors.green),
                       );
+                      setState(() => _ordersStage = 1);
                     }
                   },
-                  child: const Text('Accept Delivery', style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-              )
+              ),
             ],
           ),
-        );
+        ).entrance(index: index);
       },
     );
   }
 
+  Future<bool> _confirmMarkDelivered(DriverDeliveryModel delivery) async {
+    final expected = delivery.deliveryOtp?.trim() ?? '';
+    if (expected.isEmpty) {
+      if (!mounted) return false;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: AppTheme.dialogShape,
+          title: const Text('Delivery PIN required'),
+          content: const Text(
+            'This order has no PIN on the server yet. Ask the diner to open Orders or Tracking and share the 4-digit PIN. Completing without a PIN is not allowed.',
+          ),
+          actions: [
+            ElevatedButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+          ],
+        ),
+      );
+      return false;
+    }
+
+    final controller = TextEditingController();
+    final matched = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          shape: AppTheme.dialogShape,
+          title: const Text('Enter delivery PIN'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            maxLength: 4,
+            obscureText: true,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: const InputDecoration(
+              labelText: '4-digit PIN from customer',
+              counterText: '',
+            ),
+            onSubmitted: (_) {
+              final ok = deliveryOtpMatches(expected, controller.text);
+              Navigator.pop(ctx, ok);
+            },
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () {
+                final ok = deliveryOtpMatches(expected, controller.text);
+                if (!ok) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(
+                      content: Text('PIN does not match. Ask the customer for the delivery PIN.'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                  return;
+                }
+                Navigator.pop(ctx, true);
+              },
+              child: const Text('Confirm'),
+            ),
+          ],
+        );
+      },
+    );
+    controller.dispose();
+    if (matched != true) return false;
+    if (!mounted) return false;
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: AppTheme.dialogShape,
+        title: const Text('Door photo'),
+        content: const Text(
+          'Take a timestamped photo at the door. Ops uses this with the PIN if a refund is raised.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Open camera')),
+        ],
+      ),
+    );
+    return proceed == true;
+  }
+
   Widget _buildActiveDeliveryTab(List<DriverDeliveryModel> active, DriverDashboardNotifier notifier) {
     if (active.isEmpty) {
-      return const Center(child: Text('No active deliveries in progress.', style: TextStyle(color: AppTheme.textMuted, fontSize: 15)));
+      return const EmptyState(
+        icon: Icons.map_outlined,
+        title: 'No active runs',
+        message: 'Accepted deliveries will land here so you can navigate and complete them.',
+      );
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
       itemCount: active.length,
       itemBuilder: (context, index) {
         final delivery = active[index];
-        final isOut = delivery.status == DeliveryStatus.outForDelivery;
+        final rawStatus = delivery.statusLabel.isEmpty ? delivery.status.toDbValue() : delivery.statusLabel;
+        final isOut = OrderLifecycle.canDriverCompleteRun(rawStatus);
+        final canStart = OrderLifecycle.canDriverStartRun(rawStatus);
 
         return AppCard(
           margin: const EdgeInsets.only(bottom: 16),
@@ -397,56 +1114,163 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Run #${delivery.orderId.substring(0, 6).toUpperCase()}',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(6)),
-                    child: Text(delivery.status.toDbValue().toUpperCase(),
-                        style: TextStyle(color: Colors.orange.shade800, fontSize: 10, fontWeight: FontWeight.bold)),
-                  ),
+                  Text('Run #${formatOrderId(null, delivery.orderId)}',
+                      style: AppTheme.micro),
+                  AppStatusBadge(status: rawStatus),
                 ],
               ),
               const SizedBox(height: 12),
-              Text('Pickup from ${delivery.chefName}',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textMain)),
-              const SizedBox(height: 4),
-              Text(delivery.pickupAddress, style: const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+              Text(delivery.activeStepTitle, style: AppTheme.listTitleOf(context)),
+              if (delivery.itemsSummary.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Order #${delivery.displayOrderNumber} · ${delivery.itemsSummary}',
+                  style: AppTheme.caption,
+                ),
+              ],
+              const SizedBox(height: 10),
+              _addressBlock(
+                title: 'PICKUP · CHEF KITCHEN',
+                address: delivery.pickupAddress,
+                coordLabel: delivery.pickupCoordLabel,
+                active: !delivery.navigateToCustomer,
+                icon: Icons.storefront_outlined,
+              ),
               const SizedBox(height: 8),
-              Text('Deliver to: ${delivery.customerAddress}',
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textMain)),
-              const SizedBox(height: 16),
+              _addressBlock(
+                title: 'DROPOFF · CUSTOMER',
+                address: delivery.customerAddress,
+                coordLabel: delivery.dropoffCoordLabel,
+                active: delivery.navigateToCustomer,
+                icon: Icons.home_outlined,
+              ),
+              if (delivery.hasDropoffNotes) ...[
+                const SizedBox(height: 8),
+                _dropoffNotesCard(delivery),
+              ],
+              const SizedBox(height: 10),
+              OrderSlotBanner(order: delivery.slotSource),
+              const SizedBox(height: 12),
               Row(
                 children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.navigation, size: 16),
-                      label: const Text('Navigate'),
-                      onPressed: () {
-                        context.push('/tracking', extra: {'order': {'id': delivery.orderId}, 'isDriver': true});
-                      },
-                    ),
+                  AppIconAction(
+                    icon: Icons.chat_bubble_outline,
+                    tooltip: orderAllowsPartyChat(rawStatus) ? 'Chat' : 'Chat closed',
+                    onPressed: !orderAllowsPartyChat(rawStatus)
+                        ? null
+                        : () {
+                            final roomId = delivery.chatRoomId.isNotEmpty ? delivery.chatRoomId : delivery.orderId;
+                            context.push(chatPath(
+                              roomId,
+                              roomName: 'Order ${formatOrderId(null, delivery.orderId)}',
+                              otherUserId: delivery.customerId,
+                              memberIds: [
+                                delivery.customerId,
+                                delivery.chefId,
+                                Supabase.instance.client.auth.currentUser?.id ?? '',
+                              ],
+                              isGroup: true,
+                            ));
+                          },
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: isOut ? Colors.green : AppTheme.primary,
-                        foregroundColor: Colors.white,
-                      ),
-                      onPressed: () async {
-                        final nextStatus = isOut ? DeliveryStatus.delivered : DeliveryStatus.outForDelivery;
-                        await notifier.updateDeliveryStatus(delivery.orderId, nextStatus);
-                      },
-                      child: Text(isOut ? 'Mark Delivered' : 'Start Delivery',
-                          style: const TextStyle(fontWeight: FontWeight.bold)),
-                    ),
+                  const SizedBox(width: 8),
+                  AppIconAction(
+                    icon: Icons.phone_outlined,
+                    tooltip: orderAllowsPhoneCall(rawStatus) ? 'Call' : 'Chat preferred',
+                    onPressed: !orderAllowsPhoneCall(rawStatus)
+                        ? null
+                        : () => _callCustomer(delivery.customerId),
+                  ),
+                  const SizedBox(width: 8),
+                  AppIconAction(
+                    icon: Icons.navigation,
+                    tooltip: delivery.navigateButtonLabel,
+                    onPressed: () => _openNavigation(delivery),
+                  ),
+                  const SizedBox(width: 8),
+                  AppIconAction(
+                    icon: Icons.map_outlined,
+                    tooltip: delivery.navigateToCustomer
+                        ? 'Open customer in Google Maps'
+                        : 'Open kitchen in Google Maps',
+                    onPressed: () => _openExternalMaps(delivery),
                   ),
                 ],
               ),
+              const SizedBox(height: 10),
+              if (isOut || canStart)
+                Semantics(
+                  button: true,
+                  label: isOut ? 'Mark Delivered' : 'Start Delivery',
+                  child: GradientButton(
+                    label: isOut ? 'Mark Delivered' : 'Start Delivery',
+                    icon: isOut ? Icons.check_rounded : Icons.delivery_dining_rounded,
+                    height: 48,
+                    loading: _busyOrderId == delivery.orderId,
+                    gradient: isOut
+                        ? const LinearGradient(colors: [AppTheme.success, Color(0xFF43C478)])
+                        : AppTheme.primaryGradient,
+                    onPressed: _busyOrderId != null
+                        ? null
+                        : () async {
+                            if (isOut) {
+                              final allowed = await _confirmMarkDelivered(delivery);
+                              if (!allowed || !mounted) return;
+                            }
+                            setState(() => _busyOrderId = delivery.orderId);
+                            String? podUrl;
+                            if (isOut) {
+                              try {
+                                podUrl = await captureDeliveryPodPhoto(orderId: delivery.orderId);
+                              } catch (_) {
+                                podUrl = null;
+                              }
+                              if (podUrl == null || podUrl.isEmpty) {
+                                if (mounted) {
+                                  setState(() => _busyOrderId = null);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Door photo is required to mark delivered.'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                                return;
+                              }
+                            }
+                            final nextStatus = isOut ? DeliveryStatus.delivered : DeliveryStatus.outForDelivery;
+                            final ok = await notifier.updateDeliveryStatus(
+                              delivery.orderId,
+                              nextStatus,
+                              deliveryOtp: isOut ? delivery.deliveryOtp : null,
+                              podPhotoUrl: podUrl,
+                            );
+                            if (!mounted) return;
+                            setState(() => _busyOrderId = null);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  ok
+                                      ? (isOut
+                                          ? 'Marked as delivered.'
+                                          : 'Out for delivery — navigate to the customer.')
+                                      : (ref.read(driverDashboardProvider).errorMessage ??
+                                          'Could not update this run. Try again.'),
+                                ),
+                                backgroundColor: ok ? Colors.green : Colors.red,
+                              ),
+                            );
+                          },
+                  ),
+                )
+              else
+                const Text(
+                  'The kitchen is still preparing this order. Start Delivery unlocks after Ready for Pickup.',
+                  style: TextStyle(fontSize: 13, color: AppTheme.textMuted, height: 1.35),
+                ),
             ],
           ),
-        );
+        ).entrance(index: index);
       },
     );
   }

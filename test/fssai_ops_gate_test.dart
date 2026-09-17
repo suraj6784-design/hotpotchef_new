@@ -1,0 +1,124 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:hotpotchef_new/utils/helpers.dart';
+
+void main() {
+  group('FSSAI verification gate', () {
+    test('blocks publish without proof', () {
+      expect(
+        chefCanPublishWithFssai(
+          fssaiNumber: '11234567890123',
+          proofUrl: null,
+          verificationStatus: 'unsubmitted',
+        ),
+        isFalse,
+      );
+    });
+
+    test('blocks pending until ops verifies', () {
+      expect(
+        chefCanPublishWithFssai(
+          fssaiNumber: '11234567890123',
+          proofUrl: 'https://example.com/fssai.jpg',
+          verificationStatus: 'pending',
+        ),
+        isFalse,
+      );
+    });
+
+    test('allows only verified once proof exists', () {
+      expect(
+        chefCanPublishWithFssai(
+          fssaiNumber: '11234567890123',
+          proofUrl: 'https://example.com/fssai.jpg',
+          verificationStatus: 'verified',
+        ),
+        isTrue,
+      );
+      expect(
+        chefFssaiPublishBlockReason(
+          fssaiNumber: '11234567890123',
+          proofUrl: 'https://example.com/fssai.jpg',
+          verificationStatus: 'verified',
+        ),
+        isNull,
+      );
+    });
+
+    test('verified without loaded proof still blocks, with a proof message', () {
+      expect(
+        chefFssaiPublishBlockReason(
+          fssaiNumber: '11234567890123',
+          proofUrl: null,
+          verificationStatus: 'verified',
+        ),
+        contains('licence proof'),
+      );
+    });
+
+    test('rejects when ops marked rejected', () {
+      expect(
+        chefCanPublishWithFssai(
+          fssaiNumber: '11234567890123',
+          proofUrl: 'https://example.com/fssai.jpg',
+          verificationStatus: 'rejected',
+        ),
+        isFalse,
+      );
+    });
+
+    test('diner trust label never says verified for pending', () {
+      expect(
+        dinerFssaiTrustLabel(fssaiNumber: '11234567890123', verificationStatus: 'pending'),
+        contains('under review'),
+      );
+      expect(
+        dinerFssaiIsVerified('pending'),
+        isFalse,
+      );
+      expect(
+        dinerFssaiIsVerified('verified'),
+        isTrue,
+      );
+      expect(
+        dinerFssaiIsVerified('verified', validUntil: DateTime(2025, 1, 1), now: DateTime(2026, 9, 14)),
+        isFalse,
+      );
+      expect(dinerFssaiCardChip(verificationStatus: 'pending'), '');
+      expect(dinerFssaiCardChip(verificationStatus: 'verified'), 'Verified');
+      expect(
+        dinerFssaiCardChip(verificationStatus: 'verified', validUntil: DateTime(2025, 1, 1), now: DateTime(2026, 9, 14)),
+        '',
+      );
+    });
+
+    test('masks pan and bank', () {
+      expect(maskPan('ABCDE1234F'), '******234F');
+      expect(maskBankAccount('123456789012'), 'XXXXXX9012');
+    });
+
+    test('delivery otp match', () {
+      expect(deliveryOtpMatches('0482', '0482'), isTrue);
+      expect(deliveryOtpMatches('0482', '482'), isFalse);
+      expect(deliveryOtpMatches('0482', '9999'), isFalse);
+    });
+
+    test('kitchen and driver notes hide the diner delivery PIN', () {
+      const raw = 'No onion\nDelivery PIN: 4821\nGate: Tower A';
+      expect(kitchenFacingOrderNotes(raw), isNot(contains('4821')));
+      expect(kitchenFacingOrderNotes(raw), contains('No onion'));
+      expect(driverFacingOrderNotes(raw), isNot(contains('Delivery PIN')));
+      expect(isDeliveryPinInstructionLine('Delivery PIN: 4821'), isTrue);
+      final chefRow = chefFacingOrderRow({
+        'id': 'o1',
+        'delivery_otp': '4821',
+        'special_instructions': raw,
+      });
+      expect(chefRow.containsKey('delivery_otp'), isFalse);
+      expect(chefRow['special_instructions'], isNot(contains('4821')));
+    });
+
+    test('packaging supply helpers still resolve', () {
+      expect(isPackagingSupplyRequest({'request_type': 'packaging_supply'}), isTrue);
+    });
+  });
+}

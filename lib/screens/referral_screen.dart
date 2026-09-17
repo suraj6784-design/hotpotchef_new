@@ -5,9 +5,9 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'dart:math';
 
-import '../utils/app_theme.dart';
+import '../utils/helpers.dart';
+import '../widgets/app_widgets.dart';
 
 class ReferralScreen extends StatefulWidget {
   const ReferralScreen({super.key});
@@ -39,20 +39,22 @@ class _ReferralScreenState extends State<ReferralScreen> {
 
       final userData = await _supabase
           .from('users')
-          .select('referral_code, hotpot_coins')
+          .select('referral_code, hotpot_coins, role')
           .eq('id', user.id)
           .maybeSingle();
+
+      if (userData != null && !roleUsesReferral(userData['role']?.toString())) {
+        if (mounted) Navigator.pop(context);
+        return;
+      }
 
       if (!mounted) return;
 
       if (userData != null) {
-        String code = userData['referral_code']?.toString() ?? '';
+        String code = normalizeReferralCode(userData['referral_code']?.toString()) ?? '';
 
         if (code.isEmpty) {
-          const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-          final rnd = Random();
-          code = 'CHEF${List.generate(6, (index) => chars[rnd.nextInt(chars.length)]).join()}';
-
+          code = generateReferralCode();
           await _supabase.from('users').update({'referral_code': code}).eq('id', user.id);
           if (!mounted) return;
         }
@@ -60,13 +62,32 @@ class _ReferralScreenState extends State<ReferralScreen> {
         final countResponse = await _supabase
             .from('users')
             .count(CountOption.exact)
-            .eq('referred_by', code);
+            .ilike('referred_by', code);
+
+        var rewardedFriends = 0;
+        try {
+          rewardedFriends = await _supabase
+              .from('users')
+              .count(CountOption.exact)
+              .ilike('referred_by', code)
+              .not('referral_rewarded_at', 'is', null);
+        } catch (_) {
+          try {
+            rewardedFriends = await _supabase
+                .from('users')
+                .count(CountOption.exact)
+                .eq('referred_by', code)
+                .not('referral_rewarded_at', 'is', null);
+          } catch (_) {
+            rewardedFriends = 0;
+          }
+        }
 
         if (!mounted) return;
 
         setState(() {
           _referralCode = code;
-          _earnedCoins = (userData['hotpot_coins'] as num?)?.toDouble() ?? 0.0;
+          _earnedCoins = referralCoinsFromRewardedFriends(rewardedFriends);
           _friendsReferred = countResponse;
           _isLoading = false;
         });
@@ -80,12 +101,12 @@ class _ReferralScreenState extends State<ReferralScreen> {
   }
 
   void _shareCode() {
-    final message =
-        "Craving authentic home-cooked food? 🍲 Join HotPotChef using my referral code '$_referralCode' and get 50 HotPot Coins free on your first order! Download now.";
-
-    Share.share(
-      message,
-      subject: 'Claim your HotPotChef Bonus!',
+    final text = referralInviteText(_referralCode);
+    SharePlus.instance.share(
+      ShareParams(
+        text: text,
+        subject: 'Join HotPotChef with my code $_referralCode',
+      ),
     );
   }
 
@@ -96,13 +117,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: Text(
-          'Refer & Earn',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: isDark ? AppTheme.textMainDark : AppTheme.textMain,
-          ),
-        ),
+        title: const BrandMark(title: 'Refer & Earn'),
         backgroundColor: isDark ? AppTheme.surfaceDark : Colors.white,
         elevation: 0,
         iconTheme: IconThemeData(color: isDark ? AppTheme.textMainDark : AppTheme.textMain),
@@ -124,18 +139,18 @@ class _ReferralScreenState extends State<ReferralScreen> {
                     boxShadow: AppTheme.softShadow,
                   ),
                   child: Column(
-                    children: const [
-                      Icon(Icons.card_giftcard, size: 56, color: Colors.white),
-                      SizedBox(height: 16),
-                      Text(
+                    children: [
+                      const AppLogo(size: 56, onDark: true),
+                      const SizedBox(height: 16),
+                      const Text(
                         'Give ₹50, Get ₹50!',
                         style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900),
                         textAlign: TextAlign.center,
                       ),
-                      SizedBox(height: 8),
+                      const SizedBox(height: 8),
                       Text(
-                        'Invite your friends to HotPotChef. When they place their first order, you both get 50 HotPot Coins!',
-                        style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+                        'Invite neighbours with your code. When they place their first order, you both get ${kReferralBonusCoins.toInt()} HotPot Coins in the wallet (about ₹${kReferralBonusCoins.toInt()} at checkout).',
+                        style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
                         textAlign: TextAlign.center,
                       ),
                     ],
@@ -155,7 +170,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                       Text(
                         'Your Exclusive Referral Code',
                         style: TextStyle(
-                          color: isDark ? Colors.grey.shade400 : AppTheme.textMuted,
+                          color: isDark ? AppTheme.textMuted : AppTheme.textMuted,
                           fontSize: 13,
                           fontWeight: FontWeight.bold,
                         ),
@@ -180,7 +195,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                                 fontSize: 20,
                                 fontWeight: FontWeight.w900,
                                 letterSpacing: 2.0,
-                                color: isDark ? Colors.orange.shade200 : AppTheme.primary,
+                                color: isDark ? Colors.orange.shade200 : AppTheme.linkOf(context),
                               ),
                             ),
                             IconButton(
@@ -189,11 +204,11 @@ class _ReferralScreenState extends State<ReferralScreen> {
                                 color: isDark ? AppTheme.textMainDark : AppTheme.textMain,
                               ),
                               onPressed: () {
-                                Clipboard.setData(ClipboardData(text: _referralCode));
+                                Clipboard.setData(ClipboardData(text: referralInviteText(_referralCode)));
                                 if (!mounted) return;
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
-                                    content: Text('Referral code copied to clipboard!'),
+                                    content: Text('Invite copied — the link is ready to paste'),
                                     backgroundColor: Colors.green,
                                     behavior: SnackBarBehavior.floating,
                                   ),
@@ -207,18 +222,13 @@ class _ReferralScreenState extends State<ReferralScreen> {
                       const SizedBox(height: 20),
                       SizedBox(
                         width: double.infinity,
-                        child: ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF25D366),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            elevation: 0,
+                        child: Center(
+                          child: AppIconAction(
+                            icon: Icons.share,
+                            tooltip: 'Share referral invite',
+                            onPressed: _shareCode,
+                            color: const Color(0xFF25D366),
                           ),
-                          icon: const Icon(Icons.share, size: 18),
-                          label: const Text('Share Referral Invite',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                          onPressed: _shareCode,
                         ),
                       ),
                     ],
@@ -242,7 +252,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                             Text(
                               'Friends Joined',
                               style: TextStyle(
-                                color: isDark ? Colors.grey.shade400 : AppTheme.textMuted,
+                                color: isDark ? AppTheme.textMuted : AppTheme.textMuted,
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -276,7 +286,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                             Text(
                               'Coins Earned',
                               style: TextStyle(
-                                color: isDark ? Colors.grey.shade400 : AppTheme.textMuted,
+                                color: isDark ? AppTheme.textMuted : AppTheme.textMuted,
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -295,6 +305,21 @@ class _ReferralScreenState extends State<ReferralScreen> {
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  _friendsReferred == 0
+                      ? 'No friends have joined with your code yet. Share the invite, then wait for their first order.'
+                      : _earnedCoins <= 0
+                          ? '$_friendsReferred friend(s) joined. Coins credit when they place their first order.'
+                          : '₹${_earnedCoins.toInt()} credited from friends who already ordered.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.35,
+                    color: isDark ? AppTheme.textMuted : AppTheme.textMuted,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  textAlign: TextAlign.center,
                 ),
               ],
             ),

@@ -1,105 +1,103 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hotpotchef_new/utils/kyc_checklist.dart';
+import 'package:hotpotchef_new/widgets/chef_onboarding_coach.dart';
 
 void main() {
-  group('kycChecklistFor', () {
-    test('driver denominator excludes FSSAI and kitchen name', () {
-      final checklist = kycChecklistFor({
-        'role': 'Driver',
-        'name': 'Ravi',
-      });
-      expect(checklist.total, 7);
-      expect(checklist.done, 1);
-      expect(checklist.missing, isNot(contains('FSSAI number')));
-      expect(checklist.missing, isNot(contains('FSSAI proof')));
-      expect(checklist.missing, isNot(contains('FSSAI verified')));
-      expect(checklist.missing, isNot(contains('Kitchen name')));
-      expect(checklist.missing, containsAll(['Email', 'GSTIN', 'Bank account', 'IFSC', 'PAN', 'Aadhaar']));
+  test('chef KYC requires FSSAI and pin, not GSTIN or PAN', () {
+    final incomplete = kycChecklistFor({
+      'role': 'chef',
+      'name': 'Asha',
+      'phone': '9999999999',
+      'fssai_number': '11234567890123',
+      'fssai_proof_url': 'https://example.com/fssai.jpg',
+      'fssai_verification_status': 'pending',
+      'lat': 18.5,
+      'lng': 73.8,
     });
+    expect(incomplete.missing, contains('FSSAI verified'));
+    expect(incomplete.missing, isNot(contains('GSTIN')));
+    expect(incomplete.missing, isNot(contains('PAN')));
+    expect(incomplete.payoutMissing, containsAll(['Bank account', 'IFSC']));
 
-    test('driver FSSAI columns do not count toward progress', () {
-      final checklist = kycChecklistFor({
-        'role': 'Driver',
-        'email': 'driver@example.com',
-        'fssai_number': '11234567890123',
-        'fssai_proof_url': 'https://example.com/fssai.jpg',
-        'fssai_verification_status': 'verified',
-        'local_kitchen_name': 'Should ignore',
-      });
-      expect(checklist.total, 7);
-      expect(checklist.done, 1);
-      expect(checklist.missing, isNot(contains(contains('FSSAI'))));
+    final live = kycChecklistFor({
+      'role': 'chef',
+      'name': 'Asha',
+      'phone': '9999999999',
+      'fssai_number': '11234567890123',
+      'fssai_proof_url': 'https://example.com/fssai.jpg',
+      'fssai_verification_status': 'verified',
+      'lat': 18.5,
+      'lng': 73.8,
+      'bank_account_number': '****1234',
+      'bank_ifsc': 'HDFC0001234',
     });
-
-    test('chef denominator includes FSSAI fields and kitchen name', () {
-      final checklist = kycChecklistFor({
-        'role': 'Chef',
-        'name': 'Meera',
-      });
-      expect(checklist.total, 11);
-      expect(checklist.done, 1);
-      expect(
-        checklist.missing,
-        containsAll(['FSSAI number', 'FSSAI proof', 'FSSAI verified', 'Kitchen name']),
-      );
-    });
-
-    test('chef complete when identity, payout, FSSAI, and kitchen are present', () {
-      final checklist = kycChecklistFor({
-        'role': 'Chef',
-        'full_name': 'Meera Kitchen',
-        'email': 'chef@example.com',
-        'gstin': '27AAAAA0000A1Z5',
-        'bank_account_number': '123456789012',
-        'bank_ifsc': 'HDFC0001234',
-        'pan_number': 'ABCDE1234F',
-        'aadhaar_masked': 'XXXX-XXXX-1234',
-        'fssai_number': '11234567890123',
-        'fssai_proof_url': 'https://example.com/fssai.jpg',
-        'fssai_verification_status': 'verified',
-        'local_kitchen_name': 'Meera Home Kitchen',
-      });
-      expect(checklist.total, 11);
-      expect(checklist.done, 11);
-      expect(checklist.incomplete, isFalse);
-      expect(checklist.missing, isEmpty);
-    });
-
-    test('driver complete without any FSSAI fields', () {
-      final checklist = kycChecklistFor({
-        'role': 'Driver',
-        'name': 'Ravi',
-        'email': 'driver@example.com',
-        'gstin': '27AAAAA0000A1Z5',
-        'bank_account_number': '123456789012',
-        'ifsc_code': 'HDFC0001234',
-        'pan_number': 'ABCDE1234F',
-        'aadhaar_masked': 'XXXX-XXXX-1234',
-      });
-      expect(checklist.total, 7);
-      expect(checklist.done, 7);
-      expect(checklist.incomplete, isFalse);
-    });
-
-    test('customers and admins are not scored as kitchen partners', () {
-      for (final role in ['customer', 'admin']) {
-        final row = kycChecklistFor({'role': role, 'name': 'Arushi'});
-        expect(row.total, 7, reason: role);
-        expect(row.missing, isNot(contains('FSSAI number')));
-      }
-    });
+    expect(live.incomplete, isFalse);
+    expect(live.payoutMissing, isEmpty);
   });
 
-  group('fssai helpers', () {
-    test('normalizeFssaiVerificationStatus maps unknown to unsubmitted', () {
-      expect(normalizeFssaiVerificationStatus('verified'), 'verified');
-      expect(normalizeFssaiVerificationStatus('Pending'), 'pending');
-      expect(normalizeFssaiVerificationStatus('nope'), 'unsubmitted');
+  test('chef payout IFSC prefers bank_ifsc over a stale ifsc_code', () {
+    final live = kycChecklistFor({
+      'role': 'chef',
+      'name': 'Asha',
+      'phone': '9999999999',
+      'fssai_number': '11234567890123',
+      'fssai_proof_url': 'https://example.com/fssai.jpg',
+      'fssai_verification_status': 'verified',
+      'lat': 18.5,
+      'lng': 73.8,
+      'bank_account_number': '****1234',
+      'ifsc_code': '',
+      'bank_ifsc': 'HDFC0001234',
     });
+    expect(live.payoutMissing, isEmpty);
 
-    test('masks keep last four', () {
-      expect(maskPan('ABCDE1234F'), '******234F');
-      expect(maskBankAccount('123456789012'), 'XXXXXX9012');
+    final staleOnly = kycChecklistFor({
+      'role': 'chef',
+      'name': 'Asha',
+      'phone': '9999999999',
+      'fssai_number': '11234567890123',
+      'fssai_proof_url': 'https://example.com/fssai.jpg',
+      'fssai_verification_status': 'verified',
+      'lat': 18.5,
+      'lng': 73.8,
+      'bank_account_number': '****1234',
+      'ifsc_code': 'SBIN0001234',
     });
+    expect(staleOnly.payoutMissing, isEmpty);
+  });
+
+  test('driver KYC still requires vehicle, PAN and Aadhaar', () {
+    final row = kycChecklistFor({
+      'role': 'driver',
+      'name': 'Ravi',
+      'phone': '9999999999',
+    });
+    expect(row.missing, containsAll(['PAN', 'Aadhaar', 'Vehicle type', 'Vehicle number']));
+    expect(row.missing, isNot(contains('FSSAI number')));
+  });
+
+  test('diners and admins are not scored on kitchen FSSAI', () {
+    for (final role in ['customer', 'admin']) {
+      final row = kycChecklistFor({
+        'role': role,
+        'name': 'Arushi',
+        'fssai_verification_status': 'unsubmitted',
+      });
+      expect(row.incomplete, isFalse, reason: role);
+      expect(row.missing, isEmpty);
+    }
+  });
+
+  test('setup strip asks for FSSAI before publish', () {
+    final next = chefSetupNextAction(
+      profile: {
+        'fssai_number': '',
+        'fssai_proof_url': '',
+        'fssai_verification_status': 'unsubmitted',
+      },
+      isKitchenOpen: false,
+      hasActiveDish: false,
+    );
+    expect(next?.$3, ChefSetupTarget.profile);
   });
 }

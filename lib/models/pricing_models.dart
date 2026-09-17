@@ -49,51 +49,39 @@ class ItemPricingSummary {
     this.offerDescription,
   });
 
+  /// Replays a stored checkout/order line. Live offer math is [PricingCalculator].
   factory ItemPricingSummary.fromItemMap(Map<String, dynamic> item) {
+    final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+    final storedNet = double.tryParse(item['line_net']?.toString() ?? '');
+    final storedGross = double.tryParse(item['line_gross']?.toString() ?? '');
     final basePrice = double.tryParse(
           item['base_price']?.toString() ??
           item['basePrice']?.toString() ??
-          item['price']?.toString() ?? '0',
-        ) ?? 0.0;
-
+          item['price']?.toString() ??
+          '0',
+        ) ??
+        0.0;
     final discountedPrice = double.tryParse(
           item['discounted_price']?.toString() ??
-          item['discountedPrice']?.toString() ?? '0',
-        ) ?? 0.0;
+          item['discountedPrice']?.toString() ??
+          '0',
+        ) ??
+        0.0;
 
-    final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
-
-    final rawDetails = item['rawMealDetails'] as Map<String, dynamic>? ?? {};
-    final offerType = OfferType.fromString(
-      item['offer_type']?.toString() ?? rawDetails['offer_type']?.toString(),
-    );
-
-    double effectivePrice = basePrice;
-    bool offerActive = false;
-    String? description;
-
-    if (discountedPrice > 0 && discountedPrice < basePrice) {
-      effectivePrice = discountedPrice;
-      offerActive = true;
-      description = 'Special Discount Applied';
-    } else if (offerType == OfferType.bogo && qty >= 2) {
-      final paidItems = (qty ~/ 2) + (qty % 2);
-      effectivePrice = basePrice * (paidItems / qty);
-      offerActive = true;
-      description = 'BOGO Offer Applied';
-    }
-
-    final gross = basePrice * qty;
-    final net = effectivePrice * qty;
+    final effectivePrice = (discountedPrice > 0 && (basePrice <= 0 || discountedPrice <= basePrice + 0.001))
+        ? discountedPrice
+        : basePrice;
+    final gross = storedGross ?? (basePrice * qty);
+    final net = storedNet ?? (effectivePrice * qty);
 
     return ItemPricingSummary(
       baseUnitPrice: basePrice,
-      effectiveUnitPrice: effectivePrice,
+      effectiveUnitPrice: qty > 0 ? net / qty : effectivePrice,
       grossTotal: gross,
       netTotal: net,
       totalDiscount: max(0.0, gross - net),
-      isOfferApplied: offerActive,
-      offerDescription: description,
+      isOfferApplied: net + 0.001 < gross,
+      offerDescription: item['offer_description']?.toString(),
     );
   }
 }

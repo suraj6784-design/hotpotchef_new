@@ -1,0 +1,393 @@
+import { GoogleAuth } from 'npm:google-auth-library@9'
+import { type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+type OrderAlert = {
+  title: string
+  body: string
+  notifyChef: boolean
+  notifyCustomer: boolean
+  notifyDriver: boolean
+}
+
+function mealTitleFromItems(items: unknown): string {
+  let parsed: unknown = items
+  if (typeof items === 'string' && items.trim()) {
+    try {
+      parsed = JSON.parse(items)
+    } catch {
+      parsed = items
+    }
+  }
+  if (Array.isArray(parsed) && parsed.length > 0 && parsed[0] && typeof parsed[0] === 'object') {
+    const row = parsed[0] as Record<string, unknown>
+    const title = row.title ?? row.name ?? row.meal_name
+    if (typeof title === 'string' && title.trim()) return title.trim()
+  }
+  return 'your order'
+}
+
+export function orderAlertStage(status?: string | null): string {
+  const current = (status || '').trim().toLowerCase()
+  if (current.includes('cancel') || current.includes('reject')) return 'cancelled'
+  if (current.includes('out for delivery') || current.includes('out_for_delivery') || (current.includes('out') && current.includes('deliver') && !current.includes('delivered'))) {
+    return 'out'
+  }
+  if (current.includes('deliver') || current.includes('complet')) return 'delivered'
+  if (current.includes('assign')) return 'assigned'
+  if (current.includes('ready') || current.includes('pack')) return 'ready'
+  if (current.includes('prepar')) return 'preparing'
+  if (current.includes('confirm')) return 'confirmed'
+  if (current.includes('pending') || current === 'placed' || current === 'new' || current === '') return 'new'
+  return current
+}
+
+export function orderAlertCopy(opts: {
+  status: string
+  isInsert: boolean
+  previousStatus?: string | null
+  mealTitle?: string
+}): OrderAlert | null {
+  const stage = orderAlertStage(opts.status)
+  const previous = orderAlertStage(opts.previousStatus)
+  if (!opts.isInsert && stage === previous) return null
+  const mealTitle = opts.mealTitle || 'your order'
+
+  if (stage === 'new') {
+    return {
+      title: 'New order',
+      body: `You have a new order for ${mealTitle}.`,
+      notifyChef: true,
+      notifyCustomer: false,
+      notifyDriver: false,
+    }
+  }
+  if (stage === 'cancelled') {
+    return {
+      title: 'Order cancelled',
+      body: `The order for ${mealTitle} was cancelled. A refund is issued if you paid online.`,
+      notifyChef: true,
+      notifyCustomer: true,
+      notifyDriver: false,
+    }
+  }
+  if (stage === 'delivered') {
+    return {
+      title: 'Order delivered',
+      body: 'Your order has arrived. Rate the kitchen when you can.',
+      notifyChef: false,
+      notifyCustomer: true,
+      notifyDriver: false,
+    }
+  }
+  if (stage === 'out') {
+    return {
+      title: 'On the way',
+      body: `${mealTitle} is out for delivery. Track it from Orders.`,
+      notifyChef: false,
+      notifyCustomer: true,
+      notifyDriver: false,
+    }
+  }
+  if (stage === 'assigned') {
+    return {
+      title: 'Delivery partner assigned',
+      body: 'A delivery partner is on the way to the kitchen.',
+      notifyChef: false,
+      notifyCustomer: true,
+      notifyDriver: false,
+    }
+  }
+  if (stage === 'ready') {
+    return {
+      title: 'Order ready',
+      body: `${mealTitle} is ready for pickup.`,
+      notifyChef: false,
+      notifyCustomer: true,
+      notifyDriver: true,
+    }
+  }
+  if (stage === 'confirmed') {
+    return {
+      title: 'Order confirmed',
+      body: `Your order for ${mealTitle} is being prepared.`,
+      notifyChef: false,
+      notifyCustomer: true,
+      notifyDriver: false,
+    }
+  }
+  return null
+}
+
+async function sendFcm(token: string, title: string, body: string, data: Record<string, string>) {
+  const raw = Deno.env.get('FIREBASE_SERVICE_ACCOUNT') ?? '{}'
+  const serviceAccountJson = JSON.parse(raw)
+  const projectId = serviceAccountJson.project_id
+  if (!projectId || !token) return
+
+  const auth = new GoogleAuth({
+    credentials: serviceAccountJson,
+    scopes: ['https://www.googleapis.com/auth/firebase.messaging'],
+  })
+  const client = await auth.getClient()
+  const accessToken = await client.getAccessToken()
+
+  await fetch(`https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken.token}`,
+    },
+    body: JSON.stringify({
+      message: {
+        token,
+        notification: { title, body },
+        data,
+        android: {
+          collapseKey: data.alert_id || 'hotpotchef',
+          notification: { tag: data.alert_id || 'hotpotchef' },
+        },
+        apns: {
+          headers: { 'apns-collapse-id': data.alert_id || 'hotpotchef' },
+        },
+      },
+    }),
+  })
+}
+
+async function sendEmail(to: string | null | undefined, subject: string, text: string) {
+  const key = Deno.env.get('RESEND_API_KEY')
+  const from = Deno.env.get('ALERTS_FROM_EMAIL') || Deno.env.get('SUPPORT_EMAIL') || ''
+  if (!key || !to || !from) return
+  await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ from, to: [to], subject, text }),
+  })
+}
+
+export async function dispatchWelcome(admin: SupabaseClient, userId: string) {
+  await notifyUser(
+    admin,
+    userId,
+    'Welcome to HotPotChef',
+    'Browse kitchens near you, add a plate, and checkout. Help is in Support if you get stuck.',
+    { alert_id: `welcome-${userId}`, kind: 'welcome' },
+    { email: true },
+  )
+  return { sent: 1 }
+}
+
+async function notifyUser(
+  admin: SupabaseClient,
+  userId: string | null | undefined,
+  title: string,
+  body: string,
+  data: Record<string, string>,
+  opts?: { email?: boolean },
+) {
+  if (!userId) return
+  const { data: user } = await admin
+    .from('users')
+    .select('fcm_token, email')
+    .eq('id', userId)
+    .maybeSingle()
+  if (user?.fcm_token) {
+    try {
+      await sendFcm(String(user.fcm_token), title, body, data)
+    } catch (err) {
+      console.error('FCM send failed', err)
+    }
+  }
+  if (opts?.email === false) return
+  try {
+    await sendEmail(user?.email, title, body)
+  } catch (err) {
+    console.error('Email send skipped', err)
+  }
+}
+
+export async function dispatchOrderAlert(
+  admin: SupabaseClient,
+  orderId: string,
+  opts: { isInsert: boolean; previousStatus?: string | null },
+) {
+  const { data: order } = await admin
+    .from('orders')
+    .select('id, status, items, chef_id, customer_id, driver_id, delivery_partner_id')
+    .eq('id', orderId)
+    .maybeSingle()
+  if (!order) return { sent: 0 }
+
+  const copy = orderAlertCopy({
+    status: String(order.status ?? ''),
+    isInsert: opts.isInsert,
+    previousStatus: opts.previousStatus,
+    mealTitle: mealTitleFromItems(order.items),
+  })
+  if (!copy) return { sent: 0 }
+
+  const stage = orderAlertStage(String(order.status ?? ''))
+  const data = {
+    order_id: String(order.id),
+    status: String(order.status ?? ''),
+    alert_id: `${order.id}-${stage}`,
+  }
+  const targets: string[] = []
+  if (copy.notifyChef && order.chef_id) targets.push(String(order.chef_id))
+  if (copy.notifyCustomer && order.customer_id) targets.push(String(order.customer_id))
+  if (copy.notifyDriver) {
+    const assigned = order.driver_id ?? order.delivery_partner_id
+    if (assigned) {
+      targets.push(String(assigned))
+    } else {
+      const { data: drivers } = await admin
+        .from('driver_profiles')
+        .select('user_id')
+        .eq('is_available', true)
+        .limit(40)
+      for (const driver of drivers ?? []) {
+        if (driver.user_id) targets.push(String(driver.user_id))
+      }
+    }
+  }
+
+  for (const userId of [...new Set(targets)]) {
+    await notifyUser(admin, userId, copy.title, copy.body, data)
+  }
+  return { sent: targets.length, title: copy.title }
+}
+
+function orderGroupTitle(roomId: string) {
+  const label = roomId.length > 8 ? roomId.slice(0, 8).toUpperCase() : roomId.toUpperCase()
+  return `Order ${label}`
+}
+
+export async function dispatchChatAlert(admin: SupabaseClient, messageId: string) {
+  const { data: message } = await admin
+    .from('messages')
+    .select('id, meal_id, sender_id, content')
+    .eq('id', messageId)
+    .maybeSingle()
+  if (!message) return { sent: 0 }
+
+  const recipients = new Set<string>()
+  const mealId = message.meal_id as string | null
+  let title = 'New message'
+  if (mealId) {
+    const { data: order } = await admin
+      .from('orders')
+      .select('customer_id, user_id, chef_id, driver_id, delivery_partner_id')
+      .eq('id', mealId)
+      .maybeSingle()
+    if (order) {
+      title = orderGroupTitle(mealId)
+      for (const key of ['customer_id', 'user_id', 'chef_id', 'driver_id', 'delivery_partner_id'] as const) {
+        if (order[key]) recipients.add(String(order[key]))
+      }
+    } else {
+      const { data: request } = await admin
+        .from('customer_requests')
+        .select('customer_id, accepted_chef_id')
+        .eq('id', mealId)
+        .maybeSingle()
+      if (request) {
+        title = 'Catering chat'
+        if (request.customer_id) recipients.add(String(request.customer_id))
+        if (request.accepted_chef_id) recipients.add(String(request.accepted_chef_id))
+      } else {
+        const { data: meal } = await admin.from('meals').select('chef_id').eq('id', mealId).maybeSingle()
+        if (meal?.chef_id) recipients.add(String(meal.chef_id))
+
+        const { data: peers } = await admin
+          .from('messages')
+          .select('sender_id')
+          .eq('meal_id', mealId)
+          .neq('sender_id', message.sender_id)
+          .limit(20)
+        for (const row of peers ?? []) {
+          if (row.sender_id) recipients.add(String(row.sender_id))
+        }
+      }
+    }
+  }
+  recipients.delete(String(message.sender_id ?? ''))
+
+  const preview = String(message.content ?? '').trim().replace(/\s+/g, ' ')
+  const body = preview.length > 80 ? `${preview.slice(0, 77)}...` : (preview || 'New message in your HotPotChef chat.')
+  const data = {
+    meal_id: String(mealId ?? ''),
+    message_id: String(message.id),
+    alert_id: `msg-${message.id}`,
+  }
+  for (const userId of recipients) {
+    await notifyUser(admin, userId, title, body, data)
+  }
+  return { sent: recipients.size, title }
+}
+
+export function kitchenLiveAlertCopy(chefName?: string | null) {
+  const name = (chefName || '').trim() || 'A home kitchen'
+  return {
+    title: `${name} is live`,
+    body: `${name} just opened. Order leftovers and today's meals now.`,
+  }
+}
+
+export async function dispatchKitchenLiveAlert(admin: SupabaseClient, chefId: string) {
+  if (!chefId) return { sent: 0 }
+  const { data: chef } = await admin
+    .from('users')
+    .select('name, full_name')
+    .eq('id', chefId)
+    .maybeSingle()
+  const chefName = String(chef?.name || chef?.full_name || '').trim() || 'A home kitchen'
+  const copy = kitchenLiveAlertCopy(chefName)
+
+  const { data: follows } = await admin
+    .from('kitchen_follows')
+    .select('customer_id')
+    .eq('chef_id', chefId)
+    .limit(200)
+
+  const data = {
+    chef_id: chefId,
+    kitchen_id: chefId,
+    alert_id: `kitchen-live-${chefId}`,
+  }
+  const targets = [
+    ...new Set(
+      (follows ?? [])
+        .map((row) => String(row.customer_id ?? ''))
+        .filter((id) => id && id !== chefId),
+    ),
+  ]
+  for (const userId of targets) {
+    await notifyUser(admin, userId, copy.title, copy.body, data)
+  }
+  return { sent: targets.length, title: copy.title }
+}
+
+export async function dispatchUserNotification(admin: SupabaseClient, notificationId: string) {
+  const { data: row } = await admin
+    .from('user_notifications')
+    .select('id, user_id, title, body, kind, data')
+    .eq('id', notificationId)
+    .maybeSingle()
+  if (!row?.user_id) return { sent: 0 }
+
+  const extra = (row.data && typeof row.data === 'object' ? row.data : {}) as Record<string, unknown>
+  const data: Record<string, string> = {
+    kind: String(row.kind ?? 'kyc_pending'),
+    alert_id: String(row.id),
+  }
+  for (const [key, value] of Object.entries(extra)) {
+    if (value == null || typeof value === 'object') continue
+    data[key] = String(value)
+  }
+  await notifyUser(admin, String(row.user_id), String(row.title), String(row.body), data, { email: false })
+  return { sent: 1, title: row.title }
+}
+

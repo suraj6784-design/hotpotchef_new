@@ -7,8 +7,10 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
-import '../utils/app_theme.dart';
+import '../utils/helpers.dart';
+import '../utils/network.dart';
 import '../widgets/customer_ui_components.dart';
+import '../widgets/app_widgets.dart';
 
 class DailyMetric {
   final String dayLabel;
@@ -47,9 +49,11 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
 
   double _totalRevenue = 0.0;
   int _completedOrdersCount = 0;
+  double _nextWeekForecast = 0.0;
   List<DailyMetric> _dailyTrend = [];
   List<TopDishMetric> _topDishes = [];
   int _selectedDays = 7;
+  int _liveBoostCount = 0;
 
   @override
   void initState() {
@@ -60,7 +64,10 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
   Future<void> _fetchChefAnalytics() async {
     try {
       final user = _supabase.auth.currentUser;
-      if (user == null) return;
+      if (user == null) {
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
 
       final cutoffDate = DateTime.now().subtract(Duration(days: _selectedDays));
 
@@ -69,7 +76,8 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
           .from('orders')
           .select()
           .eq('chef_id', user.id)
-          .gte('created_at', cutoffDate.toIso8601String());
+          .gte('created_at', cutoffDate.toIso8601String())
+          .withTimeout(NetworkTimeouts.standard);
 
       final orders = List<Map<String, dynamic>>.from(response);
 
@@ -107,30 +115,16 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
           } catch (_) {}
         }
 
-        double orderRev = 0.0;
-
+        double orderRev = chefPayoutForOrder(order).chefPayout;
         for (var item in items) {
           if (item is Map) {
             final title = item['title']?.toString() ?? item['name']?.toString() ?? 'Dish';
             final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
-            
-            // Safely parse pricing, falling back across known variations
-            final priceStr = item['discountedPrice']?.toString() ?? 
-                             item['basePrice']?.toString() ?? 
-                             item['price']?.toString() ?? '0';
-            final price = double.tryParse(priceStr) ?? 0.0;
-            
-            final itemTotal = price * qty;
-            orderRev += itemTotal;
-
+            final price = lineItemUnitPrice(Map<String, dynamic>.from(item));
             dishVol[title] = (dishVol[title] ?? 0) + qty;
-            dishRev[title] = (dishRev[title] ?? 0.0) + itemTotal;
+            dishRev[title] = (dishRev[title] ?? 0.0) +
+                chefPayoutBreakdown(itemsTotal: price * qty, packagingFee: 0).chefPayout;
           }
-        }
-
-        // Failsafe: if items lacked pricing data, fallback to the gross order total
-        if (orderRev == 0.0) {
-          orderRev = double.tryParse(order['total_amount']?.toString() ?? order['total_price']?.toString() ?? '0') ?? 0.0;
         }
 
         totalRev += orderRev;
@@ -160,12 +154,24 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
       dishesList.sort((a, b) => b.totalPortions.compareTo(a.totalPortions));
       final topDishes = dishesList.take(10).toList(); // Take Top 10
 
+      var liveBoosts = 0;
+      try {
+        final boosted = await _supabase
+            .from('meals')
+            .select('id')
+            .eq('chef_id', user.id)
+            .gt('boosted_until', DateTime.now().toUtc().toIso8601String());
+        liveBoosts = (boosted as List).length;
+      } catch (_) {}
+
       if (mounted) {
         setState(() {
           _totalRevenue = totalRev;
           _completedOrdersCount = completedCount;
+          _nextWeekForecast = _selectedDays <= 0 ? 0 : (totalRev / _selectedDays) * 7;
           _dailyTrend = trendList;
           _topDishes = topDishes;
+          _liveBoostCount = liveBoosts;
           _isLoading = false;
         });
       }
@@ -193,17 +199,14 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: AppTheme.canvasOf(context),
       appBar: AppBar(
-        title: const Text(
-          'Chef Earnings & Analytics',
-          style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textMain),
-        ),
-        backgroundColor: Colors.white,
-        elevation: 0,
+        title: Text('Kitchen payout & analytics', style: TextStyle(color: AppTheme.onSurfaceOf(context), fontWeight: FontWeight.w800)),
+        backgroundColor: AppTheme.canvasOf(context),
+        foregroundColor: AppTheme.onSurfaceOf(context),
         actions: [
           PopupMenuButton<int>(
-            icon: const Icon(Icons.calendar_today, color: AppTheme.textMain, size: 20),
+            icon: Icon(Icons.calendar_today, color: AppTheme.onSurfaceOf(context), size: 20),
             onSelected: (days) {
               setState(() {
                 _selectedDays = days;
@@ -227,7 +230,6 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  // KPI Cards
                   Row(
                     children: [
                       Expanded(
@@ -238,7 +240,7 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text(
-                                'Net Earnings',
+                                'Kitchen take-home',
                                 style: TextStyle(
                                   color: AppTheme.textMuted,
                                   fontSize: 12,
@@ -251,12 +253,12 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                                 style: const TextStyle(
                                   fontSize: 22,
                                   fontWeight: FontWeight.w900,
-                                  color: Colors.green,
+                                  color: AppTheme.success,
                                 ),
                               ),
                             ],
                           ),
-                        ),
+                        ).entrance(),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -280,15 +282,34 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                                 style: const TextStyle(
                                   fontSize: 22,
                                   fontWeight: FontWeight.w900,
-                                  color: AppTheme.primary,
+                                  color: AppTheme.link,
                                 ),
                               ),
                             ],
                           ),
-                        ),
+                        ).entrance(index: 1),
                       ),
                     ],
                   ),
+                  const SizedBox(height: 12),
+                  AppCard(
+                    margin: EdgeInsets.zero,
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.rocket_launch_outlined, color: AppTheme.primary),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            _liveBoostCount == 0
+                                ? 'No dishes boosted on Home right now. Boost is ₹99 until midnight.'
+                                : '$_liveBoostCount dish${_liveBoostCount == 1 ? '' : 'es'} boosted on Home until midnight.',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ).entrance(index: 2),
                   const SizedBox(height: 20),
 
                   // Trend Bar Chart
@@ -303,17 +324,21 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                           children: [
                             Text(
                               'Revenue Trend ($_selectedDays Days)',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 15,
-                                color: AppTheme.textMain,
+                                color: AppTheme.onSurfaceOf(context),
                               ),
                             ),
-                            const Text(
+                            Text(
                               'Amounts in ₹',
-                              style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                              style: AppTheme.micro,
                             ),
                           ],
+                        ),
+                        Text(
+                          'Run-rate next 7 days: ₹${_nextWeekForecast.toStringAsFixed(0)} (from this window)',
+                          style: AppTheme.caption,
                         ),
                         const SizedBox(height: 24),
                         SizedBox(
@@ -347,7 +372,7 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                                             _dailyTrend[idx].dayLabel,
                                             style: const TextStyle(
                                               fontSize: 11,
-                                              color: Colors.grey,
+                                              color: AppTheme.textMuted,
                                               fontWeight: FontWeight.w500,
                                             ),
                                           ),
@@ -372,7 +397,7 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                                   barRods: [
                                     BarChartRodData(
                                       toY: item.amount,
-                                      color: item.amount > 0 ? AppTheme.primary : Colors.grey.shade300,
+                                      color: item.amount > 0 ? AppTheme.primary : AppTheme.hairlineOf(context),
                                       width: _selectedDays > 14 ? 8 : 14,
                                       borderRadius: BorderRadius.circular(4),
                                     ),
@@ -394,24 +419,20 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Top Dishes by Volume',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 15,
-                            color: AppTheme.textMain,
+                            color: AppTheme.onSurfaceOf(context),
                           ),
                         ),
                         const SizedBox(height: 12),
                         if (_topDishes.isEmpty)
-                          const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 24),
-                            child: Center(
-                              child: Text(
-                                'No completed order history yet.',
-                                style: TextStyle(color: AppTheme.textMuted),
-                              ),
-                            ),
+                          const EmptyState(
+                            icon: Icons.restaurant_menu_rounded,
+                            title: 'No completed history yet',
+                            message: 'Delivered dishes will rank here by volume.',
                           )
                         else
                           ListView.separated(
@@ -429,7 +450,7 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                                   child: Text(
                                     '#${index + 1}',
                                     style: const TextStyle(
-                                      color: AppTheme.primary,
+                                      color: AppTheme.link,
                                       fontWeight: FontWeight.bold,
                                       fontSize: 12,
                                     ),
@@ -440,14 +461,14 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                                 ),
                                 subtitle: Text(
-                                  'Earned ₹${dish.totalEarned.toStringAsFixed(2)}',
-                                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                                  'Est. take-home ${formatRupees(dish.totalEarned)}',
+                                  style: AppTheme.caption,
                                 ),
                                 trailing: Text(
                                   '${dish.totalPortions} Sold',
                                   style: const TextStyle(
                                     fontWeight: FontWeight.bold,
-                                    color: AppTheme.primary,
+                                    color: AppTheme.link,
                                   ),
                                 ),
                               );

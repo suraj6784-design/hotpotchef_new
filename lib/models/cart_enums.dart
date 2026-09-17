@@ -18,16 +18,40 @@ enum ServiceType {
     switch (normalized) {
       case 'deliveryplatform':
       case 'delivery':
+      case 'partner':
+      case 'platform':
         return ServiceType.deliveryPlatform;
       case 'deliveryself':
+      case 'self':
+      case 'chefself':
         return ServiceType.deliverySelf;
       case 'pickup':
+      case 'pick up':
         return ServiceType.pickup;
       case 'dinein':
+      case 'dine':
         return ServiceType.dineIn;
-      default:
-        return ServiceType.deliveryPlatform;
     }
+
+    final raw = value?.toLowerCase().trim() ?? '';
+    final token = raw.split(',').first.trim();
+
+    if (token.contains('partner') ||
+        token.contains('platform') ||
+        token == 'delivery' ||
+        token == 'delivery_platform') {
+      return ServiceType.deliveryPlatform;
+    }
+    if (token.contains('self') || token.contains('chef-self') || token == 'delivery_self') {
+      return ServiceType.deliverySelf;
+    }
+    if (token.contains('pickup') || token.contains('pick up')) {
+      return ServiceType.pickup;
+    }
+    if (token.contains('dine')) {
+      return ServiceType.dineIn;
+    }
+    return ServiceType.deliveryPlatform;
   }
 
   /// Stable wire / persistence value (`deliveryPlatform`), not `toString()`.
@@ -36,18 +60,33 @@ enum ServiceType {
   String toDisplayString() {
     switch (this) {
       case ServiceType.deliveryPlatform:
-        return 'Delivery (Platform)';
+        return 'Delivery Partner';
       case ServiceType.deliverySelf:
-        return 'Delivery (Self)';
+        return 'Chef-Self';
       case ServiceType.pickup:
-        return 'Pickup';
+        return 'Customer Pickup';
       case ServiceType.dineIn:
-        return 'Dine-In';
+        return 'Dine In';
     }
   }
 
   bool get isDelivery =>
       this == ServiceType.deliveryPlatform || this == ServiceType.deliverySelf;
+
+  bool get usesDeliveryPartner => this == ServiceType.deliveryPlatform;
+
+  String get chefHelpText {
+    switch (this) {
+      case ServiceType.deliveryPlatform:
+        return 'A HotPotChef driver collects and delivers.';
+      case ServiceType.deliverySelf:
+        return 'You deliver the order to the customer.';
+      case ServiceType.pickup:
+        return 'Customer collects from your kitchen.';
+      case ServiceType.dineIn:
+        return 'Customer eats at your kitchen.';
+    }
+  }
 
   /// Lowercases, strips a `ServiceType.` prefix, and drops non-alphanumerics
   /// so `ServiceType.dineIn`, `dine_in`, `Dine-In`, and `dinein` all match.
@@ -74,10 +113,14 @@ class CartItemAddOn {
   });
 
   factory CartItemAddOn.fromJson(Map<String, dynamic> json) {
+    final rawPrice = json['price'];
+    final price = rawPrice is num
+        ? rawPrice.toDouble()
+        : double.tryParse(rawPrice?.toString() ?? '') ?? 0.0;
     return CartItemAddOn(
       id: json['id']?.toString() ?? '',
       title: json['title']?.toString() ?? '',
-      price: (json['price'] as num?)?.toDouble() ?? 0.0,
+      price: price,
     );
   }
 

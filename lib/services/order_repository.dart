@@ -1,49 +1,98 @@
 // lib/services/order_repository.dart
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
-import '../utils/order_status.dart';
+import '../models/order_status.dart';
+import '../utils/network.dart';
+
+Map<String, dynamic>? _functionData(dynamic data) {
+  if (data is Map<String, dynamic>) return data;
+  if (data is Map) return Map<String, dynamic>.from(data);
+  return null;
+}
 
 class OrderRepository {
   final SupabaseClient _supabase = Supabase.instance.client;
 
-  /// Centralized method to update an order status with atomic validation and safety checks
   Future<void> updateOrderStatus({
     required String orderId,
     required String newStatus,
     String? driverId,
+    String? dispatchPhotoUrl,
+    String? deliveryOtp,
+    String? podPhotoUrl,
   }) async {
     try {
-      final parsed = OrderStatus.parse(newStatus);
-      final statusValue = OrderStatus.toCanonical(newStatus);
-
       final Map<String, dynamic> updateData = {
-        'status': statusValue,
+        'status': newStatus,
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       };
 
       if (driverId != null) {
         updateData['driver_id'] = driverId;
       }
-
-      if (parsed.isDeliveredLike) {
-        updateData['delivered_at'] = DateTime.now().toUtc().toIso8601String();
+      final packedUrl = dispatchPhotoUrl?.trim() ?? '';
+      if (packedUrl.isNotEmpty) {
+        updateData['dispatch_photo_url'] = packedUrl;
+        updateData['dispatch_photo_at'] = DateTime.now().toUtc().toIso8601String();
       }
 
-      // If assigning a driver, ensure atomic claim (driver_id must be currently null)
-      if (driverId != null) {
-        await _supabase
-            .from('orders')
-            .update(updateData)
-            .eq('id', orderId)
-            .filter('driver_id', 'is', null);
-      } else {
-        await _supabase
-            .from('orders')
-            .update(updateData)
-            .eq('id', orderId);
+      final lowered = newStatus.toLowerCase();
+      final completing = lowered == 'delivered' || lowered == 'completed';
+
+      if (completing) {
+        try {
+          final params = <String, dynamic>{'p_order_id': orderId};
+          if (deliveryOtp != null && deliveryOtp.trim().isNotEmpty) {
+            params['p_otp'] = deliveryOtp.trim();
+          }
+          if (podPhotoUrl != null && podPhotoUrl.trim().isNotEmpty) {
+            params['p_pod_url'] = podPhotoUrl.trim();
+          }
+          final done = await _supabase.rpc('complete_delivery_order', params: params);
+          if (done == true) {
+            unawaited(_releaseChefPayout(orderId));
+            return;
+          }
+        } catch (e) {
+          if (e.toString().contains('DELIVERY_PIN_REQUIRED') ||
+              e.toString().contains('POD_PHOTO_REQUIRED')) rethrow;
+        }
+      }
+
+      Future<void> write(Map<String, dynamic> payload) async {
+        if (driverId != null) {
+          await _supabase
+              .from('orders')
+              .update(payload)
+              .eq('id', orderId)
+              .filter('driver_id', 'is', null);
+        } else {
+          await _supabase.from('orders').update(payload).eq('id', orderId);
+        }
+      }
+
+      try {
+        await write(updateData);
+      } catch (e) {
+        if (packedUrl.isNotEmpty && e.toString().contains('dispatch_photo')) {
+          updateData.remove('dispatch_photo_url');
+          updateData.remove('dispatch_photo_at');
+          await write(updateData);
+        } else {
+          rethrow;
+        }
+      }
+
+      if (completing) {
+        try {
+          await write({'delivered_at': DateTime.now().toUtc().toIso8601String()});
+        } catch (_) {}
+        unawaited(_releaseChefPayout(orderId));
       }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to update order status to $newStatus');
@@ -52,35 +101,82 @@ class OrderRepository {
     }
   }
 
-  /// Specific helper for drivers accepting a job atomically
+  /// Atomic claim: only succeeds when `driver_id` is still null and the partner is online.
   Future<bool> acceptDelivery({required String orderId, required String driverId}) async {
     try {
-      // Attempt atomic assignment
-      await _supabase
+      try {
+        final viaRpc = await _supabase.rpc('accept_delivery_order', params: {'p_order_id': orderId});
+        if (viaRpc == true) {
+          return true;
+        }
+        if (viaRpc == false) return false;
+      } catch (_) {
+        // RPC not applied yet: fall back to the client-side race-safe update.
+      }
+
+      final response = await _supabase
           .from('orders')
           .update({
-            'status': OrderStatus.driverAssigned.canonical,
+            'status': OrderStatus.driverAssigned,
             'driver_id': driverId,
+            'delivery_partner_id': driverId,
             'updated_at': DateTime.now().toUtc().toIso8601String(),
           })
           .eq('id', orderId)
-          .filter('driver_id', 'is', null);
+          .filter('driver_id', 'is', null)
+          .filter('delivery_partner_id', 'is', null)
+          .or('status.ilike.%ready%,status.ilike.%assigned%,status.ilike.%out for delivery%')
+          .not('status', 'ilike', '%pending%')
+          .select('id');
 
-      return true;
+      final claimed = List<dynamic>.from(response).isNotEmpty;
+      return claimed;
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Driver order acceptance race condition loss');
-      return false; // Order was already claimed by another driver
+      return false;
     }
   }
 
-  /// Specific helper for advancing delivery states
   Future<void> advanceDeliveryState({required String orderId, required bool isCurrentlyOutForDelivery}) async {
-    final nextStatus = isCurrentlyOutForDelivery
-        ? OrderStatus.delivered.canonical
-        : OrderStatus.outForDelivery.canonical;
-    await updateOrderStatus(
-      orderId: orderId,
-      newStatus: nextStatus,
-    );
+    final nextStatus = isCurrentlyOutForDelivery ? OrderStatus.delivered : OrderStatus.outForDelivery;
+    await updateOrderStatus(orderId: orderId, newStatus: nextStatus);
+  }
+
+  Future<void> cancelOrder({
+    required String orderId,
+    String? chefId,
+    String reason = 'Cancelled',
+  }) async {
+    try {
+      final res = await _supabase.functions.invoke(
+        'cancel-order',
+        body: {
+          'order_id': orderId,
+          'reason': reason,
+          if (chefId != null && chefId.isNotEmpty) 'chef_id': chefId,
+        },
+      ).withTimeout(NetworkTimeouts.payment);
+      final data = _functionData(res.data);
+      if (res.status != 200 || data == null || data['success'] != true) {
+        throw Exception(data?['error'] ?? 'Cancellation rejected by server');
+      }
+    } on NetworkException catch (e) {
+      throw Exception(e.message);
+    } on FunctionException catch (e) {
+      final details = _functionData(e.details);
+      throw Exception(details?['error'] ?? e.reasonPhrase ?? 'Cancellation failed');
+    }
+  }
+
+  Future<void> _releaseChefPayout(String orderId) async {
+    try {
+      await _supabase.functions.invoke(
+        'release-chef-payout',
+        body: {'order_id': orderId},
+      ).withTimeout(NetworkTimeouts.payment);
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chef payout after delivery failed');
+      if (kDebugMode) debugPrint('Chef payout error: $e');
+    }
   }
 }

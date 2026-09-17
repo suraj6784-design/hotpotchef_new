@@ -1,26 +1,61 @@
 // lib/screens/checkout_screen.dart
 
+import 'dart:async';
 import 'dart:math';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:geolocator/geolocator.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
-import '../services/create_split_order_contract.dart';
-import '../utils/checkout_cart_items.dart';
+import '../services/app_analytics.dart';
+import '../services/auth_session.dart';
+import '../providers/cart_provider.dart';
+import '../utils/helpers.dart';
+import '../utils/service_area.dart';
+import '../utils/app_env.dart';
+import '../utils/delivery_fee.dart';
+import '../utils/network.dart';
+import '../utils/payment_preferences.dart';
+import '../utils/pricing_calculator.dart';
+import '../utils/legal_content.dart';
+import '../utils/membership.dart';
+import '../utils/diner_locale.dart';
+import '../utils/checkout_retry_queue.dart';
+import '../utils/support.dart';
+import '../models/cart_enums.dart';
+import '../widgets/app_widgets.dart';
+import '../widgets/customer_ui_components.dart';
 import 'address_form_screen.dart';
 
 class CheckoutScreen extends StatefulWidget {
   final List<Map<String, dynamic>> cartItems;
   final VoidCallback onOrderPlacedSuccess;
+  final Object? preferredAddressId;
+  final Map<String, dynamic>? preferredAddress;
+  final String? sourceRequestId;
+  final String? sharedRoomCode;
+  final String? sharedHostId;
+  final String? sharedPlaceKind;
+  final String? sharedPlaceLabel;
+  final String? sharedDropoffNote;
+  final String? sharedTimeSlot;
+  final bool membershipOnly;
 
   const CheckoutScreen({
     super.key,
     required this.cartItems,
     required this.onOrderPlacedSuccess,
+    this.preferredAddressId,
+    this.preferredAddress,
+    this.sourceRequestId,
+    this.sharedRoomCode,
+    this.sharedHostId,
+    this.sharedPlaceKind,
+    this.sharedPlaceLabel,
+    this.sharedDropoffNote,
+    this.sharedTimeSlot,
+    this.membershipOnly = false,
   });
 
   @override
@@ -39,20 +74,74 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   double _deliveryFee = 0.0;
   double _userCoinBalance = 0.0;
   bool _applyCoins = false;
+  double _loyaltyPackaging = kDefaultPackagingFee;
+  String? _loyaltyTier;
+  bool _membershipWaivesDelivery = false;
+  bool _addMembership = false;
+  Map<String, dynamic>? _membershipOffer;
+  double _distanceQuote = 0;
   int _selectedTip = 0;
 
   Map<String, dynamic>? _serverPricing;
-  String? _profileEmail;
+  String? _heldRazorpayOrderId;
+  bool _orderRecorded = false;
+  bool _placingOrder = false;
 
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _instructionsController = TextEditingController();
+  final TextEditingController _promoController = TextEditingController();
+  String? _appliedPromoCode;
+  String? _promoFeedback;
+  bool _promoIsError = false;
   late final Razorpay _razorpay;
+
+  Map<String, String?> get _societyGroupMeta => {
+        'placeKind': widget.sharedPlaceKind,
+        'placeLabel': widget.sharedPlaceLabel,
+        'dropoffNote': widget.sharedDropoffNote,
+        'timeSlot': widget.sharedTimeSlot,
+        'roomCode': widget.sharedRoomCode,
+      };
+
+  String _gateInstructionLine() {
+    if (!_hasDelivery || _selectedAddressData == null) return '';
+    final gate = _selectedAddressData!['gate_instructions']?.toString().trim() ?? '';
+    if (gate.isEmpty) return '';
+    return 'Gate: $gate';
+  }
+
+  String _orderInstructions([String? checkoutNote]) {
+    final base = mergedOrderInstructions(
+      _checkoutCartItems(),
+      checkoutNote ?? _instructionsController.text,
+      _societyGroupMeta,
+    );
+    final gateLine = _gateInstructionLine();
+    if (gateLine.isEmpty) return base;
+    if (base.isEmpty) return gateLine;
+    if (base.contains(gateLine)) return base;
+    return '$base\n$gateLine';
+  }
 
   @override
   void initState() {
     super.initState();
     _initRazorpay();
     _loadUserCheckoutData();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) dismissAppSnackBars(context);
+    });
+  }
+
+  void _warnSocietyNightMismatch() {
+    if (!mounted) return;
+    final warning = societyNightAddressMismatchWarning(
+      cartItems: widget.cartItems,
+      sharedPlaceLabel: widget.sharedPlaceLabel,
+      deliveryAddress: _formattedDeliveryAddress(),
+    );
+    if (warning == null) return;
+    _showSnackBar(warning, isError: true, duration: const Duration(seconds: 6));
   }
 
   void _initRazorpay() {
@@ -64,346 +153,939 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   @override
   void dispose() {
+    _releaseInventoryHold();
     _razorpay.clear();
     _phoneController.dispose();
     _instructionsController.dispose();
+    _promoController.dispose();
     super.dispose();
+  }
+
+  void _releaseInventoryHold() {
+    final orderId = _heldRazorpayOrderId;
+    if (orderId == null || _orderRecorded || _placingOrder) return;
+    _heldRazorpayOrderId = null;
+    _supabase.rpc('release_checkout_inventory', params: {
+      'p_razorpay_order_id': orderId,
+    }).withTimeout(NetworkTimeouts.short);
   }
 
   // --- Initial Data Load ---
 
   Future<void> _loadUserCheckoutData() async {
-    try {
-      final user = _supabase.auth.currentUser;
-      if (user == null) return;
-
-      final futures = await Future.wait([
-        _supabase.from('users').select().eq('id', user.id).maybeSingle(),
-        _supabase
-            .from('user_addresses')
-            .select()
-            .eq('user_id', user.id)
-            .order('is_default', ascending: false),
-        _supabase
-            .rpc('calculate_cart_total', params: {'p_items': widget.cartItems})
-            .then<dynamic>((value) => value)
-            .catchError((Object e, StackTrace stack) {
-          FirebaseCrashlytics.instance.recordError(
-            e,
-            stack,
-            reason: 'calculate_cart_total unavailable; using client totals',
-          );
-          return null;
-        }),
-      ]);
-
-      final userData = futures[0] as Map<String, dynamic>?;
-      final addressResponse = futures[1] as List<dynamic>;
-      final pricingRes = futures[2] is Map
-          ? Map<String, dynamic>.from(futures[2] as Map)
-          : null;
-
-      if (!mounted) return;
-
-      setState(() {
-        _savedAddresses = List<Map<String, dynamic>>.from(addressResponse);
-        if (_savedAddresses.isNotEmpty) {
-          _selectedAddressData = _savedAddresses.first;
-        }
-        _phoneController.text = userData?['phone']?.toString() ??
-            user.userMetadata?['phone']?.toString() ??
-            '';
-        _userCoinBalance =
-            double.tryParse(userData?['hotpot_coins']?.toString() ?? '0') ?? 0.0;
-        _profileEmail = userData?['email']?.toString();
-        _serverPricing = pricingRes;
-        _isLoading = false;
-      });
-
-      await _calculateDeliveryFee();
-    } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to load user checkout data');
+    final user = _supabase.auth.currentUser;
+    if (user == null) {
       if (mounted) setState(() => _isLoading = false);
+      return;
     }
+
+    Map<String, dynamic>? userData;
+    List<Map<String, dynamic>>? fetchedAddresses;
+    Map<String, dynamic>? pricingRes;
+    Map<String, dynamic>? gam;
+
+    try {
+      userData = await _supabase
+          .from('users')
+          .select()
+          .eq('id', user.id)
+          .maybeSingle()
+          .withTimeout(NetworkTimeouts.standard);
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to load checkout user');
+    }
+
+    try {
+      gam = await _supabase
+          .from('user_gamification')
+          .select('loyalty_tier')
+          .eq('user_id', user.id)
+          .maybeSingle()
+          .withTimeout(NetworkTimeouts.short);
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to load loyalty packaging');
+    }
+
+    try {
+      final waived = await _supabase.rpc('diner_membership_waives_delivery');
+      _membershipWaivesDelivery = waived == true;
+    } catch (_) {}
+    try {
+      final offer = await _supabase.rpc('diner_flash_membership_offer');
+      if (offer is Map) {
+        _membershipOffer = Map<String, dynamic>.from(offer);
+        final alreadyMember =
+            dinerHasActiveMembership(_membershipOffer) || _membershipWaivesDelivery;
+        _membershipWaivesDelivery = alreadyMember;
+        _addMembership = alreadyMember
+            ? false
+            : membershipOfferEligible(_membershipOffer) &&
+                (widget.membershipOnly || await consumeAddMembershipAtCheckout());
+      }
+    } catch (_) {}
+
+    try {
+      final raw = await _supabase
+          .from('user_addresses')
+          .select()
+          .eq('user_id', user.id)
+          .withTimeout(NetworkTimeouts.standard);
+      fetchedAddresses = List<Map<String, dynamic>>.from(raw as List);
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to load checkout addresses');
+    }
+
+    try {
+      if (widget.cartItems.isNotEmpty) {
+        pricingRes = await _supabase
+            .rpc('calculate_cart_total', params: {
+              'p_items': widget.cartItems,
+              'p_user_id': user.id,
+            })
+            .withTimeout(NetworkTimeouts.standard) as Map<String, dynamic>?;
+      }
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to calculate cart total');
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      if (fetchedAddresses != null) {
+        _savedAddresses = uniqueSavedAddresses(fetchedAddresses);
+        _selectedAddressData = preferredCheckoutAddress(
+              _savedAddresses,
+              selectedId: _selectedAddressData?['id'] ?? widget.preferredAddressId,
+              hint: _selectedAddressData ?? widget.preferredAddress,
+            ) ??
+            _selectedAddressData ??
+            widget.preferredAddress ??
+            checkoutAddressFromUserProfile(userData);
+      } else {
+        _selectedAddressData ??= checkoutAddressFromUserProfile(userData);
+      }
+      _phoneController.text = usableCustomerPhone(
+            userData?['phone']?.toString() ?? user.userMetadata?['phone']?.toString(),
+          );
+      _userCoinBalance =
+          double.tryParse(userData?['hotpot_coins']?.toString() ?? '0') ?? 0.0;
+      _loyaltyTier = gam?['loyalty_tier']?.toString();
+      _loyaltyPackaging = packagingFeeForLoyaltyTier(_loyaltyTier);
+      if (!_coinsAccepted && _applyCoins) _applyCoins = false;
+      if (_instructionsController.text.trim().isEmpty) {
+        final note = mergedOrderInstructions(
+          widget.cartItems,
+          null,
+          _societyGroupMeta,
+        );
+        if (note.isNotEmpty) _instructionsController.text = note;
+      }
+      if (pricingRes != null) _serverPricing = pricingRes;
+      _isLoading = false;
+    });
+    _pushWalletToCart();
+
+    await _calculateDeliveryFee();
+    _warnSocietyNightMismatch();
   }
 
-  bool get _hasDelivery => cartItemsHaveDelivery(widget.cartItems);
+  void _pushWalletToCart() {
+    try {
+      ProviderScope.containerOf(context).read(cartProvider.notifier).setUserCoinBalance(_userCoinBalance);
+    } catch (_) {}
+  }
+
+  bool get _hasDelivery => widget.cartItems.any((item) {
+        final raw = (item['selected_service_type'] ??
+                item['selectedServiceType'] ??
+                item['service_type'] ??
+                item['serviceType'] ??
+                '')
+            .toString();
+        return ServiceType.fromString(raw).isDelivery;
+      });
 
   // --- Batch Distance & Delivery Calculation ---
 
   Future<void> _calculateDeliveryFee() async {
     if (!_hasDelivery) {
-      setState(() => _deliveryFee = 0.0);
+      setState(() {
+        _distanceQuote = 0;
+        _deliveryFee = 0;
+      });
       return;
     }
 
-    if (_selectedAddressData == null ||
-        _selectedAddressData!['latitude'] == null ||
-        _selectedAddressData!['longitude'] == null) {
-      setState(() => _deliveryFee = 40.0);
+    final custLat = addressCoordinate(_selectedAddressData, latitude: true);
+    final custLng = addressCoordinate(_selectedAddressData, latitude: false);
+    if (custLat == null || custLng == null) {
+      setState(() {
+        _distanceQuote = quoteCheckoutDeliveryFee(cartItems: widget.cartItems);
+        _deliveryFee = _customerDeliveryFromDistance(_distanceQuote);
+      });
       return;
     }
 
     setState(() => _isCalculatingFee = true);
 
     try {
-      final custLat = double.parse(_selectedAddressData!['latitude'].toString());
-      final custLng = double.parse(_selectedAddressData!['longitude'].toString());
-
       final chefIds = widget.cartItems
           .map((e) => e['chef_id']?.toString() ?? e['chefId']?.toString())
           .whereType<String>()
           .toSet()
           .toList();
 
-      // Batch query all chef locations in a single round-trip
       final chefsData = await _supabase
           .from('users')
           .select('id, lat, lng')
-          .inFilter('id', chefIds);
+          .inFilter('id', chefIds)
+          .withTimeout(NetworkTimeouts.short);
 
-      double calculatedTotal = 0.0;
-      final chefLocations = {for (var c in chefsData) c['id'].toString(): c};
+      final chefLocations = <String, ({double? lat, double? lng})>{
+        for (final c in chefsData)
+          c['id'].toString(): (
+            lat: double.tryParse(c['lat']?.toString() ?? ''),
+            lng: double.tryParse(c['lng']?.toString() ?? ''),
+          ),
+      };
 
-      for (final chefId in chefIds) {
-        final chef = chefLocations[chefId];
-        if (chef != null && chef['lat'] != null && chef['lng'] != null) {
-          final chefLat = double.parse(chef['lat'].toString());
-          final chefLng = double.parse(chef['lng'].toString());
-
-          final distanceInKm = Geolocator.distanceBetween(
-                chefLat,
-                chefLng,
-                custLat,
-                custLng,
-              ) /
-              1000.0;
-
-          double feeForChef = 30.0;
-          if (distanceInKm > 3.0) {
-            feeForChef += (distanceInKm - 3.0).ceil() * 10.0;
-          }
-          calculatedTotal += feeForChef;
-        } else {
-          calculatedTotal += 40.0;
-        }
+      if (mounted) {
+        setState(() {
+          _distanceQuote = quoteCheckoutDeliveryFee(
+            cartItems: widget.cartItems,
+            dropLat: custLat,
+            dropLng: custLng,
+            chefLocations: chefLocations,
+          );
+          _deliveryFee = _customerDeliveryFromDistance(_distanceQuote);
+        });
       }
-
-      if (mounted) setState(() => _deliveryFee = calculatedTotal);
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Delivery fee calculation error');
-      if (mounted) setState(() => _deliveryFee = 40.0);
+      if (mounted) {
+        setState(() {
+          _distanceQuote = quoteCheckoutDeliveryFee(cartItems: widget.cartItems);
+          _deliveryFee = _customerDeliveryFromDistance(_distanceQuote);
+        });
+      }
     } finally {
       if (mounted) setState(() => _isCalculatingFee = false);
     }
   }
 
+  bool get _showMembershipUpsell => membershipOfferEligible(_membershipOffer);
+
+  bool get _membershipOnThisOrder => _addMembership && _showMembershipUpsell;
+
+  bool get _membershipOnlyPay => widget.cartItems.isEmpty && _membershipOnThisOrder;
+
+  double get _membershipFee =>
+      _membershipOnThisOrder ? membershipOfferPrice(_membershipOffer) : 0;
+
+  bool get _effectiveMembershipWaives =>
+      _membershipWaivesDelivery || _membershipOnThisOrder;
+
+  double _customerDeliveryFromDistance(double distance) {
+    return customerDeliveryFee(
+      distanceQuote: distance,
+      foodTotal: _foodTotal,
+      hasDelivery: _hasDelivery,
+      membershipWaivesDelivery: _effectiveMembershipWaives,
+    );
+  }
+
+  void _repriceDeliveryAfterPromo() {
+    if (!_hasDelivery) {
+      _deliveryFee = 0;
+      return;
+    }
+    _deliveryFee = _customerDeliveryFromDistance(
+      _distanceQuote > 0 ? _distanceQuote : quoteCheckoutDeliveryFee(cartItems: widget.cartItems),
+    );
+  }
+
   // --- Price Computations ---
 
   double get _foodTotal {
-    final serverVal = double.tryParse(_serverPricing?['subtotal']?.toString() ?? 
-                                     _serverPricing?['item_total']?.toString() ?? '');
+    double sum = 0.0;
+    for (final item in widget.cartItems) {
+      sum += PricingCalculator.lineFoodTotal(item, appliedPromoCode: _appliedPromoCode);
+    }
+    if (sum > 0) return sum;
+
+    final serverVal = double.tryParse(_serverPricing?['subtotal']?.toString() ??
+        _serverPricing?['item_total']?.toString() ??
+        '');
     if (serverVal != null && serverVal > 0) {
       return serverVal;
     }
 
-    // Robust client-side fallback from camelCase cart JSON or legacy keys.
-    double sum = 0.0;
+    // Last-resort fallback so a missing price never collapses the bill to ₹0.
     for (final item in widget.cartItems) {
+      final price = double.tryParse(
+            item['discounted_price']?.toString() ??
+                item['discountedPrice']?.toString() ??
+                item['price']?.toString() ??
+                item['base_price']?.toString() ??
+                item['basePrice']?.toString() ??
+                '0',
+          ) ??
+          0.0;
       final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
-      sum += cartItemUnitPrice(item) * qty;
+      sum += price * qty;
     }
     return sum;
   }
 
-  double get _packagingFee =>
-      double.tryParse(_serverPricing?['packaging_fee']?.toString() ?? '20.0') ?? 20.0;
+  double get _foodTotalBeforePromo {
+    double sum = 0.0;
+    for (final item in widget.cartItems) {
+      sum += PricingCalculator.lineFoodGross(item);
+    }
+    return sum;
+  }
 
-  double get _subTotalBeforeCoins =>
+  double get _promoSavings =>
+      PricingCalculator.roundCurrency(max(0.0, _foodTotalBeforePromo - _foodTotal));
+
+  String get _checkoutPromoLabel => PricingCalculator.cartPromoLineLabel(
+        widget.cartItems,
+        appliedPromoCode: _appliedPromoCode,
+      );
+
+  bool get _coinsAccepted => cartAcceptsHotpotCoins(widget.cartItems);
+
+  double get _packagingFee {
+    final typed = packagingFeeForCartItems(
+      widget.cartItems,
+      loyaltyTierFee: _loyaltyPackaging,
+      foodTotal: _foodTotal,
+    );
+    if (_serverPricing != null && _serverPricing!.containsKey('packaging_fee')) {
+      return parseMoney(_serverPricing!['packaging_fee'], typed);
+    }
+    return typed;
+  }
+
+  double get _mealBillBeforeCoins =>
       _foodTotal + _packagingFee + _deliveryFee + _selectedTip;
 
+  double get _subTotalBeforeCoins => _mealBillBeforeCoins + _membershipFee;
+
   double get _coinDeduction =>
-      _applyCoins ? min(_userCoinBalance, _subTotalBeforeCoins) : 0.0;
+      (_applyCoins && _coinsAccepted) ? min(_userCoinBalance, _mealBillBeforeCoins) : 0.0;
 
   double get _grandTotal => max(0.0, _subTotalBeforeCoins - _coinDeduction);
 
   // --- Razorpay Payment Pipeline ---
 
   Future<void> _startRazorpayPayment() async {
-    final phone = _phoneController.text.trim();
+    if (!await AuthSession.ensureCanPlaceOrders(context)) return;
+    if (!mounted) return;
+    final phone = usableCustomerPhone(_phoneController.text);
 
-    if (phone.length < 10) {
-      _showSnackBar('Please enter a valid 10-digit contact number', isError: true);
+    if (phone.length != 10) {
+      _showSnackBar('Enter the mobile number we can reach you on', isError: true);
       return;
     }
+    _phoneController.text = phone;
     if (_hasDelivery && _selectedAddressData == null) {
       _showSnackBar('Please select a delivery address', isError: true);
       return;
     }
-
-    if (kIsWeb) {
-      _showSnackBar(
-        'Card checkout runs in the HotPotChef Android/iOS app. Razorpay is not available on web.',
-        isError: true,
+    if (_hasDelivery) {
+      final warning = serviceAreaCheckoutWarning(
+        pincode: _selectedAddressData?['postal_code']?.toString() ??
+            _selectedAddressData?['pincode']?.toString(),
+        lat: addressCoordinate(_selectedAddressData, latitude: true),
+        lng: addressCoordinate(_selectedAddressData, latitude: false),
       );
-      return;
+      if (warning != null) {
+        final proceed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Outside launch cities'),
+            content: Text(warning),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Change address')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Continue anyway')),
+            ],
+          ),
+        );
+        if (proceed != true || !mounted) return;
+      }
     }
+    unawaited(AppAnalytics.logBeginCheckout(itemCount: widget.cartItems.length, value: _grandTotal));
 
     setState(() => _isCheckingOut = true);
 
     try {
       final user = _supabase.auth.currentUser;
       if (user == null) throw Exception('Authentication session expired');
-      if (widget.cartItems.isEmpty) throw Exception('Your cart is empty');
-
-      // create-split-order recomputes the Razorpay charge server-side from
-      // cart_items + meals prices + delivery_fee/tip/coins. Do not send
-      // total_amount — the function ignores a client grand total.
-      final response = await _supabase.functions.invoke(
-        CreateSplitOrderRequest.functionName,
-        body: CreateSplitOrderRequest.toBody(
-          cartItems: widget.cartItems,
-          customerEmail: user.email,
-          deliveryFee: _deliveryFee,
-          tipAmount: _selectedTip,
-          applyCoins: _applyCoins,
-        ),
-      );
-
-      if (response.status != 200 || response.data == null || response.data['success'] != true) {
-        throw Exception(response.data?['error'] ?? 'Could not initialize secure payment order');
+      if (widget.cartItems.isEmpty && !_membershipOnThisOrder) {
+        throw Exception(widget.membershipOnly
+            ? 'Family member is not available on this account'
+            : 'Your cart is empty');
+      }
+      final slotIssue = widget.cartItems.isEmpty
+          ? null
+          : cartItemsSlotValidationError(_checkoutCartItems());
+      if (slotIssue != null) throw Exception(slotIssue);
+      if (!canPaySharedCart(
+        roomCode: widget.sharedRoomCode,
+        hostId: widget.sharedHostId,
+        userId: user.id,
+      )) {
+        throw Exception('Only the group host can pay for this cart.');
       }
 
-      final data = response.data as Map<String, dynamic>;
+      final chefIds = widget.cartItems
+          .map((item) => item['chef_id']?.toString() ?? item['chefId']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList();
+      if (chefIds.isNotEmpty) {
+        try {
+          final kitchens = await _supabase
+              .from('chef_profiles')
+              .select('user_id, is_open')
+              .inFilter('user_id', chefIds)
+              .withTimeout(NetworkTimeouts.short);
+          if (kitchens.any((row) => !isChefKitchenAcceptingOrders(Map<String, dynamic>.from(row)))) {
+            throw Exception(kitchenClosedCheckoutMessage(charged: false));
+          }
+        } catch (e) {
+          if (isKitchenClosedCheckoutError(e)) rethrow;
+        }
+      }
+
+      if (_applyCoins && _coinsAccepted && _grandTotal < 1 && !_membershipOnThisOrder) {
+        await _placeCoinsOnlyOrder();
+        return;
+      }
+
+      // Edge function calculates canonical price server-side to prevent tampering
+      final response = await _supabase.functions.invoke(
+        'create-split-order',
+        body: {
+          'cart_items': _checkoutCartItems(),
+          'customer_email': user.email,
+          'customer_phone': phone,
+          'delivery_address': _formattedDeliveryAddress(),
+          'instructions': _orderInstructions(),
+          'dropoff_lat': addressCoordinate(_selectedAddressData, latitude: true),
+          'dropoff_lng': addressCoordinate(_selectedAddressData, latitude: false),
+          'tip_amount': clampCheckoutTip(_selectedTip),
+          'apply_coins': _applyCoins && _coinsAccepted,
+          'add_membership': _membershipOnThisOrder,
+          'membership_plan_id': _membershipOnThisOrder ? (_membershipOffer?['plan_id']) : null,
+        },
+      ).withTimeout(NetworkTimeouts.payment);
+
+      if (response.status != 200 || response.data == null) {
+        throw Exception('Could not initialize secure payment order');
+      }
+
+      final data = Map<String, dynamic>.from(response.data as Map);
+      if (data['success'] != true) {
+        if (isSoldOutCheckoutError(data['error'], data)) {
+          throw Exception(soldOutCheckoutMessage(charged: false));
+        }
+        if (isKitchenClosedCheckoutError(data['error'], data)) {
+          throw Exception(kitchenClosedCheckoutMessage(charged: false));
+        }
+        throw Exception(data['error'] ?? 'Could not initialize secure payment order');
+      }
+
       final razorpayOrderId = data['order_id'] as String;
       final amountInPaise = data['amount'];
+      _heldRazorpayOrderId = razorpayOrderId;
+      _orderRecorded = false;
 
-      final razorpayKey = dotenv.env['RAZORPAY_KEY_ID'] ?? '';
+      final razorpayKey = appEnv('RAZORPAY_KEY_ID');
       if (razorpayKey.isEmpty) {
+        _releaseInventoryHold();
         throw Exception('Payment gateway configuration missing.');
       }
+
+      final preferredMethod = await loadPreferredPaymentMethod();
+      final savedVpa = preferredMethod == 'upi' ? await loadSavedVpa() : null;
+      if (preferredMethod == 'upi' && savedVpa != null) {
+        final unlocked = await unlockSavedPayInstrument();
+        if (!unlocked) {
+          _releaseInventoryHold();
+          throw Exception('Biometric unlock cancelled. Pay was not started.');
+        }
+      }
+      final methodOpts = razorpayMethodOptions(preferredMethod, savedVpa: savedVpa);
 
       final options = {
         'key': razorpayKey,
         'amount': amountInPaise,
         'name': 'HotPotChef',
-        'description': 'Order Checkout',
+        'description': _membershipOnlyPay ? 'Family member' : 'Order Checkout',
         'order_id': razorpayOrderId,
         'retry': {'enabled': true, 'max_count': 1},
-        'send_sms_hash': true,
+        'send_sms_hash': preferredMethod == 'upi',
+        if ((data['razorpay_customer_id']?.toString() ?? '').startsWith('cust_'))
+          'customer_id': data['razorpay_customer_id'],
         'prefill': {
           'contact': phone,
           'email': user.email ?? '',
+          'method': methodOpts['prefillMethod'],
+          if (methodOpts['vpa'] != null) 'vpa': methodOpts['vpa'],
         },
-        'theme': {'color': '#FF5722'}
+        'method': methodOpts['method'],
+        'theme': {'color': '#F4511E'}
       };
 
       _razorpay.open(options);
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Payment initialization failed');
+      _releaseInventoryHold();
       setState(() => _isCheckingOut = false);
-      _showSnackBar('Initialization Failed: $e', isError: true);
+      _showSnackBar(checkoutInitErrorMessage(e), isError: true);
     }
   }
 
   void _handlePaymentError(PaymentFailureResponse response) {
     if (!mounted) return;
+    _placingOrder = false;
+    _releaseInventoryHold();
     setState(() => _isCheckingOut = false);
-    _showSnackBar('Payment Cancelled or Failed: ${response.message ?? ''}', isError: true);
+    _showSnackBar(dinerPaymentFailureCopy(response.message), isError: true);
   }
 
   void _handleExternalWallet(ExternalWalletResponse response) {
     if (!mounted) return;
+    _releaseInventoryHold();
     setState(() => _isCheckingOut = false);
     _showSnackBar('Redirecting to wallet: ${response.walletName}');
   }
 
+  String _formattedDeliveryAddress() {
+    if (!_hasDelivery || _selectedAddressData == null) {
+      return 'Store Pickup / Dine-In';
+    }
+    final a = _selectedAddressData!;
+    final formatted = formatSavedAddress(a);
+    return formatted.isNotEmpty ? formatted : 'Store Pickup / Dine-In';
+  }
+
+  List<Map<String, dynamic>> _checkoutCartItems() {
+    final dated = widget.cartItems.map((item) {
+      final rawDate = item['scheduledDate'] ??
+          item['scheduled_date'] ??
+          item['selected_date'] ??
+          item['selectedDate'];
+      String selectedDateStr = formatAppDateKey(DateTime.now());
+
+      if (rawDate != null) {
+        final dt = parseFlexibleDate(rawDate.toString());
+        selectedDateStr = dt != null ? formatAppDateKey(dt) : rawDate.toString();
+      }
+
+      final rawDetails = item['rawMealDetails'] as Map<String, dynamic>? ??
+          (item['mealDetails'] is Map ? Map<String, dynamic>.from(item['mealDetails'] as Map) : null);
+      final finalTimeSlot = preferredDinerTimeSlot([
+        widget.sharedTimeSlot,
+        item['timeSlot'],
+        item['exact_time'],
+        rawDetails?['exact_time'],
+        item['time_slot'],
+        rawDetails?['time_slot'],
+      ]);
+
+      return {
+        ...item,
+        ...storedSlotDateFields({
+          ...item,
+          'selected_date': selectedDateStr,
+        }),
+        'exact_time': finalTimeSlot,
+        'time_slot': finalTimeSlot,
+      };
+    }).toList();
+    return checkoutCartPayload(dated, appliedPromoCode: _appliedPromoCode);
+  }
+
+  void _applyPromoCode() {
+    final code = PricingCalculator.normalizedPromoCode(_promoController.text);
+    if (code == null) {
+      setState(() {
+        _appliedPromoCode = null;
+        _promoIsError = true;
+        _promoFeedback = 'Enter a promo code';
+      });
+      return;
+    }
+    if (!PricingCalculator.cartMatchesPromoCode(widget.cartItems, code)) {
+      setState(() {
+        _appliedPromoCode = null;
+        _promoIsError = true;
+        _promoFeedback = 'This code does not apply to the meals in this cart';
+      });
+      return;
+    }
+    if (!PricingCalculator.cartPromoCodeIsLive(widget.cartItems, code)) {
+      final promo = PricingCalculator.applicablePromosFromCart(widget.cartItems)
+          .where((item) => item.code == code)
+          .firstOrNull;
+      setState(() {
+        _appliedPromoCode = null;
+        _promoIsError = true;
+        _promoFeedback = promo == null
+            ? 'This offer is not valid right now'
+            : 'Code $code is outside the chef\'s dates (${promo.validityLabel()})';
+      });
+      return;
+    }
+    setState(() {
+      _appliedPromoCode = code;
+      _promoIsError = false;
+      _repriceDeliveryAfterPromo();
+      _promoFeedback = _promoSavings > 0
+          ? 'Code $code applied — you save ₹${_promoSavings.toStringAsFixed(0)}'
+          : 'Code $code applied';
+    });
+  }
+
+  void _clearPromoCode() {
+    setState(() {
+      _appliedPromoCode = null;
+      _promoFeedback = null;
+      _promoIsError = false;
+      _promoController.clear();
+      _repriceDeliveryAfterPromo();
+    });
+  }
+
+  String? _resolvedRazorpayOrderId(String? fromGateway) {
+    final from = fromGateway?.trim() ?? '';
+    final held = _heldRazorpayOrderId?.trim() ?? '';
+    if (from.startsWith('order_')) return from;
+    if (held.startsWith('order_')) return held;
+    if (from.isNotEmpty) return from;
+    if (held.isNotEmpty) return held;
+    return null;
+  }
+
+  Map<String, dynamic> _verifiedPaymentBody({
+    required String paymentId,
+    required String? razorpayOrderId,
+    required String? signature,
+  }) {
+    return {
+      'payment_id': paymentId,
+      'razorpay_order_id': razorpayOrderId,
+      'razorpay_signature': signature,
+      'customer_phone': _phoneController.text.trim(),
+      'delivery_address': _formattedDeliveryAddress(),
+      'instructions': _orderInstructions(),
+      'cart_items': _checkoutCartItems(),
+      'tip_amount': clampCheckoutTip(_selectedTip),
+      'apply_coins': _applyCoins && _coinsAccepted,
+      'add_membership': _membershipOnThisOrder,
+      'membership_plan_id': _membershipOnThisOrder ? (_membershipOffer?['plan_id']) : null,
+      'dropoff_lat': addressCoordinate(_selectedAddressData, latitude: true),
+      'dropoff_lng': addressCoordinate(_selectedAddressData, latitude: false),
+    };
+  }
+
+  Future<void> _placeCoinsOnlyOrder() async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) throw Exception('Authentication session expired');
+    _placingOrder = true;
+    try {
+      final response = await _supabase.functions.invoke(
+        'place-coins-order',
+        body: {
+          'cart_items': _checkoutCartItems(),
+          'customer_email': user.email,
+          'customer_phone': _phoneController.text.trim(),
+          'delivery_address': _formattedDeliveryAddress(),
+          'instructions': _orderInstructions(),
+          'dropoff_lat': addressCoordinate(_selectedAddressData, latitude: true),
+          'dropoff_lng': addressCoordinate(_selectedAddressData, latitude: false),
+          'tip_amount': clampCheckoutTip(_selectedTip),
+        },
+      ).withTimeout(NetworkTimeouts.payment);
+      final placed = response.data is Map ? Map<String, dynamic>.from(response.data as Map) : null;
+      if (response.status != 200 || placed == null || placed['success'] != true) {
+        if (isKitchenClosedCheckoutError(placed?['error'], placed)) {
+          throw Exception(kitchenClosedCheckoutMessage(charged: false));
+        }
+        if (isSoldOutCheckoutError(placed?['error'], placed)) {
+          throw Exception(soldOutCheckoutMessage(charged: false));
+        }
+        throw Exception(placed?['error'] ?? 'Could not record the coin-paid order.');
+      }
+      _orderRecorded = true;
+      final orderId = placed['order_id']?.toString();
+      await _persistOrderDropoff(orderId);
+      await _markSourceRequestOrdered(orderId);
+      unawaited(AppAnalytics.logPurchase(orderId: orderId, value: 0));
+      if (mounted) {
+        widget.onOrderPlacedSuccess();
+        Navigator.pop(context);
+        _showSnackBar(
+          _membershipOnThisOrder
+              ? 'Order placed. You are now a Family member.'
+              : 'Order placed with HotPot Coins.',
+          isError: false,
+        );
+      }
+    } finally {
+      _placingOrder = false;
+      if (mounted) setState(() => _isCheckingOut = false);
+    }
+  }
+
+  Future<void> _persistOrderDropoff(String? orderId) async {
+    if (orderId == null || orderId.isEmpty || !_hasDelivery) return;
+    final lat = addressCoordinate(_selectedAddressData, latitude: true);
+    final lng = addressCoordinate(_selectedAddressData, latitude: false);
+    final a = _selectedAddressData ?? const <String, dynamic>{};
+    final wing = a['wing']?.toString().trim() ?? '';
+    final flat = a['flat_no']?.toString().trim() ?? '';
+    final house = a['house_no']?.toString().trim() ?? '';
+    final society = a['society_name']?.toString().trim() ?? '';
+    final gate = a['gate_instructions']?.toString().trim() ?? '';
+    final societyFields = <String, dynamic>{
+      if (wing.isNotEmpty) 'wing': wing,
+      if (flat.isNotEmpty)
+        'flat_no': flat
+      else if (house.isNotEmpty)
+        'flat_no': house,
+      if (society.isNotEmpty) 'society_name': society,
+      if (gate.isNotEmpty) 'gate_instructions': gate,
+    };
+
+    if (lat != null && lng != null) {
+      try {
+        await _supabase.rpc('set_order_dropoff', params: {
+          'p_order_id': orderId,
+          'p_lat': lat,
+          'p_lng': lng,
+        }).withTimeout(NetworkTimeouts.short);
+      } catch (e, stack) {
+        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to persist order dropoff via RPC');
+        try {
+          await _supabase.from('orders').update({
+            'delivery_lat': lat,
+            'delivery_lng': lng,
+            ...societyFields,
+          }).eq('id', orderId);
+          return;
+        } catch (retry, retryStack) {
+          FirebaseCrashlytics.instance.recordError(retry, retryStack, reason: 'Failed to persist order dropoff');
+        }
+      }
+    }
+
+    try {
+      await _supabase.from('orders').update(societyFields).eq('id', orderId);
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to stamp society/gate on order');
+    }
+  }
+
+  Future<void> _markSourceRequestOrdered(String? orderId) async {
+    final requestId = widget.sourceRequestId;
+    if (requestId == null || requestId.isEmpty) return;
+    try {
+      await _supabase.from('customer_requests').update({
+        'status': 'Ordered',
+        if (orderId != null && orderId.isNotEmpty) 'order_id': orderId,
+      }).eq('id', requestId);
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to mark catering request as ordered');
+      try {
+        await _supabase.from('customer_requests').update({'status': 'Ordered'}).eq('id', requestId);
+      } catch (_) {}
+    }
+    try {
+      await _supabase.rpc(
+        'finalize_customer_request_quotes',
+        params: {'p_request_id': requestId},
+      );
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to finalize catering quotes');
+    }
+  }
+
+  Future<Map<String, dynamic>?> _placeOrderWithRetries({
+    required String paymentId,
+    required String? razorpayOrderId,
+    required String? signature,
+  }) async {
+    if (razorpayOrderId == null || razorpayOrderId.isEmpty) {
+      throw Exception('Missing payment order. If you were charged, contact support with this payment id.');
+    }
+    if (signature == null || signature.isEmpty) {
+      throw Exception('Missing payment signature. If you were charged, contact support with this payment id.');
+    }
+
+    Object? lastError;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        final recover = await _supabase.functions.invoke(
+          'recover-payment',
+          body: _verifiedPaymentBody(
+            paymentId: paymentId,
+            razorpayOrderId: razorpayOrderId,
+            signature: signature,
+          ),
+        ).withTimeout(NetworkTimeouts.payment);
+        final data = recover.data is Map ? Map<String, dynamic>.from(recover.data as Map) : null;
+        if (data != null && data['success'] == true) return data;
+        lastError = data?['error'];
+        if (isSoldOutCheckoutError(data?['error'], data)) {
+          throw Exception(soldOutCheckoutMessage(
+            charged: true,
+            refunded: data?['refunded'] == true,
+          ));
+        }
+        if (isKitchenClosedCheckoutError(data?['error'], data)) {
+          throw Exception(kitchenClosedCheckoutMessage(
+            charged: true,
+            refunded: data?['refunded'] == true,
+          ));
+        }
+        if (data != null && data['refunded'] == true) {
+          final detail = data['error']?.toString().trim();
+          throw Exception(
+            (detail != null &&
+                    detail.isNotEmpty &&
+                    !detail.toLowerCase().contains('could not record'))
+                ? 'We could not record this order ($detail), so the payment was refunded. It should return in 5–7 business days.'
+                : 'We could not record this order, so the payment was refunded. It should return in 5–7 business days.',
+          );
+        }
+      } on FunctionException catch (e) {
+        final details = e.details is Map ? Map<String, dynamic>.from(e.details as Map) : null;
+        if (isSoldOutCheckoutError(details?['error'] ?? e, details)) {
+          throw Exception(soldOutCheckoutMessage(
+            charged: true,
+            refunded: details?['refunded'] == true,
+          ));
+        }
+        if (details?['refunded'] == true) {
+          final detail = details?['error']?.toString().trim();
+          throw Exception(
+            (detail != null &&
+                    detail.isNotEmpty &&
+                    !detail.toLowerCase().contains('could not record'))
+                ? 'We could not record this order ($detail), so the payment was refunded. It should return in 5–7 business days.'
+                : 'We could not record this order, so the payment was refunded. It should return in 5–7 business days.',
+          );
+        }
+        lastError = details?['error'] ?? e.reasonPhrase ?? e;
+      } catch (e) {
+        if (e is Exception &&
+            (e.toString().contains('refunded') ||
+                e.toString().contains('sold out') ||
+                e.toString().contains('went offline'))) {
+          rethrow;
+        }
+        lastError = e;
+      }
+      await Future<void>.delayed(Duration(milliseconds: 400 * (attempt + 1)));
+    }
+    if (lastError != null) {
+      final network = networkErrorMessage(lastError);
+      if (network == NetworkException.offlineMessage || network == NetworkException.timedOutMessage) {
+        await saveCheckoutRetryJob(
+          CheckoutRetryJob(
+            paymentId: paymentId,
+            razorpayOrderId: razorpayOrderId,
+            signature: signature,
+            body: _verifiedPaymentBody(
+              paymentId: paymentId,
+              razorpayOrderId: razorpayOrderId,
+              signature: signature,
+            ),
+          ),
+        );
+      }
+      throw lastError;
+    }
+    return null;
+  }
+
   Future<void> _handlePaymentSuccess(PaymentSuccessResponse response) async {
     setState(() => _isCheckingOut = true);
+    _placingOrder = true;
 
     try {
       final user = _supabase.auth.currentUser;
       if (user == null) throw Exception('Authentication expired');
-
-      String formattedAddress = "Store Pickup / Dine-In";
-      if (_hasDelivery && _selectedAddressData != null) {
-        final a = _selectedAddressData!;
-        formattedAddress =
-            "${a['house_no']}, ${a['street']}, ${a['city']}, ${a['state']} - ${a['postal_code'] ?? a['pincode'] ?? ''}";
+      if (response.paymentId == null || response.paymentId!.isEmpty) {
+        throw Exception('Payment succeeded without a payment id');
       }
 
-      final adjustedCartItems = widget.cartItems.map((item) {
-        final rawDate = item['scheduledDate'] ?? item['scheduled_date'] ?? item['selected_date'];
-        String selectedDateStr = 'Today';
-        
-        if (rawDate != null) {
-          try {
-            final dt = DateTime.parse(rawDate.toString());
-            selectedDateStr = "${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}";
-          } catch (_) {
-            selectedDateStr = rawDate.toString();
-          }
-        }
-
-        final rawDetails = cartItemMealDetails(item);
-        final finalTimeSlot = item['timeSlot'] ?? item['time_slot'] ?? rawDetails?['exact_time'] ?? item['exact_time'] ?? 'ASAP';
-
-        return {
-          ...item,
-          'source_meal_id': item['mealId'] ?? item['id'],
-          'selected_date': selectedDateStr,
-          'time_slot': finalTimeSlot,
-        };
-      }).toList();
-
-      // ATOMIC TRANSACTION: Both order placement & coin updates happen inside the RPC
-      final customerEmail = resolveCustomerEmail(
-        authEmail: user.email,
-        metadataEmail: user.userMetadata?['email']?.toString(),
-        profileEmail: _profileEmail,
+      final placed = await _placeOrderWithRetries(
+        paymentId: response.paymentId!,
+        razorpayOrderId: _resolvedRazorpayOrderId(response.orderId),
+        signature: response.signature,
       );
-      if (customerEmail == null) {
-        throw Exception(
-          'Your account has no email, so the order could not be recorded. '
-          'If you were charged, reference ID: ${response.paymentId}',
-        );
+
+      if (placed == null || placed['success'] != true) {
+        throw Exception(placed?['error'] ?? 'Server failed to record verified order.');
       }
 
-      final rpcResponse = await _supabase.rpc('place_customer_order', params: {
-        'p_customer_email': customerEmail,
-        'p_customer_phone': _phoneController.text.trim(),
-        'p_delivery_address': formattedAddress,
-        'p_instructions': _instructionsController.text.trim(),
-        'p_cart_items': adjustedCartItems,
-        'p_apply_coins': _applyCoins,
-        'p_tip_amount': _selectedTip,
-        'p_delivery_fee': _deliveryFee,
-        'p_payment_id': response.paymentId,
-        'p_razorpay_order_id': response.orderId,
-        'p_razorpay_signature': response.signature,
-        'p_idempotency_key': response.paymentId,
-        'p_user_id': user.id,
-      });
-
-      if (rpcResponse == null || rpcResponse['success'] != true) {
-        throw Exception(rpcResponse?['error'] ?? 'Server failed to record verified order.');
+      _orderRecorded = true;
+      _heldRazorpayOrderId = null;
+      await clearCheckoutRetryJob();
+      if (placed['membership_only'] == true) {
+        unawaited(AppAnalytics.logPurchase(
+          orderId: 'membership',
+          value: _grandTotal,
+          paymentId: response.paymentId,
+        ));
+        if (mounted) {
+          widget.onOrderPlacedSuccess();
+          Navigator.pop(context);
+          _showSnackBar(
+            'You are now a Family member. Unlimited free delivery is on.',
+            isError: false,
+          );
+        }
+        return;
       }
+      final orderId = placed['order_id']?.toString();
+      await _persistOrderDropoff(orderId);
+      await _markSourceRequestOrdered(orderId);
+      unawaited(AppAnalytics.logPurchase(
+        orderId: orderId,
+        value: _grandTotal,
+        paymentId: response.paymentId,
+      ));
 
       if (mounted) {
         widget.onOrderPlacedSuccess();
         Navigator.pop(context);
-        _showSnackBar('Payment Verified! Order placed successfully.', isError: false);
+        _showSnackBar(
+          _membershipOnThisOrder
+              ? 'You are now a Family member. Unlimited free delivery is on.'
+              : 'Payment Verified! Order placed successfully.',
+          isError: false,
+        );
       }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Order recording failed post-payment');
       if (mounted) {
+        final soldOut = isSoldOutCheckoutError(e);
         _showSnackBar(
-          'Error verifying order: $e\nIf your account was debited, reference ID: ${response.paymentId}',
+          soldOut
+              ? checkoutErrorMessage(e)
+              : '${checkoutErrorMessage(e)}\nReference: ${response.paymentId}',
           isError: true,
-          duration: const Duration(seconds: 7),
+          duration: const Duration(seconds: 8),
         );
       }
     } finally {
+      _placingOrder = false;
       if (mounted) setState(() => _isCheckingOut = false);
     }
   }
@@ -422,71 +1104,111 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   // --- Modals & Widgets ---
 
+  Future<void> _openAddressForm({Map<String, dynamic>? existing}) async {
+    final result = await Navigator.push<Object?>(
+      context,
+      MaterialPageRoute(builder: (_) => AddressFormScreen(existingAddress: existing)),
+    );
+    if (!mounted) return;
+
+    if (result is Map<String, dynamic>) {
+      setState(() {
+        final id = result['id'];
+        _savedAddresses = [
+          result,
+          ..._savedAddresses.where((addr) => addr['id'] != id),
+        ];
+        _selectedAddressData = result;
+      });
+      await _calculateDeliveryFee();
+      _showSnackBar('Delivery address saved');
+    } else if (result == 'deleted') {
+      _selectedAddressData = null;
+    }
+
+    if (result != null) {
+      await _loadUserCheckoutData();
+    }
+  }
+
   void _showAddressSelectorModal() {
+    final devicePin = isEphemeralDeliveryPin(_selectedAddressData)
+        ? _selectedAddressData
+        : (isEphemeralDeliveryPin(widget.preferredAddress) ? widget.preferredAddress : null);
+    final choices = <Map<String, dynamic>>[
+      if (devicePin != null) devicePin,
+      ..._savedAddresses.where((addr) => addr['id']?.toString() != devicePin?['id']?.toString()),
+    ];
+    if (choices.isEmpty) {
+      _openAddressForm();
+      return;
+    }
+
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      backgroundColor: Colors.transparent,
       builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text('Select Delivery Address',
-                    style: TextStyle(color: Colors.black87, fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 16),
-                if (_savedAddresses.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 16),
-                    child: Text('No saved addresses yet.', style: TextStyle(color: Colors.grey)),
-                  ),
-                ..._savedAddresses.map((addr) {
-                  final isSelected = _selectedAddressData?['id'] == addr['id'];
-                  final displayStr = "${addr['house_no']}, ${addr['street']}, ${addr['city'] ?? ''}";
+        return Container(
+          decoration: AppTheme.bottomSheetDecoration(
+            isDark: Theme.of(context).brightness == Brightness.dark,
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('Select delivery address',
+                      style: TextStyle(color: AppTheme.onSurfaceOf(context), fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 16),
+                  ...choices.map((addr) {
+                    final isSelected = _selectedAddressData?['id'] == addr['id'];
+                    final isPin = isEphemeralDeliveryPin(addr);
+                    final displayStr = isPin
+                        ? (formatSavedAddress(addr).isEmpty ? 'Current location' : 'Current location · ${formatSavedAddress(addr)}')
+                        : formatSavedAddress(addr);
 
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: isSelected ? Colors.deepOrange.withValues(alpha: 0.05) : Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: isSelected ? Colors.deepOrange : Colors.grey.shade300),
-                    ),
-                    child: ListTile(
-                      dense: true,
-                      leading: Icon(Icons.location_on, color: isSelected ? Colors.deepOrange : Colors.grey),
-                      title: Text(
-                        displayStr,
-                        style: TextStyle(
-                          color: isSelected ? Colors.deepOrange : Colors.black87,
-                          fontSize: 13,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                        ),
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: isSelected ? AppTheme.primary.withValues(alpha: 0.08) : AppTheme.surfaceOf(context),
+                        borderRadius: AppTheme.radiusMd,
+                        border: Border.all(color: isSelected ? AppTheme.primary : AppTheme.hairlineOf(context)),
                       ),
-                      onTap: () {
-                        setState(() => _selectedAddressData = addr);
-                        Navigator.pop(context);
-                        _calculateDeliveryFee();
-                      },
-                    ),
-                  );
-                }),
-                const SizedBox(height: 8),
-                TextButton.icon(
-                  icon: const Icon(Icons.add_location_alt, color: Colors.deepOrange),
-                  label: const Text('Add New Address',
-                      style: TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold)),
-                  onPressed: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const AddressFormScreen()),
-                    ).then((_) => _loadUserCheckoutData());
-                  },
-                ),
-              ],
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(
+                          isPin ? Icons.my_location : Icons.location_on,
+                          color: isSelected ? Colors.deepOrange : Colors.grey,
+                        ),
+                        title: Text(
+                          displayStr.isEmpty ? 'Saved address' : displayStr,
+                          style: TextStyle(
+                            color: isSelected ? Colors.deepOrange : AppTheme.onSurfaceOf(context),
+                            fontSize: 13,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                        onTap: () {
+                          setState(() => _selectedAddressData = addr);
+                          Navigator.pop(context);
+                          _calculateDeliveryFee();
+                        },
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 8),
+                  IconButton(
+                    tooltip: 'Add new address',
+                    icon: const Icon(Icons.add_location_alt, color: Colors.deepOrange),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _openAddressForm();
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -501,9 +1223,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.green : Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: isSelected ? Colors.green : Colors.grey.shade300),
+          color: isSelected ? AppTheme.success : AppTheme.surfaceOf(context),
+          borderRadius: AppTheme.radiusMd,
+          border: Border.all(color: isSelected ? AppTheme.success : AppTheme.hairlineOf(context)),
           boxShadow: [if (!isSelected) const BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
         ),
         child: Text(
@@ -511,9 +1233,203 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           style: TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 13,
-            color: isSelected ? Colors.white : Colors.black87,
+            color: isSelected ? Colors.white : AppTheme.onSurfaceOf(context),
           ),
         ),
+      ),
+    );
+  }
+
+  List<Widget> _checkoutFoodBillRows() {
+    final lines = PricingCalculator.checkoutBillFoodLines(widget.cartItems);
+    final hasAddOns = lines.any((line) => line.isAddOn);
+    if (!hasAddOns) {
+      return [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('Items Total'),
+            Text('₹${_foodTotalBeforePromo.toStringAsFixed(2)}'),
+          ],
+        ),
+      ];
+    }
+
+    final muted = AppTheme.textMuted;
+    return [
+      for (final line in lines) ...[
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                line.isAddOn ? 'Extra · ${line.label}' : line.label,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: line.isAddOn ? muted : AppTheme.onSurfaceOf(context),
+                  fontWeight: line.isAddOn ? FontWeight.w600 : FontWeight.w700,
+                ),
+              ),
+            ),
+            Text(
+              '₹${line.amount.toStringAsFixed(2)}',
+              style: TextStyle(
+                fontSize: 14,
+                color: line.isAddOn ? muted : AppTheme.onSurfaceOf(context),
+                fontWeight: line.isAddOn ? FontWeight.w600 : FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+      ],
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Text('Items Total'),
+          Text('₹${_foodTotalBeforePromo.toStringAsFixed(2)}'),
+        ],
+      ),
+    ];
+  }
+
+  Widget _buildPromoCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceOf(context),
+        borderRadius: AppTheme.radiusLg,
+        border: Border.all(color: AppTheme.hairlineOf(context)),
+        boxShadow: AppTheme.softShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Promo code',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.onSurfaceOf(context))),
+          if (PricingCalculator.applicablePromosFromCart(widget.cartItems).isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Select a chef code. Only offers still inside the chef\'s dates can be applied.',
+              style: TextStyle(color: AppTheme.textMuted, fontSize: 12, height: 1.35),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: PricingCalculator.applicablePromosFromCart(widget.cartItems).map((promo) {
+                final selected = _appliedPromoCode == promo.code;
+                return GestureDetector(
+                  onTap: () {
+                    if (!promo.isActive) {
+                      setState(() {
+                        _appliedPromoCode = null;
+                        _promoIsError = true;
+                        _promoFeedback =
+                            'Code ${promo.code} is outside the chef\'s dates (${promo.validityLabel()})';
+                      });
+                      return;
+                    }
+                    if (selected) {
+                      _clearPromoCode();
+                      return;
+                    }
+                    _promoController.text = promo.code;
+                    _applyPromoCode();
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? AppTheme.success
+                          : promo.isActive
+                              ? AppTheme.surfaceOf(context)
+                              : AppTheme.canvasOf(context),
+                      borderRadius: AppTheme.radiusMd,
+                      border: Border.all(
+                        color: selected
+                            ? AppTheme.success
+                            : promo.isActive
+                                ? AppTheme.primary
+                                : AppTheme.hairlineOf(context),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          promo.code,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            color: selected
+                                ? Colors.white
+                                : promo.isActive
+                                    ? AppTheme.onSurfaceOf(context)
+                                    : AppTheme.textMuted,
+                          ),
+                        ),
+                        Text(
+                          promo.validityLabel(),
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: selected
+                                ? Colors.white70
+                                : promo.isActive
+                                    ? AppTheme.success
+                                    : Colors.redAccent,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 10),
+          ] else
+            const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _promoController,
+                  textCapitalization: TextCapitalization.characters,
+                  enabled: _appliedPromoCode == null,
+                  decoration: InputDecoration(
+                    hintText: 'Enter chef promo code',
+                    isDense: true,
+                    border: OutlineInputBorder(borderRadius: AppTheme.radiusMd),
+                  ),
+                  onSubmitted: (_) => _applyPromoCode(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (_appliedPromoCode == null)
+                TextButton(
+                  onPressed: _applyPromoCode,
+                  child: const Text('Apply', style: TextStyle(fontWeight: FontWeight.bold)),
+                )
+              else
+                TextButton(
+                  onPressed: _clearPromoCode,
+                  child: const Text('Remove'),
+                ),
+            ],
+          ),
+          if (_promoFeedback != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _promoFeedback!,
+              style: TextStyle(
+                color: _promoIsError ? Colors.red : Colors.green.shade700,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -522,66 +1438,127 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Checkout')),
-        body: const Center(child: CircularProgressIndicator(color: Colors.deepOrange)),
+        backgroundColor: AppTheme.canvasOf(context),
+        appBar: const HubAppBar(title: 'Checkout'),
+        body: const Center(child: CircularProgressIndicator(color: AppTheme.primary)),
       );
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA),
-      appBar: AppBar(
-        title: const Text('Checkout & Payment',
-            style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black87),
-      ),
+      backgroundColor: AppTheme.canvasOf(context),
+      appBar: const HubAppBar(title: 'Checkout & Payment'),
+      bottomNavigationBar: _buildPayBar(),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          // Delivery Schedule Details
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(18),
             margin: const EdgeInsets.only(bottom: 16),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
+              color: AppTheme.surfaceOf(context),
+              borderRadius: AppTheme.radiusLg,
+              border: Border.all(color: AppTheme.primary.withValues(alpha: 0.28), width: 1.5),
+              boxShadow: AppTheme.softShadow,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Row(
-                  children: [
-                    Icon(Icons.schedule, color: Colors.deepOrange, size: 20),
-                    SizedBox(width: 8),
-                    Text('Selected Delivery Schedule',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
-                  ],
+                Text(
+                  'Your kitchen slot',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 17,
+                    color: AppTheme.onSurfaceOf(context),
+                  ),
                 ),
-                const Divider(height: 16, color: Colors.black12),
+                const SizedBox(height: 4),
+                Text(
+                  'Promised arrival uses prep and travel — not a pin on the map.',
+                  style: AppTheme.caption,
+                ),
+                const SizedBox(height: 14),
                 ...widget.cartItems.map((item) {
                   final title = item['title'] ?? 'Meal';
-                  
-                  final rawDate = item['scheduledDate'] ?? item['scheduled_date'] ?? item['selected_date'];
-                  String dateStr = 'Today';
-                  if (rawDate != null) {
-                    try {
-                      final dt = DateTime.parse(rawDate.toString());
-                      dateStr = "${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}";
-                    } catch (_) {
-                      dateStr = rawDate.toString();
-                    }
-                  }
-
+                  final rawDate = item['scheduledDate'] ??
+                      item['scheduled_date'] ??
+                      item['selected_date'] ??
+                      item['selectedDate'];
                   final rawDetails = item['rawMealDetails'] as Map<String, dynamic>?;
-                  final timeSlot = item['timeSlot'] ?? item['time_slot'] ?? rawDetails?['exact_time'] ?? item['exact_time'] ?? 'ASAP';
+                  final shared = (widget.sharedTimeSlot ?? '').trim();
+                  final timeSlot = preferredDinerTimeSlot([
+                    shared,
+                    item['timeSlot'],
+                    item['exact_time'],
+                    rawDetails?['exact_time'],
+                    item['time_slot'],
+                    rawDetails?['time_slot'],
+                  ]);
+                  DateTime? scheduled;
+                  if (rawDate is DateTime) {
+                    scheduled = rawDate;
+                  } else {
+                    scheduled = parseFlexibleDate(rawDate?.toString());
+                  }
+                  final scheduleLabel = formatCheckoutDeliverySchedule(
+                    slot: timeSlot,
+                    scheduledDate: scheduled,
+                  );
+                  final image = (item['image_url'] ?? rawDetails?['image_url'])?.toString() ?? '';
 
                   return Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Text(
-                      '• $title\n  🗓️ Date: $dateStr  ⏰ Slot: $timeSlot',
-                      style: const TextStyle(fontSize: 13, color: Colors.black54, height: 1.3),
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: image.isNotEmpty
+                              ? Image.network(
+                                  image,
+                                  width: 52,
+                                  height: 52,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, _, _) => const ColoredBox(
+                                    color: Color(0xFFF6EDE4),
+                                    child: SizedBox(width: 52, height: 52),
+                                  ),
+                                )
+                              : const ColoredBox(
+                                  color: Color(0xFFF6EDE4),
+                                  child: SizedBox(
+                                    width: 52,
+                                    height: 52,
+                                    child: Icon(Icons.soup_kitchen_outlined, color: Color(0xFFC4A484)),
+                                  ),
+                                ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                title.toString(),
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                  color: AppTheme.onSurfaceOf(context),
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                scheduleLabel,
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w800,
+                                  height: 1.25,
+                                  color: AppTheme.link,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   );
                 }),
@@ -595,9 +1572,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               padding: const EdgeInsets.all(16),
               margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
+                color: AppTheme.surfaceOf(context),
+                borderRadius: AppTheme.radiusLg,
+                border: Border.all(color: AppTheme.hairlineOf(context)),
+                boxShadow: AppTheme.softShadow,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -613,17 +1591,22 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       ]),
                       TextButton(
                         onPressed: _showAddressSelectorModal,
-                        child: const Text('Change',
-                            style: TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold)),
+                        child: Text(
+                          _selectedAddressData == null ? 'Add' : 'Change',
+                          style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold),
+                        ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    _selectedAddressData != null
-                        ? "${_selectedAddressData!['house_no']}, ${_selectedAddressData!['street']}, ${_selectedAddressData!['city']}"
-                        : 'Please add a delivery address',
-                    style: const TextStyle(color: Colors.grey, fontSize: 14),
+                  InkWell(
+                    onTap: _showAddressSelectorModal,
+                    child: Text(
+                      formatSavedAddress(_selectedAddressData).isEmpty
+                          ? 'Please add a delivery address'
+                          : formatSavedAddress(_selectedAddressData),
+                      style: const TextStyle(color: AppTheme.textMuted, fontSize: 14),
+                    ),
                   ),
                 ],
               ),
@@ -633,9 +1616,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
+              color: AppTheme.surfaceOf(context),
+              borderRadius: AppTheme.radiusLg,
+              border: Border.all(color: AppTheme.hairlineOf(context)),
+              boxShadow: AppTheme.softShadow,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -647,7 +1631,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   controller: _phoneController,
                   keyboardType: TextInputType.phone,
                   decoration: const InputDecoration(
-                    labelText: 'Contact Number',
+                    labelText: 'Mobile number',
+                    hintText: '10-digit number we can call',
                     prefixIcon: Icon(Icons.phone, size: 18),
                   ),
                 ),
@@ -664,81 +1649,100 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ),
           const SizedBox(height: 16),
 
-          // Driver Tip Option
-          if (_hasDelivery)
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.green.shade50.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.green.shade200),
-                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          if (widget.cartItems.isNotEmpty || _showMembershipUpsell || _hasDelivery)
+            Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                title: Text(
+                  DinerLocaleController.instance.copy.adjustBill,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                subtitle: const Text('Tip, promo, and Family member'),
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Column(
+                  if (_hasDelivery)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.surfaceOf(context),
+                        borderRadius: AppTheme.radiusLg,
+                        border: Border.all(color: AppTheme.hairlineOf(context)),
+                      ),
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Reward your delivery hero',
-                              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: Colors.black87)),
-                          SizedBox(height: 2),
-                          Text('100% of the tip amount goes directly to them',
-                              style: TextStyle(fontSize: 11, color: Colors.grey)),
+                          Text('Optional rider tip',
+                              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppTheme.onSurfaceOf(context))),
+                          const SizedBox(height: 2),
+                          Text('100% of the tip amount goes directly to them', style: AppTheme.micro),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              _buildTipChip(10),
+                              _buildTipChip(20),
+                              _buildTipChip(30),
+                              _buildTipChip(50),
+                              _buildTipChip(0, label: 'None'),
+                            ],
+                          ),
                         ],
                       ),
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(color: Colors.green.shade100, shape: BoxShape.circle),
-                        child: const Icon(Icons.delivery_dining, color: Colors.green, size: 22),
+                    ),
+                  if (widget.cartItems.isNotEmpty) _buildPromoCard(),
+                  if (_showMembershipUpsell)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8, bottom: 8),
+                      child: _CheckoutMembershipOfferCard(
+                        offer: _membershipOffer!,
+                        selected: _addMembership,
+                        onChanged: (value) {
+                          setState(() {
+                            _addMembership = value;
+                            _repriceDeliveryAfterPromo();
+                          });
+                        },
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _buildTipChip(10),
-                      _buildTipChip(20),
-                      _buildTipChip(30),
-                      _buildTipChip(50),
-                      _buildTipChip(0, label: 'None'),
-                    ],
-                  ),
+                    ),
                 ],
               ),
             ),
-          if (_hasDelivery) const SizedBox(height: 16),
 
           // Bill Summary
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
+              color: AppTheme.surfaceOf(context),
+              borderRadius: AppTheme.radiusLg,
+              border: Border.all(color: AppTheme.hairlineOf(context)),
+              boxShadow: AppTheme.softShadow,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text('Bill Summary', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const Divider(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Items Total'),
-                    Text('₹${_foodTotal.toStringAsFixed(2)}'),
-                  ],
-                ),
+                if (widget.cartItems.isNotEmpty) ..._checkoutFoodBillRows(),
+                if (_promoSavings > 0) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Promo ($_checkoutPromoLabel)',
+                          style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600)),
+                      Text('-₹${_promoSavings.toStringAsFixed(2)}',
+                          style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 6),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Packaging Fee'),
-                    Text('₹${_packagingFee.toStringAsFixed(2)}'),
+                    Text(packagingFeeLineLabel(fee: _packagingFee, loyaltyTier: _loyaltyTier)),
+                    Text(formatRupees(_packagingFee)),
                   ],
                 ),
                 if (_hasDelivery) ...[
@@ -746,11 +1750,33 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Delivery Fee'),
+                      Text(
+                        deliveryFeeBillLabel(
+                          fee: _deliveryFee,
+                          foodTotal: _foodTotal,
+                          membershipWaivesDelivery: _effectiveMembershipWaives,
+                          pinMissing: addressCoordinate(_selectedAddressData, latitude: true) == null ||
+                              addressCoordinate(_selectedAddressData, latitude: false) == null,
+                        ),
+                      ),
                       _isCalculatingFee
                           ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
-                          : Text('₹${_deliveryFee.toStringAsFixed(2)}'),
+                          : Text(formatRupees(_deliveryFee)),
                     ],
+                  ),
+                ],
+                if (_membershipFee > 0) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('${membershipMemberTitle(_membershipOffer)} membership'),
+                      Text(formatRupees(_membershipFee)),
+                    ],
+                  ),
+                  Text(
+                    membershipGstLineLabel(_membershipFee),
+                    style: AppTheme.micro,
                   ),
                 ],
                 if (_hasDelivery && _selectedTip > 0) ...[
@@ -764,19 +1790,29 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     ],
                   ),
                 ],
-                if (_userCoinBalance > 0) ...[
+                if (_userCoinBalance > 0 && widget.cartItems.isNotEmpty) ...[
                   const Divider(height: 20),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
-                    activeThumbColor: Colors.deepOrange,
+                    activeThumbColor: AppTheme.primary,
                     title: Text(
-                      'Use HotPot Coins (Balance: ₹${_userCoinBalance.toStringAsFixed(2)})',
+                      _coinsAccepted
+                          ? 'Use HotPot Coins (Balance: ${formatRupees(_userCoinBalance)})'
+                          : 'HotPot Coins are not accepted on a dish in this cart',
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                     ),
-                    value: _applyCoins,
-                    onChanged: (val) => setState(() => _applyCoins = val),
+                    subtitle: _coinsAccepted && !_applyCoins
+                        ? Text(
+                            'Off by default. ${formatRupees(_userCoinBalance)} stays in your wallet until you turn this on.',
+                            style: const TextStyle(fontSize: 12),
+                          )
+                        : null,
+                    value: _applyCoins && _coinsAccepted,
+                    onChanged: _coinsAccepted
+                        ? (val) => setState(() => _applyCoins = val)
+                        : null,
                   ),
-                  if (_applyCoins && _coinDeduction > 0)
+                  if (_applyCoins && _coinsAccepted && _coinDeduction > 0)
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -787,44 +1823,194 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       ],
                     ),
                 ],
-                const Divider(height: 20, thickness: 1.5),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Grand Total', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-                    Text(
-                      '₹${_grandTotal.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 20,
-                        color: Colors.deepOrange,
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.08),
+                    borderRadius: AppTheme.radiusMd,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Grand Total', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                      Text(
+                        '₹${_grandTotal.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 22,
+                          color: AppTheme.link,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Food, packaging, and delivery are shown separately. GST, if applicable, is included in the line. No hidden platform fee.',
+                  style: AppTheme.micro,
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
 
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepOrange,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+  Widget _buildPayBar() {
+    return Container(
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 14,
+        bottom: MediaQuery.of(context).padding.bottom > 0 ? MediaQuery.of(context).padding.bottom : 16,
+      ),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceOf(context),
+        boxShadow: AppTheme.heavyShadow,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(AppTheme.rXl)),
+        border: Border(top: BorderSide(color: AppTheme.hairlineOf(context))),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              const AppLogo(size: 36),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('You pay',
+                      style: TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 2),
+                  Text('₹${_grandTotal.toStringAsFixed(0)}',
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800)),
+                ],
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: GradientButton(
+                  label: (_applyCoins && _grandTotal < 1)
+                      ? 'Place order with coins'
+                      : _membershipOnlyPay
+                          ? '${DinerLocaleController.instance.copy.pay} membership ₹${_grandTotal.toStringAsFixed(0)}'
+                          : '${DinerLocaleController.instance.copy.pay} ₹${_grandTotal.toStringAsFixed(0)}',
+                  icon: Icons.lock_rounded,
+                  loading: _isCheckingOut,
+                  onPressed: _isCheckingOut ? null : _startRazorpayPayment,
+                ),
+              ),
+            ],
+          ),
+          if (razorpayIsTestKey(appEnv('RAZORPAY_KEY_ID'))) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Test payments: use Razorpay card 4111 1111 1111 1111, any future expiry, any CVV. A live bank card will fail on this key.',
+              textAlign: TextAlign.center,
+              style: AppTheme.microOf(context),
             ),
-            onPressed: _isCheckingOut ? null : _startRazorpayPayment,
-            child: _isCheckingOut
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                  )
-                : Text(
-                    'Pay ₹${_grandTotal.toStringAsFixed(2)} & Place Order',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
+          ],
+          const SizedBox(height: 8),
+          Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              TextButton(
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                ),
+                onPressed: () => openLegalDocument(context, LegalDocumentType.terms),
+                child: Text('Terms', style: AppTheme.metaOf(context).copyWith(fontWeight: FontWeight.w700, color: AppTheme.linkOf(context))),
+              ),
+              Text('·', style: AppTheme.metaOf(context)),
+              TextButton(
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                ),
+                onPressed: () => openLegalDocument(context, LegalDocumentType.privacy),
+                child: Text('Privacy', style: AppTheme.metaOf(context).copyWith(fontWeight: FontWeight.w700, color: AppTheme.linkOf(context))),
+              ),
+              Text('·', style: AppTheme.metaOf(context)),
+              TextButton(
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                ),
+                onPressed: () => openLegalDocument(context, LegalDocumentType.cancellation),
+                child: Text('Cancellation', style: AppTheme.metaOf(context).copyWith(fontWeight: FontWeight.w700, color: AppTheme.linkOf(context))),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CheckoutMembershipOfferCard extends StatelessWidget {
+  const _CheckoutMembershipOfferCard({
+    required this.offer,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final Map<String, dynamic> offer;
+  final bool selected;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final list = parseMoney(offer['list_price_inr']);
+    final flash = membershipOfferPrice(offer);
+    final days = int.tryParse(offer['duration_days']?.toString() ?? '') ?? 90;
+    final period = membershipPlanPeriodLabel(days);
+    final label = offer['flash_label']?.toString().trim();
+    final flashing = offer['flash_enabled'] == true;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.primary.withValues(alpha: 0.08),
+        borderRadius: AppTheme.radiusLg,
+        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.28)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            flashing && (label != null && label.isNotEmpty)
+                ? label
+                : 'Become a Family member',
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Unlimited free delivery for $period. Added to this bill as ${membershipMemberTitle(offer)}.'
+            ' List ₹${list.toStringAsFixed(0)}'
+            '${flashing ? ' · today ₹${flash.toStringAsFixed(0)}' : ''}.'
+            ' ${membershipGstLineLabel(flash)}.',
+            style: AppTheme.caption,
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text('Add ₹${flash.toStringAsFixed(0)} on this order'),
+            subtitle: const Text('Starts as soon as payment succeeds'),
+            value: selected,
+            onChanged: onChanged,
           ),
         ],
       ),

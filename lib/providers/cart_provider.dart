@@ -11,8 +11,11 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../models/cart_state.dart';
 import '../models/cart_enums.dart';
 import '../services/cart_service.dart';
+import '../services/shared_cart_service.dart';
+import '../services/app_analytics.dart';
 import '../utils/cart_merge.dart';
-import '../utils/checkout_cart_items.dart';
+import '../utils/helpers.dart';
+import '../utils/delivery_fee.dart';
 
 void _logCartError(dynamic error, StackTrace stackTrace, String reason) {
   if (kDebugMode) {
@@ -26,24 +29,27 @@ final cartProvider = NotifierProvider<CartNotifier, CartState>(CartNotifier.new)
 class CartNotifier extends Notifier<CartState> {
   final _supabase = Supabase.instance.client;
   final _cartService = CartService();
+  final _sharedCartService = SharedCartService();
+
+  List<CartItemModel> _applySharedSlotToItems(List<CartItemModel> items, String? slot) {
+    final cleaned = slot?.trim() ?? '';
+    if (cleaned.isEmpty || items.isEmpty) return items;
+    return [for (final item in items) item.copyWith(timeSlot: cleaned)];
+  }
 
   Timer? _debounceTimer;
   RealtimeChannel? _stockChannel;
+  StreamSubscription<List<CartItemModel>>? _sharedCartSub;
   bool _isInitialized = false;
+  bool _applyingSharedCart = false;
 
   static const String _kLocalCartKey = 'local_cart_items_v2';
 
   @override
   CartState build() {
-    final authSub = _supabase.auth.onAuthStateChange.listen((data) {
-      if (data.event == AuthChangeEvent.signedIn) {
-        syncGuestCartToUser();
-      }
-    });
-
     ref.onDispose(() {
-      authSub.cancel();
       _stockChannel?.unsubscribe();
+      _sharedCartSub?.cancel();
       _debounceTimer?.cancel();
     });
 
@@ -117,14 +123,79 @@ class CartNotifier extends Notifier<CartState> {
     if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 800), () async {
       final user = _supabase.auth.currentUser;
-      if (user != null && _isInitialized) {
+      final room = state.sharedRoomCode;
+      final inSharedRoom = room != null && room.isNotEmpty;
+      // While in a group cart, only sync the shared room — avoid overwriting the
+      // host/guest personal remote cart with the group basket.
+      if (user != null && _isInitialized && !inSharedRoom) {
         try {
           await _cartService.saveCart(state.items);
         } catch (e, st) {
           _logCartError(e, st, 'Debounced remote cart sync failed');
         }
       }
+      if (inSharedRoom && !_applyingSharedCart) {
+        try {
+          await _sharedCartService.updateSharedCart(room, state.items);
+        } catch (e, st) {
+          _logCartError(e, st, 'Debounced shared cart sync failed');
+        }
+      }
     });
+  }
+
+  Future<void> attachSharedRoom(
+    String roomCode, {
+    String? placeKind,
+    String? placeLabel,
+    String? dropoffNote,
+    String? timeSlot,
+    String? hostId,
+  }) async {
+    final code = roomCode.trim().toUpperCase();
+    if (code.isEmpty) return;
+    final resolvedHost = hostId ?? await _sharedCartService.sharedCartHostId(code);
+    final slot = timeSlot?.trim();
+    var nextItems = state.items;
+    if (slot != null && slot.isNotEmpty && nextItems.isNotEmpty) {
+      nextItems = [
+        for (final item in nextItems) item.copyWith(timeSlot: slot),
+      ];
+    }
+    state = state.copyWith(
+      items: nextItems,
+      sharedRoomCode: code,
+      sharedHostId: resolvedHost,
+      sharedPlaceKind: placeKind,
+      sharedPlaceLabel: placeLabel,
+      sharedDropoffNote: dropoffNote,
+      sharedTimeSlot: timeSlot,
+    );
+    _sharedCartSub?.cancel();
+    _sharedCartSub = _sharedCartService.streamSharedCart(code).listen((items) {
+      if (_applyingSharedCart) return;
+      _applyingSharedCart = true;
+      final roomClosed = items.isEmpty && state.isNotEmpty && state.sharedRoomCode == code;
+      if (roomClosed) {
+        detachSharedRoom();
+        _applyingSharedCart = false;
+        return;
+      }
+      state = state.copyWith(
+        items: _applySharedSlotToItems(items, state.sharedTimeSlot),
+        sharedRoomCode: code,
+      );
+      _persistLocal();
+      _applyingSharedCart = false;
+    }, onError: (e, st) {
+      _logCartError(e, st, 'Shared cart stream failed');
+    });
+  }
+
+  void detachSharedRoom() {
+    _sharedCartSub?.cancel();
+    _sharedCartSub = null;
+    state = state.copyWith(clearSharedRoom: true);
   }
 
   // --- Scoped Realtime Stock Synchronization ---
@@ -160,10 +231,35 @@ class CartNotifier extends Notifier<CartState> {
             final currentItem = state.items[index];
 
             if (status == 'sold out' || status == 'paused' || stock <= 0) {
-              removeItem(currentItem.id);
-            } else if (currentItem.quantity > stock) {
-              final diff = currentItem.quantity - stock;
-              updateQuantity(currentItem.id, -diff);
+              final remaining = state.items.where((i) => i.id != currentItem.id).toList();
+              _commitItems(
+                remaining,
+                stockNotice: '${currentItem.title} sold out and was removed from your cart.',
+              );
+              if (remaining.isEmpty) {
+                _stockChannel?.unsubscribe();
+              }
+              _scheduleRemoteSync();
+            } else {
+              final livePrice = double.tryParse(newRecord['price']?.toString() ?? '');
+              final liveDiscount = double.tryParse(newRecord['discounted_price']?.toString() ?? '');
+              final merged = Map<String, dynamic>.from(currentItem.rawMealDetails)..addAll({
+                ...newRecord,
+                'max_quantity': stock,
+              });
+              final updated = List<CartItemModel>.from(state.items);
+              updated[index] = currentItem.copyWith(
+                basePrice: livePrice != null && livePrice > 0 ? livePrice : currentItem.basePrice,
+                discountedPrice: (liveDiscount != null && liveDiscount > 0) ? liveDiscount : currentItem.discountedPrice,
+                quantity: currentItem.quantity > stock ? stock : currentItem.quantity,
+                selectedAddOns: pricedAddOnsFromCatalog(
+                  catalog: newRecord['add_ons'] ?? newRecord['addons'],
+                  selected: currentItem.selectedAddOns,
+                ),
+                rawMealDetails: merged,
+              );
+              _commitItems(updated);
+              _scheduleRemoteSync();
             }
           },
         )
@@ -190,19 +286,27 @@ class CartNotifier extends Notifier<CartState> {
     }
 
     final rawSlot = meal['time_slot']?.toString() ?? '';
-    final smartSchedule = _calculateSmartDefaultSchedule(rawSlot);
-    final rawServices = meal['service_type']?.toString() ?? 'Delivery (Platform)';
-    final serviceType = ServiceType.fromString(rawServices.split(',').first.trim());
+    final smartSchedule = chefSlotDefaultSchedule(rawSlot);
+    final serviceType = ServiceType.fromString(
+      (meal['service_type']?.toString() ?? 'Delivery Partner').split(',').first.trim(),
+    );
     final int availableStock = int.tryParse(meal['quantity']?.toString() ?? '99') ?? 99;
+    final pricedAddOns = pricedAddOnsFromCatalog(
+      catalog: meal['add_ons'] ?? meal['addons'],
+      selected: addOns,
+    );
 
-    // Prevent 0.00 checkout bug by strictly rejecting 0 values from discounted_price
-    final double basePriceVal = (meal['price'] as num?)?.toDouble() ?? 0.0;
-    final double? rawDiscount = (meal['discounted_price'] as num?)?.toDouble();
+    final double basePriceVal = double.tryParse(meal['price']?.toString() ?? '') ?? 0.0;
+    final double? rawDiscount = double.tryParse(meal['discounted_price']?.toString() ?? '');
     final double? validDiscount = (rawDiscount != null && rawDiscount > 0) ? rawDiscount : null;
 
-    // Deterministic item matching (considers add-on selection)
+    final resolvedSlot = (smartSchedule['time'] ?? '').trim().isNotEmpty
+        ? smartSchedule['time']!.trim()
+        : (preferredChefSlotClock(rawSlot) ?? rawSlot);
+    final resolvedDate = chefSlotDefaultDate(smartSchedule);
+
     final existingIndex = state.items.indexWhere(
-      (i) => i.mealId == mealId && listEquals(i.selectedAddOns, addOns),
+      (i) => i.mealId == mealId && listEquals(i.selectedAddOns, pricedAddOns),
     );
 
     List<CartItemModel> updatedItems = List.from(state.items);
@@ -212,34 +316,34 @@ class CartNotifier extends Notifier<CartState> {
       final targetQty = (existing.quantity + quantity).clamp(1, availableStock);
       updatedItems[existingIndex] = existing.copyWith(quantity: targetQty);
     } else {
-      final scheduledDate = smartSchedule['date'] == 'Tomorrow'
-          ? DateTime.now().add(const Duration(days: 1))
-          : DateTime.now();
-
       final newItem = CartItemModel(
         id: '${mealId}_${DateTime.now().microsecondsSinceEpoch}',
         mealId: mealId,
         chefId: chefId,
-        title: mealDisplayTitle(meal),
-        basePrice: basePriceVal, // Safely assigned
-        discountedPrice: validDiscount, // Safely assigned
+        title: mealDisplayTitle(meal, fallback: 'Meal Item'),
+        basePrice: basePriceVal,
+        discountedPrice: validDiscount,
         quantity: quantity.clamp(1, availableStock),
-        scheduledDate: scheduledDate,
-        timeSlot: smartSchedule['time'], // Initial time sync
+        scheduledDate: resolvedDate,
+        timeSlot: resolvedSlot,
         serviceType: serviceType,
-        selectedAddOns: addOns,
+        selectedAddOns: pricedAddOns,
         rawMealDetails: {
           ...meal,
-          'exact_time': smartSchedule['time'],
+          'exact_time': resolvedSlot,
           'max_quantity': availableStock,
         },
       );
       updatedItems.add(newItem);
     }
 
-    state = state.copyWith(items: updatedItems);
+    state = state.copyWith(
+      items: updatedItems,
+      packagingFee: _packagingFor(updatedItems),
+    );
     _resubscribeStockWatcher();
     _scheduleRemoteSync();
+    unawaited(AppAnalytics.logAddToCart(mealId: mealId, chefId: chefId, quantity: quantity));
     return true;
   }
 
@@ -259,7 +363,7 @@ class CartNotifier extends Notifier<CartState> {
       updated[index] = item.copyWith(quantity: targetQty.clamp(1, maxStock));
     }
 
-    state = state.copyWith(items: updated);
+    _commitItems(updated);
     if (updated.isEmpty) {
       _stockChannel?.unsubscribe();
     }
@@ -268,7 +372,7 @@ class CartNotifier extends Notifier<CartState> {
 
   void removeItem(String cartItemId) {
     final updated = state.items.where((i) => i.id != cartItemId).toList();
-    state = state.copyWith(items: updated);
+    _commitItems(updated);
     if (updated.isEmpty) {
       _stockChannel?.unsubscribe();
     }
@@ -276,8 +380,17 @@ class CartNotifier extends Notifier<CartState> {
   }
 
   Future<void> clearCart() async {
+    final room = state.sharedRoomCode;
     _stockChannel?.unsubscribe();
-    state = state.copyWith(items: [], applyCoins: false);
+    if (room != null && room.isNotEmpty) {
+      try {
+        await _sharedCartService.markSharedCartOrdered(room);
+      } catch (e, st) {
+        _logCartError(e, st, 'Failed closing shared cart room');
+      }
+    }
+    detachSharedRoom();
+    state = state.copyWith(items: [], applyCoins: false, packagingFee: kDefaultPackagingFee);
 
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -292,7 +405,106 @@ class CartNotifier extends Notifier<CartState> {
   }
 
   void setDeliveryFee(double fee) => state = state.copyWith(dynamicDeliveryFee: fee);
-  void toggleCoins(bool apply) => state = state.copyWith(applyCoins: apply);
+  void toggleCoins(bool apply) =>
+      state = state.copyWith(applyCoins: apply && state.coinsAcceptedByVendors);
+  void clearStockNotice() {
+    if (state.stockNotice != null) {
+      state = state.copyWith(clearStockNotice: true);
+    }
+  }
+
+  double _packagingFor(List<CartItemModel> items, {String? loyaltyTier}) {
+    return packagingFeeForCartItems(
+      items.map((item) => item.toCheckoutPayload()),
+      loyaltyTier: loyaltyTier ?? state.loyaltyTier,
+      foodTotal: items.fold<double>(0.0, (sum, item) => sum + state.getEffectiveItemTotal(item)),
+    );
+  }
+
+  void _commitItems(List<CartItemModel> items, {String? stockNotice}) {
+    state = state.copyWith(
+      items: items,
+      packagingFee: _packagingFor(items),
+      stockNotice: stockNotice,
+    );
+  }
+
+  Future<void> refreshDeliveryQuote() async {
+    if (!state.hasDelivery) {
+      if (state.dynamicDeliveryFee != 0) {
+        state = state.copyWith(dynamicDeliveryFee: 0);
+      }
+      return;
+    }
+    final user = _supabase.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final addresses = await _supabase.from('user_addresses').select().eq('user_id', user.id);
+      final list = List<Map<String, dynamic>>.from(addresses as List);
+      Map<String, dynamic>? chosen;
+      for (final row in list) {
+        if (row['is_default'] == true) {
+          chosen = row;
+          break;
+        }
+      }
+      chosen ??= list.isNotEmpty ? list.first : null;
+      chosen ??= await _supabase
+          .from('users')
+          .select('lat, lng, latitude, longitude')
+          .eq('id', user.id)
+          .maybeSingle();
+
+      final dropLat = addressCoordinate(chosen, latitude: true);
+      final dropLng = addressCoordinate(chosen, latitude: false);
+      if (dropLat == null || dropLng == null) {
+        state = state.copyWith(dynamicDeliveryFee: 0);
+        return;
+      }
+
+      final chefIds = state.vendorIds.where((id) => id.isNotEmpty).toList();
+      if (chefIds.isEmpty) {
+        state = state.copyWith(
+          dynamicDeliveryFee: customerDeliveryFee(
+            distanceQuote: quoteCheckoutDeliveryFee(cartItems: state.items.map((i) => i.toCheckoutPayload())),
+            foodTotal: state.foodTotal,
+            hasDelivery: true,
+            membershipWaivesDelivery: state.membershipWaivesDelivery,
+          ),
+        );
+        return;
+      }
+      final chefsData = await _supabase.from('users').select('id, lat, lng').inFilter('id', chefIds);
+      final chefLocations = <String, ({double? lat, double? lng})>{
+        for (final c in chefsData)
+          c['id'].toString(): (
+            lat: double.tryParse(c['lat']?.toString() ?? ''),
+            lng: double.tryParse(c['lng']?.toString() ?? ''),
+          ),
+      };
+      final fee = customerDeliveryFee(
+        distanceQuote: quoteCheckoutDeliveryFee(
+          cartItems: state.items.map((i) => i.toCheckoutPayload()),
+          dropLat: dropLat,
+          dropLng: dropLng,
+          chefLocations: chefLocations,
+        ),
+        foodTotal: state.foodTotal,
+        hasDelivery: true,
+        membershipWaivesDelivery: state.membershipWaivesDelivery,
+      );
+      state = state.copyWith(dynamicDeliveryFee: fee);
+    } catch (e, st) {
+      _logCartError(e, st, 'Failed quoting cart delivery fee');
+    }
+  }
+
+  void setUserCoinBalance(double coins) {
+    final next = coins < 0 ? 0.0 : coins;
+    if (state.userCoinBalance == next) return;
+    state = state.copyWith(userCoinBalance: next);
+  }
 
   Future<void> fetchUserCoins() async {
     final user = _supabase.auth.currentUser;
@@ -305,7 +517,28 @@ class CartNotifier extends Notifier<CartState> {
           .eq('id', user.id)
           .maybeSingle();
       final coins = double.tryParse(data?['hotpot_coins']?.toString() ?? '0') ?? 0.0;
-      state = state.copyWith(userCoinBalance: coins);
+      String? tier;
+      var member = false;
+      try {
+        final gam = await _supabase
+            .from('user_gamification')
+            .select('loyalty_tier')
+            .eq('user_id', user.id)
+            .maybeSingle();
+        tier = gam?['loyalty_tier']?.toString();
+      } catch (_) {}
+      try {
+        final waived = await _supabase.rpc('diner_membership_waives_delivery');
+        member = waived == true;
+      } catch (_) {}
+      state = state.copyWith(
+        userCoinBalance: coins,
+        loyaltyTier: tier,
+        membershipWaivesDelivery: member,
+        packagingFee: _packagingFor(state.items, loyaltyTier: tier),
+        applyCoins: state.applyCoins && state.coinsAcceptedByVendors,
+      );
+      await refreshDeliveryQuote();
     } catch (e, st) {
       _logCartError(e, st, 'Failed fetching coin balance');
     }
@@ -331,15 +564,16 @@ class CartNotifier extends Notifier<CartState> {
     }
   }
 
-  void updateItemServiceType(String cartItemId, ServiceType serviceType) {
+  void updateItemServiceType(String cartItemId, String serviceTypeStr) {
     final index = state.items.indexWhere((i) => i.id == cartItemId);
     if (index == -1) return;
 
     final updated = List<CartItemModel>.from(state.items);
     final item = updated[index];
+    final serviceType = ServiceType.fromString(serviceTypeStr);
 
     updated[index] = item.copyWith(serviceType: serviceType);
-    state = state.copyWith(items: updated);
+    _commitItems(updated);
     _scheduleRemoteSync();
   }
 
@@ -351,7 +585,7 @@ class CartNotifier extends Notifier<CartState> {
     final item = updated[index];
 
     updated[index] = item.copyWith(scheduledDate: date);
-    state = state.copyWith(items: updated);
+    _commitItems(updated);
     _scheduleRemoteSync();
   }
 
@@ -371,42 +605,7 @@ class CartNotifier extends Notifier<CartState> {
       rawMealDetails: newRawDetails,
     );
 
-    state = state.copyWith(items: updated);
+    _commitItems(updated);
     _scheduleRemoteSync();
-  }
-
-  Map<String, String> _calculateSmartDefaultSchedule(String chefScheduleStr) {
-    final now = DateTime.now();
-    final timeRegex = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)', caseSensitive: false);
-    final matches = timeRegex.allMatches(chefScheduleStr).toList();
-
-    if (matches.length >= 2) {
-      int parseMins(RegExpMatch m) {
-        int h = int.parse(m.group(1)!);
-        if (m.group(3)!.toUpperCase() == 'PM' && h != 12) h += 12;
-        if (m.group(3)!.toUpperCase() == 'AM' && h == 12) h = 0;
-        return h * 60 + int.parse(m.group(2)!);
-      }
-
-      final startMins = parseMins(matches[0]);
-      final endMins = parseMins(matches[1]);
-      final nowMins = now.hour * 60 + now.minute;
-
-      if (nowMins < startMins) {
-        return {'date': 'Today', 'time': matches[0].group(0)!.toUpperCase()};
-      } else if (nowMins >= startMins && nowMins <= (endMins - 40)) {
-        final target = now.add(const Duration(minutes: 40));
-        final h12 = target.hour == 0 ? 12 : (target.hour > 12 ? target.hour - 12 : target.hour);
-        final ampm = target.hour >= 12 ? 'PM' : 'AM';
-        return {'date': 'Today', 'time': '$h12:${target.minute.toString().padLeft(2, '0')} $ampm'};
-      } else {
-        return {'date': 'Tomorrow', 'time': matches[0].group(0)!.toUpperCase()};
-      }
-    }
-
-    final fallback = now.add(const Duration(minutes: 40));
-    final fh12 = fallback.hour == 0 ? 12 : (fallback.hour > 12 ? fallback.hour - 12 : fallback.hour);
-    final fampm = fallback.hour >= 12 ? 'PM' : 'AM';
-    return {'date': 'Today', 'time': '$fh12:${fallback.minute.toString().padLeft(2, '0')} $fampm'};
   }
 }

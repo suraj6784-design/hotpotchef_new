@@ -4,14 +4,16 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:geocoding/geocoding.dart';
+import '../utils/app_env.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../utils/helpers.dart';
+import '../utils/app_page.dart';
 import '../utils/app_theme.dart';
+import '../utils/pinned_address.dart';
+import '../widgets/app_dialog.dart';
 import 'map_picker_screen.dart';
 
 class PlacePrediction {
@@ -53,6 +55,10 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
 
   // Form Controllers
   final _houseController = TextEditingController();
+  final _wingController = TextEditingController();
+  final _flatController = TextEditingController();
+  final _societyController = TextEditingController();
+  final _gateController = TextEditingController();
   final _streetController = TextEditingController();
   final _landmarkController = TextEditingController();
   final _cityController = TextEditingController();
@@ -64,6 +70,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
   double? _latitude;
   double? _longitude;
   bool _isLoading = false;
+  bool _makeDefault = false;
   String _sessionToken = _uuid.v4();
 
   Timer? _debounceTimer;
@@ -76,6 +83,12 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     if (widget.existingAddress != null) {
       final a = widget.existingAddress!;
       _houseController.text = a['house_no']?.toString() ?? '';
+      _wingController.text = a['wing']?.toString() ?? '';
+      final flatNo = a['flat_no']?.toString().trim() ?? '';
+      _flatController.text =
+          flatNo.isNotEmpty ? flatNo : (a['house_no']?.toString() ?? '');
+      _societyController.text = a['society_name']?.toString() ?? '';
+      _gateController.text = a['gate_instructions']?.toString() ?? '';
       _streetController.text = a['street']?.toString() ?? '';
       _landmarkController.text = a['landmark']?.toString() ?? '';
       _cityController.text = a['city']?.toString() ?? '';
@@ -87,6 +100,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
           double.tryParse(a['latitude']?.toString() ?? '');
       _longitude = (a['longitude'] as num?)?.toDouble() ??
           double.tryParse(a['longitude']?.toString() ?? '');
+      _makeDefault = a['is_default'] == true;
 
       if (_streetController.text.isNotEmpty) {
         _searchController.text = "${_houseController.text}, ${_streetController.text}".trim();
@@ -98,6 +112,10 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
   void dispose() {
     _debounceTimer?.cancel();
     _houseController.dispose();
+    _wingController.dispose();
+    _flatController.dispose();
+    _societyController.dispose();
+    _gateController.dispose();
     _streetController.dispose();
     _landmarkController.dispose();
     _cityController.dispose();
@@ -126,7 +144,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
   }
 
   Future<List<PlacePrediction>> _executePlaceAutocomplete(String query) async {
-    final apiKey = dotenv.env['GOOGLE_MAPS_API_KEY'] ?? '';
+    final apiKey = appEnv('GOOGLE_MAPS_API_KEY');
     final trimmed = query.trim();
     if (trimmed.length < 3 || apiKey.isEmpty) return [];
 
@@ -160,7 +178,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
 
   Future<void> _fetchAndFillPlaceDetails(String placeId) async {
     setState(() => _isLoading = true);
-    final apiKey = dotenv.env['GOOGLE_MAPS_API_KEY'] ?? '';
+    final apiKey = appEnv('GOOGLE_MAPS_API_KEY');
 
     final url = Uri.parse(
       'https://maps.googleapis.com/maps/api/place/details/json'
@@ -184,47 +202,23 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
           }
 
           final components = result['address_components'] as List<dynamic>? ?? [];
-          String streetName = '';
-          String sublocality = '';
-          String locality = '';
-          String adminArea2 = ''; // Often contains district/city in Indian addresses
-          String state = '';
-          String pincode = '';
-          String country = 'India';
-
+          final formatted = result['formatted_address']?.toString() ?? '';
+          final parts = parseGoogleAddressComponents(components, formatted: formatted);
           for (final c in components) {
-            final comp = c as Map<String, dynamic>;
-            final types = (comp['types'] as List<dynamic>?)?.map((e) => e.toString()).toSet() ?? {};
-            final longName = comp['long_name']?.toString() ?? '';
-
-            if (types.contains('premise') || types.contains('subpremise')) {
+            if (c is! Map) continue;
+            final types = (c['types'] as List<dynamic>?)?.map((e) => e.toString()).toSet() ?? {};
+            final longName = c['long_name']?.toString() ?? '';
+            if ((types.contains('premise') || types.contains('subpremise')) && longName.isNotEmpty) {
               _houseController.text = longName;
-            } else if (types.contains('route')) {
-              streetName = longName;
-            } else if (types.contains('sublocality_level_1') || types.contains('sublocality')) {
-              sublocality = longName;
-            } else if (types.contains('locality')) {
-              locality = longName;
-            } else if (types.contains('administrative_area_level_2')) {
-              adminArea2 = longName;
-            } else if (types.contains('administrative_area_level_1')) {
-              state = longName;
-            } else if (types.contains('postal_code')) {
-              pincode = longName;
-            } else if (types.contains('country')) {
-              country = longName;
             }
           }
 
-          final fullStreet = [streetName, sublocality].where((s) => s.isNotEmpty).join(', ');
-          final finalCity = locality.isNotEmpty ? locality : adminArea2;
-
           setState(() {
-            if (fullStreet.isNotEmpty) _streetController.text = fullStreet;
-            if (finalCity.isNotEmpty) _cityController.text = finalCity;
-            if (state.isNotEmpty) _stateController.text = state;
-            if (pincode.isNotEmpty) _pincodeController.text = pincode;
-            if (country.isNotEmpty) _countryController.text = country;
+            if (parts.street.isNotEmpty) _streetController.text = parts.street;
+            if (parts.city.isNotEmpty) _cityController.text = parts.city;
+            if (parts.state.isNotEmpty) _stateController.text = parts.state;
+            if (parts.pincode.isNotEmpty) _pincodeController.text = parts.pincode;
+            if (parts.country.isNotEmpty) _countryController.text = parts.country;
           });
 
           // Reset session token after finishing details fetch to close billing bracket
@@ -262,8 +256,8 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
   Future<void> _openMapPicker() async {
     final result = await Navigator.push<Map<String, dynamic>?>(
       context,
-      MaterialPageRoute(
-        builder: (_) => MapPickerScreen(
+      appMaterialRoute<Map<String, dynamic>?>(
+        MapPickerScreen(
           initialLat: _latitude,
           initialLng: _longitude,
         ),
@@ -271,38 +265,108 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     );
 
     if (result != null && mounted) {
+      _latitude = (result['latitude'] as num?)?.toDouble();
+      _longitude = (result['longitude'] as num?)?.toDouble();
+      var parts = PinnedAddressParts.fromMap(result);
+      if (!parts.hasRegion && _latitude != null && _longitude != null) {
+        parts = await reverseGeocodeLatLng(_latitude!, _longitude!);
+      }
+      if (!mounted) return;
       setState(() {
-        _latitude = (result['latitude'] as num?)?.toDouble();
-        _longitude = (result['longitude'] as num?)?.toDouble();
         final rawAddress = result['address']?.toString();
-        if (rawAddress != null && rawAddress.isNotEmpty) {
+        if (parts.street.isNotEmpty) {
+          _streetController.text = parts.street;
+        } else if (rawAddress != null && rawAddress.isNotEmpty) {
           _streetController.text = rawAddress;
+        }
+        if (rawAddress != null && rawAddress.isNotEmpty) {
           _searchController.text = rawAddress;
         }
+        if (parts.city.isNotEmpty) _cityController.text = parts.city;
+        if (parts.state.isNotEmpty) _stateController.text = parts.state;
+        if (parts.pincode.isNotEmpty) _pincodeController.text = parts.pincode;
+        if (parts.country.isNotEmpty) _countryController.text = parts.country;
       });
-
-      if (_latitude != null && _longitude != null) {
-        try {
-          final placemarks = await placemarkFromCoordinates(_latitude!, _longitude!);
-          if (placemarks.isNotEmpty && mounted) {
-            final place = placemarks.first;
-            setState(() {
-              _cityController.text = place.locality?.isNotEmpty == true
-                  ? place.locality!
-                  : (place.subAdministrativeArea ?? _cityController.text);
-              _pincodeController.text = place.postalCode ?? _pincodeController.text;
-              _stateController.text = place.administrativeArea ?? _stateController.text;
-              _countryController.text = place.country ?? _countryController.text;
-            });
-          }
-        } catch (e) {
-          if (kDebugMode) debugPrint('Reverse geocoding error: $e');
-        }
-      }
     }
   }
 
   // --- Database Persistence ---
+
+  Future<Map<String, dynamic>> _upsertAddress({
+    required Map<String, dynamic> addressData,
+    Object? existingId,
+  }) async {
+    final client = Supabase.instance.client;
+    final line1 = addressData['address_line1']?.toString().trim();
+    final payload = {
+      'user_id': addressData['user_id'],
+      'house_no': addressData['house_no'],
+      'wing': addressData['wing'],
+      'flat_no': addressData['flat_no'],
+      'society_name': addressData['society_name'],
+      'gate_instructions': addressData['gate_instructions'],
+      'street': addressData['street'],
+      'address_line1': (line1 != null && line1.isNotEmpty)
+          ? line1
+          : '${addressData['house_no']}, ${addressData['street']}'.trim(),
+      'address_line2': addressData['landmark'],
+      'city': addressData['city'],
+      'state': addressData['state'],
+      'postal_code': addressData['postal_code'],
+      'country': addressData['country'],
+      'landmark': addressData['landmark'],
+      'latitude': addressData['latitude'],
+      'longitude': addressData['longitude'],
+      if (addressData['updated_at'] != null) 'updated_at': addressData['updated_at'],
+      if (addressData.containsKey('is_default')) 'is_default': addressData['is_default'],
+    };
+
+    if (payload['is_default'] == true) {
+      try {
+        await client
+            .from('user_addresses')
+            .update({'is_default': false})
+            .eq('user_id', payload['user_id']);
+      } catch (_) {}
+    }
+
+    Future<Map<String, dynamic>> write(Map<String, dynamic> data) async {
+      if (existingId != null) {
+        await client.from('user_addresses').update(Map<String, dynamic>.from(data)..remove('user_id')).eq('id', existingId);
+        return {...data, 'id': existingId};
+      }
+      await client.from('user_addresses').insert(data);
+      return data;
+    }
+
+    Future<Map<String, dynamic>> writeKnownColumns(Map<String, dynamic> data) async {
+      final body = Map<String, dynamic>.from(data);
+      Object? lastError;
+      for (var attempt = 0; attempt < 8; attempt++) {
+        try {
+          return await write(body);
+        } on PostgrestException catch (e) {
+          lastError = e;
+          if (e.code != 'PGRST204') rethrow;
+          final match = RegExp(r"Could not find the '([^']+)' column").firstMatch(e.message);
+          final missing = match?.group(1);
+          if (missing == null || !body.containsKey(missing)) rethrow;
+          body.remove(missing);
+        }
+      }
+      throw lastError ??
+          const PostgrestException(message: 'Could not save this address', code: 'PGRST204');
+    }
+
+    try {
+      return await writeKnownColumns(payload);
+    } on PostgrestException catch (e) {
+      if (e.code == 'PGRST204' || payload.containsKey('is_default')) {
+        return await writeKnownColumns(Map<String, dynamic>.from(payload)..remove('is_default'));
+      }
+      rethrow;
+    }
+  }
 
   Future<void> _saveAddress() async {
     if (!_formKey.currentState!.validate()) return;
@@ -328,13 +392,16 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final client = Supabase.instance.client;
-      final user = client.auth.currentUser;
+      final user = Supabase.instance.client.auth.currentUser;
       if (user == null) throw Exception('User authentication session expired');
 
       final addressData = {
         'user_id': user.id,
         'house_no': houseNo,
+        'wing': _wingController.text.trim(),
+        'flat_no': _flatController.text.trim(),
+        'society_name': _societyController.text.trim(),
+        'gate_instructions': _gateController.text.trim(),
         'street': street,
         'address_line1': '$houseNo, $street',
         'city': city,
@@ -344,31 +411,38 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
         'landmark': _landmarkController.text.trim(),
         'latitude': _latitude,
         'longitude': _longitude,
-        // Removed is_default
         'updated_at': DateTime.now().toIso8601String(),
       };
 
-      final existingId = widget.existingAddress?['id'];
-      if (existingId != null) {
-        await client.from('user_addresses').update(addressData).eq('id', existingId);
-      } else {
-        await client.from('user_addresses').insert(addressData);
+      List<Map<String, dynamic>> existingRows = const [];
+      try {
+        final rows = await Supabase.instance.client
+            .from('user_addresses')
+            .select()
+            .eq('user_id', user.id);
+        existingRows = List<Map<String, dynamic>>.from(rows as List);
+      } catch (_) {}
+
+      final existingId = widget.existingAddress?['id'] ??
+          matchingSavedAddressId(existingRows, addressData);
+      if (_makeDefault || shouldMarkSavedAddressDefault(existingRows, editingId: existingId)) {
+        addressData['is_default'] = true;
+      } else if (widget.existingAddress?['is_default'] == true) {
+        addressData['is_default'] = false;
       }
+      final saved = await _upsertAddress(addressData: addressData, existingId: existingId);
 
       if (!mounted) return;
-      Navigator.pop(context, true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Address saved successfully!'),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      Navigator.pop(context, saved);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to save address: $e'),
+            content: Text(
+              e.toString().contains('authentication') || e.toString().contains('sign in')
+                  ? 'Please sign in to save this address.'
+                  : 'Could not save this address. Please try again.',
+            ),
             backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating,
           ),
@@ -383,27 +457,12 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     final addressId = widget.existingAddress?['id'];
     if (addressId == null) return;
 
-    final confirm = await showDialog<bool>(
+    final confirm = await AppDialog.showConfirmation(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.surfaceDark,
-        title: const Text('Delete Address', style: TextStyle(color: Colors.white)),
-        content: const Text(
-          'Are you sure you want to delete this address? This action cannot be undone.',
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+      title: 'Delete Address',
+      message: 'Are you sure you want to delete this address? This action cannot be undone.',
+      confirmText: 'Delete',
+      isDestructive: true,
     );
 
     if (confirm != true) return;
@@ -412,14 +471,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     try {
       await Supabase.instance.client.from('user_addresses').delete().eq('id', addressId);
       if (!mounted) return;
-      Navigator.pop(context, true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Address deleted successfully'),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      Navigator.pop(context, 'deleted');
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -437,14 +489,25 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? AppTheme.backgroundDark : AppTheme.background;
+    final surface = isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight;
+    final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
+    final muted = isDark ? AppTheme.textMuted : AppTheme.textMuted;
+    final fill = isDark ? AppTheme.surfaceMutedDark : Colors.white;
+    final divider = isDark ? Colors.white24 : Colors.black12;
+    final optionBorder = isDark ? Colors.white12 : Colors.grey.shade300;
+    final optionDivider = isDark ? Colors.white10 : Colors.grey.shade200;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: bg,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        iconTheme: IconThemeData(color: titleColor),
         title: Text(
           widget.existingAddress == null ? 'Add Delivery Address' : 'Edit Address',
-          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+          style: TextStyle(fontWeight: FontWeight.bold, color: titleColor),
         ),
         actions: [
           if (widget.existingAddress != null)
@@ -478,18 +541,18 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
                     controller: controller,
                     focusNode: focusNode,
                     onEditingComplete: onEditingComplete,
-                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    style: TextStyle(color: titleColor, fontSize: 14),
                     decoration: InputDecoration(
                       labelText: 'Search Building, Street, or Area 🔍',
-                      labelStyle: const TextStyle(color: Colors.grey, fontSize: 13),
+                      labelStyle: TextStyle(color: muted, fontSize: 13),
                       hintText: 'Start typing area or landmark...',
-                      hintStyle: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                      hintStyle: TextStyle(color: muted, fontSize: 13),
                       filled: true,
-                      fillColor: AppTheme.surfaceDark,
+                      fillColor: fill,
                       prefixIcon: const Icon(Icons.search, color: AppTheme.primary),
                       suffixIcon: controller.text.isNotEmpty
                           ? IconButton(
-                              icon: const Icon(Icons.clear, color: Colors.grey, size: 18),
+                              icon: Icon(Icons.clear, color: muted, size: 18),
                               onPressed: () {
                                 controller.clear();
                                 _searchController.clear();
@@ -514,15 +577,15 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
                         constraints: const BoxConstraints(maxHeight: 260),
                         width: MediaQuery.of(context).size.width - 32,
                         decoration: BoxDecoration(
-                          color: AppTheme.surfaceDark,
+                          color: surface,
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: Colors.white12),
+                          border: Border.all(color: optionBorder),
                         ),
                         child: ListView.separated(
                           padding: EdgeInsets.zero,
                           shrinkWrap: true,
                           itemCount: options.length,
-                          separatorBuilder: (_, _) => const Divider(height: 1, color: Colors.white10),
+                          separatorBuilder: (_, _) => Divider(height: 1, color: optionDivider),
                           itemBuilder: (BuildContext context, int index) {
                             final option = options.elementAt(index);
                             return ListTile(
@@ -530,12 +593,12 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
                               leading: const Icon(Icons.location_on_outlined, color: AppTheme.primary, size: 20),
                               title: Text(
                                 option.primaryText,
-                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white),
+                                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: titleColor),
                               ),
                               subtitle: option.secondaryText.isNotEmpty
                                   ? Text(
                                       option.secondaryText,
-                                      style: const TextStyle(fontSize: 12, color: Colors.white60),
+                                      style: TextStyle(fontSize: 12, color: muted),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     )
@@ -552,23 +615,23 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
               const SizedBox(height: 16),
 
               Row(
-                children: const [
-                  Expanded(child: Divider(color: Colors.white24)),
+                children: [
+                  Expanded(child: Divider(color: divider)),
                   Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 8),
-                    child: Text('OR', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Text('OR', style: TextStyle(color: muted, fontWeight: FontWeight.bold)),
                   ),
-                  Expanded(child: Divider(color: Colors.white24)),
+                  Expanded(child: Divider(color: divider)),
                 ],
               ),
               const SizedBox(height: 16),
 
               OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
-                  backgroundColor: AppTheme.surfaceDark,
-                  foregroundColor: AppTheme.primary,
+                  backgroundColor: fill,
+                  foregroundColor: AppTheme.linkOf(context),
                   padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  shape: RoundedRectangleBorder(borderRadius: AppTheme.radiusMd),
                   side: const BorderSide(color: AppTheme.primary, width: 1.2),
                 ),
                 icon: Icon(_latitude == null ? Icons.map_outlined : Icons.check_circle, size: 20),
@@ -580,9 +643,9 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
               ),
               const SizedBox(height: 24),
 
-              const Text(
+              Text(
                 'Address Details',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor),
               ),
               const SizedBox(height: 12),
 
@@ -590,6 +653,35 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
                 controller: _houseController,
                 label: 'House / Flat / Block No. *',
                 validator: (v) => v == null || v.trim().isEmpty ? 'Enter house or flat number' : null,
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildHighContrastTextField(
+                      controller: _wingController,
+                      label: 'Wing',
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildHighContrastTextField(
+                      controller: _flatController,
+                      label: 'Flat No',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              _buildHighContrastTextField(
+                controller: _societyController,
+                label: 'Society / Building name',
+              ),
+              const SizedBox(height: 14),
+              _buildHighContrastTextField(
+                controller: _gateController,
+                label: 'Gate instructions (optional)',
+                maxLines: 2,
               ),
               const SizedBox(height: 14),
               _buildHighContrastTextField(
@@ -644,6 +736,15 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
                   ),
                 ],
               ),
+              const SizedBox(height: 16),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                activeThumbColor: AppTheme.primary,
+                title: Text('Default delivery address', style: TextStyle(color: titleColor, fontWeight: FontWeight.w600)),
+                subtitle: Text('Home and checkout will use this pin first.', style: TextStyle(color: muted, fontSize: 12)),
+                value: _makeDefault,
+                onChanged: (value) => setState(() => _makeDefault = value),
+              ),
               const SizedBox(height: 24),
 
               ElevatedButton(
@@ -675,23 +776,31 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     required String label,
     TextInputType? keyboardType,
     int? maxLength,
+    int maxLines = 1,
     String? Function(String?)? validator,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
+    final muted = isDark ? AppTheme.textMuted : AppTheme.textMuted;
+    final fill = isDark ? AppTheme.surfaceMutedDark : Colors.white;
+    final border = isDark ? Colors.white12 : Colors.grey.shade300;
+
     return TextFormField(
       controller: controller,
-      style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+      style: TextStyle(color: titleColor, fontSize: 14, fontWeight: FontWeight.w500),
       keyboardType: keyboardType,
       maxLength: maxLength,
+      maxLines: maxLines,
       validator: validator,
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: Colors.grey, fontSize: 13),
-        floatingLabelStyle: const TextStyle(color: AppTheme.primary, fontSize: 14, fontWeight: FontWeight.bold),
+        labelStyle: TextStyle(color: muted, fontSize: 13),
+        floatingLabelStyle: const TextStyle(color: AppTheme.link, fontSize: 14, fontWeight: FontWeight.bold),
         filled: true,
-        fillColor: AppTheme.surfaceDark,
+        fillColor: fill,
         counterText: '',
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white12)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: border)),
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppTheme.primary, width: 2)),
         errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.redAccent)),
       ),

@@ -17,7 +17,7 @@ jobs:
       - name: Provide dotenv asset
         run: cp .env.example .env
       - run: flutter pub get
-      # Pre-existing infos/warnings (audit baseline ~36). Fail on errors only.
+      # Pre-existing infos/warnings. Fail on errors only.
       - run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - run: flutter test
 

@@ -5,10 +5,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:geocoding/geocoding.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../utils/app_theme.dart';
+import '../utils/app_env.dart';
+import '../utils/pinned_address.dart';
 
 class MapPickerScreen extends StatefulWidget {
   final double? initialLat;
@@ -25,6 +26,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
   LatLng _currentPosition = const LatLng(18.6298, 73.7997); // Default fallback (Pimpri-Chinchwad)
   bool _isLoading = true;
   String _draggedAddress = 'Locating position...';
+  PinnedAddressParts _pinnedParts = const PinnedAddressParts();
 
   Timer? _debounceTimer;
 
@@ -118,41 +120,34 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
 
   void _onCameraIdleDebounced(LatLng pos) {
     _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 350), () {
+    _debounceTimer = Timer(const Duration(milliseconds: 650), () {
       _updateAddress(pos);
     });
   }
 
   Future<void> _updateAddress(LatLng pos) async {
     try {
-      List<Placemark> placemarks = await placemarkFromCoordinates(pos.latitude, pos.longitude);
-      if (placemarks.isNotEmpty && mounted) {
-        final place = placemarks.first;
-        final addressFormatted = [
-          place.name,
-          place.street,
-          place.subLocality,
-          place.locality,
-          place.administrativeArea,
-          place.postalCode
-        ].where((e) => e != null && e.isNotEmpty && e != place.locality).toSet().join(', ');
-
-        // Ensure city is included
-        final finalAddress = addressFormatted.isNotEmpty
-            ? '$addressFormatted, ${place.locality ?? ''}'.replaceAll(RegExp(r',\s*,'), ',').trim()
-            : '${place.locality ?? ''}, ${place.administrativeArea ?? ''}';
-
-        setState(() {
-          _draggedAddress = finalAddress.isNotEmpty
-              ? finalAddress
-              : "Lat: ${pos.latitude.toStringAsFixed(4)}, Lng: ${pos.longitude.toStringAsFixed(4)}";
-        });
-      }
+      final parts = await reverseGeocodeLatLng(pos.latitude, pos.longitude);
+      if (!mounted) return;
+      final formatted = parts.formatted.isNotEmpty
+          ? parts.formatted
+          : [
+              parts.street,
+              parts.city,
+              parts.state,
+              parts.pincode,
+            ].where((part) => part.isNotEmpty).join(', ');
+      setState(() {
+        _pinnedParts = parts;
+        _draggedAddress = formatted.isNotEmpty
+            ? formatted
+            : 'Lat: ${pos.latitude.toStringAsFixed(4)}, Lng: ${pos.longitude.toStringAsFixed(4)}';
+      });
     } catch (e) {
       if (kDebugMode) debugPrint('Reverse geocode failure: $e');
       if (mounted) {
         setState(() {
-          _draggedAddress = "Lat: ${pos.latitude.toStringAsFixed(4)}, Lng: ${pos.longitude.toStringAsFixed(4)}";
+          _draggedAddress = 'Lat: ${pos.latitude.toStringAsFixed(4)}, Lng: ${pos.longitude.toStringAsFixed(4)}';
         });
       }
     }
@@ -161,26 +156,42 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppTheme.canvasOf(context),
       appBar: AppBar(
-        title: const Text('Pin Delivery Location', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textMain)),
-        backgroundColor: Colors.white,
+        title: Text('Pin Delivery Location', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
+        backgroundColor: AppTheme.surfaceOf(context),
         elevation: 0,
-        iconTheme: const IconThemeData(color: AppTheme.textMain),
+        iconTheme: IconThemeData(color: AppTheme.onSurfaceOf(context)),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
           : Stack(
               alignment: Alignment.center,
               children: [
-                GoogleMap(
-                  initialCameraPosition: CameraPosition(target: _currentPosition, zoom: 16),
-                  myLocationEnabled: true,
-                  myLocationButtonEnabled: true,
-                  zoomControlsEnabled: false,
-                  onMapCreated: (controller) => _mapController = controller,
-                  onCameraMove: (position) => _currentPosition = position.target,
-                  onCameraIdle: () => _onCameraIdleDebounced(_currentPosition),
-                ),
+                if (googleMapsApiKeyConfigured())
+                  GoogleMap(
+                    initialCameraPosition: CameraPosition(target: _currentPosition, zoom: 16),
+                    myLocationEnabled: true,
+                    myLocationButtonEnabled: true,
+                    zoomControlsEnabled: false,
+                    onMapCreated: (controller) => _mapController = controller,
+                    onCameraMove: (position) => _currentPosition = position.target,
+                    onCameraIdle: () => _onCameraIdleDebounced(_currentPosition),
+                  )
+                else
+                  ColoredBox(
+                    color: AppTheme.canvasOf(context),
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(28),
+                        child: Text(
+                          'Maps is unavailable on this build. You can still confirm the GPS pin below.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: AppTheme.onSurfaceOf(context), height: 1.4),
+                        ),
+                      ),
+                    ),
+                  ),
                 // Center Fixed Pin Marker
                 const Padding(
                   padding: EdgeInsets.only(bottom: 35),
@@ -195,19 +206,20 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                   child: Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: AppTheme.surfaceOf(context),
                       borderRadius: BorderRadius.circular(16),
-                      boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 4))],
+                      border: Border.all(color: AppTheme.hairlineOf(context)),
+                      boxShadow: AppTheme.softShadow,
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text('Selected Location',
-                            style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+                            style: TextStyle(color: AppTheme.textMuted, fontSize: 12, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 4),
                         Text(_draggedAddress,
-                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textMain),
+                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context)),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis),
                         const SizedBox(height: 16),
@@ -222,6 +234,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                             ),
                             onPressed: () {
                               Navigator.pop(context, {
+                                ..._pinnedParts.toMap(),
                                 'latitude': _currentPosition.latitude,
                                 'longitude': _currentPosition.longitude,
                                 'address': _draggedAddress,

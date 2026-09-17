@@ -3,16 +3,27 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../services/alert_service.dart';
+import '../services/chat_read_store.dart';
+import '../utils/helpers.dart';
+import '../utils/network.dart';
 
 class InAppChatScreen extends StatefulWidget {
   final String mealId;
   final String roomName;
+  final String? otherUserId;
+  final List<String> memberIds;
+  final bool isGroup;
 
   const InAppChatScreen({
     super.key,
     required this.mealId,
     required this.roomName,
+    this.otherUserId,
+    this.memberIds = const [],
+    this.isGroup = false,
   });
 
   @override
@@ -27,9 +38,44 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
   // Cache System
   final Map<String, String> _roleCache = {};
   bool _isFetchingRoles = false;
+  bool _partyChatOpen = true;
+  bool _phoneCallOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    ChatAlertScope.activeMealId = widget.mealId;
+    ChatReadStore.markRead(widget.mealId);
+    if (widget.isGroup) {
+      _loadOrderChatGate();
+    } else {
+      _phoneCallOpen = true;
+    }
+  }
+
+  Future<void> _loadOrderChatGate() async {
+    try {
+      final row = await _supabase
+          .from('orders')
+          .select('status')
+          .eq('id', widget.mealId)
+          .maybeSingle();
+      if (!mounted) return;
+      final status = row?['status']?.toString();
+      setState(() {
+        _partyChatOpen = orderAllowsPartyChat(status);
+        _phoneCallOpen = orderAllowsPhoneCall(status);
+      });
+    } catch (_) {
+      // Keep composer open if status lookup fails (e.g. non-order rooms).
+    }
+  }
 
   @override
   void dispose() {
+    if (ChatAlertScope.activeMealId == widget.mealId) {
+      ChatAlertScope.activeMealId = null;
+    }
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -65,23 +111,141 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
     }
   }
 
+  Future<void> _dialUser(String userId) async {
+    final userDoc = await _supabase.from('users').select('phone').eq('id', userId).maybeSingle();
+    final phoneStr = userDoc?['phone']?.toString() ?? '';
+    if (phoneStr.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No phone number available.'), backgroundColor: Colors.orange),
+        );
+      }
+      return;
+    }
+    final uri = Uri(scheme: 'tel', path: phoneStr);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open phone dialer.'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _callOtherParty() async {
+    if (!_phoneCallOpen) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Phone is for active preparation/delivery only. Prefer in-app chat.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+    final me = _supabase.auth.currentUser?.id;
+    try {
+      final known = widget.memberIds.where((id) => id.isNotEmpty && id != me).toSet();
+      if (known.length > 1 && mounted) {
+        await _batchFetchRoles(known.toList());
+        if (!mounted) return;
+        final picked = await showModalBottomSheet<String>(
+          context: context,
+          builder: (ctx) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const ListTile(title: Text('Call someone in this order group')),
+                ...known.map((id) {
+                  final role = _roleCache[id] ?? 'Member';
+                  return ListTile(
+                    leading: const Icon(Icons.phone_outlined),
+                    title: Text(role),
+                    onTap: () => Navigator.pop(ctx, id),
+                  );
+                }),
+              ],
+            ),
+          ),
+        );
+        if (picked != null) await _dialUser(picked);
+        return;
+      }
+
+      final rows = await _supabase
+          .from('messages')
+          .select('sender_id')
+          .eq('meal_id', widget.mealId)
+          .limit(40);
+      final otherId = resolveChatCallTarget(
+        knownOtherUserId: known.isNotEmpty ? known.first : widget.otherUserId,
+        messages: (rows as List).map((row) => Map<String, dynamic>.from(row)),
+        myId: me,
+      );
+      if (otherId == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No one to call yet. Wait for a reply, or use Call on the order.')),
+          );
+        }
+        return;
+      }
+      await _dialUser(otherId);
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to call chat participant');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      }
+    }
+  }
+
   // --- Send Message Pipeline ---
 
   Future<void> _sendMessage() async {
+    if (!_partyChatOpen) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Order chat is closed. Contact Support for post-delivery issues.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
     final text = _controller.text.trim();
     if (text.isEmpty) return;
+
+    if (widget.isGroup && messageSolicitsOffAppPayment(text)) {
+      final sendAnyway = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: AppTheme.dialogShape,
+          title: const Text('Pay in the app'),
+          content: Text(offAppPaymentNudgeCopy()),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Edit message')),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Send anyway')),
+          ],
+        ),
+      );
+      if (sendAnyway != true || !mounted) return;
+    }
 
     _controller.clear();
     final user = _supabase.auth.currentUser;
     if (user == null) return;
 
     try {
-      await _supabase.from('messages').insert({
+      final inserted = await _supabase.from('messages').insert({
         'meal_id': widget.mealId,
         'sender_id': user.id,
         'content': text,
         'created_at': DateTime.now().toUtc().toIso8601String(),
-      });
+      }).select('id').maybeSingle();
+      final messageId = inserted?['id']?.toString();
+      if (messageId != null) AlertService.notifyChat(messageId: messageId);
       
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
@@ -94,10 +258,19 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to send chat message');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to send: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text(networkErrorMessage(e)), backgroundColor: Colors.red),
         );
       }
     }
+  }
+
+  String _copyableRoomLabel() {
+    final name = widget.roomName.trim();
+    if (name.toLowerCase().startsWith('order ')) {
+      final label = name.substring(6).trim();
+      if (label.isNotEmpty) return label;
+    }
+    return formatOrderId(null, widget.mealId);
   }
 
   // --- UI Tree ---
@@ -105,20 +278,88 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
   @override
   Widget build(BuildContext context) {
     final currentUserId = _supabase.auth.currentUser?.id;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? AppTheme.backgroundDark : AppTheme.background;
+    final surface = isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight;
+    final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
+    final muted = isDark ? AppTheme.textMuted : AppTheme.textMuted;
+    final otherBubble = isDark ? AppTheme.surfaceMutedDark : AppTheme.surfaceMutedLight;
+    final otherText = isDark ? AppTheme.textMainDark : AppTheme.textMain;
+    final composerFill = isDark ? AppTheme.surfaceMutedDark : AppTheme.surfaceMutedLight;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: bg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: Text(
-          widget.roomName,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
+        backgroundColor: surface,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            GestureDetector(
+              onTap: () => copyOrderNumber(context, _copyableRoomLabel()),
+              child: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      widget.roomName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor),
+                    ),
+                  ),
+                  if (widget.isGroup) ...[
+                    const SizedBox(width: 6),
+                    Icon(Icons.copy, size: 14, color: muted),
+                  ],
+                ],
+              ),
+            ),
+            if (widget.isGroup)
+              Text(
+                'Group · everyone on this order is notified',
+                style: TextStyle(color: muted, fontSize: 11, fontWeight: FontWeight.w600),
+              ),
+          ],
         ),
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: IconThemeData(color: titleColor),
+        actions: [
+          IconButton(
+            tooltip: _phoneCallOpen ? 'Call' : 'Call only during active fulfilment',
+            icon: Icon(
+              Icons.phone_outlined,
+              color: _phoneCallOpen ? null : Colors.grey,
+            ),
+            onPressed: _callOtherParty,
+          ),
+        ],
       ),
       body: Column(
         children: [
+          if (widget.isGroup && _partyChatOpen)
+            Material(
+              color: AppTheme.primary.withValues(alpha: isDark ? 0.18 : 0.08),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.lock_outline, size: 16, color: AppTheme.primary.withValues(alpha: 0.9)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        kPayInAppChatNotice,
+                        style: TextStyle(
+                          color: titleColor,
+                          fontSize: 11.5,
+                          height: 1.35,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           Expanded(
             child: StreamBuilder<List<Map<String, dynamic>>>(
               stream: _supabase
@@ -128,14 +369,16 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
                   .order('created_at', ascending: false),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator(color: Colors.deepOrange));
+                  return const Center(child: CircularProgressIndicator(color: AppTheme.primary));
                 }
                 if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return const Center(
+                  return Center(
                     child: Text(
-                      'No messages yet.\nStart the conversation securely!',
+                      widget.isGroup
+                          ? 'This is the ${widget.roomName} group.\nCustomer, chef, and delivery partner get a notification when anyone texts.'
+                          : 'No messages yet.\nStart the conversation securely!',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey),
+                      style: TextStyle(color: muted),
                     ),
                   );
                 }
@@ -193,7 +436,7 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
                     if (msg['created_at'] != null) {
                       try {
                         final dt = DateTime.parse(msg['created_at']).toLocal();
-                        timeStr = DateFormat('hh:mm a').format(dt);
+                        timeStr = formatAppWhen(dt);
                       } catch (e, stack) {
                         FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to parse chat message timestamp');
                       }
@@ -230,21 +473,26 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                               decoration: BoxDecoration(
-                                color: isMe ? Colors.deepOrange : const Color(0xFF2A2A2A),
+                                color: isMe ? AppTheme.primary : otherBubble,
                                 borderRadius: BorderRadius.only(
                                   topLeft: const Radius.circular(16),
                                   topRight: const Radius.circular(16),
                                   bottomLeft: Radius.circular(isMe ? 16 : 4),
                                   bottomRight: Radius.circular(isMe ? 4 : 16),
                                 ),
-                                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
                               ),
-                              child: Text(msg['content'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 14)),
+                              child: Text(
+                                msg['content'] ?? '',
+                                style: TextStyle(
+                                  color: isMe ? Colors.white : otherText,
+                                  fontSize: 14,
+                                ),
+                              ),
                             ),
                             if (timeStr.isNotEmpty)
                               Padding(
                                 padding: const EdgeInsets.only(top: 4, right: 4, left: 4),
-                                child: Text(timeStr, style: const TextStyle(color: Colors.grey, fontSize: 9)),
+                                child: Text(timeStr, style: TextStyle(color: muted, fontSize: 9)),
                               )
                           ],
                         ),
@@ -257,41 +505,47 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: const BoxDecoration(
-              color: Color(0xFF1E1E1E),
-              border: Border(top: BorderSide(color: Colors.black12)),
+            decoration: BoxDecoration(
+              color: surface,
+              border: Border(top: BorderSide(color: isDark ? Colors.black26 : Colors.black12)),
             ),
             child: SafeArea(
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        hintText: 'Message securely...',
-                        hintStyle: const TextStyle(color: Colors.grey),
-                        filled: true,
-                        fillColor: const Color(0xFF2A2A2A),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
-                      ),
-                      textCapitalization: TextCapitalization.sentences,
-                      minLines: 1,
-                      maxLines: 4,
+              child: !_partyChatOpen
+                  ? Text(
+                      'This order chat is closed. Use Support for any post-delivery issues.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: muted, fontSize: 13, fontWeight: FontWeight.w600, height: 1.35),
+                    )
+                  : Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _controller,
+                            style: TextStyle(color: titleColor),
+                            decoration: InputDecoration(
+                              hintText: 'Message securely...',
+                              hintStyle: TextStyle(color: muted),
+                              filled: true,
+                              fillColor: composerFill,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
+                            ),
+                            textCapitalization: TextCapitalization.sentences,
+                            minLines: 1,
+                            maxLines: 4,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: _sendMessage,
+                          child: const CircleAvatar(
+                            radius: 22,
+                            backgroundColor: AppTheme.primary,
+                            child: Icon(Icons.send, color: Colors.white, size: 20),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: _sendMessage,
-                    child: const CircleAvatar(
-                      radius: 22,
-                      backgroundColor: Colors.deepOrange,
-                      child: Icon(Icons.send, color: Colors.white, size: 20),
-                    ),
-                  ),
-                ],
-              ),
             ),
           ),
         ],

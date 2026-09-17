@@ -1,6 +1,7 @@
 // lib/models/cart_state.dart
 
 import 'package:flutter/foundation.dart';
+import '../utils/delivery_fee.dart';
 import '../utils/pricing_calculator.dart';
 import 'cart_enums.dart';
 
@@ -39,35 +40,66 @@ class CartItemModel {
   }) : assert(quantity > 0, 'Quantity must be at least 1');
 
   factory CartItemModel.fromJson(Map<String, dynamic> json) {
-    final rawDetails = json['mealDetails'] is Map
-        ? Map<String, dynamic>.from(json['mealDetails'] as Map)
+    final rawDetailsSource = json['mealDetails'] ?? json['meal_details'] ?? json['rawMealDetails'];
+    final rawDetails = rawDetailsSource is Map
+        ? Map<String, dynamic>.from(rawDetailsSource)
         : <String, dynamic>{};
 
-    final addOnsRaw = json['selectedAddOns'] as List<dynamic>? ?? [];
-    final parsedAddOns = addOnsRaw
-        .whereType<Map<String, dynamic>>()
-        .map(CartItemAddOn.fromJson)
+    final addOnsRaw = json['selectedAddOns'] ?? json['selected_add_ons'] ?? [];
+    final parsedAddOns = (addOnsRaw is List ? addOnsRaw : const [])
+        .whereType<Map>()
+        .map((e) => CartItemAddOn.fromJson(Map<String, dynamic>.from(e)))
         .toList(growable: false);
 
     return CartItemModel(
       id: json['id']?.toString() ?? '',
-      mealId: json['mealId']?.toString() ?? '',
-      chefId: json['chefId']?.toString() ?? '',
-      title: json['title']?.toString() ?? rawDetails['name']?.toString() ?? '',
+      mealId: json['mealId']?.toString() ?? json['meal_id']?.toString() ?? '',
+      chefId: json['chefId']?.toString() ?? json['chef_id']?.toString() ?? '',
+      title: json['title']?.toString() ??
+          rawDetails['title']?.toString() ??
+          rawDetails['name']?.toString() ??
+          '',
       basePrice: (json['basePrice'] as num?)?.toDouble() ??
           (rawDetails['price'] as num?)?.toDouble() ??
           0.0,
       discountedPrice: (json['discountedPrice'] as num?)?.toDouble() ??
           (rawDetails['discounted_price'] as num?)?.toDouble(),
       quantity: int.tryParse(json['quantity']?.toString() ?? '1') ?? 1,
-      scheduledDate: DateTime.tryParse(json['selectedDate']?.toString() ?? '') ??
+      scheduledDate: DateTime.tryParse(json['selectedDate']?.toString() ?? json['scheduled_date']?.toString() ?? '') ??
           DateTime.now(),
-      serviceType: ServiceType.fromString(json['selectedServiceType']?.toString()),
-      timeSlot: json['timeSlot']?.toString() ?? rawDetails['exact_time']?.toString(),
+      serviceType: ServiceType.fromString(
+        json['selectedServiceType']?.toString() ??
+            json['selected_service_type']?.toString() ??
+            json['service_type']?.toString(),
+      ),
+      timeSlot: json['timeSlot']?.toString() ?? json['time_slot']?.toString() ?? rawDetails['exact_time']?.toString(),
       selectedAddOns: parsedAddOns,
       specialInstructions: json['specialInstructions']?.toString(),
       rawMealDetails: Map.unmodifiable(rawDetails),
     );
+  }
+
+  Map<String, dynamic> toMealMap() {
+    if (rawMealDetails.isNotEmpty) {
+      return {
+        ...rawMealDetails,
+        if (mealId.isNotEmpty) 'id': mealId,
+        if (chefId.isNotEmpty) 'chef_id': chefId,
+        if (title.isNotEmpty) 'title': title,
+        'price': rawMealDetails['price'] ?? basePrice,
+        'quantity': rawMealDetails['quantity'] ?? rawMealDetails['max_quantity'] ?? 99,
+      };
+    }
+    return {
+      'id': mealId,
+      'chef_id': chefId,
+      'title': title,
+      'price': basePrice,
+      'discounted_price': discountedPrice,
+      'quantity': 99,
+      'service_type': serviceType.toDisplayString(),
+      'time_slot': timeSlot,
+    };
   }
 
   Map<String, dynamic> toJson() => {
@@ -85,6 +117,46 @@ class CartItemModel {
         'specialInstructions': specialInstructions,
         'mealDetails': rawMealDetails,
       };
+
+  /// Snake_case + camelCase aliases expected by checkout and `place_customer_order`.
+  Map<String, dynamic> toCheckoutPayload() {
+    final meal = Map<String, dynamic>.from(rawMealDetails);
+    // Guard against a ₹0 checkout total: when `basePrice` wasn't captured
+    // (e.g. the meal price arrived as a String), fall back to the price
+    // carried in the meal details so downstream pricing never collapses to 0.
+    final double resolvedBase = basePrice > 0 ? basePrice : PricingCalculator.basePrice(meal);
+    final pricedMeal = {
+      ...meal,
+      'price': meal['price'] ?? resolvedBase,
+    };
+    final snapshot = PricingCalculator.snapshotCheckoutPrices(
+      pricedMeal,
+      quantity,
+      addOnsUnit: unitAddOnsTotal,
+    );
+    return {
+      ...toJson(),
+      ...snapshot,
+      'chef_id': chefId,
+      'meal_id': mealId,
+      'source_meal_id': mealId,
+      'name': title,
+      'selected_service_type': serviceType.toDisplayString(),
+      'service_type': serviceType.toDisplayString(),
+      'serviceType': serviceType.toDisplayString(),
+      'scheduled_date': scheduledDate.toIso8601String(),
+      'scheduledDate': scheduledDate.toIso8601String(),
+      'selected_date': scheduledDate.toIso8601String(),
+      'timeSlot': timeSlot,
+      'time_slot': timeSlot,
+      'exact_time': timeSlot,
+      'rawMealDetails': meal,
+      'meal_details': meal,
+      'accepts_hotpot_coins': meal['accepts_hotpot_coins'],
+      'specialInstructions': specialInstructions,
+      'special_instructions': specialInstructions,
+    };
+  }
 
   CartItemModel copyWith({
     String? id,
@@ -153,6 +225,9 @@ class CartItemModel {
       Object.hashAll(selectedAddOns);
 }
 
+/// Cart breakup must not look like a discount unless coins are actually on.
+enum CartCoinsBillKind { hidden, available, applied, refused }
+
 @immutable
 class CartState {
   final List<CartItemModel> items;
@@ -161,14 +236,32 @@ class CartState {
   final double tipAmount;
   final double userCoinBalance;
   final bool applyCoins;
+  final String? loyaltyTier;
+  final String? stockNotice;
+  final String? sharedRoomCode;
+  final String? sharedHostId;
+  final String? sharedPlaceKind;
+  final String? sharedPlaceLabel;
+  final String? sharedDropoffNote;
+  final String? sharedTimeSlot;
+  final bool membershipWaivesDelivery;
 
   const CartState({
     this.items = const [],
     this.dynamicDeliveryFee = 0.0,
-    this.packagingFee = 0.0,
+    this.packagingFee = 20.0,
     this.tipAmount = 0.0,
     this.userCoinBalance = 0.0,
     this.applyCoins = false,
+    this.loyaltyTier,
+    this.membershipWaivesDelivery = false,
+    this.stockNotice,
+    this.sharedRoomCode,
+    this.sharedHostId,
+    this.sharedPlaceKind,
+    this.sharedPlaceLabel,
+    this.sharedDropoffNote,
+    this.sharedTimeSlot,
   });
 
   CartState copyWith({
@@ -178,6 +271,17 @@ class CartState {
     double? tipAmount,
     double? userCoinBalance,
     bool? applyCoins,
+    String? loyaltyTier,
+    bool? membershipWaivesDelivery,
+    String? stockNotice,
+    bool clearStockNotice = false,
+    String? sharedRoomCode,
+    String? sharedHostId,
+    String? sharedPlaceKind,
+    String? sharedPlaceLabel,
+    String? sharedDropoffNote,
+    String? sharedTimeSlot,
+    bool clearSharedRoom = false,
   }) {
     return CartState(
       items: items ?? this.items,
@@ -186,6 +290,15 @@ class CartState {
       tipAmount: tipAmount ?? this.tipAmount,
       userCoinBalance: userCoinBalance ?? this.userCoinBalance,
       applyCoins: applyCoins ?? this.applyCoins,
+      loyaltyTier: loyaltyTier ?? this.loyaltyTier,
+      membershipWaivesDelivery: membershipWaivesDelivery ?? this.membershipWaivesDelivery,
+      stockNotice: clearStockNotice ? null : (stockNotice ?? this.stockNotice),
+      sharedRoomCode: clearSharedRoom ? null : (sharedRoomCode ?? this.sharedRoomCode),
+      sharedHostId: clearSharedRoom ? null : (sharedHostId ?? this.sharedHostId),
+      sharedPlaceKind: clearSharedRoom ? null : (sharedPlaceKind ?? this.sharedPlaceKind),
+      sharedPlaceLabel: clearSharedRoom ? null : (sharedPlaceLabel ?? this.sharedPlaceLabel),
+      sharedDropoffNote: clearSharedRoom ? null : (sharedDropoffNote ?? this.sharedDropoffNote),
+      sharedTimeSlot: clearSharedRoom ? null : (sharedTimeSlot ?? this.sharedTimeSlot),
     );
   }
 
@@ -221,19 +334,50 @@ class CartState {
     return item.effectiveUnitPrice * item.quantity;
   }
 
-  /// Evaluates reward coin deduction dynamically against order subtotal
-  double get coinsDiscountAmount {
-    if (!applyCoins || userCoinBalance <= 0) return 0.0;
-    // Business rule guardrail: Coins cannot discount more than the food total
-    return userCoinBalance > foodTotal ? foodTotal : userCoinBalance;
+  bool get coinsAcceptedByVendors => items.every((item) {
+        final flag = item.rawMealDetails['accepts_hotpot_coins'];
+        if (flag == false || flag?.toString() == 'false') return false;
+        return true;
+      });
+
+  double get estimatedDeliveryFee {
+    if (!hasDelivery) return 0.0;
+    return customerDeliveryFee(
+      distanceQuote: dynamicDeliveryFee > 0 ? dynamicDeliveryFee : kCheckoutDeliveryBaseFee,
+      foodTotal: foodTotal,
+      hasDelivery: true,
+      membershipWaivesDelivery: membershipWaivesDelivery,
+    );
   }
 
-  /// Final payable amount including items, fees, driver tips, and coin deductions
+  double get billBeforeCoins =>
+      foodTotal + packagingFee + estimatedDeliveryFee + tipAmount;
+
+  /// Coins can cover food, packaging, delivery, and tip — same cap as checkout.
+  double get coinsDiscountAmount {
+    if (!applyCoins || !coinsAcceptedByVendors || userCoinBalance <= 0) return 0.0;
+    return userCoinBalance > billBeforeCoins ? billBeforeCoins : userCoinBalance;
+  }
+
+  /// How the cart bill should show coins. A minus is only valid when [applied].
+  CartCoinsBillKind get coinsBillKind {
+    if (userCoinBalance <= 0) return CartCoinsBillKind.hidden;
+    if (!coinsAcceptedByVendors) return CartCoinsBillKind.refused;
+    if (coinsDiscountAmount > 0) return CartCoinsBillKind.applied;
+    return CartCoinsBillKind.available;
+  }
+
+  /// Estimated payable including packaging and a delivery estimate when the fee is unknown.
   double get grandTotal {
-    final subtotal = (foodTotal + (hasDelivery ? dynamicDeliveryFee : 0.0) + packagingFee + tipAmount) -
-        coinsDiscountAmount;
+    final subtotal = billBeforeCoins - coinsDiscountAmount;
     return subtotal < 0.0 ? 0.0 : subtotal;
   }
+
+  bool get deliveryFeeIsEstimate =>
+      hasDelivery &&
+      !membershipWaivesDelivery &&
+      foodTotal < kFreeDeliveryMinFood &&
+      dynamicDeliveryFee <= 0;
 
   // --- Status & Query Flags ---
 
@@ -255,6 +399,15 @@ class CartState {
           tipAmount == other.tipAmount &&
           userCoinBalance == other.userCoinBalance &&
           applyCoins == other.applyCoins &&
+          loyaltyTier == other.loyaltyTier &&
+          membershipWaivesDelivery == other.membershipWaivesDelivery &&
+          stockNotice == other.stockNotice &&
+          sharedRoomCode == other.sharedRoomCode &&
+          sharedHostId == other.sharedHostId &&
+          sharedPlaceKind == other.sharedPlaceKind &&
+          sharedPlaceLabel == other.sharedPlaceLabel &&
+          sharedDropoffNote == other.sharedDropoffNote &&
+          sharedTimeSlot == other.sharedTimeSlot &&
           listEquals(items, other.items);
 
   @override
@@ -264,5 +417,14 @@ class CartState {
       tipAmount.hashCode ^
       userCoinBalance.hashCode ^
       applyCoins.hashCode ^
+      loyaltyTier.hashCode ^
+      membershipWaivesDelivery.hashCode ^
+      stockNotice.hashCode ^
+      sharedRoomCode.hashCode ^
+      sharedHostId.hashCode ^
+      sharedPlaceKind.hashCode ^
+      sharedPlaceLabel.hashCode ^
+      sharedDropoffNote.hashCode ^
+      sharedTimeSlot.hashCode ^
       Object.hashAll(items);
 }

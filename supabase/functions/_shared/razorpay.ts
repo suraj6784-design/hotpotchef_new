@@ -1,0 +1,242 @@
+export function razorpayAuthHeader() {
+  const keyId = Deno.env.get('RAZORPAY_KEY_ID') ?? ''
+  const keySecret = Deno.env.get('RAZORPAY_KEY_SECRET') ?? ''
+  if (!keyId || !keySecret) {
+    throw new Error('Razorpay is not configured')
+  }
+  return { keyId, keySecret, header: `Basic ${btoa(`${keyId}:${keySecret}`)}` }
+}
+
+export async function hmacSha256Hex(message: string, secret: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message))
+  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+export async function verifyCheckoutSignature(
+  orderId: string,
+  paymentId: string,
+  signature: string,
+): Promise<boolean> {
+  const { keySecret } = razorpayAuthHeader()
+  const expected = await hmacSha256Hex(`${orderId}|${paymentId}`, keySecret)
+  return expected === signature
+}
+
+export async function fetchPayment(paymentId: string) {
+  const { header } = razorpayAuthHeader()
+  const res = await fetch(`https://api.razorpay.com/v1/payments/${paymentId}`, {
+    headers: { Authorization: header },
+  })
+  const data = await res.json()
+  if (!res.ok) {
+    throw new Error(data?.error?.description || 'Could not fetch Razorpay payment')
+  }
+  return data
+}
+
+export async function refundPayment(paymentId: string, amountPaise?: number) {
+  const { header } = razorpayAuthHeader()
+  const body: Record<string, unknown> = { speed: 'normal' }
+  if (amountPaise && amountPaise > 0) body.amount = amountPaise
+
+  const res = await fetch(`https://api.razorpay.com/v1/payments/${paymentId}/refund`, {
+    method: 'POST',
+    headers: {
+      Authorization: header,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+  const data = await res.json()
+  if (!res.ok) {
+    const description = String(data?.error?.description || '')
+    if (/already refunded|fully refunded/i.test(description)) {
+      return { id: 'already_refunded', status: 'processed', already: true }
+    }
+    throw new Error(description || 'Razorpay refund failed')
+  }
+  return data
+}
+
+export async function ensureRazorpayCustomer(input: {
+  userId: string
+  email?: string | null
+  phone?: string | null
+  name?: string | null
+  existingId?: string | null
+}) {
+  if (input.existingId && input.existingId.startsWith('cust_')) return input.existingId
+  const { header } = razorpayAuthHeader()
+  const res = await fetch('https://api.razorpay.com/v1/customers', {
+    method: 'POST',
+    headers: { Authorization: header, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: (input.name || 'HotPotChef diner').slice(0, 120),
+      email: input.email || undefined,
+      contact: input.phone ? input.phone.replace(/\D/g, '').slice(-10) : undefined,
+      fail_existing: '0',
+      notes: { user_id: input.userId },
+    }),
+  })
+  const data = await res.json()
+  if (!res.ok) {
+    throw new Error(data?.error?.description || 'Could not save Razorpay customer')
+  }
+  return String(data.id || '')
+}
+
+export async function createRazorpayOrder(amountPaise: number, receipt: string, notes: Record<string, string>) {
+  const { header } = razorpayAuthHeader()
+  const res = await fetch('https://api.razorpay.com/v1/orders', {
+    method: 'POST',
+    headers: {
+      Authorization: header,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      amount: amountPaise,
+      currency: 'INR',
+      receipt,
+      notes,
+    }),
+  })
+  const data = await res.json()
+  if (!res.ok) {
+    throw new Error(data?.error?.description || 'Razorpay order creation failed')
+  }
+  return data
+}
+
+export async function createPaymentTransfer(paymentId: string, accountId: string, amountPaise: number, notes: Record<string, string>) {
+  const { header } = razorpayAuthHeader()
+  const res = await fetch(`https://api.razorpay.com/v1/payments/${paymentId}/transfers`, {
+    method: 'POST',
+    headers: {
+      Authorization: header,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      transfers: [
+        {
+          account: accountId,
+          amount: amountPaise,
+          currency: 'INR',
+          notes,
+          on_hold: false,
+        },
+      ],
+    }),
+  })
+  const data = await res.json()
+  if (!res.ok) {
+    throw new Error(data?.error?.description || 'Razorpay transfer failed')
+  }
+  const transfer = Array.isArray(data?.items) ? data.items[0] : (Array.isArray(data) ? data[0] : data)
+  return transfer
+}
+
+function razorpayError(data: Record<string, unknown> | null, fallback: string) {
+  const err = data?.error as Record<string, unknown> | undefined
+  return String(err?.description || err?.reason || fallback)
+}
+
+function digitsPhone(raw: string) {
+  const d = raw.replace(/\D/g, '')
+  if (d.length >= 10) return d.slice(-10)
+  return ''
+}
+
+/** Route Linked Account + bank product request. Returns acc_ id when Razorpay accepts. */
+export async function createRouteLinkedAccount(input: {
+  chefId: string
+  email: string
+  phone: string
+  name: string
+  bankAccount: string
+  ifsc: string
+  beneficiary: string
+  pan?: string
+  gstin?: string
+  street?: string
+  city?: string
+}) {
+  const { header } = razorpayAuthHeader()
+  const phone = digitsPhone(input.phone)
+  const legalName = (input.name || input.beneficiary || 'HotPotChef kitchen').slice(0, 200)
+  const accountBody: Record<string, unknown> = {
+    email: input.email,
+    phone: phone || undefined,
+    type: 'route',
+    reference_id: input.chefId.replace(/-/g, '').slice(0, 20),
+    legal_business_name: legalName,
+    business_type: 'individual',
+    contact_name: input.beneficiary || legalName,
+    profile: {
+      category: 'food',
+      subcategory: 'restaurant',
+      addresses: {
+        registered: {
+          street1: (input.street || 'Pune').slice(0, 100),
+          street2: '.',
+          city: input.city || 'Pune',
+          state: 'MAHARASHTRA',
+          postal_code: '411001',
+          country: 'IN',
+        },
+      },
+    },
+  }
+  if (input.pan && /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(input.pan)) {
+    accountBody.legal_info = {
+      pan: input.pan,
+      ...(input.gstin ? { gst: input.gstin } : {}),
+    }
+  }
+
+  const created = await fetch('https://api.razorpay.com/v2/accounts', {
+    method: 'POST',
+    headers: { Authorization: header, 'Content-Type': 'application/json' },
+    body: JSON.stringify(accountBody),
+  })
+  const createdJson = await created.json()
+  if (!created.ok) {
+    throw new Error(razorpayError(createdJson, 'Could not create Razorpay Route account'))
+  }
+  const accountId = String(createdJson?.id ?? '')
+  if (!accountId.startsWith('acc_')) {
+    throw new Error('Razorpay did not return a Linked Account id')
+  }
+
+  const productRes = await fetch(`https://api.razorpay.com/v2/accounts/${accountId}/products`, {
+    method: 'POST',
+    headers: { Authorization: header, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ product_name: 'route' }),
+  })
+  const productJson = await productRes.json()
+  const productId = String(productJson?.id ?? productJson?.product_id ?? '')
+  if (productRes.ok && productId) {
+    await fetch(`https://api.razorpay.com/v2/accounts/${accountId}/products/${productId}`, {
+      method: 'PATCH',
+      headers: { Authorization: header, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        requested_configuration: {
+          settlements: {
+            account_number: input.bankAccount,
+            ifsc_code: input.ifsc,
+            beneficiary_name: input.beneficiary,
+          },
+        },
+      }),
+    })
+  }
+
+  return { accountId, status: String(createdJson?.status ?? 'created') }
+}
+

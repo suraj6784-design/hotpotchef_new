@@ -1,0 +1,296 @@
+-- Record paid checkouts even if pending_checkouts was never inserted.
+-- Look up an existing order before requiring a pending row.
+-- A verified Razorpay signature (recover-payment) may place without pending.
+
+CREATE OR REPLACE FUNCTION public.place_customer_order(
+  p_customer_email text,
+  p_customer_phone text,
+  p_delivery_address text,
+  p_instructions text,
+  p_cart_items jsonb,
+  p_apply_coins boolean,
+  p_idempotency_key text,
+  p_user_id uuid DEFAULT NULL,
+  p_tip_amount numeric DEFAULT 0,
+  p_delivery_fee numeric DEFAULT 0,
+  p_payment_id text DEFAULT NULL,
+  p_razorpay_order_id text DEFAULT NULL,
+  p_razorpay_signature text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_customer_id uuid;
+  v_chef_id uuid;
+  v_order_id uuid;
+  v_item jsonb;
+  v_meal_id uuid;
+  v_qty int;
+  v_price numeric;
+  v_line numeric;
+  v_food_total numeric := 0;
+  v_coins numeric := 0;
+  v_total numeric;
+  v_margin numeric := 0;
+  v_order_type text;
+  v_updated int;
+  v_has_hold boolean := false;
+  v_packaging numeric := 20;
+  v_coins_ok boolean := true;
+  v_kitchen_open boolean;
+  v_delivery numeric := 0;
+  v_tip numeric := 0;
+  v_drop_lat numeric;
+  v_drop_lng numeric;
+  v_pending_tip numeric;
+  v_coins_payment boolean := false;
+  v_has_pending boolean := false;
+BEGIN
+  IF auth.role() IS DISTINCT FROM 'service_role' THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Orders must be placed by the payment service');
+  END IF;
+
+  PERFORM public.expire_checkout_holds();
+
+  IF p_cart_items IS NULL OR jsonb_typeof(p_cart_items) <> 'array' OR jsonb_array_length(p_cart_items) = 0 THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Cart is empty');
+  END IF;
+
+  v_coins_payment := p_payment_id IS NOT NULL AND p_payment_id LIKE 'coins_%';
+
+  IF p_idempotency_key IS NOT NULL THEN
+    SELECT id INTO v_order_id FROM orders WHERE idempotency_key = p_idempotency_key LIMIT 1;
+    IF v_order_id IS NOT NULL THEN
+      RETURN jsonb_build_object('success', true, 'order_id', v_order_id, 'idempotent', true);
+    END IF;
+  END IF;
+
+  IF p_payment_id IS NOT NULL THEN
+    SELECT id INTO v_order_id FROM orders WHERE payment_id = p_payment_id LIMIT 1;
+    IF v_order_id IS NOT NULL THEN
+      RETURN jsonb_build_object('success', true, 'order_id', v_order_id, 'idempotent', true);
+    END IF;
+  END IF;
+
+  IF p_razorpay_order_id IS NOT NULL AND length(trim(p_razorpay_order_id)) > 0 THEN
+    SELECT id INTO v_order_id
+    FROM orders
+    WHERE razorpay_order_id = p_razorpay_order_id
+    LIMIT 1;
+    IF v_order_id IS NOT NULL THEN
+      RETURN jsonb_build_object('success', true, 'order_id', v_order_id, 'idempotent', true);
+    END IF;
+    SELECT EXISTS (
+      SELECT 1 FROM pending_checkouts WHERE razorpay_order_id = p_razorpay_order_id
+    ) INTO v_has_pending;
+  END IF;
+
+  IF NOT v_coins_payment THEN
+    IF p_razorpay_order_id IS NULL OR length(trim(p_razorpay_order_id)) = 0 THEN
+      RETURN jsonb_build_object('success', false, 'error', 'Missing payment order');
+    END IF;
+    -- Webhook has no signature. Recover has a verified signature and may rebuild the cart.
+    IF NOT v_has_pending AND coalesce(p_razorpay_signature, '') = '' THEN
+      RETURN jsonb_build_object('success', false, 'error', 'No verified checkout for this payment');
+    END IF;
+  END IF;
+
+  v_customer_id := p_user_id;
+  IF v_customer_id IS NULL AND p_customer_email IS NOT NULL THEN
+    SELECT id INTO v_customer_id FROM users WHERE email = p_customer_email LIMIT 1;
+  END IF;
+  IF v_customer_id IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Customer not found');
+  END IF;
+
+  BEGIN
+    v_chef_id := NULLIF(COALESCE(
+      p_cart_items->0->>'chef_id',
+      p_cart_items->0->>'chefId',
+      p_cart_items->0->'mealDetails'->>'chef_id',
+      p_cart_items->0->'rawMealDetails'->>'chef_id',
+      p_cart_items->0->'meal_details'->>'chef_id'
+    ), '')::uuid;
+  EXCEPTION WHEN OTHERS THEN
+    v_chef_id := NULL;
+  END;
+  IF v_chef_id IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Missing chef_id on cart items');
+  END IF;
+
+  SELECT is_open INTO v_kitchen_open
+  FROM chef_profiles
+  WHERE user_id = v_chef_id;
+  IF v_kitchen_open IS FALSE THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'code', 'kitchen_closed',
+      'error', 'This kitchen is closed right now'
+    );
+  END IF;
+
+  v_tip := GREATEST(0, LEAST(500, COALESCE(p_tip_amount, 0)));
+  IF p_razorpay_order_id IS NOT NULL THEN
+    SELECT dropoff_lat, dropoff_lng, tip_amount
+      INTO v_drop_lat, v_drop_lng, v_pending_tip
+    FROM pending_checkouts
+    WHERE razorpay_order_id = p_razorpay_order_id;
+    IF v_pending_tip IS NOT NULL THEN
+      v_tip := GREATEST(0, LEAST(500, v_pending_tip));
+    END IF;
+  END IF;
+
+  v_delivery := public.quote_checkout_delivery_fee(p_cart_items, v_drop_lat, v_drop_lng);
+  v_packaging := public.packaging_fee_for_cart(v_customer_id, p_cart_items);
+
+  v_order_type := COALESCE(
+    p_cart_items->0->>'selected_service_type',
+    p_cart_items->0->>'service_type',
+    p_cart_items->0->>'serviceType',
+    'Delivery'
+  );
+
+  IF p_razorpay_order_id IS NOT NULL THEN
+    SELECT EXISTS (
+      SELECT 1 FROM inventory_holds
+      WHERE razorpay_order_id = p_razorpay_order_id AND status = 'held'
+    ) INTO v_has_hold;
+  END IF;
+
+  FOR v_item IN SELECT * FROM jsonb_array_elements(p_cart_items)
+  LOOP
+    BEGIN
+      v_qty := GREATEST(1, COALESCE(round(NULLIF(v_item->>'quantity', '')::numeric), 1)::int);
+    EXCEPTION WHEN OTHERS THEN
+      v_qty := 1;
+    END;
+
+    BEGIN
+      v_meal_id := NULLIF(COALESCE(v_item->>'source_meal_id', v_item->>'meal_id', v_item->>'mealId', v_item->>'id'), '')::uuid;
+    EXCEPTION WHEN OTHERS THEN
+      v_meal_id := NULL;
+    END;
+
+    v_line := public.catalog_line_total(v_item);
+    IF v_line IS NULL THEN
+      RETURN jsonb_build_object('success', false, 'code', 'sold_out', 'error', 'A plate is no longer on the menu');
+    END IF;
+    v_price := v_line / v_qty;
+
+    IF COALESCE(v_item->>'accepts_hotpot_coins', 'true') IN ('false', 'f') THEN
+      v_coins_ok := false;
+    END IF;
+
+    v_food_total := v_food_total + v_line;
+
+    IF NOT v_has_hold AND v_meal_id IS NOT NULL THEN
+      UPDATE meals
+      SET quantity = quantity - v_qty,
+          status = CASE WHEN quantity - v_qty <= 0 THEN 'sold out' ELSE status END
+      WHERE id = v_meal_id AND quantity >= v_qty;
+      GET DIAGNOSTICS v_updated = ROW_COUNT;
+      IF v_updated = 0 THEN
+        RAISE EXCEPTION 'SOLD_OUT:This meal just sold out';
+      END IF;
+    END IF;
+  END LOOP;
+
+  IF COALESCE(p_apply_coins, false) AND v_coins_ok THEN
+    SELECT COALESCE(hotpot_coins, 0) INTO v_coins FROM users WHERE id = v_customer_id;
+    v_coins := LEAST(v_coins, v_food_total + v_delivery + v_tip + v_packaging);
+  END IF;
+
+  v_total := GREATEST(0, v_food_total + v_delivery + v_tip + v_packaging - v_coins);
+  IF v_coins_payment AND v_total >= 1 THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'error', 'HotPot Coins do not cover this order'
+    );
+  END IF;
+  v_margin := ROUND(0.15 * GREATEST(0, v_food_total + v_packaging), 2);
+
+  INSERT INTO orders (
+    customer_id, chef_id, items, total_price, status, order_type,
+    payment_id, razorpay_order_id, razorpay_signature,
+    delivery_address, special_instructions, idempotency_key, coins_applied,
+    delivery_fee, packaging_fee, tip_amount, customer_phone, platform_margin, updated_at
+  ) VALUES (
+    v_customer_id, v_chef_id, p_cart_items::text, v_total, 'Pending Chef Approval', v_order_type,
+    p_payment_id, p_razorpay_order_id, p_razorpay_signature,
+    p_delivery_address, p_instructions, p_idempotency_key, v_coins,
+    v_delivery, v_packaging, v_tip, p_customer_phone, v_margin, now()
+  )
+  RETURNING id INTO v_order_id;
+
+  IF v_coins > 0 THEN
+    UPDATE users
+    SET hotpot_coins = GREATEST(0, COALESCE(hotpot_coins, 0) - v_coins)
+    WHERE id = v_customer_id;
+
+    BEGIN
+      UPDATE wallets
+      SET balance = GREATEST(0, COALESCE(balance, 0) - v_coins),
+          last_updated = now()
+      WHERE user_id = v_customer_id;
+    EXCEPTION WHEN undefined_column THEN
+      UPDATE wallets
+      SET balance = GREATEST(0, COALESCE(balance, 0) - v_coins)
+      WHERE user_id = v_customer_id;
+    WHEN OTHERS THEN
+      NULL;
+    END;
+
+    BEGIN
+      INSERT INTO transactions (user_id, amount, transaction_type, description)
+      VALUES (v_customer_id, v_coins, 'debit', 'Coins applied at checkout');
+    EXCEPTION WHEN OTHERS THEN
+      BEGIN
+        INSERT INTO transactions (user_id, amount, transaction_type, description)
+        VALUES (v_customer_id, -v_coins, 'redeem', 'Coins applied at checkout');
+      EXCEPTION WHEN OTHERS THEN
+        NULL;
+      END;
+    END;
+  END IF;
+
+  IF p_razorpay_order_id IS NOT NULL THEN
+    UPDATE inventory_holds
+    SET status = 'confirmed'
+    WHERE razorpay_order_id = p_razorpay_order_id AND status = 'held';
+    DELETE FROM pending_checkouts WHERE razorpay_order_id = p_razorpay_order_id;
+  END IF;
+
+  RETURN jsonb_build_object('success', true, 'order_id', v_order_id, 'total', v_total, 'platform_margin', v_margin);
+EXCEPTION
+  WHEN unique_violation THEN
+    SELECT id INTO v_order_id FROM orders
+    WHERE (p_idempotency_key IS NOT NULL AND idempotency_key = p_idempotency_key)
+       OR (p_payment_id IS NOT NULL AND payment_id = p_payment_id)
+       OR (p_razorpay_order_id IS NOT NULL AND razorpay_order_id = p_razorpay_order_id)
+    LIMIT 1;
+    RETURN jsonb_build_object('success', true, 'order_id', v_order_id, 'idempotent', true);
+  WHEN undefined_column THEN
+    RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+  WHEN OTHERS THEN
+    IF SQLERRM LIKE 'SOLD_OUT:%' THEN
+      RETURN jsonb_build_object(
+        'success', false,
+        'code', 'sold_out',
+        'error', 'This meal just sold out'
+      );
+    END IF;
+    RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.place_customer_order(
+  text, text, text, text, jsonb, boolean, text, uuid, numeric, numeric, text, text, text
+) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.place_customer_order(
+  text, text, text, text, jsonb, boolean, text, uuid, numeric, numeric, text, text, text
+) TO service_role;
+
+NOTIFY pgrst, 'reload schema';

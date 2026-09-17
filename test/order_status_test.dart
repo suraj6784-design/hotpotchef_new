@@ -60,9 +60,21 @@ void main() {
       );
     });
 
-    test('driver writes stay snake_case', () {
-      expect(DeliveryStatus.readyForPickup.toDbValue(), 'ready_for_pickup');
-      expect(DeliveryStatus.outForDelivery.toDbValue(), 'out_for_delivery');
+    test('driver writes Title Case like cream chef, and still parse snake_case', () {
+      expect(DeliveryStatus.readyForPickup.toDbValue(), 'Ready for Pickup');
+      expect(DeliveryStatus.outForDelivery.toDbValue(), 'Out for Delivery');
+      expect(
+        DeliveryStatus.fromString(DeliveryStatus.readyForPickup.toDbValue()),
+        DeliveryStatus.readyForPickup,
+      );
+      expect(
+        DeliveryStatus.fromString('ready_for_pickup'),
+        DeliveryStatus.readyForPickup,
+      );
+      expect(
+        DeliveryStatus.fromString('out_for_delivery'),
+        DeliveryStatus.outForDelivery,
+      );
     });
   });
 

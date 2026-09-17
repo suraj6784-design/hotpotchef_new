@@ -2,15 +2,27 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import 'map_picker_screen.dart';
-import '../utils/app_theme.dart';
+import 'driver_id_card_screen.dart';
+import '../models/app_role.dart';
+import '../services/auth_session.dart';
+import '../utils/app_page.dart';
+import '../utils/helpers.dart';
+import '../utils/network.dart';
+import '../utils/pinned_address.dart';
+import '../utils/gst_invoice.dart';
 import '../widgets/avatar_upload.dart';
+import '../widgets/change_password_dialog.dart';
+import '../widgets/premium_profile_template.dart';
 
 class DriverProfileScreen extends StatefulWidget {
-  const DriverProfileScreen({super.key});
+  const DriverProfileScreen({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   State<DriverProfileScreen> createState() => _DriverProfileScreenState();
@@ -23,7 +35,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
   bool _isEditing = false;
   bool _isLoading = true;
   bool _isSaving = false;
-  bool _isChangingPassword = false;
+  bool _isPlatformOps = false;
 
   // Controllers
   final _nameController = TextEditingController();
@@ -31,8 +43,8 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
   final _emergencyPhoneController = TextEditingController();
   final _aadhaarMaskedController = TextEditingController();
   final _panController = TextEditingController();
-  final _oldPasswordController = TextEditingController();
-  final _newPasswordController = TextEditingController();
+  final _bankAccountController = TextEditingController();
+  final _ifscController = TextEditingController();
 
   String _bloodGroup = 'O+';
   String? _avatarUrl;
@@ -71,8 +83,8 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     _emergencyPhoneController.dispose();
     _aadhaarMaskedController.dispose();
     _panController.dispose();
-    _oldPasswordController.dispose();
-    _newPasswordController.dispose();
+    _bankAccountController.dispose();
+    _ifscController.dispose();
     _houseController.dispose();
     _streetController.dispose();
     _cityController.dispose();
@@ -91,9 +103,12 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     setState(() => _isLoading = true);
     try {
       final user = _supabase.auth.currentUser;
-      if (user == null) return;
+      if (user == null) {
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
 
-      final userData = await _supabase.from('users').select().eq('id', user.id).maybeSingle();
+      final userData = await _supabase.from('users').select().eq('id', user.id).maybeSingle().withTimeout(NetworkTimeouts.standard);
 
       if (userData != null && mounted) {
         _nameController.text = userData['name']?.toString() ?? userData['full_name']?.toString() ?? user.userMetadata?['name']?.toString() ?? '';
@@ -101,22 +116,28 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
         _emergencyPhoneController.text = userData['emergency_phone']?.toString() ?? '';
         
         final rawAadhaar = userData['aadhaar_masked']?.toString() ?? userData['aadhaar_number']?.toString() ?? '';
-        _aadhaarMaskedController.text = rawAadhaar.length > 4 
-            ? 'XXXX-XXXX-${rawAadhaar.substring(rawAadhaar.length - 4)}' 
-            : 'XXXX-XXXX-XXXX';
+        _aadhaarMaskedController.text = maskAadhaar(rawAadhaar);
 
-        _panController.text = userData['pan_number']?.toString() ?? userData['pan']?.toString() ?? '';
+        final rawPan = userData['pan_number']?.toString() ?? userData['pan']?.toString() ?? '';
+        _panController.text = maskPan(rawPan);
+        _bankAccountController.text = maskBankAccount(userData['bank_account_number']?.toString());
+        _ifscController.text = userData['bank_ifsc']?.toString() ?? userData['ifsc_code']?.toString() ?? '';
         _bloodGroup = userData['blood_group']?.toString() ?? 'O+';
         _avatarUrl = userData['avatar_url']?.toString();
 
         _vehicleModelController.text = userData['vehicle_model']?.toString() ?? '';
         _vehicleRegNoController.text = userData['vehicle_reg_no']?.toString() ?? userData['vehicle_number']?.toString() ?? '';
-        _dlNumberController.text = userData['driving_license_no']?.toString() ?? userData['license_no']?.toString() ?? '';
+        _dlNumberController.text = userData['driving_license_no']?.toString() ??
+            userData['dl_number']?.toString() ??
+            userData['license_no']?.toString() ??
+            '';
         _insurancePolicyController.text = userData['insurance_policy_no']?.toString() ?? '';
         _vehicleType = userData['vehicle_type']?.toString() ?? '2-Wheeler (Petrol)';
 
-        _latitude = (userData['lat'] as num?)?.toDouble();
-        _longitude = (userData['lng'] as num?)?.toDouble();
+        _latitude = (userData['lat'] as num?)?.toDouble() ??
+            (userData['latitude'] as num?)?.toDouble();
+        _longitude = (userData['lng'] as num?)?.toDouble() ??
+            (userData['longitude'] as num?)?.toDouble();
 
         _houseController.text = userData['house_no']?.toString() ?? '';
         _streetController.text = userData['street']?.toString() ?? userData['address']?.toString() ?? '';
@@ -124,6 +145,11 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
         _stateController.text = userData['state']?.toString() ?? 'Maharashtra';
         _pincodeController.text = userData['pincode']?.toString() ?? userData['postal_code']?.toString() ?? '';
       }
+      var ops = false;
+      try {
+        ops = await AuthSession.isPlatformOps().withTimeout(NetworkTimeouts.short);
+      } catch (_) {}
+      if (mounted) _isPlatformOps = ops;
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Driver profile load failure');
     } finally {
@@ -138,100 +164,60 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
 
     final result = await Navigator.push<Map<String, dynamic>?>(
       context,
-      MaterialPageRoute(
-        builder: (_) => MapPickerScreen(initialLat: _latitude, initialLng: _longitude),
+      appMaterialRoute<Map<String, dynamic>?>(
+        MapPickerScreen(initialLat: _latitude, initialLng: _longitude),
       ),
     );
 
     if (result != null && mounted) {
+      _latitude = (result['latitude'] as num?)?.toDouble();
+      _longitude = (result['longitude'] as num?)?.toDouble();
+      var parts = PinnedAddressParts.fromMap(result);
+      if (!parts.hasRegion && _latitude != null && _longitude != null) {
+        parts = await reverseGeocodeLatLng(_latitude!, _longitude!);
+      }
+      if (!mounted) return;
       setState(() {
-        _latitude = (result['latitude'] as num?)?.toDouble();
-        _longitude = (result['longitude'] as num?)?.toDouble();
-        final rawAddr = result['address']?.toString();
-        if (rawAddr != null && rawAddr.isNotEmpty) {
-          _streetController.text = rawAddr;
+        if (parts.street.isNotEmpty && _streetController.text.trim().isEmpty) {
+          _streetController.text = parts.street;
+        } else if (_streetController.text.trim().isEmpty) {
+          final rawAddr = result['address']?.toString();
+          if (rawAddr != null && rawAddr.isNotEmpty) _streetController.text = rawAddr;
         }
+        if (parts.city.isNotEmpty) _cityController.text = parts.city;
+        if (parts.state.isNotEmpty) _stateController.text = parts.state;
+        if (parts.pincode.isNotEmpty) _pincodeController.text = parts.pincode;
       });
-      _showSnackBar('Location coordinates updated.');
+      _showSnackBar('Location pin attached and address details auto-filled!');
     }
   }
 
   // --- Password Reset ---
 
-  Future<void> _changePassword() async {
-    final oldPass = _oldPasswordController.text.trim();
-    final newPass = _newPasswordController.text.trim();
-
-    if (oldPass.isEmpty || newPass.isEmpty || newPass.length < 8) {
-      _showSnackBar('Please enter your old password and a new password (min 8 chars).', isError: true);
-      return;
-    }
-
-    setState(() => _isChangingPassword = true);
-    try {
-      final user = _supabase.auth.currentUser;
-      if (user == null || user.email == null) throw Exception('Not logged in');
-
-      await _supabase.auth.signInWithPassword(email: user.email!, password: oldPass);
-      await _supabase.auth.updateUser(UserAttributes(password: newPass));
-
-      _oldPasswordController.clear();
-      _newPasswordController.clear();
-
-      if (!mounted) return;
-      Navigator.pop(context);
-      _showSnackBar('Password changed successfully!');
-    } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Driver password change failure');
-      _showSnackBar('Failed to update password. Incorrect old password or network error.', isError: true);
-    } finally {
-      if (mounted) setState(() => _isChangingPassword = false);
-    }
-  }
-
   void _showChangePasswordDialog() {
-    showDialog(
+    showDialog<bool>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: const Color(0xFF1E1E1E),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Change Password', style: TextStyle(color: Colors.white)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildTextField(
-                controller: _oldPasswordController,
-                label: 'Old Password',
-                prefixIcon: Icons.lock_outline,
-              ),
-              const SizedBox(height: 12),
-              _buildTextField(
-                controller: _newPasswordController,
-                label: 'New Password (min 8 chars)',
-                prefixIcon: Icons.lock_reset,
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white),
-              onPressed: _isChangingPassword
-                  ? null
-                  : () async {
-                      setDialogState(() => _isChangingPassword = true);
-                      await _changePassword();
-                      if (ctx.mounted) setDialogState(() => _isChangingPassword = false);
-                    },
-              child: _isChangingPassword
-                  ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Text('Update'),
-            )
-          ],
-        ),
+      builder: (ctx) => ChangePasswordDialog(
+        onSubmit: ({required currentPassword, required newPassword}) async {
+          final user = _supabase.auth.currentUser;
+          if (user == null || user.email == null) {
+            throw Exception('Not logged in');
+          }
+          try {
+            await _supabase.auth.signInWithPassword(
+              email: user.email!,
+              password: currentPassword,
+            );
+            await _supabase.auth.updateUser(UserAttributes(password: newPassword));
+          } catch (e, stack) {
+            FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Driver password change failure');
+            rethrow;
+          }
+        },
       ),
-    );
+    ).then((ok) {
+      if (ok == true) _showSnackBar('Password changed successfully!');
+    });
   }
 
   // --- Profile Persistence ---
@@ -248,6 +234,8 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     final phone = _phoneController.text.trim();
     final emergency = _emergencyPhoneController.text.trim();
     final pan = _panController.text.trim().toUpperCase();
+    final bankAcc = _bankAccountController.text.trim();
+    final ifsc = _ifscController.text.trim().toUpperCase();
 
     final house = _houseController.text.trim();
     final street = _streetController.text.trim();
@@ -261,7 +249,6 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     final insurance = _insurancePolicyController.text.trim();
     
     final aadhaarInput = _aadhaarMaskedController.text.trim();
-    final bool isNewAadhaar = aadhaarInput.length == 12 && !aadhaarInput.contains('X');
 
     final fullAddress = "$house, $street, $city, $state - $pin";
 
@@ -271,12 +258,13 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
       if (user == null) throw Exception('Session expired');
 
       final updateData = {
-        'id': user.id,
         'name': name,
         'full_name': name,
         'phone': phone,
         'emergency_phone': emergency,
-        'pan_number': pan,
+        if (_panRegex.hasMatch(pan)) 'pan_number': pan,
+        if (bankAcc.isNotEmpty && !bankAcc.contains('X')) 'bank_account_number': bankAcc.replaceAll(' ', ''),
+        if (RegExp(r'^[A-Z]{4}0[A-Z0-9]{6}$').hasMatch(ifsc)) 'bank_ifsc': ifsc,
         'blood_group': _bloodGroup,
         'address': fullAddress,
         'house_no': house,
@@ -286,23 +274,30 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
         'pincode': pin,
         'lat': _latitude,
         'lng': _longitude,
+        'latitude': _latitude,
+        'longitude': _longitude,
         'vehicle_type': _vehicleType,
         'vehicle_model': vehicleModel,
+        'vehicle_number': vehicleReg,
         'vehicle_reg_no': vehicleReg,
+        'dl_number': dlNumber,
         'driving_license_no': dlNumber,
         'insurance_policy_no': insurance,
-        if (isNewAadhaar) 'aadhaar_number': aadhaarInput,
-        'role': 'Driver',
+        if (isFullAadhaar(aadhaarInput)) 'aadhaar_masked': maskAadhaar(aadhaarInput),
         if (_avatarUrl != null) 'avatar_url': _avatarUrl,
         'updated_at': DateTime.now().toIso8601String(),
       };
 
-      await _supabase.from('users').upsert(updateData);
-      await _supabase.auth.updateUser(UserAttributes(data: {
-        'name': name,
-        'phone': phone,
-        'role': 'Driver',
-      }));
+      await _supabase.from('users').update(updateData).eq('id', user.id);
+      final saved = await _supabase.from('users').select('id').eq('id', user.id).maybeSingle();
+      if (saved == null) {
+        await _supabase.from('users').upsert({
+          ...updateData,
+          'id': user.id,
+          'role': AppRole.driver.storageValue,
+        });
+      }
+      await _supabase.auth.updateUser(UserAttributes(data: {'name': name, 'phone': phone}));
 
       if (!mounted) return;
       setState(() => _isEditing = false);
@@ -331,181 +326,176 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
   // --- Digital ID Card Modal ---
 
   void _showDigitalIDCard() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: const [
-            Icon(Icons.badge_outlined, color: Colors.deepOrange),
-            SizedBox(width: 8),
-            Text('Digital Partner ID', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
-          ],
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => DriverIdCardScreen(
+          driverName: _nameController.text.isEmpty ? 'Delivery Partner' : _nameController.text,
+          driverPhone: _phoneController.text,
+          avatarUrl: _avatarUrl,
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: CircleAvatar(
-                radius: 36,
-                backgroundColor: Colors.deepOrange.withValues(alpha: 0.2),
-                backgroundImage: _avatarUrl != null ? NetworkImage(_avatarUrl!) : null,
-                child: _avatarUrl == null ? const Icon(Icons.person, size: 40, color: Colors.deepOrange) : null,
-              ),
-            ),
-            const SizedBox(height: 16),
-            _buildIDRow('Partner Name', _nameController.text.isEmpty ? 'Driver' : _nameController.text),
-            _buildIDRow('Phone', _phoneController.text),
-            _buildIDRow('Emergency Contact', _emergencyPhoneController.text.isEmpty ? 'Not provided' : _emergencyPhoneController.text),
-            _buildIDRow('DL Number', _dlNumberController.text.isEmpty ? 'Pending' : _dlNumberController.text),
-            _buildIDRow('Vehicle Reg', _vehicleRegNoController.text.isEmpty ? 'Pending' : _vehicleRegNoController.text),
-            _buildIDRow('Blood Group', _bloodGroup),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
-              decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  Icon(Icons.verified, color: Colors.greenAccent, size: 16),
-                  SizedBox(width: 6),
-                  Text('Active Commercial Delivery Partner',
-                      style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold)),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close', style: TextStyle(color: Colors.grey))),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildIDRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-          Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-        ],
       ),
     );
   }
 
   // --- UI Tree ---
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF121212),
-      appBar: AppBar(
-        title: const Text('Driver Profile', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          TextButton.icon(
-            icon: Icon(_isEditing ? Icons.close : Icons.edit, color: Colors.deepOrange, size: 18),
-            label: Text(_isEditing ? 'Cancel' : 'Edit', style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold)),
-            onPressed: () => setState(() => _isEditing = !_isEditing),
+  Widget _driverBadge(String label, IconData icon, bool earned) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: earned ? AppTheme.live.withValues(alpha: 0.10) : AppTheme.surfaceOf(context),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: earned ? AppTheme.live.withValues(alpha: 0.35) : AppTheme.hairlineOf(context)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: earned ? AppTheme.live : AppTheme.textMuted),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: earned ? AppTheme.live : AppTheme.textMuted),
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.deepOrange))
-          : Form(
-              key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  Card(
-                    color: const Color(0xFF1E1E1E),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        children: [
-                          Row(
-                            children: [
-                              AvatarUploadWidget(
-                                initialAvatarUrl: _avatarUrl,
-                                isEditing: _isEditing,
-                                onUploadComplete: (newUrl) => setState(() => _avatarUrl = newUrl),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      _nameController.text.isEmpty ? 'Delivery Partner' : _nameController.text,
-                                      style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      _phoneController.text.isEmpty ? 'Contact pending' : _phoneController.text,
-                                      style: const TextStyle(color: Colors.grey, fontSize: 13),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                      decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(6)),
-                                      child: const Text('Verified Driver',
-                                          style: TextStyle(color: Colors.lightBlueAccent, fontSize: 10, fontWeight: FontWeight.bold)),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.blue.shade600,
-                                    foregroundColor: Colors.white,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                  ),
-                                  icon: const Icon(Icons.badge_outlined, size: 18),
-                                  label: const Text('Digital ID', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                                  onPressed: _showDigitalIDCard,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.grey.shade800,
-                                    foregroundColor: Colors.white,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                  ),
-                                  icon: const Icon(Icons.lock_reset, size: 18),
-                                  label: const Text('Password', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                                  onPressed: _showChangePasswordDialog,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
+    );
+  }
 
-                  // Personal Info
-                  const Text('Personal & Identity Info (Govt. Compliance)',
-                      style: TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold, fontSize: 15)),
-                  const SizedBox(height: 12),
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
+    final muted = isDark ? AppTheme.textMuted : AppTheme.textMuted;
+    final fill = isDark ? AppTheme.surfaceMutedDark : Colors.white;
+
+    return PremiumProfileScaffold(
+      workspace: ProfileWorkspace.driver,
+      displayName: _nameController.text.isEmpty ? 'Delivery partner' : _nameController.text,
+      avatar: AvatarUploadWidget(
+        initialAvatarUrl: _avatarUrl,
+        isEditing: _isEditing,
+        onUploadComplete: (newUrl) => setState(() => _avatarUrl = newUrl),
+      ),
+      loading: _isLoading,
+      onBack: widget.embedded
+          ? null
+          : () {
+              if (context.canPop()) {
+                context.pop();
+              } else {
+                context.go('/driver-hub');
+              }
+            },
+      headerActions: [
+        TextButton(
+          onPressed: () => setState(() => _isEditing = !_isEditing),
+          child: Text(_isEditing ? 'Cancel' : 'Edit', style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.w800)),
+        ),
+      ],
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.only(bottom: 28),
+          children: [
+            PremiumProfileHero(
+              workspace: ProfileWorkspace.driver,
+              displayName: _nameController.text.isEmpty ? 'Delivery partner' : _nameController.text,
+              subtitle: 'Verified delivery partner',
+              meta: _phoneController.text.isEmpty ? null : _phoneController.text,
+              badgeLabel: 'Verified partner',
+              avatar: AvatarUploadWidget(
+                initialAvatarUrl: _avatarUrl,
+                isEditing: _isEditing,
+                onUploadComplete: (newUrl) => setState(() => _avatarUrl = newUrl),
+              ),
+              onEdit: () => setState(() => _isEditing = !_isEditing),
+              editLabel: _isEditing ? 'Stop editing' : 'Edit partner profile',
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Partner badges', style: AppTheme.homeSectionLabelOf(context).copyWith(fontSize: 14)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _driverBadge('Verified', Icons.verified_outlined, true),
+                      _driverBadge(
+                        'KYC',
+                        Icons.badge_outlined,
+                        _aadhaarMaskedController.text.trim().isNotEmpty && _panController.text.trim().isNotEmpty,
+                      ),
+                      _driverBadge('Vehicle', Icons.two_wheeler_outlined, _vehicleRegNoController.text.trim().isNotEmpty),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            PremiumProfileSection(
+              title: 'Earnings Overview',
+              children: [
+                PremiumProfileTile(
+                  icon: Icons.payments_outlined,
+                  title: 'Run wallet',
+                  subtitle: 'Delivery fee + tip in ₹. Bank payout after KYC by ops.',
+                  onTap: () => context.go('/driver-hub'),
+                  showDivider: false,
+                ),
+              ],
+            ),
+            PremiumProfileStatsRow(
+              stats: [
+                PremiumProfileStat(label: 'Home pin', value: _latitude != null ? 'Pinned' : 'Needed'),
+                PremiumProfileStat(label: 'Vehicle', value: _vehicleType.contains('Electric') ? 'EV' : (_vehicleType.contains('Bicycle') ? 'Cycle' : '2W')),
+                PremiumProfileStat(label: 'Blood', value: _bloodGroup),
+              ],
+            ),
+            PremiumProfileSection(
+              title: 'Help & Partner Support',
+              caption: 'Show your Digital ID at hubs. Keep the account password current.',
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primary,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: AppTheme.radiusMd),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          icon: const Icon(Icons.badge_outlined, size: 18),
+                          label: const Text('Digital ID', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                          onPressed: _showDigitalIDCard,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppTheme.onSurfaceOf(context),
+                            shape: RoundedRectangleBorder(borderRadius: AppTheme.radiusMd),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          icon: const Icon(Icons.lock_reset, size: 18),
+                          label: const Text('Password', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                          onPressed: _showChangePasswordDialog,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            PremiumProfileFormSection(
+              title: 'Bank Details & KYC',
+              caption: 'Name and contacts must match government ID for partner verification.',
+              children: [
                   _buildTextField(
                     controller: _nameController,
                     label: 'Full Name (as per Govt ID) *',
@@ -537,7 +527,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                         flex: 3,
                         child: _buildTextField(
                           controller: _aadhaarMaskedController,
-                          label: 'Aadhaar Number',
+                          label: 'Aadhaar (last 4 stored only)',
                           prefixIcon: Icons.credit_card,
                           keyboardType: TextInputType.number,
                           maxLength: 12,
@@ -555,9 +545,14 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                         flex: 2,
                         child: DropdownButtonFormField<String>(
                           value: _bloodGroup,
-                          dropdownColor: const Color(0xFF1E1E1E),
-                          style: const TextStyle(color: Colors.white),
-                          decoration: const InputDecoration(labelText: 'Blood Group', prefixIcon: Icon(Icons.bloodtype, color: Colors.redAccent)),
+                          dropdownColor: fill,
+                          style: TextStyle(color: titleColor),
+                          decoration: InputDecoration(
+                            labelText: 'Blood Group',
+                            prefixIcon: const Icon(Icons.bloodtype, color: Colors.redAccent),
+                            filled: true,
+                            fillColor: fill,
+                          ),
                           items: _bloodGroups.map((bg) => DropdownMenuItem(value: bg, child: Text(bg))).toList(),
                           onChanged: _isEditing ? (val) => setState(() => _bloodGroup = val ?? 'O+') : null,
                         ),
@@ -572,38 +567,47 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                     maxLength: 10,
                     inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]'))],
                     validator: (v) {
-                      if (v != null && v.isNotEmpty && !_panRegex.hasMatch(v.trim().toUpperCase())) {
+                      final t = v?.trim().toUpperCase() ?? '';
+                      if (t.isEmpty || t.contains('*')) return null;
+                      if (!_panRegex.hasMatch(t)) {
                         return 'Invalid PAN format';
                       }
                       return null;
                     },
                   ),
-                  const Divider(height: 32, color: Colors.white24),
-
-                  // Residential Address
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Permanent / Residential Address',
-                          style: TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold, fontSize: 15)),
-                      Row(
-                        children: [
-                          Icon(_latitude != null ? Icons.check_circle : Icons.warning_amber_rounded,
-                              size: 14, color: _latitude != null ? Colors.green : Colors.orange),
-                          const SizedBox(width: 4),
-                          Text(
-                            _latitude != null ? 'Geo-Pinned' : 'Missing Pin',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _latitude != null ? Colors.green : Colors.orange),
-                          ),
-                        ],
-                      ),
-                    ],
+                  const SizedBox(height: 12),
+                  _buildTextField(
+                    controller: _bankAccountController,
+                    label: 'Bank account number (payout KYC)',
+                    prefixIcon: Icons.account_balance_wallet_outlined,
+                    keyboardType: TextInputType.number,
+                    validator: (v) {
+                      final t = (v ?? '').replaceAll(RegExp(r'\s'), '');
+                      if (t.isEmpty || t.contains('X')) return 'Bank account is required for payouts';
+                      if (t.length < 8) return 'Enter a valid account number';
+                      return null;
+                    },
                   ),
-                  const SizedBox(height: 4),
-                  const Text('Required for background verification and local RTO compliance.',
-                      style: TextStyle(color: Colors.grey, fontSize: 12)),
-                  const SizedBox(height: 16),
-
+                  const SizedBox(height: 12),
+                  _buildTextField(
+                    controller: _ifscController,
+                    label: 'IFSC (e.g. HDFC0001234)',
+                    prefixIcon: Icons.pin_outlined,
+                    validator: (v) {
+                      final t = v?.trim().toUpperCase() ?? '';
+                      if (t.isEmpty) return 'IFSC is required for payouts';
+                      if (!RegExp(r'^[A-Z]{4}0[A-Z0-9]{6}$').hasMatch(t)) return 'Enter a valid IFSC';
+                      return null;
+                    },
+                  ),
+              ],
+            ),
+            PremiumProfileFormSection(
+              title: 'Home address',
+              caption: _latitude != null
+                  ? 'Pinned for background checks and local compliance.'
+                  : 'Pin your home so verification and RTO checks can complete.',
+              children: [
                   if (_isEditing)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 16),
@@ -612,14 +616,14 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                         child: OutlinedButton.icon(
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 14),
-                            backgroundColor: _latitude == null ? Colors.deepOrange.withValues(alpha: 0.1) : Colors.green.withValues(alpha: 0.1),
-                            side: BorderSide(color: _latitude == null ? Colors.deepOrange : Colors.green),
+                            backgroundColor: _latitude == null ? AppTheme.primary.withValues(alpha: 0.1) : Colors.green.withValues(alpha: 0.1),
+                            side: BorderSide(color: _latitude == null ? AppTheme.primary : Colors.green),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
-                          icon: Icon(Icons.pin_drop, color: _latitude == null ? Colors.deepOrange : Colors.green),
+                          icon: Icon(Icons.pin_drop, color: _latitude == null ? AppTheme.primary : Colors.green),
                           label: Text(
                             _latitude == null ? 'Pin Home Address on Map *' : 'Location Pinned (Tap to change)',
-                            style: TextStyle(fontWeight: FontWeight.bold, color: _latitude == null ? Colors.deepOrange : Colors.green),
+                            style: TextStyle(fontWeight: FontWeight.bold, color: _latitude == null ? AppTheme.linkOf(context) : Colors.green),
                           ),
                           onPressed: _openMapPicker,
                         ),
@@ -675,17 +679,22 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                       ),
                     ],
                   ),
-                  const Divider(height: 32, color: Colors.white24),
-
-                  // Vehicle & License Details
-                  const Text('Vehicle & License Details (MoRTH / RTO)',
-                      style: TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold, fontSize: 15)),
-                  const SizedBox(height: 12),
+              ],
+            ),
+            PremiumProfileFormSection(
+              title: 'Documents & Licences',
+              caption: 'Registration and DL stay on your partner card.',
+              children: [
                   DropdownButtonFormField<String>(
                     value: _vehicleType,
-                    dropdownColor: const Color(0xFF1E1E1E),
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(labelText: 'Vehicle Category', prefixIcon: Icon(Icons.two_wheeler, color: Colors.grey)),
+                    dropdownColor: fill,
+                    style: TextStyle(color: titleColor),
+                    decoration: InputDecoration(
+                      labelText: 'Vehicle Category',
+                      prefixIcon: Icon(Icons.two_wheeler, color: muted),
+                      filled: true,
+                      fillColor: fill,
+                    ),
                     items: _vehicleTypes.map((vt) => DropdownMenuItem(value: vt, child: Text(vt))).toList(),
                     onChanged: _isEditing ? (val) => setState(() => _vehicleType = val ?? _vehicleType) : null,
                   ),
@@ -716,12 +725,27 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                     label: 'Vehicle Insurance Policy Number',
                     prefixIcon: Icons.security,
                   ),
-                  const SizedBox(height: 32),
-
-                  if (_isEditing)
-                    ElevatedButton.icon(
+              ],
+            ),
+            if (_isPlatformOps)
+              PremiumProfileSection(
+                title: 'Platform',
+                children: [
+                  PremiumProfileTile(
+                    icon: Icons.admin_panel_settings_outlined,
+                    title: 'Admin desk',
+                    subtitle: 'Catalog, accounts, tickets, and dashboard',
+                    onTap: () => context.go('/platform-ops'),
+                    showDivider: false,
+                  ),
+                ],
+              ),
+            if (_isEditing)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.deepOrange,
+                        backgroundColor: AppTheme.primary,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -729,12 +753,14 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                       icon: const Icon(Icons.save),
                       label: _isSaving
                           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : const Text('Save Driver Compliance Details', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          : const Text('Save partner profile', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                       onPressed: _isSaving ? null : _saveProfile,
                     ),
-                ],
               ),
-            ),
+            const PremiumProfileVersionFooter(),
+          ],
+        ),
+      ),
     );
   }
 
@@ -748,6 +774,12 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     String? Function(String?)? validator,
     List<TextInputFormatter>? inputFormatters,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
+    final muted = isDark ? AppTheme.textMuted : AppTheme.textMuted;
+    final fill = isDark ? AppTheme.surfaceMutedDark : Colors.white;
+    final border = isDark ? Colors.white12 : Colors.grey.shade300;
+
     return TextFormField(
       controller: controller,
       enabled: _isEditing && enabled,
@@ -755,18 +787,18 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
       maxLength: maxLength,
       validator: validator,
       inputFormatters: inputFormatters,
-      style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+      style: TextStyle(color: titleColor, fontSize: 14, fontWeight: FontWeight.w500),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: Colors.grey, fontSize: 13),
-        floatingLabelStyle: const TextStyle(color: Colors.deepOrange, fontSize: 14, fontWeight: FontWeight.bold),
-        prefixIcon: prefixIcon != null ? Icon(prefixIcon, color: Colors.grey, size: 20) : null,
+        labelStyle: TextStyle(color: muted, fontSize: 13),
+        floatingLabelStyle: const TextStyle(color: AppTheme.link, fontSize: 14, fontWeight: FontWeight.bold),
+        prefixIcon: prefixIcon != null ? Icon(prefixIcon, color: muted, size: 20) : null,
         filled: true,
-        fillColor: const Color(0xFF2A2A2A),
+        fillColor: fill,
         counterText: '',
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.white12)),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.deepOrange, width: 2)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: border)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppTheme.primary, width: 2)),
         disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
         errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.redAccent)),
       ),

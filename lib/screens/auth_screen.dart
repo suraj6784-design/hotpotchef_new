@@ -1,41 +1,87 @@
 // lib/screens/auth_screen.dart
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:go_router/go_router.dart';
 
-import '../utils/app_theme.dart';
-import '../utils/helpers.dart';
-import '../utils/auth_role_sync.dart';
-import '../utils/app_deep_links.dart';
-import '../utils/platform_ops_access.dart';
-import '../utils/route_authz.dart';
+import '../models/app_role.dart';
+import '../services/auth_session.dart';
+import '../services/lifecycle_drip.dart';
 import '../services/push_notification_service.dart';
+import '../utils/account_hint.dart';
+import '../utils/app_flavor.dart';
+import '../utils/helpers.dart';
+import '../utils/legal_content.dart';
+import '../utils/network.dart';
+import '../utils/platform_ops_access.dart';
+import '../utils/support.dart';
+import '../widgets/app_widgets.dart';
 
 class AuthScreen extends StatefulWidget {
-  const AuthScreen({super.key});
+  const AuthScreen({
+    super.key,
+    this.asSheet = false,
+    this.sheetTitle,
+    this.sheetSubtitle,
+    this.initialReferralCode,
+    this.initialRole,
+    this.startOnSignup = false,
+  });
+
+  /// Guest checkout/order uses a modal sheet so the cart stays visible behind.
+  final bool asSheet;
+  final String? sheetTitle;
+  final String? sheetSubtitle;
+  final String? initialReferralCode;
+  final String? initialRole;
+  final bool startOnSignup;
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
 }
 
 class _AuthScreenState extends State<AuthScreen> {
-  final _supabase = Supabase.instance.client;
+  SupabaseClient get _supabase => Supabase.instance.client;
   final _formKey = GlobalKey<FormState>();
 
   bool _isLogin = true;
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _acceptedTerms = false;
+  String? _authError;
+  bool _useEmailAuth = kAppStorefront.isPartner;
+  bool _otpSent = false;
 
-  // Role Selection (Customer, Chef, Driver)
-  String _selectedRole = 'Customer';
+  AppRole _selectedRole = kAppStorefront.signupRoles.first;
 
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _otpController = TextEditingController();
+  final _referralController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    final seeded = normalizeReferralCode(widget.initialReferralCode);
+    if (seeded != null) {
+      _referralController.text = seeded;
+      _isLogin = false;
+    }
+    if (widget.startOnSignup) _isLogin = false;
+    final requested = widget.initialRole?.trim();
+    if (requested != null && requested.isNotEmpty) {
+      final parsed = AppRole.parse(requested);
+      if (kAppStorefront.signupRoles.contains(parsed)) {
+        _selectedRole = parsed;
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -43,57 +89,191 @@ class _AuthScreenState extends State<AuthScreen> {
     _passwordController.dispose();
     _nameController.dispose();
     _phoneController.dispose();
+    _otpController.dispose();
+    _referralController.dispose();
     super.dispose();
   }
 
-  // --- Route User to Their Proper Dashboard Based on Role ---
-  Future<void> _routeUserByRole(User user) async {
-    String? role;
+  String _friendlyAuthError(Object error) => friendlyAuthError(error);
 
-    try {
-      // 1. Primary check: Query the public.users table
-      final userData = await _supabase
-          .from('users')
-          .select('role')
-          .eq('id', user.id)
-          .maybeSingle();
-
-      role = userData?['role']?.toString();
-    } catch (e, st) {
-      FirebaseCrashlytics.instance.recordError(e, st, reason: 'Role fetch error from users table');
-    }
-
-    // 2. Fallback check: Auth metadata if public table query was blocked or empty
-    role ??= user.userMetadata?['role']?.toString() ?? 'Customer';
-
-    // Login reads public.users.role; GoRouter guards JWT metadata. Keep them aligned.
-    // Owner allowlist is always Admin — do not leave leftover Chef/Customer JWTs.
-    try {
-      if (isPlatformOwnerEmail(user.email)) {
-        await AuthRoleSync.syncOwnerAdminRole(_supabase);
-        role = 'Admin';
-      } else {
-        role = await AuthRoleSync.syncCanonicalRole(_supabase, rawRole: role, email: user.email);
-      }
-    } catch (e, st) {
-      FirebaseCrashlytics.instance.recordError(e, st, reason: 'JWT role sync after login');
-    }
-
-    await PushNotificationService.syncTokenForCurrentUser();
-
+  void _showAuthError(String message) {
     if (!mounted) return;
-
-    final hub = RouteAuthz.hubForRole(RouteAuthz.parseRole(role, email: user.email));
-    context.go(hub);
+    setState(() => _authError = message);
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    messenger?.hideCurrentSnackBar();
+    messenger?.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.redAccent,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 5),
+      ),
+    );
   }
 
-  Future<void> _submitAuth() async {
-    if (!_formKey.currentState!.validate()) return;
+  Future<void> _leaveAuthAfterSuccess() async {
+    if (!mounted) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    final router = GoRouter.of(context);
+    final openedAsSheet = widget.asSheet;
+    var role = AuthSession.roleFromSession();
+    try {
+      role = await AuthSession.resolveRole();
+    } catch (_) {}
 
-    setState(() => _isLoading = true);
+    void goHub() {
+      if (!kAppStorefront.allowsRole(role)) {
+        router.go('/wrong-app');
+        return;
+      }
+      if (!openedAsSheet || role != AppRole.customer) {
+        router.go(role.hubPath);
+      }
+    }
+
+    if (!kAppStorefront.allowsRole(role)) {
+      if (openedAsSheet || Navigator.of(context).canPop()) {
+        Navigator.of(context).pop(false);
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) => router.go('/wrong-app'));
+      return;
+    }
 
     try {
-      final email = _emailController.text.trim();
+      if (await AuthSession.isPlatformOps()) {
+        // Pop only a guest sheet. Popping a pushed Auth route then go()-ing
+        // to the desk stacks two pages (duplicate cards) and lands on Dashboard.
+        if (openedAsSheet && Navigator.of(context).canPop()) {
+          Navigator.of(context).pop(true);
+        }
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          router.go('/platform-ops');
+        });
+        return;
+      }
+    } catch (_) {}
+
+    if (!mounted) {
+      goHub();
+      return;
+    }
+    if (openedAsSheet || Navigator.of(context).canPop()) {
+      Navigator.of(context).pop(true);
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => goHub());
+  }
+
+  Future<void> _submitPhoneAuth() async {
+    final phone = e164IndiaPhone(_phoneController.text);
+    if (phone.isEmpty) {
+      _showAuthError('Enter a valid 10-digit mobile number.');
+      return;
+    }
+    if (!_isLogin) {
+      if (_nameController.text.trim().isEmpty) {
+        _showAuthError('Please enter your name.');
+        return;
+      }
+      if (!_acceptedTerms) {
+        _showAuthError('Please accept the Terms & conditions to create an account.');
+        return;
+      }
+    }
+
+    setState(() {
+      _isLoading = true;
+      _authError = null;
+    });
+
+    try {
+      if (!_otpSent) {
+        String? referredBy;
+        if (!_isLogin && _selectedRole.usesReferral) {
+          try {
+            referredBy = await _resolveSignupReferralCode();
+          } on FormatException catch (e) {
+            _showAuthError(e.message);
+            return;
+          }
+        }
+        await _supabase.auth
+            .signInWithOtp(
+              phone: phone,
+              data: {
+                'name': _nameController.text.trim(),
+                'phone': usableCustomerPhone(_phoneController.text),
+                'role': AppRole.customer.storageValue,
+                if (referredBy != null) 'referred_by': referredBy,
+              },
+            )
+            .withTimeout(NetworkTimeouts.standard);
+        if (!mounted) return;
+        setState(() => _otpSent = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('OTP sent to $phone')),
+        );
+        return;
+      }
+
+      final token = _otpController.text.trim();
+      if (token.length < 4) {
+        _showAuthError('Enter the 6-digit code from SMS.');
+        return;
+      }
+      final response = await _supabase.auth
+          .verifyOTP(phone: phone, token: token, type: OtpType.sms)
+          .withTimeout(NetworkTimeouts.standard);
+      if (response.user == null) {
+        _showAuthError('That code did not match. Try again.');
+        return;
+      }
+      await _ensurePublicUserProfile(recordLegalConsent: !_isLogin && _acceptedTerms);
+      unawaited(PushNotificationService.syncTokenForCurrentUser());
+      unawaited(enqueueWelcomeDrip());
+      _leaveAuthAfterSuccess();
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Phone OTP authentication failure');
+      _showAuthError(_friendlyAuthError(e));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _signInWithOAuth(OAuthProvider provider) async {
+    setState(() {
+      _isLoading = true;
+      _authError = null;
+    });
+    try {
+      await _supabase.auth.signInWithOAuth(
+        provider,
+        redirectTo: 'hotpotchef://app/auth',
+      );
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'OAuth authentication failure');
+      _showAuthError('Could not open that sign-in. Use the OTP on this screen.');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  bool get _phoneOtpAuth => !kAppStorefront.isPartner && !_useEmailAuth;
+
+  Future<void> _submitAuth() async {
+    if (_phoneOtpAuth) {
+      await _submitPhoneAuth();
+      return;
+    }
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() {
+      _isLoading = true;
+      _authError = null;
+    });
+
+    try {
+      final typedEmail = _emailController.text.trim();
+      final email = _isLogin ? resolveAuthLoginEmail(typedEmail) : typedEmail;
       final password = _passwordController.text.trim();
 
       if (_isLogin) {
@@ -101,18 +281,34 @@ class _AuthScreenState extends State<AuthScreen> {
         final response = await _supabase.auth.signInWithPassword(
           email: email,
           password: password,
-        );
+        ).withTimeout(NetworkTimeouts.standard);
 
         // 🌟 CRITICAL: Tells the OS login succeeded, triggering the device "Save Password" prompt
         TextInput.finishAutofillContext();
 
         if (response.user != null) {
-          await _routeUserByRole(response.user!);
+          // Write referred_by before the diner can reach checkout, or the first-order bonus is missed.
+          await _ensurePublicUserProfile(recordLegalConsent: _acceptedTerms);
+          unawaited(PushNotificationService.syncTokenForCurrentUser());
+          unawaited(enqueueWelcomeDrip());
+          _leaveAuthAfterSuccess();
+        } else {
+          _showAuthError('Wrong email or password. Please try again.');
         }
       } else {
+        if (!_acceptedTerms) {
+          _showAuthError('Please accept the Terms & conditions to create an account.');
+        } else {
         // --- SIGN-UP FLOW WITH EXPLICIT ROLE ---
         final name = _nameController.text.trim();
         final phone = _phoneController.text.trim();
+        final String? referredBy;
+        try {
+          referredBy = _selectedRole.usesReferral ? await _resolveSignupReferralCode() : null;
+        } on FormatException catch (e) {
+          _showAuthError(e.message);
+          return;
+        }
 
         final response = await _supabase.auth.signUp(
           email: email,
@@ -120,42 +316,146 @@ class _AuthScreenState extends State<AuthScreen> {
           data: {
             'name': name,
             'phone': phone,
-            'role': _selectedRole, // Stored in Auth metadata
+            'role': _selectedRole.storageValue,
+            if (referredBy != null) 'referred_by': referredBy,
           },
-        );
+        ).withTimeout(NetworkTimeouts.standard);
 
         // 🌟 CRITICAL: Tells the OS registration/login succeeded, prompting credential saving
         TextInput.finishAutofillContext();
 
         if (response.user != null) {
-          // Initialize user record in public.users table with selected role
-          await _supabase.from('users').upsert({
-            'id': response.user!.id,
-            'email': email,
-            'name': name,
-            'full_name': name,
-            'phone': phone,
-            'role': _selectedRole,
-            'created_at': DateTime.now().toIso8601String(),
-          });
+          if (response.session == null) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    referredBy == null
+                        ? 'Account created. Check your email to confirm, then sign in.'
+                        : 'Account created. Check your email to confirm, then sign in — your referral code $referredBy is saved.',
+                  ),
+                ),
+              );
+              setState(() => _isLogin = true);
+            }
+            return;
+          }
 
-          await _routeUserByRole(response.user!);
+          // Initialize user record in public.users table with selected role
+          await _upsertPublicUserRow(
+            signupUserPayload(
+              id: response.user!.id,
+              email: email,
+              name: name,
+              phone: phone,
+              role: _selectedRole.storageValue,
+              referredBy: referredBy,
+              referralCode: _selectedRole.usesReferral ? generateReferralCode() : null,
+              createdAt: DateTime.now().toIso8601String(),
+              recordLegalConsent: true,
+            ),
+          );
+
+          unawaited(PushNotificationService.syncTokenForCurrentUser());
+          unawaited(enqueueWelcomeDrip());
+          _leaveAuthAfterSuccess();
+        }
         }
       }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Authentication failure');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Authentication Failed: $e'),
-            backgroundColor: Colors.redAccent,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      _showAuthError(_friendlyAuthError(e));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _upsertPublicUserRow(Map<String, dynamic> payload) async {
+    final body = Map<String, dynamic>.from(payload);
+    for (var attempt = 0; attempt < 6; attempt++) {
+      try {
+        await _supabase.from('users').upsert(body).withTimeout(NetworkTimeouts.standard);
+        return;
+      } on PostgrestException catch (e) {
+        if (e.code == '23505' && body.containsKey('referral_code')) {
+          body['referral_code'] = generateReferralCode();
+          continue;
+        }
+        if (e.code != 'PGRST204') rethrow;
+        final match = RegExp(r"Could not find the '([^']+)' column").firstMatch(e.message);
+        final missing = match?.group(1);
+        if (missing == null || !body.containsKey(missing)) rethrow;
+        body.remove(missing);
+      }
+    }
+  }
+
+  Future<void> _ensurePublicUserProfile({bool recordLegalConsent = false}) async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) return;
+    try {
+      final existing = await _supabase
+          .from('users')
+          .select('id, referred_by, referral_code, name, phone, role, email')
+          .eq('id', user.id)
+          .maybeSingle()
+          .withTimeout(NetworkTimeouts.standard);
+      final meta = user.userMetadata ?? {};
+      final role = isPlatformOwnerEmail(user.email)
+          ? 'Admin'
+          : existing?['role']?.toString() ?? meta['role']?.toString() ?? 'Customer';
+      final existingCode = normalizeReferralCode(existing?['referral_code']?.toString());
+      final ownCode = roleUsesReferral(role)
+          ? (existingCode ?? generateReferralCode())
+          : existingCode;
+      final referredBy = roleUsesReferral(role)
+          ? sanitizeReferredBy(
+              referredBy: existing?['referred_by']?.toString() ?? meta['referred_by']?.toString(),
+              ownCode: ownCode,
+            )
+          : null;
+      await _upsertPublicUserRow(
+        signupUserPayload(
+          id: user.id,
+          email: user.email ?? existing?['email']?.toString() ?? '',
+          name: existing?['name']?.toString() ?? meta['name']?.toString() ?? _nameController.text.trim(),
+          phone: () {
+            final stored = usableCustomerPhone(
+              existing?['phone']?.toString() ?? meta['phone']?.toString() ?? _phoneController.text,
+            );
+            return stored.isEmpty ? (existing?['phone']?.toString() ?? meta['phone']?.toString() ?? '') : stored;
+          }(),
+          role: role,
+          // Keep an existing referred_by if metadata is empty (email-confirm then sign-in).
+          referredBy: referredBy ?? normalizeReferralCode(existing?['referred_by']?.toString()),
+          referralCode: ownCode,
+          recordLegalConsent: recordLegalConsent,
+        ),
+      );
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed ensuring referral profile');
+    }
+  }
+
+  Future<String?> _resolveSignupReferralCode() async {
+    final code = normalizeReferralCode(_referralController.text);
+    if (code == null) return null;
+    if (!isPlausibleReferralCode(code)) {
+      throw const FormatException('That referral code does not look right.');
+    }
+    try {
+      final exists = await _supabase
+          .rpc('referral_code_exists', params: {'p_code': code})
+          .withTimeout(NetworkTimeouts.standard);
+      if (exists != true) {
+        throw const FormatException('That referral code was not found. Clear it or check the code.');
+      }
+    } on FormatException {
+      rethrow;
+    } catch (_) {
+      // RPC not applied yet: still store the typed code so friend counts work if it matches.
+    }
+    return code;
   }
 
   // --- Forgot Password Logic ---
@@ -171,19 +471,19 @@ class _AuthScreenState extends State<AuthScreen> {
     try {
       await _supabase.auth.resetPasswordForEmail(
         email,
-        redirectTo: AppDeepLinks.passwordResetRedirectTo(),
-      );
+        redirectTo: passwordResetRedirectUri,
+      ).withTimeout(NetworkTimeouts.standard);
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Password reset instructions sent to your email!'),
+          content: Text('Check your email and open the reset link on this phone.'),
           backgroundColor: Colors.green,
         ),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        SnackBar(content: Text(friendlyAuthError(e)), backgroundColor: Colors.red),
       );
     }
   }
@@ -195,36 +495,22 @@ class _AuthScreenState extends State<AuthScreen> {
     await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.surfaceDark,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          'Lookup Account Email',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
+        title: const Text('Lookup Account Email'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Enter your registered phone number or full name to check your account email hint.',
-              style: TextStyle(color: Colors.white70, fontSize: 13),
+              'Enter the phone number or name on the account. If it matches, a masked email hint is shown. You can only try this a few times per hour.',
+              style: TextStyle(fontSize: 13, color: AppTheme.textMuted),
             ),
             const SizedBox(height: 16),
             TextField(
               controller: inputController,
-              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Phone or Name',
-                labelStyle: const TextStyle(color: Colors.grey, fontSize: 13),
-                floatingLabelStyle: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold),
                 hintText: 'e.g. 9876543210 or John Doe',
-                hintStyle: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-                filled: true,
-                fillColor: const Color(0xFF2A2A2A),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white12)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppTheme.primary, width: 2)),
+                prefixIcon: Icon(Icons.search_rounded),
               ),
             ),
           ],
@@ -232,51 +518,42 @@ class _AuthScreenState extends State<AuthScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+            child: const Text('Cancel'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primary,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-            ),
             onPressed: () async {
               final query = inputController.text.trim();
               Navigator.pop(ctx);
               if (query.isEmpty) return;
+              if (!isValidAccountLookupQuery(query)) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Please enter a simple phone number or name.')),
+                );
+                return;
+              }
 
               try {
-                final response = await _supabase
-                    .from('users')
-                    .select('email')
-                    .or('phone.eq.$query,name.eq.$query')
-                    .maybeSingle();
+                final response = await _supabase.rpc(
+                  'lookup_account_hint',
+                  params: {'p_query': query},
+                ).withTimeout(NetworkTimeouts.standard);
 
                 if (!mounted) return;
 
-                if (response != null && response['email'] != null) {
-                  final email = response['email'].toString();
-                  final atIndex = email.indexOf('@');
-                  final maskedEmail = atIndex > 1
-                      ? email.replaceRange(1, atIndex, '***')
-                      : email;
-
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Account found! Registered email: $maskedEmail'),
-                      backgroundColor: Colors.green,
-                      duration: const Duration(seconds: 6),
-                    ),
-                  );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('No account found matching those details.')),
-                  );
-                }
-              } catch (e) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Lookup failed: $e'), backgroundColor: Colors.red),
+                  SnackBar(
+                    content: Text(accountHintMessage(parseAccountHint(response))),
+                    duration: const Duration(seconds: 6),
+                  ),
+                );
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(networkErrorMessage(e)),
+                    backgroundColor: Colors.red,
+                  ),
                 );
               }
             },
@@ -287,197 +564,167 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
+  void _browseAsGuest() {
+    if (kAppStorefront.isPartner) return;
+    if (Navigator.of(context).canPop()) {
+      Navigator.pop(context);
+    } else {
+      context.go('/customer-hub');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    if (widget.asSheet) {
+      return _buildSheet(isDark);
+    }
+
     return Scaffold(
-      backgroundColor: AppTheme.background,
-      body: SafeArea(
-        child: Center(
+      backgroundColor: AppTheme.canvasOf(context),
+      body: Stack(
+        children: [
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 320,
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: AppTheme.primaryGradient,
+                borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(36),
+                  bottomRight: Radius.circular(36),
+                ),
+              ),
+            ),
+          ),
+          SafeArea(
+            child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+              child: AutofillGroup(
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SizedBox(height: 20),
+                      const Center(child: AppLogo(size: 72, elevated: true)).popIn(),
+                      const SizedBox(height: 18),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 250),
+                        child: Text(
+                          _isLogin ? 'Welcome back' : 'Join ${kAppStorefront.appName}',
+                          key: ValueKey(_isLogin),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            height: 1.2,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _isLogin
+                            ? (kAppStorefront.isPartner
+                                ? 'Sign in to your kitchen or delivery account'
+                                : (_useEmailAuth
+                                    ? 'Sign in to kitchens, orders, and your wallet'
+                                    : 'Sign in with your mobile number'))
+                            : (kAppStorefront.isPartner
+                                ? 'Create a kitchen or delivery-partner account. Recipe creators from YouTube, Instagram, and Facebook cook the same plates for people nearby.'
+                                : (_useEmailAuth
+                                    ? 'Create a diner account to order home-cooked meals'
+                                    : 'Create a diner account with your mobile number')),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 13, height: 1.35, color: Colors.white.withValues(alpha: 0.9)),
+                      ),
+                      // Keep the white card below the header copy so it cannot cover the title
+                      // when the keyboard opens or the form grows with validation errors.
+                      const SizedBox(height: 36),
+                      _buildCredentialCard(isDark).entrance(),
+                      const SizedBox(height: 8),
+                      ..._buildAuthLinks(compact: false),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSheet(bool isDark) {
+    final titleColor = isDark ? AppTheme.textMainDark : AppTheme.textMain;
+    final muted = isDark ? AppTheme.textMuted : AppTheme.textMuted;
+    final bg = isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight;
+    final title = widget.sheetTitle ?? (_isLogin ? 'Sign in to continue' : 'Join ${kAppStorefront.appName}');
+    final subtitle = widget.sheetSubtitle ??
+        (_isLogin ? 'Your cart stays on this screen.' : 'Create an account to finish your order.');
+    final media = MediaQuery.of(context);
+    final keyboard = media.viewInsets.bottom;
+    final maxSheetHeight = (media.size.height - keyboard - media.padding.top - 8).clamp(280.0, media.size.height);
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: keyboard),
+      child: Material(
+        color: bg,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        clipBehavior: Clip.antiAlias,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxSheetHeight),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            // 🌟 1. Wrapped form fields in an AutofillGroup to enable OS password persistence
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
             child: AutofillGroup(
               child: Form(
                 key: _formKey,
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Center(
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: Image.asset('assets/app_icon.png', height: 72, width: 72),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      _isLogin ? 'Welcome Back!' : 'Create Account',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                        color: AppTheme.textMain,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _isLogin ? 'Sign in to access your dashboard' : 'Join HotPot Chef as a customer, cook, or driver',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 13, color: AppTheme.textMuted),
-                    ),
-                    const SizedBox(height: 28),
-
-                    // --- ROLE SELECTION (SIGN UP ONLY) ---
-                    if (!_isLogin) ...[
-                      const Text(
-                        'I want to join as:',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textMain),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          _buildRoleChoiceChip('Customer', Icons.restaurant),
-                          const SizedBox(width: 8),
-                          _buildRoleChoiceChip('Chef', Icons.outdoor_grill),
-                          const SizedBox(width: 8),
-                          _buildRoleChoiceChip('Driver', Icons.delivery_dining),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-
-                      TextFormField(
-                        controller: _nameController,
-                        style: const TextStyle(color: AppTheme.textMain, fontSize: 14),
-                        // 🌟 2. Added name autofill hint
-                        autofillHints: const [AutofillHints.name],
-                        decoration: InputDecoration(
-                          labelText: 'Full Name',
-                          prefixIcon: const Icon(Icons.person_outline, color: AppTheme.primary),
-                          filled: true,
-                          fillColor: Colors.white,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                        ),
-                        validator: (v) => !_isLogin && (v == null || v.trim().isEmpty) ? 'Please enter your name' : null,
-                      ),
-                      const SizedBox(height: 16),
-
-                      TextFormField(
-                        controller: _phoneController,
-                        keyboardType: TextInputType.phone,
-                        style: const TextStyle(color: AppTheme.textMain, fontSize: 14),
-                        // 🌟 3. Added telephone autofill hint
-                        autofillHints: const [AutofillHints.telephoneNumber],
-                        decoration: InputDecoration(
-                          labelText: 'Phone Number',
-                          prefixIcon: const Icon(Icons.phone_outlined, color: AppTheme.primary),
-                          filled: true,
-                          fillColor: Colors.white,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                        ),
-                        validator: (v) => !_isLogin && (v == null || v.trim().length < 10) ? 'Enter a valid 10-digit number' : null,
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-
-                    TextFormField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      style: const TextStyle(color: AppTheme.textMain, fontSize: 14),
-                      // 🌟 4. Added email/username autofill hints
-                      autofillHints: const [AutofillHints.email, AutofillHints.username],
-                      decoration: InputDecoration(
-                        labelText: 'Email Address',
-                        prefixIcon: const Icon(Icons.email_outlined, color: AppTheme.primary),
-                        filled: true,
-                        fillColor: Colors.white,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                      ),
-                      validator: (v) {
-                        if (v == null || v.trim().isEmpty || !v.contains('@')) {
-                          return 'Please enter a valid email address';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-
-                    TextFormField(
-                      controller: _passwordController,
-                      obscureText: _obscurePassword,
-                      style: const TextStyle(color: AppTheme.textMain, fontSize: 14),
-                      // 🌟 5. Added password autofill hint
-                      autofillHints: const [AutofillHints.password],
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        prefixIcon: const Icon(Icons.lock_outline, color: AppTheme.primary),
-                        suffixIcon: IconButton(
-                          icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, color: Colors.grey),
-                          onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-                        ),
-                        filled: true,
-                        fillColor: Colors.white,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                      ),
-                      validator: (v) {
-                        if (v == null || v.trim().isEmpty) {
-                          return 'Please enter your password';
-                        }
-                        // Only enforce 8+ chars for new registrations; allow legacy passwords on login
-                        if (!_isLogin && v.trim().length < 8) {
-                          return 'Password must be at least 8 characters long';
-                        }
-                        return null;
-                      },
-                    ),
-
-                    if (_isLogin) ...[
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton(
-                          onPressed: _handleForgotPassword,
-                          child: const Text('Forgot Password?', style: TextStyle(color: AppTheme.primary, fontSize: 12)),
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: muted.withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(99),
                         ),
                       ),
-                    ],
-
-                    const SizedBox(height: 24),
-
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        elevation: 0,
-                      ),
-                      onPressed: _isLoading ? null : _submitAuth,
-                      child: _isLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                            )
-                          : Text(
-                              _isLogin ? 'Sign In' : 'Register as $_selectedRole',
-                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                            ),
                     ),
-                    const SizedBox(height: 16),
-
-                    TextButton(
-                      onPressed: () => setState(() => _isLogin = !_isLogin),
-                      child: Text(
-                        _isLogin ? "Don't have an account? Sign Up" : "Already have an account? Sign In",
-                        style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold),
-                      ),
+                    const SizedBox(height: 14),
+                    const Center(child: AppLogo(size: 48, elevated: true)),
+                    const SizedBox(height: 14),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(title, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: titleColor)),
+                              const SizedBox(height: 4),
+                              Text(subtitle, style: TextStyle(fontSize: 13, height: 1.35, color: muted)),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Close',
+                          onPressed: _isLoading ? null : () => Navigator.pop(context),
+                          icon: Icon(Icons.close, color: muted),
+                        ),
+                      ],
                     ),
-
-                    if (_isLogin) ...[
-                      TextButton(
-                        onPressed: _handleForgotUsername,
-                        child: const Text('Forgot Email / Username?', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                      ),
-                    ],
+                    const SizedBox(height: 12),
+                    _buildCredentialCard(isDark),
+                    const SizedBox(height: 4),
+                    ..._buildAuthLinks(compact: true),
                   ],
                 ),
               ),
@@ -488,33 +735,392 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
-  // --- Helper Widget for Role Selection Buttons ---
-  Widget _buildRoleChoiceChip(String roleName, IconData icon) {
-    final isSelected = _selectedRole == roleName;
+  Widget _buildCredentialCard(bool isDark) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: AppTheme.cardDecoration(isDark: isDark),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AnimatedSize(
+            duration: const Duration(milliseconds: 280),
+            curve: Curves.easeOutCubic,
+            child: !_isLogin
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (kAppStorefront.signupRoles.length > 1) ...[
+                        Text(
+                          'I want to join as',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                              color: Theme.of(context).colorScheme.onSurface),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            for (var i = 0; i < kAppStorefront.signupRoles.length; i++) ...[
+                              if (i > 0) const SizedBox(width: 8),
+                              _buildRoleChoiceChip(
+                                kAppStorefront.signupRoles[i],
+                                kAppStorefront.signupRoles[i] == AppRole.driver
+                                    ? Icons.delivery_dining_rounded
+                                    : Icons.outdoor_grill_rounded,
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 18),
+                      ],
+                      TextFormField(
+                        controller: _nameController,
+                        autofillHints: const [AutofillHints.name],
+                        textCapitalization: TextCapitalization.words,
+                        decoration: const InputDecoration(
+                          labelText: 'Full Name',
+                          prefixIcon: Icon(Icons.person_outline),
+                        ),
+                        validator: (v) =>
+                            !_isLogin && (v == null || v.trim().isEmpty) ? 'Please enter your name' : null,
+                      ),
+                      const SizedBox(height: 14),
+                      if (!_phoneOtpAuth) ...[
+                        TextFormField(
+                          controller: _phoneController,
+                          keyboardType: TextInputType.phone,
+                          autofillHints: const [AutofillHints.telephoneNumber],
+                          decoration: const InputDecoration(
+                            labelText: 'Phone Number',
+                            prefixIcon: Icon(Icons.phone_outlined),
+                          ),
+                          validator: (v) => !_isLogin && (v == null || v.trim().length < 10)
+                              ? 'Enter a valid 10-digit number'
+                              : null,
+                        ),
+                        const SizedBox(height: 14),
+                      ],
+                    ],
+                  )
+                : const SizedBox.shrink(),
+          ),
+          if (_phoneOtpAuth) ...[
+            TextFormField(
+              controller: _phoneController,
+              keyboardType: TextInputType.phone,
+              autofillHints: const [AutofillHints.telephoneNumber],
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)],
+              decoration: const InputDecoration(
+                labelText: 'Mobile number',
+                prefixIcon: Icon(Icons.phone_outlined),
+                prefixText: '+91 ',
+              ),
+              validator: (v) => e164IndiaPhone(v).isEmpty ? 'Enter a valid 10-digit number' : null,
+            ),
+            const SizedBox(height: 14),
+            if (_otpSent) ...[
+              TextFormField(
+                controller: _otpController,
+                keyboardType: TextInputType.number,
+                autofillHints: const [AutofillHints.oneTimeCode],
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)],
+                decoration: const InputDecoration(
+                  labelText: '6-digit OTP',
+                  prefixIcon: Icon(Icons.sms_outlined),
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: _isLoading
+                      ? null
+                      : () => setState(() {
+                            _otpSent = false;
+                            _otpController.clear();
+                          }),
+                  child: const Text('Resend OTP'),
+                ),
+              ),
+            ],
+          ] else ...[
+          TextFormField(
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+            autofillHints: const [AutofillHints.email, AutofillHints.username],
+            decoration: InputDecoration(
+              labelText: _isLogin ? 'Email or helper username' : 'Email Address',
+              prefixIcon: const Icon(Icons.email_outlined),
+            ),
+            validator: (v) {
+              final t = (v ?? '').trim();
+              if (t.isEmpty) {
+                return _isLogin ? 'Enter your email or helper username' : 'Please enter a valid email address';
+              }
+              if (_isLogin) {
+                if (t.contains('@') && !t.contains('.')) {
+                  return 'Please enter a valid email address';
+                }
+                if (!t.contains('@') && t.length < 3) {
+                  return 'Enter a valid helper username';
+                }
+                return null;
+              }
+              if (!t.contains('@')) {
+                return 'Please enter a valid email address';
+              }
+              return null;
+            },
+          ),
+          const SizedBox(height: 14),
+          TextFormField(
+            controller: _passwordController,
+            obscureText: _obscurePassword,
+            autofillHints: const [AutofillHints.password],
+            decoration: InputDecoration(
+              labelText: 'Password',
+              prefixIcon: const Icon(Icons.lock_outline),
+              suffixIcon: HoldToRevealPasswordIcon(
+                obscured: _obscurePassword,
+                onObscuredChanged: (hidden) => setState(() => _obscurePassword = hidden),
+              ),
+            ),
+            validator: (v) {
+              if (v == null || v.trim().isEmpty) {
+                return 'Please enter your password';
+              }
+              if (!_isLogin && v.trim().length < 8) {
+                return 'Password must be at least 8 characters long';
+              }
+              return null;
+            },
+          ),
+          ],
+          if (!_isLogin && _selectedRole.usesReferral) ...[
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: _referralController,
+              textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(
+                labelText: 'Referral code (optional)',
+                hintText: 'CHEFXXXXXX',
+                prefixIcon: Icon(Icons.card_giftcard_outlined),
+              ),
+              validator: (v) {
+                final code = normalizeReferralCode(v);
+                if (code == null) return null;
+                return isPlausibleReferralCode(code) ? null : 'Enter a valid referral code';
+              },
+            ),
+          ],
+          if (_isLogin && !_phoneOtpAuth)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: _handleForgotPassword,
+                child: const Text('Forgot Password?'),
+              ),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Checkbox(
+                    value: _acceptedTerms,
+                    onChanged: (value) => setState(() => _acceptedTerms = value == true),
+                  ),
+                  Expanded(
+                    child: Wrap(
+                      children: [
+                        const Text('I agree to the '),
+                        GestureDetector(
+                          onTap: () => openLegalDocument(context, LegalDocumentType.terms),
+                          child: Text(
+                            'Terms & conditions',
+                            style: TextStyle(
+                              color: AppTheme.linkOf(context),
+                              fontWeight: FontWeight.w700,
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                        ),
+                        const Text(' and '),
+                        GestureDetector(
+                          onTap: () => openLegalDocument(context, LegalDocumentType.privacy),
+                          child: Text(
+                            'Privacy policy',
+                            style: TextStyle(
+                              color: AppTheme.linkOf(context),
+                              fontWeight: FontWeight.w700,
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (_isLogin)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Wrap(
+                children: [
+                  GestureDetector(
+                    onTap: () => openLegalDocument(context, LegalDocumentType.terms),
+                    child: Text(
+                      'Terms',
+                      style: TextStyle(
+                        color: AppTheme.linkOf(context),
+                        fontWeight: FontWeight.w700,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                  ),
+                  const Text(' · '),
+                  GestureDetector(
+                    onTap: () => openLegalDocument(context, LegalDocumentType.privacy),
+                    child: Text(
+                      'Privacy',
+                      style: TextStyle(
+                        color: AppTheme.linkOf(context),
+                        fontWeight: FontWeight.w700,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (_authError != null) ...[
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.redAccent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.redAccent.withValues(alpha: 0.4)),
+              ),
+              child: Text(
+                _authError!,
+                style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600, fontSize: 13),
+              ),
+            ),
+          ],
+          GradientButton(
+            label: _phoneOtpAuth
+                ? (_otpSent ? 'Verify OTP' : 'Get OTP')
+                : (_isLogin ? 'Sign In' : 'Register as ${_selectedRole.signupLabel}'),
+            icon: _phoneOtpAuth
+                ? (_otpSent ? Icons.verified_outlined : Icons.sms_outlined)
+                : (_isLogin ? Icons.login_rounded : Icons.person_add_alt_1_rounded),
+            loading: _isLoading,
+            onPressed: _isLoading ? null : _submitAuth,
+          ),
+          if (!kAppStorefront.isPartner) ...[
+            const SizedBox(height: 12),
+            Text('Or continue with', style: AppTheme.caption),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _isLoading ? null : () => _signInWithOAuth(OAuthProvider.google),
+                    icon: const Icon(Icons.g_mobiledata, size: 22),
+                    label: const Text('Google'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _isLoading ? null : () => _signInWithOAuth(OAuthProvider.apple),
+                    icon: const Icon(Icons.apple, size: 18),
+                    label: const Text('Apple'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildAuthLinks({required bool compact}) {
+    return [
+      TextButton(
+        onPressed: _isLoading
+            ? null
+            : () => setState(() {
+                  _isLogin = !_isLogin;
+                  _authError = null;
+                  _otpSent = false;
+                  _otpController.clear();
+                }),
+        child: Text(
+          _isLogin ? "Don't have an account? Sign Up" : 'Already have an account? Sign In',
+        ),
+      ),
+      if (_isLogin && !_phoneOtpAuth)
+        TextButton(
+          onPressed: _handleForgotUsername,
+          child: Text(
+            'Forgot Email / Username?',
+            style: AppTheme.caption,
+          ),
+        ),
+      if (!kAppStorefront.isPartner)
+        TextButton(
+          onPressed: _isLoading
+              ? null
+              : () => setState(() {
+                    _useEmailAuth = !_useEmailAuth;
+                    _otpSent = false;
+                    _otpController.clear();
+                    _authError = null;
+                  }),
+          child: Text(_useEmailAuth ? 'Use phone OTP instead' : 'Use email instead'),
+        ),
+      if (!kAppStorefront.isPartner)
+        TextButton(
+          onPressed: _browseAsGuest,
+          child: Text(compact ? 'Keep my cart and go back' : 'Continue browsing meals'),
+        ),
+    ];
+  }
+
+  Widget _buildRoleChoiceChip(AppRole role, IconData icon) {
+    final isSelected = _selectedRole == role;
     return Expanded(
       child: GestureDetector(
-        onTap: () => setState(() => _selectedRole = roleName),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
+        onTap: () => setState(() => _selectedRole = role),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            color: isSelected ? AppTheme.primary : Colors.white,
-            borderRadius: BorderRadius.circular(12),
+            color: isSelected ? AppTheme.primary : Theme.of(context).colorScheme.surface,
+            borderRadius: AppTheme.radiusMd,
             border: Border.all(
               color: isSelected ? AppTheme.primary : Colors.grey.shade300,
               width: 1.5,
             ),
+            boxShadow: isSelected ? AppTheme.brandGlow(opacity: 0.28) : const [],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 20, color: isSelected ? Colors.white : Colors.grey.shade700),
+              Icon(icon, size: 20, color: isSelected ? Colors.white : AppTheme.textMuted),
               const SizedBox(height: 4),
               Text(
-                roleName,
+                role.signupLabel,
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: isSelected ? Colors.white : Colors.grey.shade700,
+                  fontWeight: FontWeight.w700,
+                  color: isSelected ? Colors.white : Theme.of(context).colorScheme.onSurface,
                 ),
               ),
             ],

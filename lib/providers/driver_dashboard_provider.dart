@@ -6,6 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../models/driver_delivery_model.dart';
+import '../services/order_lifecycle.dart';
+import '../utils/helpers.dart';
+import '../utils/kyc_checklist.dart';
+import '../utils/network.dart';
 
 void _logDriverError(dynamic error, StackTrace stackTrace, String reason) {
   if (kDebugMode) {
@@ -19,6 +23,7 @@ final driverDashboardProvider =
 
 class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
   final _supabase = Supabase.instance.client;
+  final _lifecycle = OrderLifecycle();
   RealtimeChannel? _dispatchChannel;
 
   @override
@@ -69,20 +74,28 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
         state = state.copyWith(isLoading: true, errorMessage: null);
       }
 
-      // 1. Available Pool (Unassigned & Ready for Pickup)
+      final mine = 'driver_id.eq.${user.id},delivery_partner_id.eq.${user.id}';
+
+      // 1. Unassigned partner jobs after the kitchen marks Ready for Pickup.
       final availableFuture = _supabase
           .from('orders')
-          .select('*, chefs(business_name, pickup_address)')
+          .select()
           .isFilter('driver_id', null)
-          .ilike('status', '%ready%')
+          .isFilter('delivery_partner_id', null)
+          .or('status.ilike.%ready%,status.ilike.%assigned%,status.ilike.%out for delivery%,status.ilike.%out_for_delivery%')
+          .not('status', 'ilike', '%pending%')
+          .not('status', 'ilike', '%delivered%')
+          .not('status', 'ilike', '%cancelled%')
+          .not('status', 'ilike', '%rejected%')
+          .not('status', 'ilike', '%completed%')
           .order('created_at', ascending: false)
-          .limit(25);
+          .limit(40);
 
       // 2. Driver Active Deliveries (In-Progress)
       final activeFuture = _supabase
           .from('orders')
-          .select('*, chefs(business_name, pickup_address)')
-          .eq('driver_id', user.id)
+          .select()
+          .or(mine)
           .not('status', 'ilike', '%delivered%')
           .not('status', 'ilike', '%cancelled%')
           .order('created_at', ascending: false);
@@ -90,23 +103,16 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
       // 3. Paginated Recent Completed Deliveries
       final completedRecentFuture = _supabase
           .from('orders')
-          .select('*, chefs(business_name, pickup_address)')
-          .eq('driver_id', user.id)
+          .select()
+          .or(mine)
           .ilike('status', '%delivered%')
           .order('created_at', ascending: false)
-          .limit(15);
+          .limit(100);
 
-      // 4. Server-Side Aggregate Count for Performance
-      final completedCountFuture = _supabase
-          .from('orders')
-          .count(CountOption.exact)
-          .eq('driver_id', user.id)
-          .ilike('status', '%delivered%');
-
-      // 5. Driver Total Earnings (Fetched via RPC or Driver Profile aggregation)
+      // 4. Driver Total Earnings (best-effort; missing profile columns must not blank Home)
       final earningsFuture = _supabase
           .from('driver_profiles')
-          .select('wallet_balance, total_lifetime_earnings')
+          .select()
           .eq('user_id', user.id)
           .maybeSingle();
 
@@ -114,33 +120,40 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
         availableFuture,
         activeFuture,
         completedRecentFuture,
-        completedCountFuture,
         earningsFuture,
-      ].cast<Future<dynamic>>());
+      ].cast<Future<dynamic>>()).withTimeout(NetworkTimeouts.standard);
 
-      final availableList = (results[0] as List)
-          .map((e) => DriverDeliveryModel.fromJson(Map<String, dynamic>.from(e)))
+      final availableRaw = (results[0] as List).map((e) => Map<String, dynamic>.from(e)).toList();
+      final activeRaw = (results[1] as List).map((e) => Map<String, dynamic>.from(e)).toList();
+      final completedRaw = (results[2] as List).map((e) => Map<String, dynamic>.from(e)).toList();
+
+      await _attachChefKitchenPins([...availableRaw, ...activeRaw, ...completedRaw]);
+
+      final availableList = availableRaw
+          .where((e) =>
+              isPartnerDeliveryOrder(e) &&
+              OrderLifecycle.isOpenDriverJob(e['status']?.toString()))
+          .map(DriverDeliveryModel.fromJson)
           .toList();
 
-      final activeList = (results[1] as List)
-          .map((e) => DriverDeliveryModel.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
+      final activeList = activeRaw.map(DriverDeliveryModel.fromJson).toList();
 
-      final recentList = (results[2] as List)
-          .map((e) => DriverDeliveryModel.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
+      final completedList = completedRaw.map(DriverDeliveryModel.fromJson).toList();
+      final recentList = completedList.take(15).toList();
 
-      final totalCompletedCount = (results[3] as PostgrestResponse).count ?? 0;
-      
-      final profileData = results[4] as Map<String, dynamic>?;
-      final earnings = (profileData?['wallet_balance'] as num?)?.toDouble() ??
-          (profileData?['total_lifetime_earnings'] as num?)?.toDouble() ??
-          (totalCompletedCount * 40.0); // Safe fallback
+      final profileData = results[3] is Map
+          ? Map<String, dynamic>.from(results[3] as Map)
+          : null;
+      final earnings = fleetEarningsFrom(
+        wallet: parseMoney(profileData?['wallet_balance']),
+        lifetime: parseMoney(profileData?['total_lifetime_earnings']),
+        deliveryPayouts: completedList.map((delivery) => delivery.payout),
+      );
 
       state = state.copyWith(
         isLoading: false,
         totalEarnings: earnings,
-        completedCount: totalCompletedCount,
+        completedCount: completedList.length,
         availableDeliveries: availableList,
         activeDeliveries: activeList,
         recentDeliveries: recentList,
@@ -148,6 +161,61 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
     } catch (e, st) {
       _logDriverError(e, st, 'Failed loading driver dashboard metrics');
       state = state.copyWith(isLoading: false, errorMessage: 'Failed to synchronize orders.');
+    }
+  }
+
+  /// Attach chef kitchen address + pin so Active/Jobs cards can show pickup and navigate.
+  Future<void> _attachChefKitchenPins(List<Map<String, dynamic>> orders) async {
+    final missing = <String>{};
+    for (final order in orders) {
+      final chefId = order['chef_id']?.toString();
+      if (chefId == null || chefId.isEmpty) continue;
+      final items = order['items'];
+      final hasPickupText = orderPickupAddress(
+            order,
+            items: items is List
+                ? items.whereType<Map>().map((e) => Map<String, dynamic>.from(e))
+                : const [],
+          ).isNotEmpty;
+      final hasPin = hasKitchenPin(order);
+      if (hasPickupText && hasPin) continue;
+      missing.add(chefId);
+    }
+    if (missing.isEmpty) return;
+
+    try {
+      final rows = await _supabase
+          .from('users')
+          .select(
+            'id, name, full_name, address, house_no, street, landmark, city, state, postal_code, pincode, lat, lng, latitude, longitude',
+          )
+          .inFilter('id', missing.toList())
+          .withTimeout(NetworkTimeouts.standard);
+      final byId = <String, Map<String, dynamic>>{
+        for (final row in rows)
+          if (row['id'] != null) row['id'].toString(): Map<String, dynamic>.from(row),
+      };
+      for (final order in orders) {
+        final chefId = order['chef_id']?.toString();
+        if (chefId == null) continue;
+        final pin = byId[chefId];
+        if (pin == null) continue;
+        order['_chef_pin'] = pin;
+        if (!hasKitchenPin(order) && hasKitchenPin(pin)) {
+          order['pickup_lat'] = kitchenCoordinate(pin, latitude: true);
+          order['pickup_lng'] = kitchenCoordinate(pin, latitude: false);
+        }
+        if ((order['pickup_address'] == null || order['pickup_address'].toString().trim().isEmpty)) {
+          final formatted = formatSavedAddress(pin);
+          if (formatted.isNotEmpty) order['pickup_address'] = formatted;
+        }
+        if ((order['chef_name'] == null || order['chef_name'].toString().trim().isEmpty)) {
+          final name = (pin['name'] ?? pin['full_name'])?.toString().trim();
+          if (name != null && name.isNotEmpty) order['chef_name'] = name;
+        }
+      }
+    } catch (e, st) {
+      _logDriverError(e, st, 'Failed attaching chef kitchen pins for driver runs');
     }
   }
 
@@ -160,25 +228,22 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
     if (user == null) return false;
 
     try {
-      // ATOMIC CONCURRENCY GUARD:
-      // Only updates if driver_id is STILL null at execution time.
-      final response = await _supabase
-          .from('orders')
-          .update({
-            'driver_id': user.id,
-            'status': DeliveryStatus.accepted.toDbValue(),
-            'accepted_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', orderId)
-          .isFilter('driver_id', null)
-          .select();
-
-      final updatedRows = List<Map<String, dynamic>>.from(response);
-
-      if (updatedRows.isEmpty) {
-        // Another driver claimed the order a split-second earlier
+      final profile = await _supabase.from('users').select().eq('id', user.id).maybeSingle();
+      final kyc = kycChecklistFor({
+        'role': 'driver',
+        ...?profile,
+      });
+      if (kyc.incomplete) {
         state = state.copyWith(
-          errorMessage: 'Order was already accepted by another partner.',
+          errorMessage:
+              'Complete payout KYC in Profile first: ${kyc.missing.join(', ')}.',
+        );
+        return false;
+      }
+      final success = await _lifecycle.acceptDelivery(orderId: orderId, driverId: user.id);
+      if (!success) {
+        state = state.copyWith(
+          errorMessage: 'This order is not ready for pickup yet, or another partner claimed it.',
         );
         await loadDashboardData(isSilentRefresh: true);
         return false;
@@ -195,20 +260,35 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
 
   // --- Status Transition Handling ---
 
-  Future<bool> updateDeliveryStatus(String orderId, DeliveryStatus nextStatus) async {
+  Future<bool> updateDeliveryStatus(
+    String orderId,
+    DeliveryStatus nextStatus, {
+    String? deliveryOtp,
+    String? podPhotoUrl,
+  }) async {
     final user = _supabase.auth.currentUser;
     if (user == null) return false;
 
     try {
-      await _supabase.from('orders').update({
-        'status': nextStatus.toDbValue(),
-        if (nextStatus == DeliveryStatus.delivered) 'delivered_at': DateTime.now().toIso8601String(),
-      }).eq('id', orderId).eq('driver_id', user.id);
+      final current = nextStatus == DeliveryStatus.delivered
+          ? OrderStatus.outForDelivery
+          : OrderStatus.driverAssigned;
+      if (OrderLifecycle.nextDriverStatus(current) == null) {
+        state = state.copyWith(errorMessage: 'This run is not at a delivery step yet.');
+        return false;
+      }
+      await _lifecycle.advanceDriver(
+        orderId: orderId,
+        currentStatus: current,
+        deliveryOtp: deliveryOtp,
+        podPhotoUrl: podPhotoUrl,
+      );
 
       await loadDashboardData(isSilentRefresh: true);
       return true;
     } catch (e, st) {
       _logDriverError(e, st, 'Failed status update for order: $orderId');
+      state = state.copyWith(errorMessage: 'Could not update this run. Try again.');
       return false;
     }
   }

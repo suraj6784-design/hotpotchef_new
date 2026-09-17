@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HotPotChef — Home kitchens. Near you. On your slot.</title>
+    <meta
+      name="description"
+      content="HotPotChef connects you with neighbourhood home kitchens on your slot. Home kitchens. Near you. On your slot."
+    />
+    <meta property="og:title" content="HotPotChef" />
+    <meta property="og:description" content="Home kitchens. Near you. On your slot." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://hotpotchef.com/" />
+    <meta name="theme-color" content="#1a1410" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Figtree:wght@500;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/css/site.css?v=20260909c" />
+  </head>
+  <body>
+    <div class="wrap site-top site-top--home">
+      <a href="/">HotPot<strong>Chef</strong></a>
+      <a class="cart-link" href="/cart">Cart <span data-cart-count hidden></span></a>
+    </div>
+    <main class="home-hero">
+      <div class="wrap">
+        <h1 class="brand">HotPot<span>Chef</span></h1>
+        <p class="punchline">Home kitchens. Near you. On your slot.</p>
+        <p class="support">
+          Neighbourhood plates from verified home kitchens — ordered for the slot that fits your day.
+        </p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="#live-menu">See tonight's slots</a>
+          <a class="btn btn-ghost" href="#live-menu">Order on the web</a>
+        </div>
+      </div>
+    </main>
+
+    <section class="catalog" id="live-menu" aria-labelledby="catalog-heading">
+      <div class="wrap catalog-wrap">
+        <h2 class="catalog-heading" id="catalog-heading">On the menu now</h2>
+        <p class="catalog-lead">Same Available plates as the HotPotChef app. Tap a dish to add to the web cart or open the app.</p>
+
+        <div class="catalog-controls">
+          <label class="catalog-search-label" for="catalog-search">Search</label>
+          <input
+            id="catalog-search"
+            class="catalog-search"
+            type="search"
+            placeholder="Search dishes or home chefs"
+            autocomplete="off"
+          />
+          <label class="catalog-diet-label" for="catalog-diet">Diet</label>
+          <select id="catalog-diet" class="catalog-diet" aria-label="Diet filter">
+            <option value="all">All</option>
+            <option value="veg">Veg</option>
+            <option value="nonveg">Non-veg</option>
+          </select>
+        </div>
+
+        <div class="chef-strip" id="chef-strip" hidden>
+          <p class="chef-strip-label">Matching kitchens</p>
+          <div class="chef-strip-list" id="chef-strip-list"></div>
+        </div>
+
+        <p class="catalog-status" id="catalog-status" hidden></p>
+        <div class="catalog-grid" id="catalog-grid"></div>
+      </div>
+    </section>
+
+    <nav class="site-footer-links" aria-label="Policies">
+      <a href="/terms">Terms</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/faq">FAQs</a>
+      <a href="/cancellation">Cancellation</a>
+    </nav>
+
+    <script src="/js/config.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/cart.js"></script>
+    <script src="/js/catalog.js"></script>
+  </body>
+</html>

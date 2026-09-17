@@ -1,14 +1,30 @@
 // lib/utils/pricing_calculator.dart
 
+import 'dart:convert';
 import 'dart:math' as math;
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../models/pricing_models.dart';
+
+class CheckoutBillLine {
+  const CheckoutBillLine({
+    required this.label,
+    required this.amount,
+    this.isAddOn = false,
+  });
+
+  final String label;
+  final double amount;
+  final bool isAddOn;
+}
 
 class PricingCalculator {
   PricingCalculator._();
 
   /// Default fallback percentage for Flash Sales if not specified by backend.
   static const double defaultFlashSaleDiscountPercent = 20.0;
+
+  /// Stacked % / flat offers cannot cut diner-paid food below this share of list.
+  static const double minNetFractionOfGross = 0.60;
 
   /// Rounds currency amounts cleanly to two decimal places (e.g. Paise/Cents).
   static double roundCurrency(double value) {
@@ -25,31 +41,93 @@ class PricingCalculator {
     return double.tryParse(value.toString().trim()) ?? 0.0;
   }
 
+  static String? normalizedPromoCode(dynamic raw) {
+    final code = raw?.toString().trim().toUpperCase() ?? '';
+    return code.isEmpty ? null : code;
+  }
+
+  static String? mealPromoCode(Map<String, dynamic> mealDetails) {
+    return normalizedPromoCode(mealDetails['promo_code'] ?? mealDetails['promoCode']);
+  }
+
+  static bool promoCodeMatches(Map<String, dynamic> mealDetails, String? appliedPromoCode) {
+    final expected = mealPromoCode(mealDetails);
+    final got = normalizedPromoCode(appliedPromoCode);
+    return expected != null && got != null && expected == got;
+  }
+
+  static bool hasPromoExtra(Map<String, dynamic> mealDetails) {
+    return _parseCurrency(mealDetails['promo_discount_value']) > 0;
+  }
+
+  /// `FESTIVE50` → 50 only when the chef already picked an offer type.
+  static double? numericSuffixFromPromoCode(String? code) {
+    final normalized = normalizedPromoCode(code);
+    if (normalized == null) return null;
+    final match = RegExp(r'(\d{1,3})$').firstMatch(normalized);
+    if (match == null) return null;
+    final value = double.tryParse(match.group(1)!);
+    if (value == null || value <= 0) return null;
+    return value;
+  }
+
+  static OfferType resolvedOfferType(Map<String, dynamic> mealDetails) {
+    return OfferType.fromString(mealDetails['offer_type']?.toString());
+  }
+
+  static double resolvedOfferDiscount(
+    Map<String, dynamic> mealDetails, {
+    required OfferType offerType,
+  }) {
+    final explicit = _parseCurrency(mealDetails['discount_value']);
+    if (explicit > 0) return explicit;
+
+    final hinted = numericSuffixFromPromoCode(mealPromoCode(mealDetails));
+    if (hinted != null) {
+      if (offerType == OfferType.flat) return hinted;
+      if (hinted <= 90) return hinted;
+    }
+
+    if (offerType == OfferType.flashSale) return defaultFlashSaleDiscountPercent;
+    return 0;
+  }
+
+  /// Code-only meals keep the automatic offer locked until checkout.
+  static bool isOfferGated(Map<String, dynamic> mealDetails) {
+    return mealPromoCode(mealDetails) != null && !hasPromoExtra(mealDetails);
+  }
+
+  static bool isWithinOfferWindow(
+    Map<String, dynamic> mealDetails, {
+    DateTime? referenceTime,
+  }) {
+    final now = referenceTime?.toLocal() ?? DateTime.now();
+    final startStr = mealDetails['offer_valid_from']?.toString();
+    if (startStr != null && startStr.isNotEmpty) {
+      final startTime = DateTime.tryParse(startStr)?.toLocal();
+      if (startTime != null && now.isBefore(startTime)) return false;
+    }
+    final endStr = mealDetails['offer_valid_until']?.toString();
+    if (endStr != null && endStr.isNotEmpty) {
+      final endTime = DateTime.tryParse(endStr)?.toLocal();
+      if (endTime != null && now.isAfter(endTime)) return false;
+    }
+    return true;
+  }
+
   /// Checks if an offer is currently live.
   static bool isOfferActive(
     Map<String, dynamic> mealDetails, {
     DateTime? referenceTime,
+    String? appliedPromoCode,
   }) {
     try {
-      final offerType = OfferType.fromString(mealDetails['offer_type']?.toString());
+      final offerType = resolvedOfferType(mealDetails);
       if (offerType == OfferType.none) return false;
-
-      final now = referenceTime?.toLocal() ?? DateTime.now();
-
-      // Check optional offer start window
-      final startStr = mealDetails['offer_valid_from']?.toString();
-      if (startStr != null && startStr.isNotEmpty) {
-        final startTime = DateTime.tryParse(startStr)?.toLocal();
-        if (startTime != null && now.isBefore(startTime)) return false;
+      if (!isWithinOfferWindow(mealDetails, referenceTime: referenceTime)) return false;
+      if (isOfferGated(mealDetails) && !promoCodeMatches(mealDetails, appliedPromoCode)) {
+        return false;
       }
-
-      // Check offer expiry window
-      final endStr = mealDetails['offer_valid_until']?.toString();
-      if (endStr != null && endStr.isNotEmpty) {
-        final endTime = DateTime.tryParse(endStr)?.toLocal();
-        if (endTime != null && now.isAfter(endTime)) return false;
-      }
-
       return true;
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Error evaluating offer active status');
@@ -68,6 +146,7 @@ class PricingCalculator {
     Map<String, dynamic> mealDetails,
     int quantity, {
     DateTime? referenceTime,
+    String? appliedPromoCode,
   }) {
     if (quantity <= 0) {
       return const ItemPricingSummary(
@@ -83,19 +162,25 @@ class PricingCalculator {
     final unitPrice = basePrice(mealDetails);
     final grossTotal = roundCurrency(unitPrice * quantity);
 
-    if (!isOfferActive(mealDetails, referenceTime: referenceTime)) {
-      return ItemPricingSummary(
-        baseUnitPrice: unitPrice,
-        effectiveUnitPrice: unitPrice,
+    if (!isOfferActive(
+      mealDetails,
+      referenceTime: referenceTime,
+      appliedPromoCode: appliedPromoCode,
+    )) {
+      return _withStackedPromo(
+        mealDetails,
+        quantity: quantity,
+        unitPrice: unitPrice,
         grossTotal: grossTotal,
         netTotal: grossTotal,
-        totalDiscount: 0.0,
-        isOfferApplied: false,
+        description: '',
+        referenceTime: referenceTime,
+        appliedPromoCode: appliedPromoCode,
       );
     }
 
-    final offerType = OfferType.fromString(mealDetails['offer_type']?.toString());
-    final discountVal = _parseCurrency(mealDetails['discount_value']);
+    final offerType = resolvedOfferType(mealDetails);
+    final discountVal = resolvedOfferDiscount(mealDetails, offerType: offerType);
     final maxDiscountCap = _parseCurrency(mealDetails['max_discount_cap']);
     final hasCap = maxDiscountCap > 0.0;
 
@@ -109,7 +194,9 @@ class PricingCalculator {
           final payableQty = (quantity ~/ 2) + (quantity % 2);
           netTotal = roundCurrency(unitPrice * payableQty);
           final freeQty = quantity - payableQty;
-          description = 'BOGO: $freeQty item${freeQty > 1 ? 's' : ''} free';
+          description = freeQty > 0
+              ? 'BOGO: $freeQty item${freeQty > 1 ? 's' : ''} free'
+              : 'BOGO: Buy 1 Get 1';
           break;
 
         case OfferType.percentage:
@@ -133,8 +220,7 @@ class PricingCalculator {
           break;
 
         case OfferType.flashSale:
-          final effectiveDiscount = discountVal > 0 ? discountVal : defaultFlashSaleDiscountPercent;
-          final sanitizedPercent = effectiveDiscount.clamp(0.0, 100.0);
+          final sanitizedPercent = discountVal.clamp(0.0, 100.0);
           double totalDiscount = roundCurrency((unitPrice * (sanitizedPercent / 100.0)) * quantity);
           if (hasCap) {
             totalDiscount = math.min(totalDiscount, maxDiscountCap);
@@ -144,7 +230,6 @@ class PricingCalculator {
           break;
 
         case OfferType.none:
-        default:
           netTotal = grossTotal;
           break;
       }
@@ -153,16 +238,72 @@ class PricingCalculator {
       netTotal = grossTotal;
     }
 
-    final totalDiscount = roundCurrency(math.max(0.0, grossTotal - netTotal));
-
-    return ItemPricingSummary(
-      baseUnitPrice: unitPrice,
-      effectiveUnitPrice: roundCurrency(netTotal / quantity),
+    return _withStackedPromo(
+      mealDetails,
+      quantity: quantity,
+      unitPrice: unitPrice,
       grossTotal: grossTotal,
       netTotal: netTotal,
-      totalDiscount: totalDiscount,
-      isOfferApplied: totalDiscount > 0.0,
-      offerDescription: description,
+      description: description,
+      referenceTime: referenceTime,
+      appliedPromoCode: appliedPromoCode,
+    );
+  }
+
+  static ItemPricingSummary _withStackedPromo(
+    Map<String, dynamic> mealDetails, {
+    required int quantity,
+    required double unitPrice,
+    required double grossTotal,
+    required double netTotal,
+    required String description,
+    DateTime? referenceTime,
+    String? appliedPromoCode,
+  }) {
+    var stackedNet = netTotal;
+    var stackedDescription = description;
+
+    if (promoCodeMatches(mealDetails, appliedPromoCode) &&
+        hasPromoExtra(mealDetails) &&
+        isWithinOfferWindow(mealDetails, referenceTime: referenceTime)) {
+      final extraType = OfferType.fromString(mealDetails['promo_discount_type']?.toString());
+      final extraVal = _parseCurrency(mealDetails['promo_discount_value']);
+      final extraCap = _parseCurrency(mealDetails['promo_max_discount_cap']);
+      double extraOff = 0.0;
+      String extraLabel = '';
+
+      if (extraType == OfferType.flat) {
+        extraOff = math.min(stackedNet, math.max(0.0, extraVal));
+        extraLabel = 'Promo ₹${extraVal.toStringAsFixed(0)}';
+      } else {
+        final pct = extraVal.clamp(0.0, 100.0);
+        extraOff = roundCurrency(stackedNet * (pct / 100.0));
+        extraLabel = 'Promo ${pct.toStringAsFixed(0)}%';
+      }
+      if (extraCap > 0) extraOff = math.min(extraOff, extraCap);
+      extraOff = roundCurrency(math.max(0.0, extraOff));
+      stackedNet = roundCurrency(math.max(0.0, stackedNet - extraOff));
+      if (extraOff > 0) {
+        stackedDescription = stackedDescription.isEmpty
+            ? extraLabel
+            : '$stackedDescription + $extraLabel';
+      }
+    }
+
+    var net = stackedNet;
+    final offerType = resolvedOfferType(mealDetails);
+    if (offerType != OfferType.bogo && grossTotal > 0) {
+      final floorNet = roundCurrency(grossTotal * minNetFractionOfGross);
+      if (net < floorNet) net = floorNet;
+    }
+    return ItemPricingSummary(
+      baseUnitPrice: unitPrice,
+      effectiveUnitPrice: quantity <= 0 ? 0 : roundCurrency(net / quantity),
+      grossTotal: grossTotal,
+      netTotal: net,
+      totalDiscount: roundCurrency(math.max(0.0, grossTotal - net)),
+      isOfferApplied: grossTotal - net > 0.0,
+      offerDescription: stackedDescription,
     );
   }
 
@@ -171,11 +312,13 @@ class PricingCalculator {
     Map<String, dynamic> mealDetails,
     int quantity, {
     DateTime? referenceTime,
+    String? appliedPromoCode,
   }) {
     return calculateItemSummary(
       mealDetails,
       quantity,
       referenceTime: referenceTime,
+      appliedPromoCode: appliedPromoCode,
     ).netTotal;
   }
 
@@ -184,12 +327,14 @@ class PricingCalculator {
     Map<String, dynamic> mealDetails,
     int quantity, {
     DateTime? referenceTime,
+    String? appliedPromoCode,
   }) {
     if (quantity <= 0) return 0.0;
     return calculateItemSummary(
       mealDetails,
       quantity,
       referenceTime: referenceTime,
+      appliedPromoCode: appliedPromoCode,
     ).effectiveUnitPrice;
   }
 
@@ -198,11 +343,356 @@ class PricingCalculator {
     Map<String, dynamic> mealDetails,
     int quantity, {
     DateTime? referenceTime,
+    String? appliedPromoCode,
   }) {
     return calculateItemSummary(
       mealDetails,
       quantity,
       referenceTime: referenceTime,
+      appliedPromoCode: appliedPromoCode,
     ).totalDiscount;
+  }
+
+  /// List price + offer fields for a cart/order line. Never uses a snapshotted
+  /// paid unit as `price`, so offers are not applied twice.
+  static Map<String, dynamic> pricingSourceFromLine(Map<String, dynamic> item) {
+    final nested = item['rawMealDetails'] ??
+        item['mealDetails'] ??
+        item['meal_details'] ??
+        item['raw_meal_details'];
+    final nestedMap = nested is Map ? Map<String, dynamic>.from(nested) : <String, dynamic>{};
+
+    final listPrice = _parseCurrency(
+      item['base_price'] ??
+          item['basePrice'] ??
+          nestedMap['price'] ??
+          nestedMap['base_price'] ??
+          item['unit_price'] ??
+          item['price'],
+    );
+
+    return {
+      ...nestedMap,
+      ...item,
+      'price': listPrice,
+      'offer_type': item['offer_type'] ?? nestedMap['offer_type'],
+      'discount_value': item['discount_value'] ?? nestedMap['discount_value'],
+      'max_discount_cap': item['max_discount_cap'] ?? nestedMap['max_discount_cap'],
+      'offer_valid_until': item['offer_valid_until'] ?? nestedMap['offer_valid_until'],
+      'offer_valid_from': item['offer_valid_from'] ?? nestedMap['offer_valid_from'],
+      'promo_code': item['promo_code'] ?? nestedMap['promo_code'],
+      'promo_discount_type': item['promo_discount_type'] ?? nestedMap['promo_discount_type'],
+      'promo_discount_value': item['promo_discount_value'] ?? nestedMap['promo_discount_value'],
+      'promo_max_discount_cap': item['promo_max_discount_cap'] ?? nestedMap['promo_max_discount_cap'],
+    };
+  }
+
+  /// Paid unit + offer metadata for `place_customer_order` (`price * qty`).
+  static Map<String, dynamic> snapshotCheckoutPrices(
+    Map<String, dynamic> mealDetails,
+    int quantity, {
+    DateTime? referenceTime,
+    String? appliedPromoCode,
+    double addOnsUnit = 0,
+  }) {
+    final summary = calculateItemSummary(
+      mealDetails,
+      quantity,
+      referenceTime: referenceTime,
+      appliedPromoCode: appliedPromoCode,
+    );
+    final promoMatched = promoCodeMatches(mealDetails, appliedPromoCode);
+    final extras = roundCurrency(addOnsUnit < 0 ? 0 : addOnsUnit);
+    final paidUnit = roundCurrency(summary.effectiveUnitPrice + extras);
+    final extrasTotal = roundCurrency(extras * quantity);
+    return {
+      'base_price': summary.baseUnitPrice,
+      'meal_unit': summary.effectiveUnitPrice,
+      'addons_unit': extras,
+      'price': paidUnit,
+      'discounted_price': (summary.isOfferApplied || extras > 0) ? paidUnit : null,
+      'offer_type': mealDetails['offer_type'],
+      'discount_value': resolvedOfferDiscount(
+        mealDetails,
+        offerType: OfferType.fromString(mealDetails['offer_type']?.toString()),
+      ),
+      'max_discount_cap': mealDetails['max_discount_cap'],
+      'offer_valid_until': mealDetails['offer_valid_until'],
+      'offer_valid_from': mealDetails['offer_valid_from'],
+      'promo_code': mealPromoCode(mealDetails),
+      'promo_discount_type': mealDetails['promo_discount_type'],
+      'promo_discount_value': mealDetails['promo_discount_value'],
+      'applied_promo_code': promoMatched ? normalizedPromoCode(appliedPromoCode) : null,
+      'promo_applied': promoMatched && summary.isOfferApplied,
+      'line_gross': roundCurrency(summary.grossTotal + extrasTotal),
+      'line_net': roundCurrency(summary.netTotal + extrasTotal),
+      'offer_applied': summary.isOfferApplied || extras > 0,
+      'offer_description': summary.offerDescription,
+    };
+  }
+
+  static String offerBadgeLabel(Map<String, dynamic> mealDetails, {int quantity = 1}) {
+    if (isOfferGated(mealDetails)) return 'PROMO';
+    final offerType = resolvedOfferType(mealDetails);
+    final discountVal = resolvedOfferDiscount(mealDetails, offerType: offerType);
+    switch (offerType) {
+      case OfferType.bogo:
+        return 'BOGO';
+      case OfferType.percentage:
+        final pct = discountVal.clamp(0.0, 100.0);
+        return pct > 0 ? '${pct.toStringAsFixed(0)}% OFF' : '% OFF';
+      case OfferType.flat:
+        return discountVal > 0 ? 'FLAT ₹${discountVal.toStringAsFixed(0)}' : 'FLAT OFF';
+      case OfferType.flashSale:
+        final pct = resolvedOfferDiscount(mealDetails, offerType: OfferType.flashSale)
+            .clamp(0.0, 100.0);
+        return 'FLASH ${pct.toStringAsFixed(0)}%';
+      case OfferType.none:
+        return calculateItemSummary(mealDetails, quantity).offerDescription ?? '';
+    }
+  }
+
+  static double addOnsTotal(dynamic rawAddOns) {
+    if (rawAddOns is! List) return 0.0;
+    return roundCurrency(
+      rawAddOns.fold<double>(0, (sum, addon) {
+        if (addon is! Map) return sum;
+        return sum + _parseCurrency(addon['price']);
+      }),
+    );
+  }
+
+  static List<Map<String, dynamic>> _asAddOnMaps(dynamic raw) {
+    dynamic decoded = raw;
+    if (decoded is String && decoded.trim().isNotEmpty) {
+      try {
+        decoded = jsonDecode(decoded);
+      } catch (_) {
+        return const [];
+      }
+    }
+    if (decoded is! List) return const [];
+    return decoded.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  /// Re-price selected extras from the published meal. Unknown extras are dropped.
+  static List<Map<String, dynamic>> catalogPricedAddOns({
+    required dynamic catalog,
+    required dynamic selected,
+  }) {
+    final published = _asAddOnMaps(catalog);
+    final picks = _asAddOnMaps(selected);
+    if (picks.isEmpty || published.isEmpty) return const [];
+    final byId = <String, Map<String, dynamic>>{};
+    final byTitle = <String, Map<String, dynamic>>{};
+    for (final row in published) {
+      final id = (row['id'] ?? '').toString().trim().toLowerCase();
+      final title = (row['title'] ?? row['name'] ?? '').toString().trim().toLowerCase();
+      if (id.isNotEmpty) byId[id] = row;
+      if (title.isNotEmpty) byTitle[title] = row;
+    }
+    final out = <Map<String, dynamic>>[];
+    for (final pick in picks) {
+      final id = (pick['id'] ?? '').toString().trim().toLowerCase();
+      final title = (pick['title'] ?? pick['name'] ?? '').toString().trim().toLowerCase();
+      final match = (id.isNotEmpty ? byId[id] : null) ?? (title.isNotEmpty ? byTitle[title] : null);
+      if (match == null) continue;
+      out.add({
+        'id': match['id'] ?? pick['id'],
+        'title': match['title'] ?? match['name'] ?? pick['title'] ?? 'Add-on',
+        'price': _parseCurrency(match['price']),
+      });
+    }
+    return out;
+  }
+
+  static double catalogAddOnUnit(Map<String, dynamic> meal, dynamic selected) {
+    return addOnsTotal(catalogPricedAddOns(
+      catalog: meal['add_ons'] ?? meal['addons'],
+      selected: selected,
+    ));
+  }
+
+  /// Food total for one checkout/order line (offers + add-ons).
+  static double lineFoodTotal(
+    Map<String, dynamic> item, {
+    DateTime? referenceTime,
+    String? appliedPromoCode,
+  }) {
+    final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+    final meal = pricingSourceFromLine(item);
+    final selected = item['selectedAddOns'] ?? item['selected_add_ons'];
+    final published = _asAddOnMaps(meal['add_ons'] ?? meal['addons']);
+    final addOnUnit = published.isNotEmpty ? catalogAddOnUnit(meal, selected) : addOnsTotal(selected);
+    return roundCurrency(
+      effectiveItemTotal(
+            meal,
+            qty,
+            referenceTime: referenceTime,
+            appliedPromoCode: appliedPromoCode,
+          ) +
+          (addOnUnit * qty),
+    );
+  }
+
+  /// Pre-discount food total (list price + add-ons).
+  static double lineFoodGross(Map<String, dynamic> item) {
+    final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+    final meal = pricingSourceFromLine(item);
+    final selected = item['selectedAddOns'] ?? item['selected_add_ons'];
+    final published = _asAddOnMaps(meal['add_ons'] ?? meal['addons']);
+    final addOnUnit = published.isNotEmpty ? catalogAddOnUnit(meal, selected) : addOnsTotal(selected);
+    return roundCurrency(basePrice(meal) * qty + addOnUnit * qty);
+  }
+
+  /// Plate and extra rows for checkout Bill Summary (extras stay visible, not folded into one total).
+  static List<CheckoutBillLine> checkoutBillFoodLines(Iterable<Map<String, dynamic>> items) {
+    final lines = <CheckoutBillLine>[];
+    for (final item in items) {
+      final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+      final meal = pricingSourceFromLine(item);
+      final title = (item['title'] ?? item['name'] ?? meal['title'] ?? 'Meal').toString().trim();
+      final plate = roundCurrency(basePrice(meal) * qty);
+      final qtySuffix = qty > 1 ? ' × $qty' : '';
+      lines.add(CheckoutBillLine(
+        label: '${title.isEmpty ? 'Meal' : title}$qtySuffix',
+        amount: plate,
+      ));
+      final selected = item['selectedAddOns'] ?? item['selected_add_ons'];
+      final published = _asAddOnMaps(meal['add_ons'] ?? meal['addons']);
+      final addOns = published.isNotEmpty
+          ? catalogPricedAddOns(catalog: meal['add_ons'] ?? meal['addons'], selected: selected)
+          : selected;
+      if (addOns is! List) continue;
+      for (final addon in addOns) {
+        if (addon is! Map) continue;
+        final name = (addon['title'] ?? addon['name'] ?? 'Extra').toString().trim();
+        if (name.isEmpty) continue;
+        final amount = roundCurrency(_parseCurrency(addon['price']) * qty);
+        if (amount <= 0) continue;
+        lines.add(CheckoutBillLine(label: name, amount: amount, isAddOn: true));
+      }
+    }
+    return lines;
+  }
+
+  /// Bill-summary label for the automatic or typed offer on a cart.
+  static String cartPromoLineLabel(
+    Iterable<Map<String, dynamic>> items, {
+    String? appliedPromoCode,
+    DateTime? referenceTime,
+  }) {
+    final typed = normalizedPromoCode(appliedPromoCode);
+    if (typed != null) return typed;
+    for (final item in items) {
+      final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+      final meal = pricingSourceFromLine(item);
+      final summary = calculateItemSummary(
+        meal,
+        qty,
+        referenceTime: referenceTime,
+        appliedPromoCode: appliedPromoCode,
+      );
+      final desc = summary.offerDescription?.trim() ?? '';
+      if (summary.isOfferApplied && desc.isNotEmpty) return desc;
+    }
+    return 'Offer';
+  }
+
+  static bool cartHasPromoCode(Iterable<Map<String, dynamic>> items) {
+    return items.any((item) => mealPromoCode(pricingSourceFromLine(item)) != null);
+  }
+
+  static bool cartMatchesPromoCode(
+    Iterable<Map<String, dynamic>> items,
+    String? appliedPromoCode,
+  ) {
+    final code = normalizedPromoCode(appliedPromoCode);
+    if (code == null) return false;
+    return items.any((item) => promoCodeMatches(pricingSourceFromLine(item), code));
+  }
+
+  static DateTime? parseOfferDate(dynamic raw) {
+    final text = raw?.toString().trim() ?? '';
+    if (text.isEmpty) return null;
+    return DateTime.tryParse(text)?.toLocal();
+  }
+
+  static bool cartPromoCodeIsLive(
+    Iterable<Map<String, dynamic>> items,
+    String? appliedPromoCode, {
+    DateTime? now,
+  }) {
+    final code = normalizedPromoCode(appliedPromoCode);
+    if (code == null) return false;
+    return items.any((item) {
+      final meal = pricingSourceFromLine(item);
+      return promoCodeMatches(meal, code) &&
+          isWithinOfferWindow(meal, referenceTime: now);
+    });
+  }
+
+  /// Unique chef promo codes on cart lines, including expired ones so the diner
+  /// can see why a code cannot be applied.
+  static List<ApplicablePromo> applicablePromosFromCart(
+    Iterable<Map<String, dynamic>> items, {
+    DateTime? now,
+  }) {
+    final seen = <String>{};
+    final result = <ApplicablePromo>[];
+    for (final item in items) {
+      final meal = pricingSourceFromLine(item);
+      final code = mealPromoCode(meal);
+      if (code == null || !seen.add(code)) continue;
+      result.add(
+        ApplicablePromo(
+          code: code,
+          isActive: isWithinOfferWindow(meal, referenceTime: now),
+          validFrom: parseOfferDate(meal['offer_valid_from']),
+          validUntil: parseOfferDate(meal['offer_valid_until']),
+        ),
+      );
+    }
+    result.sort((a, b) {
+      if (a.isActive != b.isActive) return a.isActive ? -1 : 1;
+      return a.code.compareTo(b.code);
+    });
+    return result;
+  }
+}
+
+class ApplicablePromo {
+  const ApplicablePromo({
+    required this.code,
+    required this.isActive,
+    this.validFrom,
+    this.validUntil,
+  });
+
+  final String code;
+  final bool isActive;
+  final DateTime? validFrom;
+  final DateTime? validUntil;
+
+  static const _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+
+  static String _shortDate(DateTime value) {
+    final local = value.toLocal();
+    return '${local.day} ${_months[local.month - 1]}';
+  }
+
+  String validityLabel({DateTime? now}) {
+    final current = now ?? DateTime.now();
+    if (validFrom != null && current.isBefore(validFrom!)) {
+      return 'Starts ${_shortDate(validFrom!)}';
+    }
+    if (validUntil != null) {
+      if (current.isAfter(validUntil!)) return 'Ended ${_shortDate(validUntil!)}';
+      return 'Until ${_shortDate(validUntil!)}';
+    }
+    return isActive ? 'Valid now' : 'Not valid';
   }
 }
