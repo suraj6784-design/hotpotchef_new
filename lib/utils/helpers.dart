@@ -2445,18 +2445,15 @@ String offerFlashSubhead(Map<String, dynamic> meal) {
 bool isFestivalHamper(Map<String, dynamic>? meal) {
   if (meal == null) return false;
   final flag = meal['is_hamper'] ?? meal['isHamper'];
-  if (flag == true) return true;
-  if (flag == false || flag == null) {
-    final category = meal['category']?.toString().trim().toLowerCase() ?? '';
-    final title = meal['title']?.toString().trim().toLowerCase() ?? '';
-    final tags = '${meal['health_tags'] ?? meal['tags'] ?? ''}'.toLowerCase();
-    return category.contains('hamper') ||
-        category.contains('festival') ||
-        title.contains('hamper') ||
-        tags.contains('hamper');
-  }
-  final text = flag.toString().toLowerCase().trim();
-  return text == 'true' || text == '1' || text == 'yes';
+  if (_explicitFalseFlag(flag)) return false;
+  if (_truthyFlag(flag)) return true;
+  final category = meal['category']?.toString().trim().toLowerCase() ?? '';
+  final title = meal['title']?.toString().trim().toLowerCase() ?? '';
+  final tags = '${meal['health_tags'] ?? meal['tags'] ?? ''}'.toLowerCase();
+  return category.contains('hamper') ||
+      category.contains('festival') ||
+      title.contains('hamper') ||
+      tags.contains('hamper');
 }
 
 List<Map<String, dynamic>> festivalHamperMeals(
@@ -2511,9 +2508,18 @@ bool _truthyFlag(dynamic flag) {
   return text == 'true' || text == '1' || text == 'yes';
 }
 
+bool _explicitFalseFlag(dynamic flag) {
+  if (flag == false) return true;
+  if (flag == null) return false;
+  final text = flag.toString().toLowerCase().trim();
+  return text == 'false' || text == '0' || text == 'no';
+}
+
 bool isSocietyNight(Map<String, dynamic>? meal) {
   if (meal == null) return false;
-  if (_truthyFlag(meal['is_society_night'] ?? meal['isSocietyNight'])) return true;
+  final flag = meal['is_society_night'] ?? meal['isSocietyNight'];
+  if (_explicitFalseFlag(flag)) return false;
+  if (_truthyFlag(flag)) return true;
   final category = meal['category']?.toString().trim().toLowerCase() ?? '';
   final title = meal['title']?.toString().trim().toLowerCase() ?? '';
   final label = meal['society_label']?.toString().trim() ?? '';
@@ -2608,7 +2614,9 @@ String societyNightSubhead(Map<String, dynamic> meal) {
 
 bool isShelfItem(Map<String, dynamic>? meal) {
   if (meal == null) return false;
-  if (_truthyFlag(meal['is_shelf_item'] ?? meal['isShelfItem'])) return true;
+  final flag = meal['is_shelf_item'] ?? meal['isShelfItem'];
+  if (_explicitFalseFlag(flag)) return false;
+  if (_truthyFlag(flag)) return true;
   final category = meal['category']?.toString().trim().toLowerCase() ?? '';
   final title = meal['title']?.toString().trim().toLowerCase() ?? '';
   final kind = meal['shelf_kind']?.toString().trim().toLowerCase() ?? '';

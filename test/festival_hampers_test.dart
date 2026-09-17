@@ -8,6 +8,10 @@ void main() {
       expect(isFestivalHamper({'category': 'Festival Hamper'}), isTrue);
       expect(isFestivalHamper({'title': 'Diwali hamper box'}), isTrue);
       expect(isFestivalHamper({'category': 'Maharashtrian'}), isFalse);
+      expect(
+        isFestivalHamper({'is_hamper': false, 'title': 'Diwali hamper box', 'category': 'Festival Hamper'}),
+        isFalse,
+      );
 
       final list = festivalHamperMeals(
         [

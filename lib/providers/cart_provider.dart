@@ -414,7 +414,7 @@ class CartNotifier extends Notifier<CartState> {
     return packagingFeeForCartItems(
       items.map((item) => item.toCheckoutPayload()),
       loyaltyTier: loyaltyTier ?? state.loyaltyTier,
-      foodTotal: items.fold(0.0, (sum, item) => sum + state.getEffectiveItemTotal(item)),
+      foodTotal: items.fold<double>(0.0, (sum, item) => sum + state.getEffectiveItemTotal(item)),
     );
   }
 

@@ -9,6 +9,10 @@ void main() {
       expect(isShelfItem({'title': 'Mango pickle jar'}), isTrue);
       expect(isShelfItem({'shelf_kind': 'Masala'}), isTrue);
       expect(isShelfItem({'category': 'Maharashtrian'}), isFalse);
+      expect(
+        isShelfItem({'is_shelf_item': false, 'shelf_kind': 'Masala', 'title': 'Mango pickle jar'}),
+        isFalse,
+      );
 
       final list = shelfItems(
         [

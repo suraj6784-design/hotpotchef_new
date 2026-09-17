@@ -506,6 +506,9 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
       final maxCapVal = double.tryParse(_maxDiscountCapController.text.trim()) ?? 0.0;
       final promoExtraVal = double.tryParse(_promoDiscountController.text.trim()) ?? 0.0;
       final hasPromoExtra = _promoExtraType != OfferType.none && promoExtraVal > 0;
+      final hamperOn = _isHamper || _selectedCategory == 'Festival Hamper';
+      final societyOn = _isSocietyNight || _selectedCategory == 'Society Night';
+      final shelfOn = _isShelfItem || _selectedCategory == 'Shelf';
 
       final mealPayload = {
         'chef_id': user.id,
@@ -516,12 +519,11 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
         'quantity': quantity,
         'category': _selectedCategory,
         'is_veg': _isVeg,
-        'is_hamper': _isHamper || _selectedCategory == 'Festival Hamper',
-        'is_society_night':
-            _isSocietyNight || _selectedCategory == 'Society Night',
-        'society_label': _societyLabelController.text.trim(),
-        'is_shelf_item': _isShelfItem || _selectedCategory == 'Shelf',
-        'shelf_kind': _shelfKindController.text.trim(),
+        'is_hamper': hamperOn,
+        'is_society_night': societyOn,
+        'society_label': societyOn ? _societyLabelController.text.trim() : '',
+        'is_shelf_item': shelfOn,
+        'shelf_kind': shelfOn ? _shelfKindController.text.trim() : '',
         'time_slot': _activeTimeSlot,
         'service_type': _selectedServices.map((s) => s.toDisplayString()).join(', '),
         'fssai_number': _fssaiController.text.trim(),
@@ -959,8 +961,8 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
               ),
               onChanged: (v) => setState(() {
                 _isHamper = v;
-                if (v && _selectedCategory != 'Festival Hamper') {
-                  // Keep cuisine category if already set; flag still marks the hamper strip.
+                if (!v && _selectedCategory == 'Festival Hamper') {
+                  _selectedCategory = 'Maharashtrian';
                 }
               }),
             ),
@@ -973,7 +975,12 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                 'One building, one drop — shows on diner Home under Society Nights.',
                 style: AppTheme.caption,
               ),
-              onChanged: (v) => setState(() => _isSocietyNight = v),
+              onChanged: (v) => setState(() {
+                _isSocietyNight = v;
+                if (!v && _selectedCategory == 'Society Night') {
+                  _selectedCategory = 'Maharashtrian';
+                }
+              }),
             ),
             if (_isSocietyNight || _selectedCategory == 'Society Night') ...[
               const SizedBox(height: 4),
@@ -998,7 +1005,12 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                 'Pickle, masala, papad — shows on diner Home under Shelf from Home.',
                 style: AppTheme.caption,
               ),
-              onChanged: (v) => setState(() => _isShelfItem = v),
+              onChanged: (v) => setState(() {
+                _isShelfItem = v;
+                if (!v) {
+                  if (_selectedCategory == 'Shelf') _selectedCategory = 'Maharashtrian';
+                }
+              }),
             ),
             if (_isShelfItem || _selectedCategory == 'Shelf') ...[
               const SizedBox(height: 4),

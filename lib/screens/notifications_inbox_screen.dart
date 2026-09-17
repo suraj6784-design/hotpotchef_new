@@ -104,7 +104,7 @@ class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
       body: RefreshIndicator(
         onRefresh: _load,
         child: _loading
-            ? const ListView(children: [SizedBox(height: 120, child: Center(child: CircularProgressIndicator()))])
+            ? ListView(children: const [SizedBox(height: 120, child: Center(child: CircularProgressIndicator()))])
             : _error != null
                 ? ListView(
                     children: [
