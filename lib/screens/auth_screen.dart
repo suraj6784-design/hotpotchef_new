@@ -623,7 +623,7 @@ class _AuthScreenState extends State<AuthScreen> {
                                     ? 'Sign in to kitchens, orders, and your wallet'
                                     : 'Sign in with your mobile number'))
                             : (kAppStorefront.isPartner
-                                ? 'Create a kitchen or delivery-partner account'
+                                ? 'Create a kitchen or delivery-partner account. Recipe creators from YouTube, Instagram, and Facebook cook the same plates for people nearby.'
                                 : (_useEmailAuth
                                     ? 'Create a diner account to order home-cooked meals'
                                     : 'Create a diner account with your mobile number')),

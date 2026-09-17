@@ -9,11 +9,17 @@ void main() {
     expect(normalizeSavedVpa('Name@OKI'), 'name@oki');
   });
 
-  test('Razorpay shortens to UPI when a VPA is saved', () {
-    final opts = razorpayMethodOptions('upi', savedVpa: 'suraj@upi');
-    expect(opts['vpa'], 'suraj@upi');
-    expect(opts['method']['upi'], isTrue);
-    expect(opts['method']['card'], isFalse);
+  test('Razorpay keeps card available when a VPA is saved', () {
+    final upi = razorpayMethodOptions('upi', savedVpa: 'suraj@upi');
+    expect(upi['vpa'], 'suraj@upi');
+    expect(upi['prefillMethod'], 'upi');
+    expect(upi['method']['upi'], isTrue);
+    expect(upi['method']['card'], isTrue);
+
+    final card = razorpayMethodOptions('card', savedVpa: 'suraj@upi');
+    expect(card.containsKey('vpa'), isFalse);
+    expect(card['prefillMethod'], 'card');
+    expect(card['method']['card'], isTrue);
   });
 
   test('diner failure copy covers delay, double debit, and refund', () {

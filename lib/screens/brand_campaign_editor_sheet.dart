@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/kitchen_media.dart';
 import '../utils/app_theme.dart';
+import '../utils/helpers.dart';
 import '../utils/network.dart';
 import '../widgets/sponsored_placement_banner.dart';
 
@@ -194,8 +194,8 @@ class _BrandCampaignEditorSheetState extends State<_BrandCampaignEditorSheet> {
   @override
   Widget build(BuildContext context) {
     final brand = widget.row['advertiser_name']?.toString() ?? 'Brand';
-    final endLabel = _endsAt == null ? 'No end (runs until you End campaign)' : DateFormat('dd MMM yyyy, hh:mm a').format(_endsAt!);
-    String clock(TimeOfDay? t) => t == null ? 'All day' : t.format(context);
+    final endLabel = _endsAt == null ? 'No end (runs until you End campaign)' : formatAppDateTime(_endsAt!);
+    String clock(TimeOfDay? t) => t == null ? 'All day' : formatAppTimeOfDay(t);
 
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),

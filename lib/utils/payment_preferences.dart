@@ -94,20 +94,22 @@ Future<bool> unlockSavedPayInstrument({String reason = 'Confirm it is you to pay
 }
 
 /// Razorpay checkout `prefill.method` + enabled instrument flags.
+/// Card and netbanking stay available even when a UPI ID is saved.
 Map<String, dynamic> razorpayMethodOptions(String? preferred, {String? savedVpa}) {
   final method = normalizeCustomerPayMethod(preferred);
-  final vpa = normalizeSavedVpa(savedVpa);
-  final shorten = vpa != null && method == 'upi';
+  final vpa = method == 'upi' ? normalizeSavedVpa(savedVpa) : null;
   return {
     'prefillMethod': method,
     if (vpa != null) 'vpa': vpa,
     'method': {
-      'upi': method == 'upi' || !shorten,
-      'card': method == 'card' || !shorten,
-      'netbanking': method == 'netbanking' || !shorten,
+      'upi': true,
+      'card': true,
+      'netbanking': true,
       'wallet': false,
       'emi': false,
       'paylater': false,
     },
   };
 }
+
+bool razorpayIsTestKey(String keyId) => keyId.trim().startsWith('rzp_test_');

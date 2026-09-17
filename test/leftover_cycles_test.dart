@@ -185,11 +185,23 @@ void main() {
       expect(dinerSlotCountdownActive('Delivered'), isFalse);
       expect(dinerSlotIsLate(order, now: now), isFalse);
       expect(dinerPromisedSlotCopy(order, now: now), contains('left'));
-      expect(dinerPromisedSlotCopy(order, now: now), contains('8:00 PM'));
+      expect(dinerPromisedSlotCopy(order, now: now), contains('08:00 PM'));
       expect(dinerPromisedSlotCopy({...order, 'status': 'Delivered'}, now: now), '');
       expect(
         dinerPromisedSlotCopy(order, now: DateTime(2026, 9, 6, 20, 10)),
         contains('late'),
+      );
+      expect(
+        dinerPromisedSlotCopy(
+          {
+            'status': 'Out for Delivery',
+            'created_at': DateTime(2026, 9, 17, 10).toIso8601String(),
+            'time_slot': '18/09/2026 | 2:00 PM',
+            'selected_date': '18/09/2026',
+          },
+          now: DateTime(2026, 9, 17, 17, 23),
+        ),
+        contains('Arriving by 18 Sep 2026, 02:00 PM'),
       );
     });
 
@@ -244,7 +256,7 @@ void main() {
           'time_slot': '10:00 AM to 11:00 AM',
           'selected_date': '2026-09-09',
         }, now: placed),
-        'Sep 9th 2026, 10:00 AM to 11:00 AM',
+        '09 Sep 2026, 10:00 AM',
       );
     });
 
@@ -262,7 +274,7 @@ void main() {
             },
           ],
         }, now: placed),
-        'Sep 7th 2026, 9:00 AM to 9:00 PM',
+        '07 Sep 2026, 09:00 AM',
       );
     });
 
@@ -281,7 +293,7 @@ void main() {
           },
         ],
       };
-      expect(formatDeliverySlotLabel(order, now: placed), 'Sep 9th 2026, 10:00 AM to 11:00 AM');
+      expect(formatDeliverySlotLabel(order, now: placed), '09 Sep 2026, 10:00 AM');
     });
 
     test('stored slot date always includes the year', () {
@@ -298,7 +310,7 @@ void main() {
           'selected_date': '9 Sep',
           'selected_year': 2026,
         }),
-        'Sep 9th 2026, 10:00 AM to 11:00 AM',
+        '09 Sep 2026, 10:00 AM',
       );
     });
 
@@ -327,7 +339,7 @@ void main() {
           'created_at': DateTime(2026, 9, 9, 11, 25).toIso8601String(),
           'items': lines,
         }),
-        'Sep 9th 2026, 10:00 AM to 11:00 AM',
+        '09 Sep 2026, 10:00 AM',
       );
     });
 
@@ -343,7 +355,7 @@ void main() {
             },
           ],
         }),
-        'Sep 9th 2026, 9:00 AM to 11:00 PM',
+        '09 Sep 2026, 09:00 AM',
       );
     });
 
@@ -359,7 +371,7 @@ void main() {
             },
           ],
         }, now: placed),
-        'Sep 7th 2026, 9:00 AM to 11:00 PM',
+        '07 Sep 2026, 09:00 AM',
       );
     });
   });
@@ -376,6 +388,15 @@ void main() {
         }),
         80,
       );
+    });
+  });
+
+  group('account activation copy', () {
+    test('deactivated accounts show Activate, others show Deactivate', () {
+      expect(accountIsDeactivated('deactivated'), isTrue);
+      expect(accountIsDeactivated('active'), isFalse);
+      expect(accountActivationTileTitle('deactivated'), 'Activate account');
+      expect(accountActivationTileTitle('active'), 'Deactivate account');
     });
   });
 }

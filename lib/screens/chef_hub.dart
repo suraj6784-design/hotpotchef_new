@@ -49,14 +49,12 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   final _supabase = Supabase.instance.client;
   final _orderLifecycle = OrderLifecycle();
 
-  late int _selectedIndex = widget.initialTab;
+  late int _selectedIndex = widget.initialTab == 5 ? 1 : widget.initialTab;
   bool _isKitchenOpen = true;
-  Map<String, dynamic> _weeklyHours = {};
-  int _prepMinutes = kDefaultPrepMinutes;
   String _fulfillmentFilter = 'All';
   String _historyFilter = 'Delivered';
   String _menuFilter = 'Active'; // Active | History
-  int _ordersStage = 0; // 0 new, 1 in progress, 2 completed
+  late int _ordersStage = widget.initialTab == 5 ? 2 : 0; // 0 new, 1 in progress, 2 dispatch, 3 completed
   final Set<String> _autoArchivedMealIds = {};
   bool _isPlatformOps = false;
 
@@ -347,14 +345,12 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     try {
       final res = await _supabase
           .from('chef_profiles')
-            .select('is_open, weekly_hours, default_prep_minutes')
+            .select('is_open')
             .eq('user_id', _currentUserId)
             .maybeSingle();
         if (res != null && mounted) {
           setState(() {
             _isKitchenOpen = res['is_open'] == true;
-            _weeklyHours = parseKitchenWeeklyHours(res['weekly_hours']);
-            _prepMinutes = kitchenPrepMinutes(Map<String, dynamic>.from(res));
           });
         }
     } catch (e) {
@@ -401,133 +397,6 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             content: Text('Could not update kitchen availability. Try again.'),
             backgroundColor: Colors.red,
           ),
-        );
-      }
-    }
-  }
-
-  Future<void> _editKitchenHours() async {
-    var draft = Map<String, dynamic>.from(
-      _weeklyHours.isEmpty ? defaultKitchenWeeklyHours() : _weeklyHours,
-    );
-    var prep = _prepMinutes;
-    final saved = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setSheet) {
-            Future<void> pick(String key, String field) async {
-              final day = Map<String, dynamic>.from(draft[key] as Map? ?? {});
-              final current = parseKitchenClockMinutes(day[field]?.toString()) ?? (field == 'open' ? 11 * 60 : 22 * 60);
-              final picked = await showTimePicker(
-                context: ctx,
-                initialTime: TimeOfDay(hour: current ~/ 60, minute: current % 60),
-              );
-              if (picked == null) return;
-              day[field] = formatKitchenClockMinutes(picked.hour * 60 + picked.minute);
-              day['closed'] = false;
-              setSheet(() => draft[key] = day);
-            }
-
-            return Padding(
-              padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + MediaQuery.viewInsetsOf(ctx).bottom),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Weekly hours & prep', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'Diners see this as the kitchen promise. Online still pauses new orders when you flip Offline.',
-                      style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
-                    ),
-                    const SizedBox(height: 12),
-                    Text('Prep window: $prep min', style: const TextStyle(fontWeight: FontWeight.w700)),
-                    Slider(
-                      value: prep.toDouble(),
-                      min: 10,
-                      max: 90,
-                      divisions: 16,
-                      label: '$prep min',
-                      onChanged: (v) => setSheet(() => prep = v.round()),
-                    ),
-                    for (var i = 0; i < kKitchenHourKeys.length; i++) ...[
-                      Builder(builder: (_) {
-                        final key = kKitchenHourKeys[i];
-                        final day = Map<String, dynamic>.from(draft[key] as Map? ?? {});
-                        final closed = day['closed'] == true;
-                        return SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(kKitchenHourLabels[i], style: const TextStyle(fontWeight: FontWeight.w800)),
-                          subtitle: closed
-                              ? const Text('Closed')
-                              : Text(
-                                  '${formatKitchenClockLabel(parseKitchenClockMinutes(day['open']?.toString()) ?? 11 * 60)} – ${formatKitchenClockLabel(parseKitchenClockMinutes(day['close']?.toString()) ?? 22 * 60)}',
-                                ),
-                          value: !closed,
-                          onChanged: (on) {
-                            setSheet(() {
-                              if (on) {
-                                draft[key] = {
-                                  'closed': false,
-                                  'open': day['open'] ?? '11:00',
-                                  'close': day['close'] ?? '22:00',
-                                };
-                              } else {
-                                draft[key] = {'closed': true, 'open': '11:00', 'close': '22:00'};
-                              }
-                            });
-                          },
-                          secondary: closed
-                              ? null
-                              : IconButton(
-                                  tooltip: 'Set hours',
-                                  onPressed: () async {
-                                    await pick(key, 'open');
-                                    await pick(key, 'close');
-                                  },
-                                  icon: const Icon(Icons.schedule),
-                                ),
-                        );
-                      }),
-                    ],
-                    const SizedBox(height: 8),
-                    FilledButton(
-                      onPressed: () => Navigator.pop(ctx, true),
-                      child: const Text('Save hours'),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-    if (saved != true || !mounted) return;
-    try {
-      await _supabase.from('chef_profiles').upsert({
-        'user_id': _currentUserId,
-        'is_open': _isKitchenOpen,
-        'weekly_hours': draft,
-        'default_prep_minutes': prep,
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
-      });
-      setState(() {
-        _weeklyHours = draft;
-        _prepMinutes = prep;
-      });
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Hours saved · ${kitchenWeeklyHoursLabel(draft)} · $prep min prep')),
-      );
-    } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to save kitchen hours');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not save hours. Try again.'), backgroundColor: Colors.red),
         );
       }
     }
@@ -1023,14 +892,15 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               switch (value) {
                 case 'chats':
                   context.push('/chats');
-                case 'hours':
-                  _editKitchenHours();
                 case 'leads':
                   setState(() => _selectedIndex = 7);
                 case 'supplies':
                   setState(() => _selectedIndex = 8);
                 case 'dispatch':
-                  setState(() => _selectedIndex = 5);
+                  setState(() {
+                    _selectedIndex = 1;
+                    _ordersStage = 2;
+                  });
                 case 'menu':
                   setState(() => _selectedIndex = 4);
                 case 'history':
@@ -1039,8 +909,6 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   context.push('/chef-advertise');
                 case 'academy':
                   context.push('/chef-academy');
-                case 'analytics':
-                  context.push('/chef-analytics');
                 case 'profile':
                   setState(() => _selectedIndex = 2);
                 case 'ops':
@@ -1053,13 +921,11 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               const PopupMenuItem(value: 'menu', child: Text('Menu')),
               const PopupMenuItem(value: 'dispatch', child: Text('Dispatch')),
               const PopupMenuItem(value: 'history', child: Text('Kitchen take-home')),
-              const PopupMenuItem(value: 'hours', child: Text('Weekly hours')),
               const PopupMenuItem(value: 'chats', child: Text('Order chats')),
               const PopupMenuItem(value: 'leads', child: Text('Catering leads')),
               const PopupMenuItem(value: 'supplies', child: Text('Packaging supplies')),
               const PopupMenuItem(value: 'ads', child: Text('Refer brand')),
               const PopupMenuItem(value: 'academy', child: Text('Academy')),
-              const PopupMenuItem(value: 'analytics', child: Text('Kitchen take-home')),
               if (_isPlatformOps) const PopupMenuItem(value: 'ops', child: Text('Admin')),
               const PopupMenuItem(value: 'logout', child: Text('Log out')),
             ],
@@ -1151,6 +1017,11 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                         : city,
                     style: AppTheme.caption,
                   ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Already known for recipes on YouTube, Instagram, or Facebook? Link those pages on Profile so diners recognize you here.',
+                    style: AppTheme.microOf(context),
+                  ),
                 ],
               ),
             ),
@@ -1190,7 +1061,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 onTap: () {
                   setState(() {
                     _selectedIndex = 1;
-                    _ordersStage = 2;
+                    _ordersStage = 3;
                   });
                 },
               ),
@@ -1212,9 +1083,12 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             const SizedBox(width: 10),
             Expanded(
               child: _chefToolCard(
-                icon: Icons.videocam_outlined,
-                label: 'Schedule Live',
-                onTap: _editKitchenHours,
+                icon: Icons.restaurant_menu_rounded,
+                label: 'Active Dishes',
+                onTap: () => setState(() {
+                  _selectedIndex = 4;
+                  _menuFilter = 'Active';
+                }),
               ),
             ),
           ],
@@ -1298,11 +1172,11 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       ..sort(compareKitchenOrdersBySlot);
     final inProgress = allOrders.where((o) {
       final status = o['status']?.toString();
-      return (OrderLifecycle.isKitchenActive(status) && !OrderLifecycle.isPendingKitchen(status)) ||
-          OrderLifecycle.isDispatchQueue(status);
+      return OrderLifecycle.isKitchenActive(status) && !OrderLifecycle.isPendingKitchen(status);
     }).toList()
       ..sort(compareKitchenOrdersBySlot);
-    final stageOrders = _ordersStage == 0 ? newOrders : inProgress;
+    final dispatch = allOrders.where((o) => OrderLifecycle.isDispatchQueue(o['status']?.toString())).toList()
+      ..sort(compareKitchenOrdersBySlot);
 
     return Column(
       children: [
@@ -1312,6 +1186,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             labels: [
               'New (${newOrders.length})',
               'In Progress (${inProgress.length})',
+              'Dispatch (${dispatch.length})',
               'Completed',
             ],
             index: _ordersStage,
@@ -1319,27 +1194,26 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
           ),
         ),
         Expanded(
-          child: _ordersStage == 2
-              ? _buildHistoryTab(allOrders)
-              : stageOrders.isEmpty
-                  ? EmptyState(
-                      icon: Icons.receipt_long_outlined,
-                      title: _ordersStage == 0 ? 'No new orders' : 'Nothing in progress',
-                      message: _ordersStage == 0
-                          ? 'New diner plates will land here for Accept or Decline.'
-                          : 'Confirmed, cooking, and ready-for-pickup plates show here.',
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
-                      itemCount: stageOrders.length,
-                      itemBuilder: (context, index) {
-                        final order = stageOrders[index];
-                        if (OrderLifecycle.isDispatchQueue(order['status']?.toString())) {
-                          return _buildReadyPickupCard(order).entrance(index: index);
-                        }
-                        return _buildOrderCard(order).entrance(index: index);
-                      },
-                    ),
+          child: switch (_ordersStage) {
+            2 => _buildDispatchTab(allOrders),
+            3 => _buildHistoryTab(allOrders),
+            _ => ( _ordersStage == 0 ? newOrders : inProgress).isEmpty
+                ? EmptyState(
+                    icon: Icons.receipt_long_outlined,
+                    title: _ordersStage == 0 ? 'No new orders' : 'Nothing in progress',
+                    message: _ordersStage == 0
+                        ? 'New diner plates will land here for Accept or Decline.'
+                        : 'Accepted plates you are cooking show here.',
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+                    itemCount: (_ordersStage == 0 ? newOrders : inProgress).length,
+                    itemBuilder: (context, index) {
+                      final order = (_ordersStage == 0 ? newOrders : inProgress)[index];
+                      return _buildOrderCard(order).entrance(index: index);
+                    },
+                  ),
+          },
         ),
       ],
     );

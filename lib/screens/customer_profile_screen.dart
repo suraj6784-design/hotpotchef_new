@@ -10,7 +10,6 @@ import 'package:go_router/go_router.dart';
 
 import 'address_form_screen.dart';
 import 'auth_screen.dart';
-import 'customer_order_history_screen.dart';
 import '../providers/cart_provider.dart';
 import '../providers/favorites_provider.dart';
 import '../providers/kitchen_follows_provider.dart';
@@ -54,11 +53,11 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
   double _hotpotCoins = 0.0;
   String? _avatarUrl;
   List<Map<String, dynamic>> _addresses = [];
-  int _orderCount = 0;
   String _email = '';
   String _preferredPayMethod = 'upi';
   String? _savedVpa;
   String _supportTicketsSubtitle = 'Track replies and open conversations';
+  String _accountStatus = 'active';
 
   bool _isLoading = true;
   bool _isSaving = false;
@@ -134,16 +133,14 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
       final futures = await Future.wait<dynamic>([
         _supabase
             .from('users')
-            .select('name, phone, dob, gender, dietary_preference, allergies, hotpot_coins, avatar_url')
+            .select('name, phone, dob, gender, dietary_preference, allergies, hotpot_coins, avatar_url, account_status')
             .eq('id', user.id)
             .maybeSingle(),
         _supabase.from('user_addresses').select().eq('user_id', user.id),
-        _supabase.from('orders').select('status').eq('customer_id', user.id),
       ]).withTimeout(NetworkTimeouts.standard);
 
       final userData = futures[0] as Map<String, dynamic>?;
       final addressResponse = futures[1] as List<dynamic>;
-      final ordersResponse = futures[2] as List<dynamic>;
 
       if (userData != null && mounted && seq == _loadSeq) {
         setState(() {
@@ -155,16 +152,9 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
           _allergiesController.text = userData['allergies']?.toString() ?? '';
           _hotpotCoins = double.tryParse(userData['hotpot_coins']?.toString() ?? '0') ?? 0.0;
           _avatarUrl = userData['avatar_url']?.toString();
+          _accountStatus = normalizeAccountStatus(userData['account_status']?.toString());
         });
       }
-
-      int pastOrdersCount = ordersResponse.where((o) {
-        final status = o['status']?.toString().toLowerCase() ?? '';
-        return status.contains('delivered') || 
-               status.contains('completed') || 
-               status.contains('cancelled') || 
-               status.contains('rejected');
-      }).length;
 
       final preferredPay = await loadPreferredPaymentMethod();
       final savedVpa = await loadSavedVpa();
@@ -205,7 +195,6 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
       if (mounted && seq == _loadSeq) {
         setState(() {
           _addresses = uniqueSavedAddresses(List<Map<String, dynamic>>.from(addressResponse));
-          _orderCount = pastOrdersCount;
           _preferredPayMethod = preferredPay;
           _savedVpa = savedVpa;
           _isPlatformOps = ops;
@@ -337,90 +326,42 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
     );
   }
 
-  Future<void> _requestDataExport() async {
+  Future<void> _toggleAccountActive() async {
+    final deactivate = !accountIsDeactivated(_accountStatus);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Request data export'),
-        content: const Text(
-          'We will open a support ticket so ops can prepare a copy of your account data. Replies usually arrive within 1 business day.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Request')),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-
-    try {
-      final row = await createSupportTicket(
-        subject: 'Data export request',
-        body:
-            'Please export my HotPotChef account data (profile, addresses, orders) under applicable privacy rights and share a secure copy.',
-        category: 'account',
-        channel: 'in_app',
-      );
-      if (!mounted) return;
-      final publicId = row?['public_id']?.toString() ?? '';
-      _showSnackBar(
-        publicId.isEmpty ? 'Export request submitted' : 'Ticket $publicId opened for data export',
-      );
-    } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Data export ticket failed');
-      if (!mounted) return;
-      _showSnackBar('Could not submit export request: $e', isError: true);
-    }
-  }
-
-  Future<void> _requestAccountDeletion() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Request account deletion'),
-        content: const Text(
-          'This marks your account for deletion review and opens a support ticket. Some records may be retained where law requires it.',
+        title: Text(deactivate ? 'Deactivate account?' : 'Activate account?'),
+        content: Text(
+          deactivate
+              ? 'You can still sign in. Ordering stays off until you activate again.'
+              : 'Your diner account will be able to place orders again.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Request deletion'),
+            child: Text(deactivate ? 'Deactivate' : 'Activate'),
           ),
         ],
       ),
     );
     if (confirmed != true || !mounted) return;
 
-    final user = _supabase.auth.currentUser;
-    if (user == null) {
-      _showSnackBar('Sign in required', isError: true);
-      return;
-    }
-
     try {
-      await _supabase.from('users').update({
-        'deletion_requested_at': DateTime.now().toUtc().toIso8601String(),
-      }).eq('id', user.id);
-      final row = await createSupportTicket(
-        subject: 'Account deletion request',
-        body:
-            'I request deletion of my HotPotChef account. Please process under applicable retention rules and confirm when complete.',
-        category: 'account',
-        channel: 'in_app',
+      final next = await _supabase.rpc(
+        'set_own_account_status',
+        params: {'p_active': !deactivate},
       );
       if (!mounted) return;
-      final publicId = row?['public_id']?.toString() ?? '';
+      setState(() => _accountStatus = normalizeAccountStatus(next?.toString()));
       _showSnackBar(
-        publicId.isEmpty
-            ? 'Deletion request recorded'
-            : 'Deletion marked — ticket $publicId opened',
+        accountIsDeactivated(_accountStatus) ? 'Account deactivated' : 'Account activated',
       );
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Account deletion request failed');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Toggle account active failed');
       if (!mounted) return;
-      _showSnackBar('Could not submit deletion request: $e', isError: true);
+      _showSnackBar('Could not update account: $e', isError: true);
     }
   }
 
@@ -493,8 +434,10 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('Edit Profile & Dietary Info',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: isDark ? Colors.white : AppTheme.textMain)),
+                Text(
+                  'Edit profile',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: isDark ? Colors.white : AppTheme.textMain),
+                ),
                 const SizedBox(height: 20),
                 Center(
                   child: AvatarUploadWidget(
@@ -1198,17 +1141,19 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                   onUploadComplete: (newUrl) => setState(() => _avatarUrl = newUrl),
                 ),
                 onEdit: _showEditProfileSheet,
-                editLabel: 'Edit profile & diet',
+                editLabel: 'Edit profile',
               ),
               PremiumProfileSection(
-                title: 'Saved Address',
+                title: 'Saved addresses',
                 children: [
                   PremiumProfileTile(
                     icon: Icons.location_on_outlined,
-                    title: _addresses.isEmpty ? 'Add a drop-off' : 'Home',
+                    title: _addresses.isEmpty ? 'Add a drop-off' : 'Manage drops',
                     subtitle: _addresses.isEmpty
                         ? 'Save a pin for faster checkout'
-                        : formatSavedAddress(_addresses.first),
+                        : (_addresses.length == 1
+                            ? formatSavedAddress(_addresses.first)
+                            : '${formatSavedAddress(_addresses.first)} · ${_addresses.length} saved'),
                     onTap: _showAddressesSheet,
                     showDivider: false,
                   ),
@@ -1226,61 +1171,14 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                   ),
                 ],
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Preferences', style: AppTheme.homeSectionLabelOf(context)),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final chip in [
-                          _dietaryPref,
-                          if (_allergiesController.text.trim().isNotEmpty) _allergiesController.text.trim(),
-                        ])
-                          Chip(
-                            label: Text(chip),
-                            visualDensity: VisualDensity.compact,
-                            side: const BorderSide(color: AppTheme.primary),
-                            labelStyle: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w700),
-                            backgroundColor: AppTheme.primary.withValues(alpha: 0.08),
-                          ),
-                        ActionChip(
-                          label: const Text('Edit'),
-                          onPressed: _showEditProfileSheet,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
               LoyaltyBadgeCard(
                 coins: _hotpotCoins,
                 onOpenWallet: _showWalletDialog,
               ),
               PremiumProfileSection(
                 title: 'Dining',
-                caption: 'Orders and your table preferences.',
+                caption: 'Plans and kitchen chats.',
                 children: [
-                  PremiumProfileTile(
-                    icon: Icons.tune_rounded,
-                    title: 'Personalise your plate',
-                    subtitle:
-                        '$_dietaryPref • ${_allergiesController.text.isEmpty ? 'No allergies noted' : _allergiesController.text}',
-                    onTap: _showEditProfileSheet,
-                  ),
-                  PremiumProfileTile(
-                    icon: Icons.shopping_bag_outlined,
-                    title: 'Order history',
-                    subtitle: 'Completed & past orders: $_orderCount',
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const CustomerOrderHistoryScreen()),
-                    ),
-                  ),
                   PremiumProfileTile(
                     icon: Icons.event_repeat_outlined,
                     title: 'Weekly plans',
@@ -1304,12 +1202,6 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                     title: 'Support tickets',
                     subtitle: _supportTicketsSubtitle,
                     onTap: () => context.push('/support-tickets'),
-                  ),
-                  PremiumProfileTile(
-                    icon: Icons.notifications_none_outlined,
-                    title: DinerLocaleController.instance.copy.notifications,
-                    subtitle: 'Kitchen, delivery, and support notes',
-                    onTap: () => context.push('/notifications'),
                     showDivider: false,
                   ),
                 ],
@@ -1338,26 +1230,8 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                 ],
               ),
               PremiumProfileSection(
-                title: 'More addresses',
-                children: [
-                  PremiumProfileTile(
-                    icon: Icons.location_on_outlined,
-                    title: 'All saved drops',
-                    subtitle: '${_addresses.length} saved',
-                    onTap: _showAddressesSheet,
-                    showDivider: false,
-                  ),
-                ],
-              ),
-              PremiumProfileSection(
                 title: 'Help & Support',
                 children: [
-                  PremiumProfileTile(
-                    icon: Icons.info_outline_rounded,
-                    title: 'About HotPotChef',
-                    subtitle: 'Home kitchens, FSSAI, and how ordering works',
-                    onTap: () => openLegalDocument(context, LegalDocumentType.faq),
-                  ),
                   PremiumProfileTile(
                     icon: Icons.lock_outline_rounded,
                     title: 'Change password',
@@ -1391,15 +1265,12 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                     onTap: () => showContactSupportSheet(context),
                   ),
                   PremiumProfileTile(
-                    icon: Icons.download_outlined,
-                    title: 'Request data export',
-                    subtitle: 'Ask ops for a copy of your account',
-                    onTap: _requestDataExport,
-                  ),
-                  PremiumProfileTile(
-                    icon: Icons.person_off_outlined,
-                    title: 'Request account deletion',
-                    onTap: _requestAccountDeletion,
+                    icon: accountIsDeactivated(_accountStatus)
+                        ? Icons.person_outline_rounded
+                        : Icons.person_off_outlined,
+                    title: accountActivationTileTitle(_accountStatus),
+                    subtitle: accountActivationTileSubtitle(_accountStatus),
+                    onTap: _toggleAccountActive,
                   ),
                   PremiumProfileTile(
                     icon: Icons.event_busy_outlined,

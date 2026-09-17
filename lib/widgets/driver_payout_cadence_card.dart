@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../utils/app_theme.dart';
@@ -38,7 +37,7 @@ class _DriverPayoutCadenceCardState extends State<DriverPayoutCadenceCard> {
     final pending = parseMoney(data['pending_inr']);
     final nextRaw = data['next_payout_date']?.toString();
     final next = DateTime.tryParse(nextRaw ?? '');
-    final nextLabel = next == null ? (nextRaw ?? '') : DateFormat('EEE d MMM').format(next);
+    final nextLabel = next == null ? (nextRaw ?? '') : formatAppDate(next);
     final note = data['cadence']?.toString() ??
         'Weekly bank transfer every Monday after KYC, arranged by ops from this wallet.';
     return Padding(

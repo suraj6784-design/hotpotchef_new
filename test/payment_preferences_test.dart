@@ -18,5 +18,7 @@ void main() {
     expect(methods['upi'], isTrue);
     expect(methods['card'], isTrue);
     expect(methods['netbanking'], isTrue);
+    expect(razorpayIsTestKey('rzp_test_abc'), isTrue);
+    expect(razorpayIsTestKey('rzp_live_abc'), isFalse);
   });
 }

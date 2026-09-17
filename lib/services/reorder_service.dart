@@ -164,7 +164,7 @@ class ReorderService {
       if (ids.isNotEmpty) {
         final rows = await Supabase.instance.client
             .from('chef_profiles')
-            .select('user_id, is_open, weekly_hours')
+            .select('user_id, is_open')
             .inFilter('user_id', ids);
         for (final row in rows) {
           kitchenOpen[row['user_id'].toString()] =

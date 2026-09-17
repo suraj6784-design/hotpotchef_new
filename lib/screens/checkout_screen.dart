@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../services/app_analytics.dart';
+import '../services/auth_session.dart';
 import '../providers/cart_provider.dart';
 import '../utils/helpers.dart';
 import '../utils/service_area.dart';
@@ -479,6 +480,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   // --- Razorpay Payment Pipeline ---
 
   Future<void> _startRazorpayPayment() async {
+    if (!await AuthSession.ensureCanPlaceOrders(context)) return;
+    if (!mounted) return;
     final phone = usableCustomerPhone(_phoneController.text);
 
     if (phone.length != 10) {
@@ -545,7 +548,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         try {
           final kitchens = await _supabase
               .from('chef_profiles')
-              .select('user_id, is_open, weekly_hours')
+              .select('user_id, is_open')
               .inFilter('user_id', chefIds)
               .withTimeout(NetworkTimeouts.short);
           if (kitchens.any((row) => !isChefKitchenAcceptingOrders(Map<String, dynamic>.from(row)))) {
@@ -606,8 +609,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       }
 
       final preferredMethod = await loadPreferredPaymentMethod();
-      final savedVpa = await loadSavedVpa();
-      if (savedVpa != null) {
+      final savedVpa = preferredMethod == 'upi' ? await loadSavedVpa() : null;
+      if (preferredMethod == 'upi' && savedVpa != null) {
         final unlocked = await unlockSavedPayInstrument();
         if (!unlocked) {
           _releaseInventoryHold();
@@ -622,8 +625,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         'name': 'HotPotChef',
         'description': _membershipOnlyPay ? 'Family member' : 'Order Checkout',
         'order_id': razorpayOrderId,
-        'retry': {'enabled': false, 'max_count': 0},
-        'send_sms_hash': true,
+        'retry': {'enabled': true, 'max_count': 1},
+        'send_sms_hash': preferredMethod == 'upi',
         if ((data['razorpay_customer_id']?.toString() ?? '').startsWith('cust_'))
           'customer_id': data['razorpay_customer_id'],
         'prefill': {
@@ -1470,7 +1473,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Promised arrival uses kitchen hours, prep, and travel — not a pin on the map.',
+                  'Promised arrival uses prep and travel — not a pin on the map.',
                   style: AppTheme.caption,
                 ),
                 const SizedBox(height: 14),
@@ -1906,6 +1909,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
             ],
           ),
+          if (razorpayIsTestKey(appEnv('RAZORPAY_KEY_ID'))) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Test payments: use Razorpay card 4111 1111 1111 1111, any future expiry, any CVV. A live bank card will fail on this key.',
+              textAlign: TextAlign.center,
+              style: AppTheme.microOf(context),
+            ),
+          ],
           const SizedBox(height: 8),
           Wrap(
             alignment: WrapAlignment.center,

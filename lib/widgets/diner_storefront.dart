@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../utils/app_theme.dart';
+import '../utils/helpers.dart';
 
 class DinerSectionHeader extends StatelessWidget {
   const DinerSectionHeader({
     super.key,
     required this.title,
+    this.subtitle,
     this.onSeeAll,
     this.seeAllLabel = 'See all',
   });
 
   final String title;
+  final String? subtitle;
   final VoidCallback? onSeeAll;
   final String seeAllLabel;
 
@@ -19,9 +23,19 @@ class DinerSectionHeader extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 12, 12, 8),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: Text(title, style: AppTheme.homeSectionLabelOf(context)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: AppTheme.homeSectionLabelOf(context)),
+                if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(subtitle!, style: AppTheme.caption),
+                ],
+              ],
+            ),
           ),
           if (onSeeAll != null)
             TextButton(
@@ -136,7 +150,7 @@ class DinerSegmentBar extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: labels.length >= 4 ? 11 : 12,
                       fontWeight: FontWeight.w800,
                       color: index == i ? Colors.white : AppTheme.onSurfaceOf(context),
                     ),
@@ -258,6 +272,31 @@ class DinerAccentCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class ChefSocialChips extends StatelessWidget {
+  const ChefSocialChips({super.key, required this.links, this.compact = false});
+
+  final ChefSocialLinks links;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!links.hasAny) return const SizedBox.shrink();
+    return Wrap(
+      spacing: 8,
+      runSpacing: 6,
+      children: [
+        for (final chip in links.chips)
+          ActionChip(
+            visualDensity: compact ? VisualDensity.compact : VisualDensity.standard,
+            avatar: Icon(chip.icon, size: 16, color: AppTheme.primary),
+            label: Text(chip.label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+            onPressed: () => launchUrl(Uri.parse(chip.url), mode: LaunchMode.externalApplication),
+          ),
+      ],
     );
   }
 }

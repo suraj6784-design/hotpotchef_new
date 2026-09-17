@@ -22,7 +22,6 @@ import '../services/fssai_certificate_ocr.dart';
 import '../services/auth_session.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:intl/intl.dart';
 
 class ChefReviewModel {
   final String id;
@@ -103,6 +102,9 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
   final _storyController = TextEditingController();
   final _hygieneController = TextEditingController();
   final _localNameController = TextEditingController();
+  final _instagramController = TextEditingController();
+  final _youtubeController = TextEditingController();
+  final _facebookController = TextEditingController();
   String _cardLocale = 'en';
 
   String? _avatarUrl;
@@ -142,6 +144,9 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     _storyController.dispose();
     _hygieneController.dispose();
     _localNameController.dispose();
+    _instagramController.dispose();
+    _youtubeController.dispose();
+    _facebookController.dispose();
     super.dispose();
   }
 
@@ -218,7 +223,9 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     try {
       final kitchen = await _supabase
           .from('chef_profiles')
-          .select('kitchen_story, hygiene_note, kitchen_photos, card_locale, local_kitchen_name')
+          .select(
+            'kitchen_story, hygiene_note, kitchen_photos, card_locale, local_kitchen_name, instagram_url, youtube_url, facebook_url',
+          )
           .eq('user_id', user.id)
           .maybeSingle()
           .withTimeout(NetworkTimeouts.standard);
@@ -226,6 +233,9 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
         _storyController.text = kitchen['kitchen_story']?.toString() ?? '';
         _hygieneController.text = kitchen['hygiene_note']?.toString() ?? '';
         _localNameController.text = kitchen['local_kitchen_name']?.toString() ?? '';
+        _instagramController.text = kitchen['instagram_url']?.toString() ?? '';
+        _youtubeController.text = kitchen['youtube_url']?.toString() ?? '';
+        _facebookController.text = kitchen['facebook_url']?.toString() ?? '';
         _cardLocale = normalizeChefCardLocale(kitchen['card_locale']?.toString());
         _kitchenPhotos = kitchenPhotosFrom(kitchen['kitchen_photos']);
       }
@@ -558,6 +568,9 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
           'kitchen_photos': _kitchenPhotos,
           'card_locale': normalizeChefCardLocale(_cardLocale),
           'local_kitchen_name': _localNameController.text.trim(),
+          'instagram_url': sanitizeChefSocialUrl(_instagramController.text, ChefSocialPlatform.instagram) ?? '',
+          'youtube_url': sanitizeChefSocialUrl(_youtubeController.text, ChefSocialPlatform.youtube) ?? '',
+          'facebook_url': sanitizeChefSocialUrl(_facebookController.text, ChefSocialPlatform.facebook) ?? '',
           'updated_at': DateTime.now().toUtc().toIso8601String(),
         });
       } catch (e, stack) {
@@ -728,18 +741,6 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
               ),
             ),
             PremiumProfileSection(
-              title: 'Menu Management',
-              children: [
-                PremiumProfileTile(
-                  icon: Icons.restaurant_menu_outlined,
-                  title: 'Active dishes',
-                  subtitle: 'Publish, pause, and restock plates',
-                  onTap: () => context.go('/chef-hub?tab=menu'),
-                  showDivider: false,
-                ),
-              ],
-            ),
-            PremiumProfileSection(
               title: 'Earnings Overview',
               children: [
                 PremiumProfileTile(
@@ -796,7 +797,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: Text(
-                        'This licence expired on ${DateFormat('d MMM yyyy').format(_fssaiValidUntil!)}. Upload a current certificate to keep publishing.',
+                        'This licence expired on ${formatAppDate(_fssaiValidUntil!)}. Upload a current certificate to keep publishing.',
                         style: const TextStyle(color: AppTheme.error, fontSize: 13, fontWeight: FontWeight.w700, height: 1.35),
                       ),
                     ),
@@ -839,7 +840,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                     title: Text(
                       _fssaiValidUntil == null
                           ? 'Validity (valid upto)'
-                          : 'Valid upto ${DateFormat('d MMM yyyy').format(_fssaiValidUntil!)}',
+                          : 'Valid upto ${formatAppDate(_fssaiValidUntil!)}',
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     subtitle: Text(
@@ -978,6 +979,58 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                     label: 'Hygiene note (gloves, oil, separate veg board…)',
                     prefixIcon: Icons.health_and_safety_outlined,
                     maxLines: 2,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Your favourite social media chef on HotPotChef',
+                    style: TextStyle(color: muted, fontSize: 12, fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Paste the public YouTube, Instagram, or Facebook page where people already follow your recipes. Diners see these on your kitchen card. FSSAI still comes first.',
+                    style: AppTheme.micro,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildValidatedTextField(
+                    controller: _instagramController,
+                    label: 'Instagram (@handle or profile link)',
+                    prefixIcon: Icons.camera_alt_outlined,
+                    validator: (v) {
+                      final value = v?.trim() ?? '';
+                      if (value.isEmpty) return null;
+                      if (sanitizeChefSocialUrl(value, ChefSocialPlatform.instagram) == null) {
+                        return 'Paste a public Instagram profile or @handle';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _buildValidatedTextField(
+                    controller: _youtubeController,
+                    label: 'YouTube channel or video link',
+                    prefixIcon: Icons.play_circle_outline_rounded,
+                    validator: (v) {
+                      final value = v?.trim() ?? '';
+                      if (value.isEmpty) return null;
+                      if (sanitizeChefSocialUrl(value, ChefSocialPlatform.youtube) == null) {
+                        return 'Paste a full YouTube or youtu.be link';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _buildValidatedTextField(
+                    controller: _facebookController,
+                    label: 'Facebook page link',
+                    prefixIcon: Icons.public_outlined,
+                    validator: (v) {
+                      final value = v?.trim() ?? '';
+                      if (value.isEmpty) return null;
+                      if (sanitizeChefSocialUrl(value, ChefSocialPlatform.facebook) == null) {
+                        return 'Paste a full Facebook page link';
+                      }
+                      return null;
+                    },
                   ),
                   if (_kitchenPhotos.isNotEmpty || _isEditing) ...[
                     const SizedBox(height: 12),

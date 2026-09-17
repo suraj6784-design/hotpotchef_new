@@ -75,6 +75,42 @@ String formatAppDateTime(DateTime date) => DateFormat(kAppDateTimePattern).forma
 
 String formatAppDateKey(DateTime date) => DateFormat(kAppDateKeyPattern).format(date.toLocal());
 
+bool isSameAppCalendarDay(DateTime a, DateTime b) {
+  final x = a.toLocal();
+  final y = b.toLocal();
+  return x.year == y.year && x.month == y.month && x.day == y.day;
+}
+
+/// Same calendar day → `hh:mm a`; otherwise `dd MMM yyyy, hh:mm a`.
+String formatAppWhen(DateTime date, {DateTime? now}) {
+  final local = date.toLocal();
+  final current = (now ?? DateTime.now()).toLocal();
+  if (isSameAppCalendarDay(local, current)) return formatAppTime(local);
+  return formatAppDateTime(local);
+}
+
+String formatAppTimeOfDay(TimeOfDay time) {
+  return formatAppTime(DateTime(2026, 1, 1, time.hour, time.minute));
+}
+
+String normalizeAccountStatus(String? status) {
+  final value = (status ?? 'active').trim().toLowerCase();
+  if (value.isEmpty) return 'active';
+  return value;
+}
+
+bool accountIsDeactivated(String? status) => normalizeAccountStatus(status) == 'deactivated';
+
+String accountActivationTileTitle(String? status) {
+  return accountIsDeactivated(status) ? 'Activate account' : 'Deactivate account';
+}
+
+String accountActivationTileSubtitle(String? status) {
+  return accountIsDeactivated(status)
+      ? 'Turn your diner account back on to place orders'
+      : 'Pause ordering until you activate again';
+}
+
 class Ui {
   static Widget loadingIndicator({double size = 20}) {
     return SizedBox(
@@ -192,6 +228,12 @@ String referralInviteText(String code) {
 double referralCoinsFromRewardedFriends(int rewardedFriends, [double bonus = kReferralBonusCoins]) {
   if (rewardedFriends <= 0) return 0;
   return rewardedFriends * bonus;
+}
+
+String referralCardStatsLabel({required int sharedCount, required double coinsCredited}) {
+  final shared = sharedCount < 0 ? 0 : sharedCount;
+  final coins = coinsCredited < 0 ? 0 : coinsCredited.toInt();
+  return '$shared shared · $coins coins';
 }
 
 bool referralOrderCountsTowardBonus(String? status) {
@@ -1702,18 +1744,7 @@ String smartTimeSlot(String? originalSlot, DateTime placedDate, {String? selecte
   return slot;
 }
 
-String formatFriendlyDate(DateTime date, {DateTime? now}) {
-  final current = (now ?? DateTime.now()).toLocal();
-  final today = DateTime(current.year, current.month, current.day);
-  final target = DateTime(date.year, date.month, date.day);
-  
-  final diffDays = target.difference(today).inDays;
-  if (diffDays == 0) return 'Today';
-  if (diffDays == 1) return 'Tomorrow';
-  if (diffDays == -1) return 'Yesterday';
-  
-  return formatAppDate(date);
-}
+String formatFriendlyDate(DateTime date, {DateTime? now}) => formatAppDate(date);
 
 DateTime calendarDay(DateTime date) {
   final local = date.toLocal();
@@ -1857,22 +1888,45 @@ String dayOrdinalSuffix(int day) {
   }
 }
 
-/// Calendar day on promised slots, e.g. `Sep 9th 2026`.
-String formatPromisedSlotDate(DateTime date) {
-  final local = date.toLocal();
-  return '${DateFormat('MMM').format(local)} ${local.day}${dayOrdinalSuffix(local.day)} ${local.year}';
+/// Calendar day on promised slots (`dd MMM yyyy`).
+String formatPromisedSlotDate(DateTime date) => formatAppDate(date);
+
+String? firstClockInSlot(String? slot) {
+  final match = RegExp(r'(\d{1,2}:\d{2}\s*(?:AM|PM))', caseSensitive: false).firstMatch(slot ?? '');
+  if (match == null) return null;
+  final mins = clockTextToMinutes(match.group(1)!);
+  if (mins == null) return match.group(1)!.trim();
+  final hour = mins ~/ 60;
+  final minute = mins % 60;
+  return formatAppTime(DateTime(2026, 1, 1, hour, minute));
 }
 
-/// Promised slot copy: `Sep 9th 2026, 10:00 AM to 11:00 AM`.
+/// Diner-facing stamp: calendar day + the clock they booked, never a chef range.
+String formatDinerSelectedSlotLabel(String? slot, {DateTime? onDate}) {
+  final text = (slot ?? '').trim();
+  final clock = firstClockInSlot(text);
+  if (clock == null || isImmediateDeliverySlot(text)) {
+    if (onDate == null) return isImmediateDeliverySlot(text) || text.isEmpty ? 'ASAP' : text;
+    return isImmediateDeliverySlot(text) || text.isEmpty
+        ? '${formatAppDate(onDate)}, ASAP'
+        : '${formatAppDate(onDate)}, $text';
+  }
+  if (onDate == null) return clock;
+  final at = parseClockOnDate(clock, onDate);
+  return at != null ? formatAppDateTime(at) : '${formatAppDate(onDate)}, $clock';
+}
+
+String dinerSelectedClockLabel(String? slot) {
+  final text = (slot ?? '').trim();
+  if (text.isEmpty || text.toLowerCase() == 'select slot') return 'Select time';
+  if (isImmediateDeliverySlot(text)) return 'Select time';
+  if (looksLikeChefServingWindow(text)) return 'Select time';
+  return firstClockInSlot(text) ?? text;
+}
+
+/// Promised slot copy: `09 Sep 2026, 10:00 AM`.
 String formatPromisedSlotWindow(String? slot, {DateTime? onDate}) {
-  final window = chefSlotWindowLabel(slot);
-  if (window == 'ASAP') {
-    return onDate == null ? 'ASAP' : '${formatPromisedSlotDate(onDate)}, ASAP';
-  }
-  if (onDate == null) {
-    return window.startsWith('(') ? window : '($window)';
-  }
-  return '${formatPromisedSlotDate(onDate)}, $window';
+  return formatDinerSelectedSlotLabel(slot, onDate: onDate);
 }
 
 /// Customer-chosen hour beats the chef's published serving window.
@@ -1892,13 +1946,13 @@ String preferredDinerTimeSlot(Iterable<dynamic> candidates, {String fallback = '
   return booked ?? serving ?? fallback;
 }
 
-/// Checkout copy: friendly day + chef hourly window.
+/// Checkout copy: diner-chosen clock on the scheduled day.
 String formatCheckoutDeliverySchedule({
   required String? slot,
   DateTime? scheduledDate,
   DateTime? now,
 }) {
-  return formatPromisedSlotWindow(slot, onDate: scheduledDate ?? now);
+  return formatDinerSelectedSlotLabel(slot, onDate: scheduledDate ?? now);
 }
 
 /// Compact kitchen window for meal cards (`9:00 AM–10:00 AM`).
@@ -2010,6 +2064,9 @@ String? cartLineSlotValidationError({
   if (isCartSlotPassed(selected, scheduledDate, now: now)) {
     return 'That time slot has passed. Pick a later slot inside the chef\'s window.';
   }
+  if (schedule.isNotEmpty && !chefSlotAllowsDate(schedule, scheduledDate, now: now)) {
+    return 'Pick a day inside the chef\'s published slot.';
+  }
   if (schedule.isNotEmpty && !isCartSlotWithinChefWindow(selected, schedule)) {
     return 'Choose a time inside the chef\'s published serving window.';
   }
@@ -2087,9 +2144,19 @@ Map<String, String> _chefSlotScheduleForDay({
 Map<String, String> chefSlotDefaultSchedule(String chefScheduleStr, {DateTime? now}) {
   final current = (now ?? DateTime.now()).toLocal();
   final today = calendarDay(current);
-  final tomorrow = tomorrowCalendarDay(now: current);
   final text = chefScheduleStr.trim();
   final servingDays = chefServingWeekdays(text);
+  final pinned = parseSlotCalendarDay(text, now: current);
+
+  if (pinned != null) {
+    final day = calendarDay(pinned);
+    final future = futureChefSubSlots(text, scheduledDate: day, now: current);
+    final hours = chefHourlySubSlots(text);
+    final time = future.isNotEmpty
+        ? future.first
+        : (hours.isNotEmpty ? hours.first : (preferredChefSlotClock(text) ?? text));
+    return _chefSlotScheduleForDay(text: text, day: day, now: current, time: time);
+  }
 
   if (servingDays != null && servingDays.isNotEmpty) {
     for (var i = 0; i < 14; i++) {
@@ -2107,20 +2174,22 @@ Map<String, String> chefSlotDefaultSchedule(String chefScheduleStr, {DateTime? n
     return _chefSlotScheduleForDay(text: text, day: today, now: current, time: todayFuture.first);
   }
 
-  final tomorrowSlots = chefHourlySubSlots(text);
-  if (tomorrowSlots.isNotEmpty) {
-    return _chefSlotScheduleForDay(text: text, day: tomorrow, now: current, time: tomorrowSlots.first);
+  // Standing Daily / Sat-Sun windows may roll forward. A one-off chef hour does not.
+  if (looksLikeChefServingWindow(text) || (servingDays != null && servingDays.isNotEmpty)) {
+    for (var i = 1; i < 14; i++) {
+      final day = today.add(Duration(days: i));
+      if (servingDays != null && servingDays.isNotEmpty && !servingDays.contains(day.weekday)) {
+        continue;
+      }
+      final hours = chefHourlySubSlots(text);
+      if (hours.isNotEmpty) {
+        return _chefSlotScheduleForDay(text: text, day: day, now: current, time: hours.first);
+      }
+    }
   }
 
-  final clock = preferredChefSlotClock(text);
-  if (clock == null || clock.isEmpty) {
-    return _chefSlotScheduleForDay(text: text, day: today, now: current, time: text.isEmpty ? '' : text);
-  }
-  final startMins = clockTextToMinutes(clock);
-  final nowMins = current.hour * 60 + current.minute;
-  if (startMins != null && nowMins >= startMins) {
-    return _chefSlotScheduleForDay(text: text, day: tomorrow, now: current, time: clock);
-  }
+  final hours = chefHourlySubSlots(text);
+  final clock = hours.isNotEmpty ? hours.first : (preferredChefSlotClock(text) ?? text);
   return _chefSlotScheduleForDay(text: text, day: today, now: current, time: clock);
 }
 
@@ -2821,10 +2890,19 @@ const _kMonthNames = <String, int>{
   'dec': 12,
 };
 
-/// Parses a calendar day from labels like "Sun, 18th Aug at 9:30 AM".
+/// Parses a calendar day from labels like "Sun, 18th Aug at 9:30 AM" or chef one-time "2026-09-17 (12:00 PM to 2:00 PM)".
 DateTime? parseSlotCalendarDay(String? raw, {DateTime? now}) {
   if (raw == null || raw.trim().isEmpty) return null;
   final n = (now ?? DateTime.now()).toLocal();
+  final iso = RegExp(r'\b(\d{4})-(\d{2})-(\d{2})\b').firstMatch(raw);
+  if (iso != null) {
+    final year = int.tryParse(iso.group(1) ?? '');
+    final month = int.tryParse(iso.group(2) ?? '');
+    final day = int.tryParse(iso.group(3) ?? '');
+    if (year != null && month != null && day != null) {
+      return DateTime(year, month, day);
+    }
+  }
   final match = RegExp(
     r'(\d{1,2})(?:st|nd|rd|th)?\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*(?:\s+(\d{4}))?',
     caseSensitive: false,
@@ -2935,7 +3013,7 @@ String kitchenClosedCheckoutMessage({required bool charged, bool refunded = fals
   if (charged) {
     return 'This kitchen just went offline after payment. ${dinerRefundMoneyCopy(refunded: false)}';
   }
-  return 'This kitchen is closed right now. Nothing was charged — try another chef or come back during weekly hours.';
+  return 'This kitchen is closed right now. Nothing was charged — try another chef or wait until they go online.';
 }
 
 String checkoutInitErrorMessage(Object? error, [Map<String, dynamic>? data]) {
@@ -3559,6 +3637,86 @@ String chefDisplayName(Map<String, dynamic>? data, {String fallback = 'Home Kitc
   return fallback;
 }
 
+enum ChefSocialPlatform { instagram, youtube, facebook }
+
+class ChefSocialLinks {
+  const ChefSocialLinks({
+    this.instagramUrl = '',
+    this.youtubeUrl = '',
+    this.facebookUrl = '',
+  });
+
+  final String instagramUrl;
+  final String youtubeUrl;
+  final String facebookUrl;
+
+  bool get hasAny =>
+      instagramUrl.isNotEmpty || youtubeUrl.isNotEmpty || facebookUrl.isNotEmpty;
+
+  factory ChefSocialLinks.fromMap(Map<String, dynamic>? data) {
+    if (data == null) return const ChefSocialLinks();
+    return ChefSocialLinks(
+      instagramUrl: sanitizeChefSocialUrl(data['instagram_url']?.toString(), ChefSocialPlatform.instagram) ?? '',
+      youtubeUrl: sanitizeChefSocialUrl(data['youtube_url']?.toString(), ChefSocialPlatform.youtube) ?? '',
+      facebookUrl: sanitizeChefSocialUrl(data['facebook_url']?.toString(), ChefSocialPlatform.facebook) ?? '',
+    );
+  }
+
+  String get platformsLabel {
+    final names = <String>[
+      if (youtubeUrl.isNotEmpty) 'YouTube',
+      if (instagramUrl.isNotEmpty) 'Instagram',
+      if (facebookUrl.isNotEmpty) 'Facebook',
+    ];
+    return names.join(' · ');
+  }
+
+  List<({String label, String url, IconData icon})> get chips => [
+        if (youtubeUrl.isNotEmpty) (label: 'YouTube', url: youtubeUrl, icon: Icons.play_circle_outline_rounded),
+        if (instagramUrl.isNotEmpty) (label: 'Instagram', url: instagramUrl, icon: Icons.camera_alt_outlined),
+        if (facebookUrl.isNotEmpty) (label: 'Facebook', url: facebookUrl, icon: Icons.public_outlined),
+      ];
+}
+
+/// Public https links only. Instagram also accepts `@handle`.
+String? sanitizeChefSocialUrl(String? raw, ChefSocialPlatform platform) {
+  var value = (raw ?? '').trim();
+  if (value.isEmpty || value.length > 300) return null;
+
+  if (platform == ChefSocialPlatform.instagram) {
+    final handle = value.replaceFirst(RegExp(r'^@'), '');
+    if (!handle.contains('://') && RegExp(r'^[A-Za-z0-9._]{1,30}$').hasMatch(handle)) {
+      value = 'https://www.instagram.com/$handle';
+    }
+  }
+
+  final uri = Uri.tryParse(value);
+  if (uri == null || uri.host.isEmpty) return null;
+  if (uri.scheme != 'http' && uri.scheme != 'https') return null;
+  if (uri.userInfo.isNotEmpty) return null;
+  final host = uri.host.toLowerCase();
+  final allowed = switch (platform) {
+    ChefSocialPlatform.instagram => const {'instagram.com', 'www.instagram.com'},
+    ChefSocialPlatform.youtube => const {
+        'youtube.com',
+        'www.youtube.com',
+        'm.youtube.com',
+        'youtu.be',
+        'www.youtu.be',
+      },
+    ChefSocialPlatform.facebook => const {
+        'facebook.com',
+        'www.facebook.com',
+        'm.facebook.com',
+        'fb.com',
+        'www.fb.com',
+      },
+  };
+  if (!allowed.contains(host)) return null;
+  if ((host == 'youtu.be' || host == 'www.youtu.be') && uri.pathSegments.isEmpty) return null;
+  return uri.replace(scheme: 'https').toString();
+}
+
 const kChefCardLocales = ['en', 'hi', 'mr'];
 
 String normalizeChefCardLocale(String? raw) {
@@ -4128,6 +4286,61 @@ bool looksLikeChefServingWindow(String? slot) {
   return span != null && span > 120;
 }
 
+/// True when [day] is a calendar day the chef actually published.
+bool chefSlotAllowsDate(String chefSchedule, DateTime day, {DateTime? now}) {
+  final schedule = chefSchedule.trim();
+  if (schedule.isEmpty || isImmediateDeliverySlot(schedule)) return true;
+  final n = (now ?? DateTime.now()).toLocal();
+  final d = calendarDay(day);
+  if (d.isBefore(calendarDay(n))) return false;
+  final pinned = parseSlotCalendarDay(schedule, now: n);
+  if (pinned != null) return calendarDay(pinned) == d;
+  final days = chefServingWeekdays(schedule);
+  if (days != null && days.isNotEmpty) return days.contains(d.weekday);
+  final lower = schedule.toLowerCase();
+  if (RegExp(r'\btoday\b').hasMatch(lower)) return d == calendarDay(n);
+  if (RegExp(r'\btomorrow\b').hasMatch(lower)) return d == tomorrowCalendarDay(now: n);
+  if (looksLikeChefServingWindow(schedule)) {
+    return futureChefSubSlots(schedule, scheduledDate: d, now: n).isNotEmpty || d == calendarDay(n);
+  }
+  return d == calendarDay(n);
+}
+
+DateTime chefSlotPickerFirstDate(String chefSchedule, {DateTime? now}) {
+  final n = (now ?? DateTime.now()).toLocal();
+  final today = calendarDay(n);
+  final pinned = parseSlotCalendarDay(chefSchedule, now: n);
+  if (pinned != null) {
+    final day = calendarDay(pinned);
+    return day.isBefore(today) ? today : day;
+  }
+  for (var i = 0; i < 15; i++) {
+    final day = today.add(Duration(days: i));
+    if (chefSlotAllowsDate(chefSchedule, day, now: n)) return day;
+  }
+  return today;
+}
+
+DateTime chefSlotPickerLastDate(String chefSchedule, {DateTime? now}) {
+  final n = (now ?? DateTime.now()).toLocal();
+  final today = calendarDay(n);
+  final pinned = parseSlotCalendarDay(chefSchedule, now: n);
+  if (pinned != null) {
+    final day = calendarDay(pinned);
+    return day.isBefore(today) ? today : day;
+  }
+  final days = chefServingWeekdays(chefSchedule);
+  if (days != null && days.isNotEmpty) return today.add(const Duration(days: 14));
+  if (looksLikeChefServingWindow(chefSchedule)) return today.add(const Duration(days: 14));
+  return today;
+}
+
+DateTime chefSlotPickerInitialDate(String chefSchedule, DateTime scheduled, {DateTime? now}) {
+  final n = now ?? DateTime.now();
+  if (chefSlotAllowsDate(chefSchedule, scheduled, now: n)) return calendarDay(scheduled);
+  return chefSlotPickerFirstDate(chefSchedule, now: n);
+}
+
 /// Weekdays a standing kitchen window repeats on. Null when the slot is one-off.
 Set<int>? chefServingWeekdays(String? slot) {
   final text = (slot ?? '').trim().toLowerCase();
@@ -4252,8 +4465,8 @@ String formatDeliverySlotLabel(Map<String, dynamic> order, {DateTime? now}) {
   if (yearHint != null && yearHint > 2000) {
     slotDay = DateTime(yearHint, slotDay.month, slotDay.day);
   }
-  if (slotHasClockRange(rawSlot)) {
-    return formatPromisedSlotWindow(rawSlot, onDate: slotDay);
+  if (slotHasClockRange(rawSlot) || firstClockInSlot(rawSlot) != null) {
+    return formatDinerSelectedSlotLabel(rawSlot, onDate: slotDay);
   }
   return smartTimeSlot(
     rawSlot.isEmpty ? 'ASAP' : rawSlot,
@@ -4308,13 +4521,14 @@ bool dinerSlotIsLate(Map<String, dynamic> order, {DateTime? now}) {
   return promised.isBefore(now ?? DateTime.now());
 }
 
-/// Diner-facing promised slot, e.g. "Arriving by 8:00 PM · 12 min left".
+/// Diner-facing promised slot, e.g. "Arriving by 08:00 PM · 12 min left"
+/// or "Arriving by 18 Sep 2026, 02:00 PM · 1 day left".
 String dinerPromisedSlotCopy(Map<String, dynamic> order, {DateTime? now, String? status}) {
   if (!dinerSlotCountdownActive(status ?? order['status']?.toString())) return '';
   final promised = orderPromisedAt(order, now: now);
   final start = promised ?? orderSlotStart(order, now: now);
   final slot = promised != null
-      ? formatAppTime(promised)
+      ? formatAppWhen(promised, now: now)
       : formatDeliverySlotLabel(order, now: now);
   final tick = formatSlotCountdown(start, now: now);
   final lateNote = dinerLateOrderCopy(order, now: now);
@@ -4915,8 +5129,7 @@ bool isChefKitchenOpen(Map<String, dynamic>? profile) {
 }
 
 bool isChefKitchenAcceptingOrders(Map<String, dynamic>? profile, {DateTime? now}) {
-  if (!isChefKitchenOpen(profile)) return false;
-  return kitchenHoursAccepting(profile?['weekly_hours'], now: now);
+  return isChefKitchenOpen(profile);
 }
 
 Map<String, double> kitchenPinMealFields(double lat, double lng) {

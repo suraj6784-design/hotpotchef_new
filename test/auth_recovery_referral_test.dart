@@ -81,6 +81,10 @@ void main() {
   test('referral coins come from rewarded friends, not the whole wallet', () {
     expect(referralCoinsFromRewardedFriends(0), 0);
     expect(referralCoinsFromRewardedFriends(2), 100);
+    expect(
+      referralCardStatsLabel(sharedCount: 2, coinsCredited: 100),
+      '2 shared · 100 coins',
+    );
   });
 
   test('first-order referral ignores cancelled attempts and needs a live first order', () {

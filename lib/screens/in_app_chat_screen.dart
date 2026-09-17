@@ -3,7 +3,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/alert_service.dart';
@@ -437,7 +436,7 @@ class _InAppChatScreenState extends State<InAppChatScreen> {
                     if (msg['created_at'] != null) {
                       try {
                         final dt = DateTime.parse(msg['created_at']).toLocal();
-                        timeStr = DateFormat('hh:mm a').format(dt);
+                        timeStr = formatAppWhen(dt);
                       } catch (e, stack) {
                         FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to parse chat message timestamp');
                       }

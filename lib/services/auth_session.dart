@@ -198,7 +198,7 @@ class AuthSession {
     return opsPermissionsContain(perms, key);
   }
 
-  /// Returns false and signs out when the account is suspended.
+  /// Returns false and signs out when ops has suspended the account.
   static Future<bool> ensureAccountActive(BuildContext context) async {
     final user = currentUser;
     if (user == null) return true;
@@ -222,6 +222,35 @@ class AuthSession {
       return false;
     } catch (e, st) {
       FirebaseCrashlytics.instance.recordError(e, st, reason: 'AuthSession account status check failed');
+      return true;
+    }
+  }
+
+  /// Checkout / new orders. Deactivated diners can still open Profile to activate.
+  static Future<bool> ensureCanPlaceOrders(BuildContext context) async {
+    if (!await ensureAccountActive(context)) return false;
+    final user = currentUser;
+    if (user == null) return true;
+    try {
+      final row = await _client
+          .from('users')
+          .select('account_status')
+          .eq('id', user.id)
+          .maybeSingle()
+          .timeout(NetworkTimeouts.short);
+      if ((row?['account_status']?.toString() ?? 'active').trim().toLowerCase() != 'deactivated') {
+        return true;
+      }
+      if (!context.mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Activate your account from Profile to place an order.'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return false;
+    } catch (e, st) {
+      FirebaseCrashlytics.instance.recordError(e, st, reason: 'AuthSession order status check failed');
       return true;
     }
   }

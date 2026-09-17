@@ -41,6 +41,8 @@ class DinerCopy {
     required this.forYou,
     required this.adjustBill,
     required this.verified,
+    required this.socialChefs,
+    required this.socialChefsSub,
   });
 
   final String home;
@@ -61,6 +63,8 @@ class DinerCopy {
   final String forYou;
   final String adjustBill;
   final String verified;
+  final String socialChefs;
+  final String socialChefsSub;
 }
 
 DinerCopy dinerCopy(String? locale) {
@@ -85,6 +89,8 @@ DinerCopy dinerCopy(String? locale) {
         forYou: 'आपके लिए',
         adjustBill: 'बिल बदलें',
         verified: 'वेरिफाइड',
+        socialChefs: 'आपके फेवरिट सोशल शेफ, अब HotPotChef पर',
+        socialChefsSub: 'YouTube, Instagram और Facebook वाले रेसिपी शेफ — आपके शहर में, FSSAI के साथ।',
       );
     case 'mr':
       return const DinerCopy(
@@ -106,6 +112,8 @@ DinerCopy dinerCopy(String? locale) {
         forYou: 'तुमच्यासाठी',
         adjustBill: 'बिल बदला',
         verified: 'व्हेरिफाइड',
+        socialChefs: 'तुमचे फेवरिट सोशल शेफ, आता HotPotChef वर',
+        socialChefsSub: 'YouTube, Instagram आणि Facebook वरील रेसिपी शेफ — तुमच्या शहरात, FSSAI सोबत.',
       );
     default:
       return const DinerCopy(
@@ -127,6 +135,8 @@ DinerCopy dinerCopy(String? locale) {
         forYou: 'For you',
         adjustBill: 'Adjust bill',
         verified: 'Verified',
+        socialChefs: 'Your favourite social chef, on HotPotChef',
+        socialChefsSub: 'Recipe creators from YouTube, Instagram and Facebook — cooking in your city with FSSAI.',
       );
   }
 }

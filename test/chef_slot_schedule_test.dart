@@ -28,14 +28,14 @@ void main() {
         '7:30 PM to 8:30 PM',
         now: DateTime(2026, 9, 6, 19, 45),
       );
-      expect(insidePastStart['date'], 'Tomorrow');
+      expect(insidePastStart['date'], 'Today');
       expect(insidePastStart['time'], '7:30 PM to 8:30 PM');
 
       final after = chefSlotDefaultSchedule(
         '7:30 PM to 8:30 PM',
         now: DateTime(2026, 9, 6, 21),
       );
-      expect(after['date'], 'Tomorrow');
+      expect(after['date'], 'Today');
       expect(after['time'], '7:30 PM to 8:30 PM');
 
       final lateMorning = chefSlotDefaultSchedule(
@@ -116,7 +116,7 @@ void main() {
         'Sat, Sun (11:00 AM to 6:00 PM)',
         now: DateTime(2026, 9, 10, 14),
       );
-      expect(booked['date'], 'Sep 12th 2026');
+      expect(booked['date'], '12 Sep 2026');
       expect(booked['time'], '11:00 AM to 12:00 PM');
       expect(chefSlotDefaultDate(booked, now: DateTime(2026, 9, 10, 14)).day, 12);
     });
@@ -156,7 +156,43 @@ void main() {
     });
   });
 
-  test('checkout schedule uses chef hourly window, not a single clock datetime', () {
+  test('diner dates stay on the chef one-time ISO day and weekday window', () {
+    final now = DateTime(2026, 9, 17, 10);
+    expect(parseSlotCalendarDay('2026-09-20 (12:00 PM to 2:00 PM)', now: now)?.day, 20);
+    expect(
+      chefSlotAllowsDate('2026-09-20 (12:00 PM to 2:00 PM)', DateTime(2026, 9, 17), now: now),
+      isFalse,
+    );
+    expect(
+      chefSlotAllowsDate('2026-09-20 (12:00 PM to 2:00 PM)', DateTime(2026, 9, 20), now: now),
+      isTrue,
+    );
+    final booked = chefSlotDefaultSchedule(
+      '2026-09-20 (12:00 PM to 2:00 PM)',
+      now: now,
+    );
+    expect(booked['date'], '20 Sep 2026');
+    expect(booked['time'], '12:00 PM to 1:00 PM');
+    expect(
+      chefSlotAllowsDate('Sat, Sun (11:00 AM to 6:00 PM)', DateTime(2026, 9, 17), now: now),
+      isFalse,
+    );
+    expect(
+      chefSlotAllowsDate('Sat, Sun (11:00 AM to 6:00 PM)', DateTime(2026, 9, 19), now: now),
+      isTrue,
+    );
+    expect(
+      cartLineSlotValidationError(
+        selectedSlot: '12:00 PM to 1:00 PM',
+        scheduledDate: DateTime(2026, 9, 17),
+        chefSchedule: '2026-09-20 (12:00 PM to 2:00 PM)',
+        now: now,
+      ),
+      contains('published slot'),
+    );
+  });
+
+  test('checkout schedule uses the diner clock, not the chef window', () {
     expect(chefSlotWindowLabel('9:00 AM to 10:00 AM'), '9:00 AM to 10:00 AM');
     expect(chefSlotWindowLabel('09 Sep 2026, 09:00 AM'), '9:00 AM to 10:00 AM');
     expect(
@@ -165,7 +201,7 @@ void main() {
         scheduledDate: DateTime(2026, 9, 9),
         now: DateTime(2026, 9, 9, 8),
       ),
-      'Sep 9th 2026, 9:00 AM to 10:00 AM',
+      '09 Sep 2026, 09:00 AM',
     );
     expect(feedKitchenSlotLabel('Daily (9:00 AM to 10:00 AM)'), '9:00 AM–10:00 AM');
     expect(feedKitchenSlotLabel('ASAP'), 'On your slot');
@@ -174,5 +210,56 @@ void main() {
     expect(e164IndiaPhone('9876543210'), '+919876543210');
     expect(e164IndiaPhone('1234567890'), '');
     expect(isPlaceholderPhone('0000000000'), isTrue);
+  });
+
+  test('diner dates stay on the chef published slot', () {
+    expect(parseSlotCalendarDay('2026-09-19 (12:00 PM to 2:00 PM)')?.day, 19);
+    expect(
+      chefSlotAllowsDate(
+        '2026-09-19 (12:00 PM to 2:00 PM)',
+        DateTime(2026, 9, 19),
+        now: DateTime(2026, 9, 17, 10),
+      ),
+      isTrue,
+    );
+    expect(
+      chefSlotAllowsDate(
+        '2026-09-19 (12:00 PM to 2:00 PM)',
+        DateTime(2026, 9, 18),
+        now: DateTime(2026, 9, 17, 10),
+      ),
+      isFalse,
+    );
+    expect(
+      chefSlotAllowsDate(
+        'Sat, Sun (11:00 AM to 6:00 PM)',
+        DateTime(2026, 9, 11),
+        now: DateTime(2026, 9, 10, 14),
+      ),
+      isFalse,
+    );
+    expect(
+      chefSlotAllowsDate(
+        'Sat, Sun (11:00 AM to 6:00 PM)',
+        DateTime(2026, 9, 12),
+        now: DateTime(2026, 9, 10, 14),
+      ),
+      isTrue,
+    );
+    final oneTime = chefSlotDefaultSchedule(
+      '2026-09-19 (12:00 PM to 2:00 PM)',
+      now: DateTime(2026, 9, 17, 10),
+    );
+    expect(chefSlotDefaultDate(oneTime, now: DateTime(2026, 9, 17, 10)).day, 19);
+    expect(oneTime['time'], '12:00 PM to 1:00 PM');
+    expect(
+      cartLineSlotValidationError(
+        selectedSlot: '12:00 PM to 1:00 PM',
+        scheduledDate: DateTime(2026, 9, 18),
+        chefSchedule: '2026-09-19 (12:00 PM to 2:00 PM)',
+        now: DateTime(2026, 9, 17, 10),
+      ),
+      contains('published slot'),
+    );
   });
 }
