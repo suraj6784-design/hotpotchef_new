@@ -25,6 +25,7 @@ import 'customer_feed_tab.dart';
 import 'customer_cart_tab.dart';
 import 'customer_orders_tab.dart';
 import 'customer_profile_screen.dart';
+import 'notifications_inbox_screen.dart';
 
 class CustomerHubScreen extends ConsumerStatefulWidget {
   static bool returnToCartAfterLogin = false;
@@ -84,6 +85,23 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
     });
   }
 
+  int get _dockIndex {
+    switch (_selectedIndex) {
+      case 2:
+        return 1;
+      case 3:
+        return 2;
+      case 4:
+        return 3;
+      default:
+        return 0;
+    }
+  }
+
+  void _onDockTapped(int dock) {
+    _onNavigationItemTapped(const [0, 2, 3, 4][dock]);
+  }
+
   @override
   Widget build(BuildContext context) {
     final cartState = ref.watch(cartProvider);
@@ -121,6 +139,7 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
           if (mounted) setState(() => _selectedIndex = 0);
         },
       ),
+      const NotificationsInboxScreen(embedded: true),
     ];
 
     return Scaffold(
@@ -138,7 +157,7 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
             child: SafeArea(bottom: false, child: CheckoutRetryBanner()),
           ),
 
-          if (cartState.items.isNotEmpty && _selectedIndex == 0)
+          if (cartState.items.isNotEmpty && (_selectedIndex == 0 || _selectedIndex == 1))
             Positioned(
               bottom: 92,
               left: 20,
@@ -196,7 +215,7 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
             ),
 
           Positioned(
-            bottom: 12,
+            bottom: 0,
             left: 0,
             right: 0,
             child: ListenableBuilder(
@@ -204,18 +223,13 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
               builder: (context, _) {
                 final copy = DinerLocaleController.instance.copy;
                 return HubBottomDock(
-                  selectedIndex: _selectedIndex,
-                  onSelect: _onNavigationItemTapped,
+                  selectedIndex: _dockIndex,
+                  onSelect: _onDockTapped,
                   destinations: [
-                    HubDockDestination(icon: Icons.cottage_outlined, selectedIcon: Icons.cottage, label: copy.home),
-                    HubDockDestination(
-                      icon: Icons.shopping_basket_outlined,
-                      selectedIcon: Icons.shopping_basket,
-                      label: copy.cart,
-                      badgeCount: cartState.itemCount,
-                    ),
+                    HubDockDestination(icon: Icons.home_outlined, selectedIcon: Icons.home_rounded, label: copy.home),
                     HubDockDestination(icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: copy.orders),
                     HubDockDestination(icon: Icons.person_outline, selectedIcon: Icons.person, label: copy.account),
+                    HubDockDestination(icon: Icons.notifications_none, selectedIcon: Icons.notifications, label: copy.notifications),
                   ],
                 );
               },

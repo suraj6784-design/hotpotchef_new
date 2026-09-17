@@ -504,8 +504,10 @@ void main() {
     expect(customerHubTabIndex('orders'), 2);
     expect(customerHubTabIndex('account'), 3);
     expect(customerHubTabIndex('profile'), 3);
-    expect(chefHubTabIndex('leads'), 4);
-    expect(chefHubTabIndex('supplies'), 5);
+    expect(chefHubTabIndex('orders'), 1);
+    expect(chefHubTabIndex('profile'), 2);
+    expect(chefHubTabIndex('leads'), 7);
+    expect(chefHubTabIndex('supplies'), 8);
     expect(chefPrepEarliestWindowLabel(), '4 hours');
   });
 }

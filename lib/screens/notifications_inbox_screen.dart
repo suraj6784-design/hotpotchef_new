@@ -7,10 +7,17 @@ import '../utils/app_theme.dart';
 import '../utils/diner_locale.dart';
 import '../utils/network.dart';
 import '../widgets/app_widgets.dart';
-import '../widgets/customer_ui_components.dart';
+import '../widgets/diner_storefront.dart';
 
 class NotificationsInboxScreen extends StatefulWidget {
-  const NotificationsInboxScreen({super.key});
+  const NotificationsInboxScreen({
+    super.key,
+    this.embedded = false,
+    this.partnerInbox = false,
+  });
+
+  final bool embedded;
+  final bool partnerInbox;
 
   @override
   State<NotificationsInboxScreen> createState() => _NotificationsInboxScreenState();
@@ -19,12 +26,66 @@ class NotificationsInboxScreen extends StatefulWidget {
 class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
   bool _loading = true;
   String? _error;
+  String _filter = 'all';
   List<Map<String, dynamic>> _rows = const [];
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  bool _isOrderKind(Map<String, dynamic> row) {
+    final kind = '${row['kind'] ?? ''} ${row['title'] ?? ''} ${row['body'] ?? ''}'.toLowerCase();
+    return kind.contains('order') ||
+        kind.contains('delivery') ||
+        kind.contains('kitchen') ||
+        kind.contains('otp') ||
+        kind.contains('live');
+  }
+
+  bool _isPromoKind(Map<String, dynamic> row) {
+    final kind = '${row['kind'] ?? ''} ${row['title'] ?? ''} ${row['body'] ?? ''}'.toLowerCase();
+    return kind.contains('promo') ||
+        kind.contains('offer') ||
+        kind.contains('coupon') ||
+        kind.contains('off') ||
+        kind.contains('%');
+  }
+
+  bool _isSystemKind(Map<String, dynamic> row) {
+    final kind = '${row['kind'] ?? ''} ${row['title'] ?? ''} ${row['body'] ?? ''}'.toLowerCase();
+    return kind.contains('kyc') ||
+        kind.contains('fssai') ||
+        kind.contains('payout') ||
+        kind.contains('system') ||
+        kind.contains('hours') ||
+        kind.contains('licence') ||
+        kind.contains('license');
+  }
+
+  List<Map<String, dynamic>> get _visibleRows {
+    if (_filter == 'orders') return _rows.where(_isOrderKind).toList();
+    if (_filter == 'promos') return _rows.where(_isPromoKind).toList();
+    if (_filter == 'system') return _rows.where(_isSystemKind).toList();
+    return _rows;
+  }
+
+  Color _accentFor(Map<String, dynamic> row) {
+    if (_isPromoKind(row)) return AppTheme.primary;
+    if (_isOrderKind(row)) return AppTheme.live;
+    return AppTheme.primary;
+  }
+
+  String _relativeTime(DateTime? created) {
+    if (created == null) return '';
+    final local = created.toLocal();
+    final diff = DateTime.now().difference(local);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} mins ago';
+    if (diff.inHours < 24) return '${diff.inHours} hours ago';
+    if (diff.inDays < 7) return '${diff.inDays} days ago';
+    return DateFormat('d MMM, h:mm a').format(local);
   }
 
   Future<void> _load() async {
@@ -83,23 +144,49 @@ class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
     } catch (_) {}
   }
 
+  Future<void> _markAllRead() async {
+    final uid = Supabase.instance.client.auth.currentUser?.id;
+    if (uid == null) return;
+    try {
+      await Supabase.instance.client.from('user_notifications').update({
+        'read_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('user_id', uid);
+      if (!mounted) return;
+      final stamp = DateTime.now().toUtc().toIso8601String();
+      setState(() {
+        _rows = _rows.map((item) => {...item, 'read_at': item['read_at'] ?? stamp}).toList();
+      });
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
-    final copy = DinerLocaleController.instance.copy;
+    final unread = _rows.where((row) => row['read_at'] == null).length;
+    final visible = _visibleRows;
     return Scaffold(
       backgroundColor: AppTheme.canvasOf(context),
       appBar: AppBar(
-        title: Text(copy.notifications),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.go('/customer-hub');
-            }
-          },
-        ),
+        title: const Text('Notifications'),
+        automaticallyImplyLeading: !widget.embedded,
+        leading: widget.embedded
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () {
+                  if (context.canPop()) {
+                    context.pop();
+                  } else {
+                    context.go('/customer-hub');
+                  }
+                },
+              ),
+        actions: [
+          if (_rows.isNotEmpty)
+            TextButton(
+              onPressed: unread == 0 ? null : _markAllRead,
+              child: const Text('Mark all as read', style: TextStyle(fontWeight: FontWeight.w800)),
+            ),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: _load,
@@ -112,7 +199,7 @@ class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
                         height: 280,
                         child: EmptyState(
                           icon: Icons.notifications_off_outlined,
-                          title: copy.notifications,
+                          title: DinerLocaleController.instance.copy.notifications,
                           message: _error,
                           actionLabel: 'Retry',
                           onAction: _load,
@@ -120,68 +207,79 @@ class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
                       ),
                     ],
                   )
-                : _rows.isEmpty
-                    ? ListView(
+                : ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                    children: [
+                      Row(
                         children: [
-                          SizedBox(
-                            height: 280,
-                            child: EmptyState(
-                              icon: Icons.notifications_none_outlined,
-                              title: 'You are up to date',
-                              message: 'Kitchen, delivery, and support notes land here.',
-                            ),
-                          ),
+                          _filterChip('All ($unread)', 'all'),
+                          const SizedBox(width: 8),
+                          _filterChip('Orders', 'orders'),
+                          const SizedBox(width: 8),
+                          _filterChip(widget.partnerInbox ? 'System' : 'Promotions', widget.partnerInbox ? 'system' : 'promos'),
                         ],
-                      )
-                    : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-                        itemCount: _rows.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 8),
-                        itemBuilder: (context, index) {
-                          final row = _rows[index];
-                          final unread = row['read_at'] == null;
+                      ),
+                      const SizedBox(height: 16),
+                      if (visible.isEmpty)
+                        EmptyState(
+                          icon: Icons.notifications_none_outlined,
+                          title: 'You are up to date',
+                          message: 'Kitchen, delivery, and support notes land here.',
+                        )
+                      else
+                        ...visible.map((row) {
+                          final unreadRow = row['read_at'] == null;
                           final created = DateTime.tryParse(row['created_at']?.toString() ?? '');
-                          final when = created == null
-                              ? ''
-                              : DateFormat('d MMM, h:mm a').format(created.toLocal());
-                          return AppCard(
-                            onTap: () => _markRead(row),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Icon(
-                                  unread ? Icons.notifications_active_outlined : Icons.notifications_none,
-                                  color: unread ? AppTheme.primary : AppTheme.textMuted,
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        row['title']?.toString() ?? 'Update',
-                                        style: TextStyle(
-                                          fontWeight: unread ? FontWeight.w800 : FontWeight.w600,
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        row['body']?.toString() ?? '',
-                                        style: AppTheme.caption,
-                                      ),
-                                      if (when.isNotEmpty) ...[
-                                        const SizedBox(height: 6),
-                                        Text(when, style: AppTheme.micro),
-                                      ],
-                                    ],
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: DinerAccentCard(
+                              accent: _accentFor(row),
+                              unread: unreadRow,
+                              onTap: () => _markRead(row),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    row['title']?.toString() ?? 'Update',
+                                    style: TextStyle(
+                                      fontWeight: unreadRow ? FontWeight.w800 : FontWeight.w600,
+                                      fontSize: 14,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(height: 4),
+                                  Text(row['body']?.toString() ?? '', style: AppTheme.caption),
+                                  const SizedBox(height: 6),
+                                  Text(_relativeTime(created), style: AppTheme.captionOf(context)),
+                                ],
+                              ),
                             ),
                           );
-                        },
-                      ),
+                        }),
+                    ],
+                  ),
+      ),
+    );
+  }
+
+  Widget _filterChip(String label, String value) {
+    final selected = _filter == value;
+    return GestureDetector(
+      onTap: () => setState(() => _filter = value),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? AppTheme.primary : AppTheme.surfaceOf(context),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: selected ? AppTheme.primary : AppTheme.hairlineOf(context)),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 12,
+            color: selected ? Colors.white : AppTheme.onSurfaceOf(context),
+          ),
+        ),
       ),
     );
   }

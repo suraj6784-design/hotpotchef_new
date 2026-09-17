@@ -4,9 +4,9 @@ import 'package:hotpotchef_new/widgets/premium_profile_template.dart';
 
 void main() {
   test('profile workspaces share exclusive titles and trust copy', () {
-    expect(profileWorkspaceTitle(ProfileWorkspace.diner), 'Your table');
-    expect(profileWorkspaceTitle(ProfileWorkspace.chef), 'Your kitchen');
-    expect(profileWorkspaceTitle(ProfileWorkspace.driver), 'Your run');
+    expect(profileWorkspaceTitle(ProfileWorkspace.diner), 'My Profile');
+    expect(profileWorkspaceTitle(ProfileWorkspace.chef), 'My Profile');
+    expect(profileWorkspaceTitle(ProfileWorkspace.driver), 'My Profile');
     expect(profileWorkspaceRoleLabel(ProfileWorkspace.diner), 'Diner');
     expect(profileWorkspaceTrustLine(ProfileWorkspace.diner), isNot(contains('FSSAI')));
     expect(profileWorkspaceTrustLine(ProfileWorkspace.chef), contains('FSSAI'));

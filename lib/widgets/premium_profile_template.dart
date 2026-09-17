@@ -9,11 +9,11 @@ enum ProfileWorkspace { diner, chef, driver }
 String profileWorkspaceTitle(ProfileWorkspace workspace) {
   switch (workspace) {
     case ProfileWorkspace.diner:
-      return 'Your table';
+      return 'My Profile';
     case ProfileWorkspace.chef:
-      return 'Your kitchen';
+      return 'My Profile';
     case ProfileWorkspace.driver:
-      return 'Your run';
+      return 'My Profile';
   }
 }
 
@@ -114,12 +114,6 @@ class PremiumProfileScaffold extends StatelessWidget {
         title: Text(title, style: AppTheme.cardTitleOf(context)),
         actions: [
           ...headerActions,
-          if (onLogout != null)
-            IconButton(
-              tooltip: 'Log out',
-              icon: const Icon(Icons.logout_rounded, color: AppTheme.textMuted),
-              onPressed: onLogout,
-            ),
         ],
       ),
       body: loading
@@ -169,127 +163,30 @@ class PremiumProfileHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final role = badgeLabel ?? profileWorkspaceRoleLabel(workspace);
-    final trust = trustLine ?? profileWorkspaceTrustLine(workspace);
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
-      decoration: BoxDecoration(
-        gradient: AppTheme.primaryGradient,
-        borderRadius: AppTheme.radiusXl,
-        boxShadow: AppTheme.brandGlow(opacity: 0.28),
-      ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(3),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.85), width: 2),
-                  boxShadow: const [
-                    BoxShadow(color: Color(0x33000000), blurRadius: 12, offset: Offset(0, 4)),
-                  ],
-                ),
-                child: avatar,
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.18),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.28)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(profileWorkspaceIcon(workspace), size: 13, color: Colors.white),
-                          const SizedBox(width: 6),
-                          Text(
-                            role.toUpperCase(),
-                            style: GoogleFonts.figtree(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.8,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      displayName,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.fraunces(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                        height: 1.15,
-                      ),
-                    ),
-                    if ((subtitle ?? '').trim().isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        subtitle!,
-                        style: GoogleFonts.figtree(
-                          color: Colors.white.withValues(alpha: 0.9),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                    if ((meta ?? '').trim().isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        meta!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.figtree(
-                          color: Colors.white.withValues(alpha: 0.75),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
+          avatar,
+          const SizedBox(height: 12),
           Text(
-            trust,
-            style: GoogleFonts.figtree(
-              color: Colors.white.withValues(alpha: 0.88),
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              height: 1.35,
-            ),
+            displayName,
+            textAlign: TextAlign.center,
+            style: AppTheme.sectionTitleOf(context).copyWith(fontSize: 22),
           ),
-          if (onEdit != null) ...[
-            const SizedBox(height: 12),
+          if ((subtitle ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(subtitle!, textAlign: TextAlign.center, style: AppTheme.captionOf(context).copyWith(fontWeight: FontWeight.w700)),
+          ],
+          if ((meta ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(meta!, textAlign: TextAlign.center, style: AppTheme.captionOf(context)),
+          ],
+          if (onEdit != null)
             TextButton(
               onPressed: onEdit,
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.white,
-                backgroundColor: Colors.white.withValues(alpha: 0.16),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              ),
-              child: Text(editLabel, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+              child: Text(editLabel, style: const TextStyle(fontWeight: FontWeight.w800)),
             ),
-          ],
         ],
       ),
     );
@@ -483,24 +380,31 @@ class PremiumProfileFormSection extends StatelessWidget {
 }
 
 class PremiumProfileLogoutButton extends StatelessWidget {
-  const PremiumProfileLogoutButton({super.key, required this.onPressed});
+  const PremiumProfileLogoutButton({
+    super.key,
+    required this.onPressed,
+    this.label = 'Log out securely',
+    this.danger = true,
+  });
 
   final VoidCallback onPressed;
+  final String label;
+  final bool danger;
 
   @override
   Widget build(BuildContext context) {
+    final color = danger ? AppTheme.error : AppTheme.primary;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-      child: OutlinedButton.icon(
+      child: OutlinedButton(
         style: OutlinedButton.styleFrom(
-          foregroundColor: AppTheme.error,
-          side: const BorderSide(color: AppTheme.error, width: 1.4),
+          foregroundColor: color,
+          side: BorderSide(color: color, width: 1.4),
           minimumSize: const Size(double.infinity, 52),
           shape: RoundedRectangleBorder(borderRadius: AppTheme.radiusLg),
         ),
-        icon: const Icon(Icons.logout_rounded),
-        label: const Text('Log out securely', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
         onPressed: onPressed,
+        child: Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
       ),
     );
   }

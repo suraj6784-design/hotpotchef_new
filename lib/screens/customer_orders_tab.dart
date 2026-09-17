@@ -16,6 +16,7 @@ import '../widgets/customer_ui_components.dart';
 import '../widgets/diner_order_progress.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/last_order_banner.dart';
+import '../widgets/diner_storefront.dart';
 import '../widgets/order_slot_banner.dart';
 import '../widgets/meal_review_dialog.dart';
 import '../services/chef_directory.dart';
@@ -46,9 +47,11 @@ class CustomerOrdersTab extends ConsumerStatefulWidget {
 
 class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with AutomaticKeepAliveClientMixin {
   List<Map<String, dynamic>> _activeOrders = [];
+  List<Map<String, dynamic>> _pastOrders = [];
   List<Map<String, dynamic>> _activeRequests = [];
   Map<String, dynamic>? _savedDropoffAddress;
   bool _isLoading = true;
+  bool _showPast = false;
   final Map<String, List<Map<String, dynamic>>> _quotesByRequest = {};
 
   StreamSubscription? _ordersSub;
@@ -56,17 +59,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
   StreamSubscription? _quotesSub;
 
   PreferredSizeWidget _ordersAppBar() {
-    return HubAppBar(
-      title: 'My Orders',
-      onProfile: widget.onProfileTap,
-      extraActions: [
-        IconButton(
-          tooltip: 'Past orders',
-          icon: const Icon(Icons.history_rounded, color: AppTheme.primary),
-          onPressed: () => context.push('/order-history'),
-        ),
-      ],
-    );
+    return const HubAppBar(title: 'My Orders');
   }
 
   @override
@@ -112,6 +105,12 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
     return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).where((row) {
       return _isActiveStatus(row['status']?.toString());
     }).toList();
+  }
+
+  List<Map<String, dynamic>> _pastRows(Iterable<dynamic> rows) {
+    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).where((row) {
+      return !_isActiveStatus(row['status']?.toString());
+    }).take(24).toList();
   }
 
   List<Map<String, dynamic>> _cateringRows(Iterable<dynamic> rows) {
@@ -166,6 +165,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
       if (mounted) {
         setState(() {
           _activeOrders = [];
+          _pastOrders = [];
           _activeRequests = [];
           _isLoading = false;
         });
@@ -205,6 +205,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
       if (!mounted) return;
       setState(() {
         _activeOrders = _activeRows(orderRows);
+        _pastOrders = _pastRows(orderRows);
         _activeRequests = _cateringRows(requestRows);
         _isLoading = false;
       });
@@ -243,6 +244,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
         });
         setState(() {
           _activeOrders = _activeRows(mine);
+          _pastOrders = _pastRows(mine);
           _isLoading = false;
         });
       },
@@ -1374,38 +1376,8 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
       );
     }
 
-    if (_activeOrders.isEmpty && _activeRequests.isEmpty) {
-      return Scaffold(
-        backgroundColor: AppTheme.canvasOf(context),
-        appBar: _ordersAppBar(),
-        body: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
-          children: [
-            LastOrderReorderBanner(
-              compact: true,
-              onAddedToCart: widget.onReorderToCart,
-            ),
-            EmptyState(
-              icon: Icons.soup_kitchen_outlined,
-              title: 'No active orders',
-              message: 'Placed meals show up here with live kitchen and delivery status.',
-              actionLabel: 'Browse past orders',
-              onAction: () => context.push('/order-history'),
-            ),
-            const SizedBox(height: 8),
-            Center(
-              child: TextButton(
-                onPressed: () => unawaited(_fetchActiveOrders()),
-                child: const Text('Refresh'),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    Map<String, List<Map<String, dynamic>>> groupedOrders = {};
-    for (var order in _activeOrders) {
+    final groupedOrders = <String, List<Map<String, dynamic>>>{};
+    for (final order in (_showPast ? _pastOrders : _activeOrders)) {
       final rawId = order['id'].toString();
       final parsedMaps = parseOrderItemsList(order['items']);
       final resolvedDropoff = orderDropoffAddress(
@@ -1475,11 +1447,19 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
         child: ListView(
           padding: const EdgeInsets.only(left: 20, right: 20, top: 20, bottom: 100),
           children: [
-            LastOrderReorderBanner(
-              compact: true,
-              onAddedToCart: widget.onReorderToCart,
+            DinerSegmentTabs(
+              leftLabel: 'Active (${_activeOrders.length})',
+              rightLabel: 'Past Orders',
+              showRight: _showPast,
+              onChanged: (past) => setState(() => _showPast = past),
             ),
-            if (_activeRequests.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            if (!_showPast)
+              LastOrderReorderBanner(
+                compact: true,
+                onAddedToCart: widget.onReorderToCart,
+              ),
+            if (!_showPast && _activeRequests.isNotEmpty) ...[
               Text('My broadcasts & catering', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppTheme.onSurfaceOf(context))),
               const SizedBox(height: 12),
               ..._activeRequests.map((req) => _buildBulkRequestCard(req)),
@@ -1487,9 +1467,25 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
               Divider(color: AppTheme.hairlineOf(context), thickness: 1.5),
               const SizedBox(height: 24),
             ],
-            if (sortedKeys.isNotEmpty) ...[
-              Text('Regular orders', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppTheme.onSurfaceOf(context))),
-              const SizedBox(height: 12),
+            if (sortedKeys.isEmpty)
+              EmptyState(
+                icon: Icons.soup_kitchen_outlined,
+                title: _showPast ? 'No past orders yet' : 'No active orders',
+                message: _showPast
+                    ? 'Delivered and cancelled plates will show here.'
+                    : 'Placed meals show up here with live kitchen and delivery status.',
+                actionLabel: _showPast ? 'Refresh' : 'View past orders',
+                onAction: _showPast
+                    ? () => unawaited(_fetchActiveOrders())
+                    : () => setState(() => _showPast = true),
+              )
+            else ...[
+              if (_showPast) ...[
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 12),
+                  child: Text('Past Orders', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+                ),
+              ],
               ...sortedKeys.map((key) {
                 final rawOrderIdStr = key;
                 final items = groupedOrders[rawOrderIdStr]!;
@@ -1567,27 +1563,52 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      displayOrderIdStr,
+                                      style: TextStyle(
+                                        color: AppTheme.textMuted,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 11,
+                                        letterSpacing: 0.6,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      chefDisplayName(items.first),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w800,
+                                        color: AppTheme.onSurfaceOf(context),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                 decoration: BoxDecoration(
-                                  color: AppTheme.surfaceOf(context),
-                                  borderRadius: AppTheme.radiusSm,
-                                  border: Border.all(color: AppTheme.hairlineOf(context)),
+                                  color: (isDelivered ? AppTheme.live : AppTheme.primary).withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(999),
                                 ),
-                                child: Text(displayOrderIdStr,
-                                    style: TextStyle(
-                                        color: AppTheme.onSurfaceOf(context), fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 1.0)),
-                              ),
-                              if (items.isNotEmpty)
-                                Flexible(
-                                  child: DeliveryCountdownSticker(
-                                    order: items.first,
-                                    timeSlot: smartTimeSlot,
-                                    status: items.first['status']?.toString(),
-                                    createdAt: items.first['created_at']?.toString(),
-                                    orderId: items.first['order_id']?.toString(),
+                                child: Text(
+                                  isDelivered
+                                      ? 'Delivered'
+                                      : allCancelled
+                                          ? 'Cancelled'
+                                          : (trackableItem != null ? 'On the way' : groupStatus),
+                                  style: TextStyle(
+                                    color: isDelivered ? AppTheme.live : AppTheme.primary,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 11,
                                   ),
                                 ),
+                              ),
                             ],
                           ),
                           const SizedBox(height: 16),
@@ -1701,27 +1722,40 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                               },
                             ),
                           ],
-                          if (trackableItem != null || !isDelivered) ...[
+                          if (trackableItem != null) ...[
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: FilledButton(
+                                onPressed: () => _openTracking(trackableItem!, items),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: AppTheme.primary,
+                                  minimumSize: const Size.fromHeight(46),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                ),
+                                child: const Text('Track Live Order'),
+                              ),
+                            ),
+                          ] else if (_showPast || isDelivered) ...[
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton(
+                                onPressed: () => _reorderItems(items),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: AppTheme.primary,
+                                  side: const BorderSide(color: AppTheme.primary),
+                                  minimumSize: const Size.fromHeight(46),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                ),
+                                child: const Text('Reorder', style: TextStyle(fontWeight: FontWeight.w800)),
+                              ),
+                            ),
+                          ],
+                          if (!_showPast && trackableItem == null && !isDelivered) ...[
                             const SizedBox(height: 12),
                             Row(
                               children: [
-                                if (trackableItem != null)
-                                  AppIconAction(
-                                    icon: Icons.map_outlined,
-                                    tooltip: DinerLocaleController.instance.copy.track,
-                                    onPressed: () => _openTracking(trackableItem!, items),
-                                  ),
-                                if (_driverIdOf(items.first) != null) ...[
-                                  const SizedBox(width: 8),
-                                  AppIconAction(
-                                    icon: Icons.phone_outlined,
-                                    tooltip: orderAllowsPhoneCall(groupStatus) ? 'Call driver' : 'Chat preferred',
-                                    onPressed: orderAllowsPhoneCall(groupStatus)
-                                        ? () => _initiateCall(_driverIdOf(items.first)!)
-                                        : null,
-                                  ),
-                                ],
-                                const SizedBox(width: 8),
                                 AppIconAction(
                                   icon: Icons.support_agent_outlined,
                                   tooltip: DinerLocaleController.instance.copy.help,
@@ -1734,15 +1768,6 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                               ],
                             ),
                           ],
-                          const SizedBox(height: 12),
-                          Divider(height: 1, color: AppTheme.hairlineOf(context)),
-                          const SizedBox(height: 8),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: const [
-                              Text('Tap for full details →', style: TextStyle(color: AppTheme.link, fontSize: 12, fontWeight: FontWeight.bold)),
-                            ],
-                          ),
                         ],
                       ),
                     ),

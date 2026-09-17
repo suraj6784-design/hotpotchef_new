@@ -5,7 +5,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -39,6 +38,7 @@ import '../utils/diner_locale.dart';
 import '../utils/fssai_certificate_scan.dart';
 import '../screens/checkout_screen.dart';
 import '../widgets/last_order_banner.dart';
+import '../widgets/diner_storefront.dart';
 import 'address_form_screen.dart';
 
 class CustomerFeedTab extends ConsumerStatefulWidget {
@@ -69,6 +69,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   String _selectedCategory = 'All';
   String _selectedDiet = 'All';
   String _selectedSort = kFeedSortEta;
+  String _homeMode = 'live';
   String _currentAddress = 'Locating...';
   List<Map<String, dynamic>> _savedAddresses = [];
   /// GPS pin used for guests (and signed-in users without a saved map pin).
@@ -1107,23 +1108,24 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             clipBehavior: Clip.none,
             children: [
               Container(
-                height: 160,
                 width: double.infinity,
-                decoration: BoxDecoration(
-                  gradient: AppTheme.primaryGradient,
-                  borderRadius: const BorderRadius.only(
-                    bottomLeft: Radius.circular(24),
-                    bottomRight: Radius.circular(24),
-                  ),
-                  boxShadow: AppTheme.brandGlow(opacity: 0.12),
-                ),
+                color: AppTheme.canvasOf(context),
                 child: SafeArea(
                   bottom: false,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                     child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        const AppLogo(size: 28),
+                        const SizedBox(width: 8),
+                        Text(
+                          'HotPotChef',
+                          style: AppTheme.sectionTitleOf(context).copyWith(
+                            color: AppTheme.primary,
+                            fontSize: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
                         Expanded(
                           child: Semantics(
                             button: true,
@@ -1260,34 +1262,19 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                               _addressPickerOpen = false;
                             }
                           },
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          child: Row(
                             children: [
-                              Row(
-                                children: [
-                                  const AppLogo(size: 22, onDark: true),
-                                  const SizedBox(width: 8),
-                                  const Text('Delivering to',
-                                      style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500)),
-                                ],
+                              Icon(Icons.location_on, color: AppTheme.primary, size: 16),
+                              const SizedBox(width: 2),
+                              Expanded(
+                                child: Text(
+                                  _currentAddress,
+                                  style: AppTheme.captionOf(context).copyWith(fontWeight: FontWeight.w700),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  const Icon(Icons.location_on, color: Colors.white, size: 18),
-                                  const SizedBox(width: 4),
-                                  Expanded(
-                                    child: Text(
-                                      _currentAddress,
-                                      style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  const Icon(Icons.keyboard_arrow_down, color: Colors.white70, size: 18),
-                                ],
-                              ),
+                              Icon(Icons.keyboard_arrow_down, color: AppTheme.textMutedOf(context), size: 16),
                             ],
                           ),
                         ),
@@ -1337,33 +1324,6 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                   }
                                 },
                               ),
-                              const SizedBox(width: 4),
-                              IconButton(
-                                tooltip: 'Notifications',
-                                visualDensity: VisualDensity.compact,
-                                onPressed: () => context.push('/notifications'),
-                                style: IconButton.styleFrom(
-                                  foregroundColor: Colors.white,
-                                  backgroundColor: Colors.white.withValues(alpha: 0.12),
-                                  minimumSize: const Size(36, 36),
-                                  maximumSize: const Size(36, 36),
-                                  padding: EdgeInsets.zero,
-                                ),
-                                icon: const Icon(Icons.notifications_none, size: 18),
-                              ),
-                              const SizedBox(width: 4),
-                              GestureDetector(
-                                onTap: widget.onProfileTap,
-                                child: Semantics(
-                                  button: true,
-                                  label: 'Open profile',
-                                  child: const CircleAvatar(
-                                    backgroundColor: Colors.white,
-                                    radius: 18,
-                                    child: Icon(Icons.person, color: brandPrimary, size: 20),
-                                  ),
-                                ),
-                              ),
                             ] else ...[
                               Semantics(
                                 button: true,
@@ -1392,47 +1352,54 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                   ),
                 ),
               ),
-              Positioned(
-                bottom: -24,
-                left: 20,
-                right: 20,
-                child: Container(
-                  height: 52,
-                  decoration: BoxDecoration(
-                    color: AppTheme.surfaceOf(context),
-                    borderRadius: AppTheme.radiusLg,
-                    border: Border.all(color: AppTheme.hairlineOf(context)),
-                    boxShadow: AppTheme.softShadow,
-                  ),
-                  child: TextField(
-                    controller: _searchController,
-                    onSubmitted: (val) => _performAiSearch(val),
-                    decoration: InputDecoration(
-                      hintText: 'Search dishes or home chefs',
-                      hintStyle: TextStyle(color: AppTheme.textMuted, fontSize: 14),
-                      filled: false,
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                      suffixIcon: GestureDetector(
-                        onTap: () => _performAiSearch(_searchController.text),
-                        child: Container(
-                          margin: const EdgeInsets.all(6),
-                          decoration: const BoxDecoration(
-                            gradient: AppTheme.primaryGradient,
-                            borderRadius: AppTheme.radiusSm,
-                          ),
-                          child: const Icon(Icons.search_rounded, color: Colors.white, size: 20),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
             ],
           ),
-          const SizedBox(height: 48),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+            child: Container(
+              height: 52,
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceOf(context),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: AppTheme.hairlineOf(context)),
+                boxShadow: AppTheme.softShadow,
+              ),
+              child: TextField(
+                controller: _searchController,
+                onSubmitted: (val) => _performAiSearch(val),
+                decoration: InputDecoration(
+                  hintText: 'Search for thali, biryani, hotpot…',
+                  hintStyle: TextStyle(color: AppTheme.textMuted, fontSize: 14),
+                  filled: false,
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.textMuted),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _homeModeChip('Pre-order', 'preorder', Icons.calendar_month_outlined, AppTheme.primary),
+                _homeModeChip('Live Order', 'live', Icons.local_fire_department_outlined, AppTheme.live),
+                _homeModeChip('Healthy Options', 'heat', Icons.eco_outlined, AppTheme.primary),
+              ],
+            ),
+          ),
+
+          if (!_hasActiveSearch)
+            LiveOffersFlashBanner(
+              excludedChefIds: _closedChefIds,
+              destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
+              destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
+              chefKitchenPins: _chefKitchenPins,
+              onOfferTap: _onHomeOfferTap,
+            ),
 
           if (isLoggedIn) const SupportRepliedBanner(),
 
@@ -1470,13 +1437,6 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
 
           if (!_hasActiveSearch) ...[
             if (isLoggedIn) ...[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                child: Text(
-                  DinerLocaleController.instance.copy.forYou,
-                  style: AppTheme.homeSectionLabelOf(context).copyWith(fontSize: 16),
-                ),
-              ),
               LastOrderReorderBanner(onAddedToCart: widget.onGoToCart, compact: true),
               const AiRecommendationsSection(),
             ],
@@ -1660,6 +1620,14 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (!_hasActiveSearch && !showFavorites && !showFollowing) ...[
+                      DinerSectionHeader(title: 'Trending Chefs'),
+                      _buildTrendingChefsStrip(meals),
+                      DinerSectionHeader(title: 'Popular Dishes'),
+                    ],
+                    if (!_hasActiveSearch && !showFavorites && !showFollowing)
+                      _buildPopularDishList(meals)
+                    else
                     _buildMealGrid(
                       meals,
                       isLoggedIn: isLoggedIn,
@@ -1891,8 +1859,8 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       visualDensity: VisualDensity.compact,
       onPressed: () => onSelected(!selected),
       style: IconButton.styleFrom(
-        foregroundColor: Colors.white,
-        backgroundColor: Colors.white.withValues(alpha: selected ? 0.28 : 0.12),
+        foregroundColor: selected ? Colors.white : AppTheme.primary,
+        backgroundColor: selected ? AppTheme.primary : AppTheme.surfaceOf(context),
         minimumSize: const Size(36, 36),
         maximumSize: const Size(36, 36),
         padding: EdgeInsets.zero,
@@ -1903,13 +1871,6 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
 
   List<Widget> _homeTopHighlights({required bool isLoggedIn}) {
     return [
-      LiveOffersFlashBanner(
-        excludedChefIds: _closedChefIds,
-        destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
-        destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
-        chefKitchenPins: _chefKitchenPins,
-        onOfferTap: _onHomeOfferTap,
-      ),
       const MembershipFlashBanner(),
       const SizedBox(height: 4),
     ];
@@ -1995,6 +1956,180 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           );
         },
       ),
+    );
+  }
+
+  Widget _homeModeChip(String label, String mode, IconData icon, Color accent) {
+    return DinerCircleModeChip(
+      icon: icon,
+      label: label,
+      selected: _homeMode == mode,
+      accent: accent,
+      onTap: () {
+        setState(() {
+          _homeMode = mode;
+          if (mode == 'live') _selectedSort = kFeedSortEta;
+          if (mode == 'preorder') _selectedSort = kFeedSortNearby;
+          if (mode == 'heat') _selectedDiet = 'Healthy';
+          if (mode != 'heat' && _selectedDiet == 'Healthy') _selectedDiet = 'All';
+        });
+      },
+    );
+  }
+
+  List<Map<String, dynamic>> _uniqueChefsFromMeals(List<Map<String, dynamic>> meals) {
+    final seen = <String>{};
+    final chefs = <Map<String, dynamic>>[];
+    for (final meal in meals) {
+      final id = meal['chef_id']?.toString() ?? '';
+      if (id.isEmpty || !seen.add(id)) continue;
+      final profile = _chefKitchenProfiles[id] ?? {};
+      chefs.add({
+        'id': id,
+        'chef_id': id,
+        'chef_name': chefDisplayName({...profile, ...meal}),
+        'local_kitchen_name': profile['local_kitchen_name'] ?? meal['local_kitchen_name'],
+        'fssai_number': profile['fssai_number'] ?? meal['fssai_number'],
+        'image_url': meal['image_url'],
+        'kitchen_photos': profile['kitchen_photos'],
+      });
+      if (chefs.length >= 8) break;
+    }
+    return chefs;
+  }
+
+  Widget _buildTrendingChefsStrip(List<Map<String, dynamic>> meals) {
+    final chefs = _uniqueChefsFromMeals(meals);
+    if (chefs.isEmpty) return const SizedBox.shrink();
+    return SizedBox(
+      height: 168,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+        itemCount: chefs.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 12),
+        itemBuilder: (context, index) {
+          final chef = chefs[index];
+          final id = chef['id']?.toString() ?? '';
+          final name = chefDisplayName(chef);
+          final rating = _chefRatings[id];
+          final photos = kitchenPhotosFrom(chef['kitchen_photos']);
+          final photo = photos.isNotEmpty ? photos.first : chef['image_url']?.toString();
+          return GestureDetector(
+            onTap: id.isEmpty ? null : () => _filterFeedToChef(chef),
+            child: Container(
+              width: 168,
+              padding: const EdgeInsets.all(12),
+              decoration: AppTheme.cardDecoration(isDark: Theme.of(context).brightness == Brightness.dark),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CircleAvatar(
+                    radius: 28,
+                    backgroundColor: AppTheme.photoFallback,
+                    backgroundImage: (photo != null && photo.isNotEmpty) ? CachedNetworkImageProvider(photo) : null,
+                    child: (photo == null || photo.isEmpty)
+                        ? Text(
+                            name.isEmpty ? 'C' : name[0].toUpperCase(),
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          )
+                        : null,
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTheme.cardTitleOf(context).copyWith(fontSize: 14),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    rating == null || !rating.hasReviews
+                        ? 'New kitchen'
+                        : '${rating.average.toStringAsFixed(1)} (${rating.count})',
+                    style: AppTheme.caption,
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildPopularDishList(List<Map<String, dynamic>> meals) {
+    if (meals.isEmpty) {
+      return _buildMealGrid(meals, isLoggedIn: true, showFavorites: false);
+    }
+    return ListView.separated(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+      itemCount: meals.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 12),
+      itemBuilder: (context, index) {
+        final meal = meals[index];
+        final offerSummary = PricingCalculator.calculateItemSummary(meal, 1);
+        final price = offerSummary.effectiveUnitPrice;
+        final chefName = chefDisplayName({...?_chefKitchenProfiles[meal['chef_id']?.toString()], ...meal});
+        final image = meal['image_url']?.toString();
+        final prep = kitchenPrepMinutes(_chefKitchenProfiles[meal['chef_id']?.toString()], meal);
+        return GestureDetector(
+          onTap: () => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
+          child: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: AppTheme.cardDecoration(isDark: Theme.of(context).brightness == Brightness.dark),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: SizedBox(
+                    width: 72,
+                    height: 72,
+                    child: image == null || image.isEmpty
+                        ? ColoredBox(color: AppTheme.photoFallback, child: Icon(Icons.ramen_dining, color: AppTheme.textMuted))
+                        : CachedNetworkImage(imageUrl: image, fit: BoxFit.cover),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        meal['title']?.toString() ?? 'Home plate',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTheme.cardTitleOf(context).copyWith(fontSize: 15),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'by $chefName',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTheme.caption,
+                      ),
+                      if (prep > 0) ...[
+                        const SizedBox(height: 2),
+                        Text('Prep: $prep mins', style: AppTheme.caption),
+                      ],
+                    ],
+                  ),
+                ),
+                Text(
+                  '₹${price.toStringAsFixed(0)}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                    color: AppTheme.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

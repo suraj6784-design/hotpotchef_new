@@ -8,20 +8,20 @@ import 'package:google_fonts/google_fonts.dart';
 
 /// Central design system for HotPotChef.
 ///
-/// Matches the marketing site: terracotta flame, cream canvas, Fraunces titles,
-/// Figtree UI. Semantic tokens keep veg / price / surfaces consistent.
+/// Cream canvas, flame orange, Figtree. Semantic tokens keep veg / price / surfaces consistent.
 class AppTheme {
   AppTheme._();
 
   // ---------------------------------------------------------------------------
   // 1. Brand & semantic colors (aligned with website/css/site.css)
   // ---------------------------------------------------------------------------
-  static const Color primary = Color(0xFFF4511E);
-  static const Color primaryGradientEnd = Color(0xFFFF7043);
-  static const Color primaryDark = Color(0xFFBF360C);
-  static const Color accent = Color(0xFFFFB300);
+  static const Color primary = Color(0xFFE85A24);
+  static const Color primaryGradientEnd = Color(0xFFFF7A45);
+  static const Color primaryDark = Color(0xFFC2410C);
+  static const Color accent = Color(0xFFFFB020);
+  static const Color live = Color(0xFF2F9E5B);
 
-  static const Color success = Color(0xFF2E9E5B);
+  static const Color success = Color(0xFF2F9E5B);
   static const Color warning = Color(0xFFF6A609);
   static const Color error = Color(0xFFE53935);
   static const Color info = Color(0xFF2E7CF6);
@@ -32,20 +32,20 @@ class AppTheme {
   static const Color photoFallback = Color(0xFFF6EDE4);
 
   // Backgrounds
-  static const Color snow = Color(0xFFF7F3EE);
+  static const Color snow = Color(0xFFF6EEE6);
   static const Color background = snow;
   static const Color backgroundLight = snow;
   static const Color backgroundDark = Color(0xFF1A1410);
 
   // Surfaces (cards, sheets)
-  static const Color surfaceLight = Color(0xFFFFFCF8);
+  static const Color surfaceLight = Color(0xFFFFFFFF);
   static const Color surfaceDark = Color(0xFF2A1F18);
   static const Color surfaceElevated = Color(0xFFFFFCF8);
   static const Color surfaceMutedLight = Color(0xFFF0E8E0);
   static const Color surfaceMutedDark = Color(0xFF3A2E26);
 
   // Text
-  static const Color textMain = Color(0xFF241F1C);
+  static const Color textMain = Color(0xFF2A2218);
   /// Supporting copy on cream. ~5.8:1 on [snow] / [surfaceLight] (WCAG AA at 12px).
   static const Color textMuted = Color(0xFF5C564F);
   /// Supporting copy on [backgroundDark] / [surfaceDark] (~5.5:1).
@@ -185,10 +185,13 @@ class AppTheme {
   static BoxDecoration glassDockDecoration(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return BoxDecoration(
-      color: (isDark ? const Color(0xE62A1F18) : const Color(0xF2FFFCF8)),
-      borderRadius: const BorderRadius.all(Radius.circular(40)),
-      border: Border.all(color: hairlineOf(context), width: 0.8),
-      boxShadow: softShadow,
+      color: isDark ? const Color(0xF22A1F18) : surfaceLight,
+      border: Border(
+        top: BorderSide(color: hairlineOf(context), width: 0.8),
+      ),
+      boxShadow: const [
+        BoxShadow(color: Color(0x14241F1C), blurRadius: 16, offset: Offset(0, -4)),
+      ],
     );
   }
 
@@ -209,20 +212,20 @@ class AppTheme {
   // ---------------------------------------------------------------------------
   // Typography + chip helpers (premium uniformity)
   // ---------------------------------------------------------------------------
-  static TextStyle sectionTitleOf(BuildContext context) => GoogleFonts.fraunces(
-        fontSize: 26,
-        fontWeight: FontWeight.w700,
+  static TextStyle sectionTitleOf(BuildContext context) => GoogleFonts.figtree(
+        fontSize: 22,
+        fontWeight: FontWeight.w800,
         color: onSurfaceOf(context),
-        height: 1.12,
-        letterSpacing: -0.6,
+        height: 1.15,
+        letterSpacing: -0.4,
       );
 
-  static TextStyle cardTitleOf(BuildContext context) => GoogleFonts.fraunces(
-        fontSize: 17,
-        fontWeight: FontWeight.w600,
+  static TextStyle cardTitleOf(BuildContext context) => GoogleFonts.figtree(
+        fontSize: 16,
+        fontWeight: FontWeight.w800,
         color: onSurfaceOf(context),
         height: 1.22,
-        letterSpacing: -0.25,
+        letterSpacing: -0.2,
       );
 
   static TextStyle bodyOf(BuildContext context) => GoogleFonts.figtree(
@@ -243,11 +246,11 @@ class AppTheme {
 
   /// Shared Home section label (offers, shelf, diet, meal grid).
   static TextStyle homeSectionLabelOf(BuildContext context) => GoogleFonts.figtree(
-        fontSize: 13,
-        fontWeight: FontWeight.w700,
+        fontSize: 18,
+        fontWeight: FontWeight.w800,
         color: onSurfaceOf(context),
-        height: 1.25,
-        letterSpacing: 0.2,
+        height: 1.2,
+        letterSpacing: -0.2,
       );
 
   static TextStyle homeKickerOf(BuildContext context) => GoogleFonts.figtree(
@@ -340,9 +343,9 @@ class AppTheme {
   }) {
     return BoxDecoration(
       color: selected ? primary : surfaceOf(context),
-      borderRadius: radiusXl,
-      border: Border.all(color: selected ? primary : hairlineOf(context)),
-      boxShadow: selected ? brandGlow(opacity: 0.22) : const [],
+      borderRadius: const BorderRadius.all(Radius.circular(999)),
+      border: Border.all(color: selected ? primary : hairlineOf(context), width: 1.2),
+      boxShadow: selected ? brandGlow(opacity: 0.18) : const [],
     );
   }
 
@@ -381,9 +384,9 @@ class AppTheme {
     final baseTypography =
         isDark ? Typography.material2021().white : Typography.material2021().black;
     final textTheme = GoogleFonts.figtreeTextTheme(baseTypography).copyWith(
-      displaySmall: GoogleFonts.fraunces(fontWeight: FontWeight.w700, color: onSurface, fontSize: 28, height: 1.12, letterSpacing: -0.7),
-      headlineMedium: GoogleFonts.fraunces(fontWeight: FontWeight.w700, color: onSurface, fontSize: 24, height: 1.14, letterSpacing: -0.5),
-      headlineSmall: GoogleFonts.fraunces(fontWeight: FontWeight.w600, color: onSurface, fontSize: 20, height: 1.2, letterSpacing: -0.3),
+      displaySmall: GoogleFonts.figtree(fontWeight: FontWeight.w800, color: onSurface, fontSize: 28, height: 1.12, letterSpacing: -0.7),
+      headlineMedium: GoogleFonts.figtree(fontWeight: FontWeight.w800, color: onSurface, fontSize: 24, height: 1.14, letterSpacing: -0.5),
+      headlineSmall: GoogleFonts.figtree(fontWeight: FontWeight.w800, color: onSurface, fontSize: 20, height: 1.2, letterSpacing: -0.3),
       titleLarge: GoogleFonts.figtree(fontWeight: FontWeight.w700, color: onSurface, fontSize: 18, height: 1.25, letterSpacing: -0.2),
       titleMedium: GoogleFonts.figtree(fontWeight: FontWeight.w700, color: onSurface, fontSize: 15, height: 1.3, letterSpacing: -0.1),
       titleSmall: GoogleFonts.figtree(fontWeight: FontWeight.w600, color: onSurface, fontSize: 14, height: 1.3),

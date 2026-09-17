@@ -4,8 +4,6 @@
 // Warm & premium direction: gradient CTAs, soft cards, shimmer skeletons,
 // friendly empty states, and consistent entrance animations.
 
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:shimmer/shimmer.dart';
@@ -697,12 +695,9 @@ class HubTabSwitcher extends StatelessWidget {
   }
 }
 
-/// Floating pill navigation used on diner, chef, and driver hubs.
+/// Full-width storefront bar used on diner, chef, and driver hubs.
 ///
-/// Size to the pill only. Never pass this as [Scaffold.bottomNavigationBar] —
-/// that slot is height-loose, and [BackdropFilter] / aligned containers will
-/// stretch into a full-height strip (chef Menu bug, Sep 2026). Overlay with
-/// [Positioned] like the diner and driver hubs.
+/// Overlay with [Positioned] — never pass as [Scaffold.bottomNavigationBar].
 class HubBottomDock extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onSelect;
@@ -717,38 +712,29 @@ class HubBottomDock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      minimum: const EdgeInsets.only(bottom: 8),
-      child: Align(
-        alignment: Alignment.bottomCenter,
-        heightFactor: 1,
-        child: UnconstrainedBox(
-          child: ClipRRect(
-          borderRadius: BorderRadius.circular(40),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-            child: Container(
-              padding: const EdgeInsets.all(6),
-              decoration: AppTheme.glassDockDecoration(context),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  for (var i = 0; i < destinations.length; i++)
-                    _HubDockButton(
-                      destination: destinations[i],
-                      selected: selectedIndex == i,
-                      onTap: () {
-                        if (i == selectedIndex) return;
-                        AppHaptics.selection();
-                        onSelect(i);
-                      },
-                    ),
-                ],
-              ),
-            ),
+    return Material(
+      color: Colors.transparent,
+      child: SafeArea(
+        top: false,
+        child: Container(
+          decoration: AppTheme.glassDockDecoration(context),
+          padding: const EdgeInsets.fromLTRB(8, 6, 8, 4),
+          child: Row(
+            children: [
+              for (var i = 0; i < destinations.length; i++)
+                Expanded(
+                  child: _HubDockButton(
+                    destination: destinations[i],
+                    selected: selectedIndex == i,
+                    onTap: () {
+                      if (i == selectedIndex) return;
+                      AppHaptics.selection();
+                      onSelect(i);
+                    },
+                  ),
+                ),
+            ],
           ),
-        ),
         ),
       ),
     );
@@ -776,18 +762,15 @@ class _HubDockButton extends StatelessWidget {
       child: GestureDetector(
         onTap: onTap,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 48, minHeight: 48, maxHeight: 56),
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 52, maxHeight: 64),
           child: AnimatedContainer(
             duration: MediaQuery.disableAnimationsOf(context)
                 ? Duration.zero
                 : const Duration(milliseconds: 280),
             curve: Curves.easeOutCubic,
-            padding: EdgeInsets.symmetric(horizontal: selected ? 18 : 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: selected ? AppTheme.primary.withValues(alpha: 0.14) : Colors.transparent,
-              borderRadius: BorderRadius.circular(30),
-            ),
-            child: Row(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            decoration: const BoxDecoration(),
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Badge(
@@ -795,24 +778,22 @@ class _HubDockButton extends StatelessWidget {
                   isLabelVisible: destination.badgeCount > 0,
                   child: Icon(
                     selected ? destination.selectedIcon : destination.icon,
-                    color: selected ? AppTheme.linkOf(context) : AppTheme.textMutedOf(context),
-                    size: AppTheme.iconSize,
-                    opticalSize: AppTheme.iconOpticalSize,
-                    weight: 400,
+                    color: selected ? AppTheme.primary : AppTheme.textMutedOf(context),
+                    size: 22,
                     fill: selected ? 1 : 0,
                   ),
                 ),
-                if (selected) ...[
-                  const SizedBox(width: 6),
-                  Text(
-                    destination.label,
-                    style: AppTheme.homeKickerOf(context).copyWith(
-                      color: AppTheme.linkOf(context),
-                      fontSize: 13,
-                      letterSpacing: 0.15,
-                    ),
+                const SizedBox(height: 2),
+                Text(
+                  destination.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTheme.microOf(context).copyWith(
+                    color: selected ? AppTheme.primary : AppTheme.textMutedOf(context),
+                    fontWeight: FontWeight.w800,
+                    fontSize: 10,
                   ),
-                ],
+                ),
               ],
             ),
           ),

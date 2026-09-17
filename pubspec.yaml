@@ -77,12 +77,12 @@ flutter_launcher_icons:
     generate: false
 
 flutter_native_splash:
-  color: "#FAFAFA"
+  color: "#F6EEE6"
   image: "assets/app_icon_splash.png"
   android_gravity: center
   ios_content_mode: center
   android_12:
-    color: "#FAFAFA"
+    color: "#F6EEE6"
     image: "assets/app_icon_splash.png"
-    icon_background_color: "#FAFAFA"
+    icon_background_color: "#F6EEE6"
   fullscreen: true

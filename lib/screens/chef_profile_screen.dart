@@ -57,7 +57,9 @@ class ChefReviewModel {
 }
 
 class ChefProfileScreen extends StatefulWidget {
-  const ChefProfileScreen({super.key});
+  const ChefProfileScreen({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   State<ChefProfileScreen> createState() => _ChefProfileScreenState();
@@ -627,6 +629,25 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
 
   // --- UI Layout ---
 
+  Widget _chefBadge(String label, IconData icon, bool earned) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: earned ? AppTheme.live.withValues(alpha: 0.10) : AppTheme.surfaceOf(context),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: earned ? AppTheme.live.withValues(alpha: 0.35) : AppTheme.hairlineOf(context)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: earned ? AppTheme.live : AppTheme.textMuted),
+          const SizedBox(width: 6),
+          Text(label, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: earned ? AppTheme.live : AppTheme.textMuted)),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = _supabase.auth.currentUser;
@@ -649,6 +670,13 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
         onUploadComplete: (newUrl) => setState(() => _avatarUrl = newUrl),
       ),
       loading: _isLoading,
+      onBack: widget.embedded ? null : () {
+        if (context.canPop()) {
+          context.pop();
+        } else {
+          context.go('/chef-hub');
+        }
+      },
       headerActions: [
         TextButton(
           onPressed: () => setState(() => _isEditing = !_isEditing),
@@ -663,7 +691,8 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
             PremiumProfileHero(
               workspace: ProfileWorkspace.chef,
               displayName: _nameController.text.isEmpty ? 'Home kitchen partner' : _nameController.text,
-              subtitle: email,
+              subtitle: 'Certified Indian Home Chef',
+              meta: email,
               badgeLabel: fssaiLicenceIsExpired(_fssaiValidUntil)
                   ? 'FSSAI expired — update certificate'
                   : fssaiVerificationLabel(_fssaiVerificationStatus),
@@ -674,6 +703,53 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
               ),
               onEdit: () => setState(() => _isEditing = !_isEditing),
               editLabel: _isEditing ? 'Stop editing' : 'Edit kitchen card',
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Hygiene & Authenticity Badges', style: AppTheme.homeSectionLabelOf(context).copyWith(fontSize: 14)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _chefBadge('Certified', Icons.verified_outlined, true),
+                      _chefBadge(
+                        'FSSAI',
+                        Icons.health_and_safety_outlined,
+                        dinerFssaiIsVerified(_fssaiVerificationStatus, validUntil: _fssaiValidUntil),
+                      ),
+                      _chefBadge('Home Kitchen', Icons.cottage_outlined, true),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            PremiumProfileSection(
+              title: 'Menu Management',
+              children: [
+                PremiumProfileTile(
+                  icon: Icons.restaurant_menu_outlined,
+                  title: 'Active dishes',
+                  subtitle: 'Publish, pause, and restock plates',
+                  onTap: () => context.go('/chef-hub?tab=menu'),
+                  showDivider: false,
+                ),
+              ],
+            ),
+            PremiumProfileSection(
+              title: 'Earnings Overview',
+              children: [
+                PremiumProfileTile(
+                  icon: Icons.payments_outlined,
+                  title: 'Kitchen take-home',
+                  subtitle: 'Today and completed sales in ₹',
+                  onTap: () => context.push('/chef-analytics'),
+                  showDivider: false,
+                ),
+              ],
             ),
             PremiumProfileStatsRow(
               stats: [
@@ -713,7 +789,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
               ],
             ),
             PremiumProfileFormSection(
-              title: 'FSSAI details',
+              title: 'Documents & Licences',
               caption: 'Upload a clear licence photo. We scan Registration No, name, address, and validity, then send the same fields to HotPotChef for verification.',
               children: [
                   if (fssaiLicenceIsExpired(_fssaiValidUntil))
@@ -1042,7 +1118,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
               ],
             ),
             PremiumProfileFormSection(
-              title: 'Payouts',
+              title: 'Bank Details',
               caption: 'Earnings settle to your linked bank account.',
               children: [
                           ListTile(
@@ -1085,7 +1161,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
               ],
             ),
             PremiumProfileSection(
-              title: 'Trust & access',
+              title: 'Help & Chef Support',
               children: [
                 PremiumProfileTile(
                   icon: Icons.lock_reset_rounded,

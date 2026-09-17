@@ -20,7 +20,9 @@ import '../widgets/change_password_dialog.dart';
 import '../widgets/premium_profile_template.dart';
 
 class DriverProfileScreen extends StatefulWidget {
-  const DriverProfileScreen({super.key});
+  const DriverProfileScreen({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   State<DriverProfileScreen> createState() => _DriverProfileScreenState();
@@ -337,6 +339,28 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
 
   // --- UI Tree ---
 
+  Widget _driverBadge(String label, IconData icon, bool earned) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: earned ? AppTheme.live.withValues(alpha: 0.10) : AppTheme.surfaceOf(context),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: earned ? AppTheme.live.withValues(alpha: 0.35) : AppTheme.hairlineOf(context)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: earned ? AppTheme.live : AppTheme.textMuted),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: earned ? AppTheme.live : AppTheme.textMuted),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -353,6 +377,15 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
         onUploadComplete: (newUrl) => setState(() => _avatarUrl = newUrl),
       ),
       loading: _isLoading,
+      onBack: widget.embedded
+          ? null
+          : () {
+              if (context.canPop()) {
+                context.pop();
+              } else {
+                context.go('/driver-hub');
+              }
+            },
       headerActions: [
         TextButton(
           onPressed: () => setState(() => _isEditing = !_isEditing),
@@ -367,7 +400,8 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
             PremiumProfileHero(
               workspace: ProfileWorkspace.driver,
               displayName: _nameController.text.isEmpty ? 'Delivery partner' : _nameController.text,
-              subtitle: _phoneController.text.isEmpty ? 'Contact pending' : _phoneController.text,
+              subtitle: 'Verified delivery partner',
+              meta: _phoneController.text.isEmpty ? null : _phoneController.text,
               badgeLabel: 'Verified partner',
               avatar: AvatarUploadWidget(
                 initialAvatarUrl: _avatarUrl,
@@ -377,6 +411,41 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
               onEdit: () => setState(() => _isEditing = !_isEditing),
               editLabel: _isEditing ? 'Stop editing' : 'Edit partner profile',
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Partner badges', style: AppTheme.homeSectionLabelOf(context).copyWith(fontSize: 14)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _driverBadge('Verified', Icons.verified_outlined, true),
+                      _driverBadge(
+                        'KYC',
+                        Icons.badge_outlined,
+                        _aadhaarMaskedController.text.trim().isNotEmpty && _panController.text.trim().isNotEmpty,
+                      ),
+                      _driverBadge('Vehicle', Icons.two_wheeler_outlined, _vehicleRegNoController.text.trim().isNotEmpty),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            PremiumProfileSection(
+              title: 'Earnings Overview',
+              children: [
+                PremiumProfileTile(
+                  icon: Icons.payments_outlined,
+                  title: 'Run wallet',
+                  subtitle: 'Delivery fee + tip in ₹. Bank payout after KYC by ops.',
+                  onTap: () => context.go('/driver-hub'),
+                  showDivider: false,
+                ),
+              ],
+            ),
             PremiumProfileStatsRow(
               stats: [
                 PremiumProfileStat(label: 'Home pin', value: _latitude != null ? 'Pinned' : 'Needed'),
@@ -385,7 +454,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
               ],
             ),
             PremiumProfileSection(
-              title: 'Partner tools',
+              title: 'Help & Partner Support',
               caption: 'Show your Digital ID at hubs. Keep the account password current.',
               children: [
                 Padding(
@@ -424,7 +493,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
               ],
             ),
             PremiumProfileFormSection(
-              title: 'Identity',
+              title: 'Bank Details & KYC',
               caption: 'Name and contacts must match government ID for partner verification.',
               children: [
                   _buildTextField(
@@ -613,7 +682,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
               ],
             ),
             PremiumProfileFormSection(
-              title: 'Vehicle & licence',
+              title: 'Documents & Licences',
               caption: 'Registration and DL stay on your partner card.',
               children: [
                   DropdownButtonFormField<String>(

@@ -885,16 +885,24 @@ int customerHubTabIndex(String? tab) {
 
 int chefHubTabIndex(String? tab) {
   switch (tab?.trim().toLowerCase()) {
-    case 'dispatch':
+    case 'orders':
       return 1;
-    case 'menu':
+    case 'profile':
+    case 'account':
       return 2;
-    case 'history':
+    case 'alerts':
+    case 'notifications':
       return 3;
-    case 'leads':
+    case 'menu':
       return 4;
-    case 'supplies':
+    case 'dispatch':
       return 5;
+    case 'history':
+      return 6;
+    case 'leads':
+      return 7;
+    case 'supplies':
+      return 8;
     default:
       return 0;
   }

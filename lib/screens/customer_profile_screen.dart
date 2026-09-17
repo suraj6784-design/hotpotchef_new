@@ -1142,7 +1142,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
     if (_supabase.auth.currentUser == null) {
       return Scaffold(
         appBar: widget.embedded
-            ? const HubAppBar(title: 'Account')
+            ? const HubAppBar(title: 'My Profile')
             : AppBar(
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
@@ -1183,7 +1183,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
         ),
         loading: _isLoading,
         onBack: widget.embedded ? null : _handleSafeBack,
-        onLogout: _handleLogout,
+        onLogout: null,
         body: SingleChildScrollView(
           child: Column(
             children: [
@@ -1200,12 +1200,62 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                 onEdit: _showEditProfileSheet,
                 editLabel: 'Edit profile & diet',
               ),
-              PremiumProfileStatsRow(
-                stats: [
-                  PremiumProfileStat(label: 'Orders', value: '$_orderCount'),
-                  PremiumProfileStat(label: 'Coins', value: '₹${_hotpotCoins.toInt()}'),
-                  PremiumProfileStat(label: 'Saved drops', value: '${_addresses.length}'),
+              PremiumProfileSection(
+                title: 'Saved Address',
+                children: [
+                  PremiumProfileTile(
+                    icon: Icons.location_on_outlined,
+                    title: _addresses.isEmpty ? 'Add a drop-off' : 'Home',
+                    subtitle: _addresses.isEmpty
+                        ? 'Save a pin for faster checkout'
+                        : formatSavedAddress(_addresses.first),
+                    onTap: _showAddressesSheet,
+                    showDivider: false,
+                  ),
                 ],
+              ),
+              PremiumProfileSection(
+                title: 'Payment Method',
+                children: [
+                  PremiumProfileTile(
+                    icon: Icons.payments_outlined,
+                    title: customerPayMethodLabel(_preferredPayMethod),
+                    subtitle: _savedVpa == null ? 'Razorpay on this phone' : 'Saved UPI on this phone',
+                    onTap: _showPaymentOptionsSheet,
+                    showDivider: false,
+                  ),
+                ],
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Preferences', style: AppTheme.homeSectionLabelOf(context)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final chip in [
+                          _dietaryPref,
+                          if (_allergiesController.text.trim().isNotEmpty) _allergiesController.text.trim(),
+                        ])
+                          Chip(
+                            label: Text(chip),
+                            visualDensity: VisualDensity.compact,
+                            side: const BorderSide(color: AppTheme.primary),
+                            labelStyle: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w700),
+                            backgroundColor: AppTheme.primary.withValues(alpha: 0.08),
+                          ),
+                        ActionChip(
+                          label: const Text('Edit'),
+                          onPressed: _showEditProfileSheet,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
               LoyaltyBadgeCard(
                 coins: _hotpotCoins,
@@ -1288,28 +1338,26 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                 ],
               ),
               PremiumProfileSection(
-                title: 'Wallet & delivery',
+                title: 'More addresses',
                 children: [
                   PremiumProfileTile(
-                    icon: Icons.payments_outlined,
-                    title: 'Payment options',
-                    subtitle: _savedVpa == null
-                        ? '${customerPayMethodLabel(_preferredPayMethod)} · Razorpay'
-                        : '${customerPayMethodLabel(_preferredPayMethod)} · saved UPI on this phone',
-                    onTap: _showPaymentOptionsSheet,
-                  ),
-                  PremiumProfileTile(
                     icon: Icons.location_on_outlined,
-                    title: 'Addresses',
-                    subtitle: '${_addresses.length} saved drops',
+                    title: 'All saved drops',
+                    subtitle: '${_addresses.length} saved',
                     onTap: _showAddressesSheet,
                     showDivider: false,
                   ),
                 ],
               ),
               PremiumProfileSection(
-                title: 'Trust & help',
+                title: 'Help & Support',
                 children: [
+                  PremiumProfileTile(
+                    icon: Icons.info_outline_rounded,
+                    title: 'About HotPotChef',
+                    subtitle: 'Home kitchens, FSSAI, and how ordering works',
+                    onTap: () => openLegalDocument(context, LegalDocumentType.faq),
+                  ),
                   PremiumProfileTile(
                     icon: Icons.lock_outline_rounded,
                     title: 'Change password',
@@ -1366,7 +1414,11 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                   ),
                 ],
               ),
-              PremiumProfileLogoutButton(onPressed: _handleLogout),
+              PremiumProfileLogoutButton(
+                onPressed: _handleLogout,
+                label: 'Log Out',
+                danger: false,
+              ),
               const PremiumProfileVersionFooter(),
             ],
           ),
