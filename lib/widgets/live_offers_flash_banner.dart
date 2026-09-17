@@ -100,7 +100,7 @@ class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
     try {
       final rows = await Supabase.instance.client
           .from('chef_profiles')
-          .select('user_id, is_open, weekly_hours')
+          .select('user_id, is_open')
           .inFilter('user_id', missing.toList());
       for (final row in rows) {
         final id = row['user_id']?.toString();

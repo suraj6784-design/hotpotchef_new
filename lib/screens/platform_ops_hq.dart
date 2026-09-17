@@ -20,7 +20,7 @@ Future<OpsAdminHq> _fetchOpsAdminHq(String period) async {
 String _opsShortDate(String raw) {
   final parsed = DateTime.tryParse(raw);
   if (parsed == null) return raw.length >= 10 ? raw.substring(0, 10) : raw;
-  return DateFormat('d MMM').format(parsed.toLocal());
+  return formatAppDate(parsed);
 }
 
 String _opsPct(double value) => '${(value * 100).clamp(0, 100).toStringAsFixed(0)}%';

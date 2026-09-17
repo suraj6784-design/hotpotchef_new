@@ -151,9 +151,236 @@ String supportSupplyRequestMessage({
 String supportLinkedOrderCopy({String? orderNumber}) {
   final number = orderNumber?.trim() ?? '';
   if (number.isEmpty) {
-    return 'We typically reply within one business day.';
+    return 'Answer a few questions first so ops has the issue details. We typically reply within one business day.';
   }
-  return 'This conversation is linked to order $number. We typically reply within one business day.';
+  return 'This conversation is linked to order $number. Answer a few questions first so ops has the issue details. We typically reply within one business day.';
+}
+
+class SupportDrillChoice {
+  const SupportDrillChoice({
+    required this.id,
+    required this.label,
+    this.category,
+    this.needsNotes = false,
+    this.children = const [],
+  });
+
+  final String id;
+  final String label;
+  final String? category;
+  final bool needsNotes;
+  final List<SupportDrillChoice> children;
+
+  bool get isLeaf => children.isEmpty;
+}
+
+const _kSupportNotesMin = 8;
+
+List<SupportDrillChoice> supportDrillTree({required bool hasOrder}) {
+  final order = SupportDrillChoice(
+    id: 'order',
+    label: hasOrder ? 'This order' : 'An order',
+    category: 'order',
+    children: const [
+      SupportDrillChoice(
+        id: 'late',
+        label: 'Running late or not arriving',
+        category: 'order',
+        children: [
+          SupportDrillChoice(id: 'kitchen', label: 'Kitchen has not started', category: 'order'),
+          SupportDrillChoice(id: 'driver', label: 'Driver is delayed', category: 'delivery'),
+          SupportDrillChoice(id: 'tracking', label: 'Tracking is not updating', category: 'order'),
+        ],
+      ),
+      SupportDrillChoice(
+        id: 'wrong',
+        label: 'Missing or wrong food',
+        category: 'order',
+        children: [
+          SupportDrillChoice(id: 'missing', label: 'An item is missing', category: 'order'),
+          SupportDrillChoice(id: 'wrong_dish', label: 'Wrong dish delivered', category: 'order'),
+          SupportDrillChoice(id: 'short', label: 'Quantity is short', category: 'order'),
+        ],
+      ),
+      SupportDrillChoice(
+        id: 'quality',
+        label: 'Food quality or safety',
+        category: 'quality',
+        children: [
+          SupportDrillChoice(id: 'cold', label: 'Cold or not as described', category: 'quality'),
+          SupportDrillChoice(id: 'hygiene', label: 'Hygiene or allergen concern', category: 'quality', needsNotes: true),
+          SupportDrillChoice(id: 'pack', label: 'Packaging was damaged', category: 'quality'),
+        ],
+      ),
+      SupportDrillChoice(
+        id: 'money',
+        label: 'Cancel, refund, or charge',
+        category: 'order',
+        children: [
+          SupportDrillChoice(id: 'cancel', label: 'Want to cancel', category: 'order'),
+          SupportDrillChoice(id: 'refund', label: 'Refund is pending', category: 'payment'),
+          SupportDrillChoice(id: 'charged', label: 'Charged after cancel', category: 'payment'),
+        ],
+      ),
+      SupportDrillChoice(id: 'order_other', label: 'Something else about this order', category: 'order', needsNotes: true),
+    ],
+  );
+  return [
+    order,
+    const SupportDrillChoice(
+      id: 'payment',
+      label: 'Payment',
+      category: 'payment',
+      children: [
+        SupportDrillChoice(id: 'deducted', label: 'Failed but amount deducted', category: 'payment'),
+        SupportDrillChoice(id: 'twice', label: 'Charged twice', category: 'payment'),
+        SupportDrillChoice(id: 'method', label: 'Card or UPI issue', category: 'payment'),
+        SupportDrillChoice(id: 'pay_other', label: 'Something else about payment', category: 'payment', needsNotes: true),
+      ],
+    ),
+    const SupportDrillChoice(
+      id: 'rider',
+      label: 'Delivery partner',
+      category: 'delivery',
+      children: [
+        SupportDrillChoice(id: 'reach', label: 'Could not contact the partner', category: 'delivery'),
+        SupportDrillChoice(id: 'conduct', label: 'Behaviour or safety', category: 'delivery', needsNotes: true),
+        SupportDrillChoice(id: 'pin', label: 'Delivery PIN or door drop', category: 'delivery'),
+      ],
+    ),
+    const SupportDrillChoice(
+      id: 'account',
+      label: 'Account or app',
+      category: 'account',
+      children: [
+        SupportDrillChoice(id: 'otp', label: 'Login or OTP', category: 'account'),
+        SupportDrillChoice(id: 'address', label: 'Address or map pin', category: 'account'),
+        SupportDrillChoice(id: 'crash', label: 'App error or crash', category: 'account', needsNotes: true),
+      ],
+    ),
+    const SupportDrillChoice(
+      id: 'other',
+      label: 'Something else',
+      category: 'general',
+      needsNotes: true,
+    ),
+  ];
+}
+
+SupportDrillChoice? supportDrillAt(List<String> path, {required bool hasOrder}) {
+  var nodes = supportDrillTree(hasOrder: hasOrder);
+  SupportDrillChoice? current;
+  for (final id in path) {
+    SupportDrillChoice? next;
+    for (final node in nodes) {
+      if (node.id == id) {
+        next = node;
+        break;
+      }
+    }
+    if (next == null) return null;
+    current = next;
+    nodes = next.children;
+  }
+  return current;
+}
+
+List<SupportDrillChoice> supportDrillOptions(List<String> path, {required bool hasOrder}) {
+  if (path.isEmpty) return supportDrillTree(hasOrder: hasOrder);
+  return supportDrillAt(path, hasOrder: hasOrder)?.children ?? const [];
+}
+
+List<String> supportDrillPathLabels(List<String> path, {required bool hasOrder}) {
+  final labels = <String>[];
+  var nodes = supportDrillTree(hasOrder: hasOrder);
+  for (final id in path) {
+    SupportDrillChoice? next;
+    for (final node in nodes) {
+      if (node.id == id) {
+        next = node;
+        break;
+      }
+    }
+    if (next == null) break;
+    labels.add(next.label);
+    nodes = next.children;
+  }
+  return labels;
+}
+
+String supportDrillCategory(List<String> path, {required bool hasOrder}) {
+  var category = 'general';
+  var nodes = supportDrillTree(hasOrder: hasOrder);
+  for (final id in path) {
+    SupportDrillChoice? next;
+    for (final node in nodes) {
+      if (node.id == id) {
+        next = node;
+        break;
+      }
+    }
+    if (next == null) break;
+    if ((next.category ?? '').isNotEmpty) category = next.category!;
+    nodes = next.children;
+  }
+  return category;
+}
+
+bool supportDrillIsLeaf(List<String> path, {required bool hasOrder}) {
+  final node = supportDrillAt(path, hasOrder: hasOrder);
+  return node != null && node.isLeaf;
+}
+
+bool supportDrillNeedsNotes(List<String> path, {required bool hasOrder}) {
+  return supportDrillAt(path, hasOrder: hasOrder)?.needsNotes ?? false;
+}
+
+bool supportDrillCanSubmit(List<String> path, String notes, {required bool hasOrder}) {
+  if (!supportDrillIsLeaf(path, hasOrder: hasOrder)) return false;
+  return notes.trim().length >= _kSupportNotesMin;
+}
+
+String supportDrillTicketSubject({
+  required List<String> path,
+  String? orderNumber,
+  required bool hasOrder,
+}) {
+  final labels = supportDrillPathLabels(path, hasOrder: hasOrder);
+  final issue = labels.isEmpty ? 'support' : labels.last;
+  final number = orderNumber?.trim() ?? '';
+  if (number.isEmpty) return 'HotPotChef support — $issue';
+  return 'HotPotChef support — Order $number — $issue';
+}
+
+String supportDrillTicketBody({
+  required List<String> path,
+  required String notes,
+  String? orderNumber,
+  String? orderUuid,
+  required bool hasOrder,
+}) {
+  final labels = supportDrillPathLabels(path, hasOrder: hasOrder);
+  final buffer = StringBuffer('Support intake\n');
+  for (var i = 0; i < labels.length; i++) {
+    buffer.writeln('${i == 0 ? 'Topic' : 'Issue ${i}'}: ${labels[i]}');
+  }
+  final detail = notes.trim();
+  if (detail.isNotEmpty) {
+    buffer
+      ..writeln()
+      ..writeln('Details:')
+      ..writeln(detail);
+  }
+  final number = orderNumber?.trim() ?? '';
+  final uuid = orderUuid?.trim() ?? '';
+  if (number.isNotEmpty || uuid.isNotEmpty) {
+    buffer.writeln();
+    if (number.isNotEmpty) buffer.writeln('Order: $number');
+    if (uuid.isNotEmpty && uuid.toUpperCase() != number.toUpperCase()) {
+      buffer.writeln('Internal order id: $uuid');
+    }
+  }
+  return buffer.toString().trim();
 }
 
 /// Public ops replies wait on the diner unless the ticket is already in that state.
@@ -166,7 +393,7 @@ String formatTicketSlaDue(String? raw) {
   if (text.isEmpty) return '';
   final dt = DateTime.tryParse(text);
   if (dt == null) return text;
-  return '${formatFriendlyDate(dt)} · ${formatAppTime(dt)}';
+  return formatAppDateTime(dt);
 }
 
 bool dinerHasSupportReplyWaiting({
@@ -283,12 +510,16 @@ Future<void> showContactSupportSheet(
   final isDark = Theme.of(context).brightness == Brightness.dark;
   return showModalBottomSheet<void>(
     context: context,
+    isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (ctx) => Container(
-      decoration: AppTheme.bottomSheetDecoration(isDark: isDark),
-      child: ContactSupportSheet(
-        orderNumber: (number == null || number.isEmpty) ? null : number,
-        orderUuid: orderUuid,
+    builder: (ctx) => Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+      child: Container(
+        decoration: AppTheme.bottomSheetDecoration(isDark: isDark),
+        child: ContactSupportSheet(
+          orderNumber: (number == null || number.isEmpty) ? null : number,
+          orderUuid: orderUuid,
+        ),
       ),
     ),
   );
@@ -306,25 +537,45 @@ class ContactSupportSheet extends StatefulWidget {
 
 class _ContactSupportSheetState extends State<ContactSupportSheet> {
   bool _submitting = false;
+  final List<String> _path = [];
+  final TextEditingController _notes = TextEditingController();
 
-  String get _message => supportContactMessage(
-        orderNumber: widget.orderNumber,
-        orderUuid: widget.orderUuid,
-      );
+  bool get _hasOrder => parseOrderUuid(widget.orderUuid) != null || (widget.orderNumber ?? '').trim().isNotEmpty;
 
-  String get _subject => supportContactSubject(orderNumber: widget.orderNumber);
+  bool get _leaf => supportDrillIsLeaf(_path, hasOrder: _hasOrder);
+
+  bool get _ready => supportDrillCanSubmit(_path, _notes.text, hasOrder: _hasOrder);
+
+  String get _subject => _leaf
+      ? supportDrillTicketSubject(path: _path, orderNumber: widget.orderNumber, hasOrder: _hasOrder)
+      : supportContactSubject(orderNumber: widget.orderNumber);
+
+  String get _message => _ready
+      ? supportDrillTicketBody(
+          path: _path,
+          notes: _notes.text,
+          orderNumber: widget.orderNumber,
+          orderUuid: widget.orderUuid,
+          hasOrder: _hasOrder,
+        )
+      : supportContactMessage(orderNumber: widget.orderNumber, orderUuid: widget.orderUuid);
+
+  @override
+  void dispose() {
+    _notes.dispose();
+    super.dispose();
+  }
 
   Future<void> _openTicket() async {
-    if (_submitting) return;
+    if (_submitting || !_ready) return;
     setState(() => _submitting = true);
     try {
-      final hasOrder = parseOrderUuid(widget.orderUuid) != null;
       final row = await createSupportTicket(
         subject: _subject,
         body: _message,
         orderId: widget.orderUuid,
         orderNumber: widget.orderNumber,
-        category: hasOrder ? 'order' : 'general',
+        category: supportDrillCategory(_path, hasOrder: _hasOrder),
         channel: 'in_app',
       );
       if (!mounted) return;
@@ -366,107 +617,189 @@ class _ContactSupportSheetState extends State<ContactSupportSheet> {
   Widget build(BuildContext context) {
     final linkedOrder = widget.orderNumber?.trim() ?? '';
     final onSurface = AppTheme.onSurfaceOf(context);
+    final options = supportDrillOptions(_path, hasOrder: _hasOrder);
+    final labels = supportDrillPathLabels(_path, hasOrder: _hasOrder);
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: onSurface.withValues(alpha: 0.12),
-                  borderRadius: AppTheme.radiusXl,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: onSurface.withValues(alpha: 0.12),
+                    borderRadius: AppTheme.radiusXl,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Contact support',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: onSurface),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              supportLinkedOrderCopy(orderNumber: widget.orderNumber),
-              style: const TextStyle(color: AppTheme.textMuted, fontSize: 13, height: 1.4),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Ops replies within 1 business day (SLA)',
-              style: AppTheme.caption,
-            ),
-            if (linkedOrder.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primary.withValues(alpha: 0.08),
-                    borderRadius: AppTheme.radiusSm,
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  if (_path.isNotEmpty)
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      onPressed: _submitting
+                          ? null
+                          : () => setState(() {
+                                _path.removeLast();
+                              }),
+                      icon: const Icon(Icons.arrow_back),
+                    ),
+                  Expanded(
+                    child: Text(
+                      'Contact support',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: onSurface),
+                    ),
                   ),
-                  child: Text(
-                    'Order $linkedOrder',
-                    style: const TextStyle(
-                      color: AppTheme.link,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 12,
-                      letterSpacing: 0.4,
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                supportLinkedOrderCopy(orderNumber: widget.orderNumber),
+                style: const TextStyle(color: AppTheme.textMuted, fontSize: 13, height: 1.4),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Ops replies within 1 business day (SLA)',
+                style: AppTheme.caption,
+              ),
+              if (linkedOrder.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withValues(alpha: 0.08),
+                      borderRadius: AppTheme.radiusSm,
+                    ),
+                    child: Text(
+                      'Order $linkedOrder',
+                      style: const TextStyle(
+                        color: AppTheme.link,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                        letterSpacing: 0.4,
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
-            const SizedBox(height: 20),
-            FilledButton.icon(
-              style: FilledButton.styleFrom(
-                backgroundColor: AppTheme.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
-              onPressed: _submitting ? null : _openTicket,
-              icon: _submitting
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Icon(Icons.confirmation_number_outlined),
-              label: Text(
-                _submitting ? 'Opening ticket…' : 'Open support ticket',
-                style: const TextStyle(fontWeight: FontWeight.w800),
-              ),
-            ),
-            const SizedBox(height: 8),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: CircleAvatar(
-                backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
-                child: const Icon(Icons.email_outlined, color: AppTheme.primary),
-              ),
-              title: Text('Email us', style: TextStyle(fontWeight: FontWeight.w700, color: onSurface)),
-              subtitle: Text(SupportConfig.email),
-              onTap: _submitting
-                  ? null
-                  : () async {
-                      await launchSupportEmail(subject: _subject, body: _message);
-                    },
-            ),
-            if (SupportConfig.hasWhatsApp)
+              ],
+              if (labels.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (var i = 0; i < labels.length; i++)
+                      Chip(
+                        visualDensity: VisualDensity.compact,
+                        label: Text(labels[i], style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+                      ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 12),
+              if (!_leaf) ...[
+                Text(
+                  _path.isEmpty ? 'What do you need help with?' : 'Tell us a bit more',
+                  style: TextStyle(fontWeight: FontWeight.w800, color: onSurface),
+                ),
+                const SizedBox(height: 8),
+                for (final option in options)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(option.label, style: TextStyle(fontWeight: FontWeight.w700, color: onSurface)),
+                    trailing: Icon(
+                      option.isLeaf ? Icons.check_circle_outline : Icons.chevron_right,
+                      color: AppTheme.primary,
+                    ),
+                    onTap: _submitting
+                        ? null
+                        : () => setState(() {
+                              _path.add(option.id);
+                            }),
+                  ),
+              ] else ...[
+                Text(
+                  supportDrillNeedsNotes(_path, hasOrder: _hasOrder)
+                      ? 'Please describe what happened'
+                      : 'Add a short note for ops',
+                  style: TextStyle(fontWeight: FontWeight.w800, color: onSurface),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _notes,
+                  enabled: !_submitting,
+                  minLines: 3,
+                  maxLines: 5,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    hintText: 'What went wrong, when, and what you need from us.',
+                    border: OutlineInputBorder(borderRadius: AppTheme.radiusMd),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _notes.text.trim().length >= _kSupportNotesMin
+                      ? 'Ready to open the ticket.'
+                      : 'At least $_kSupportNotesMin characters so ops can act.',
+                  style: AppTheme.caption,
+                ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  onPressed: (_submitting || !_ready) ? null : _openTicket,
+                  icon: _submitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.confirmation_number_outlined),
+                  label: Text(
+                    _submitting ? 'Opening ticket…' : 'Open support ticket',
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: CircleAvatar(
-                  backgroundColor: AppTheme.success.withValues(alpha: 0.1),
-                  child: const Icon(Icons.chat_outlined, color: AppTheme.success),
+                  backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
+                  child: const Icon(Icons.email_outlined, color: AppTheme.primary),
                 ),
-                title: Text('WhatsApp', style: TextStyle(fontWeight: FontWeight.w700, color: onSurface)),
-                subtitle: const Text('Message the support line'),
-                onTap: _submitting ? null : () => launchSupportWhatsApp(message: _message),
+                title: Text('Email us', style: TextStyle(fontWeight: FontWeight.w700, color: onSurface)),
+                subtitle: Text(SupportConfig.email),
+                onTap: (_submitting || !_ready)
+                    ? null
+                    : () async {
+                        await launchSupportEmail(subject: _subject, body: _message);
+                      },
               ),
-          ],
+              if (SupportConfig.hasWhatsApp)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    backgroundColor: AppTheme.success.withValues(alpha: 0.1),
+                    child: const Icon(Icons.chat_outlined, color: AppTheme.success),
+                  ),
+                  title: Text('WhatsApp', style: TextStyle(fontWeight: FontWeight.w700, color: onSurface)),
+                  subtitle: const Text('Message the support line'),
+                  onTap: (_submitting || !_ready) ? null : () => launchSupportWhatsApp(message: _message),
+                ),
+            ],
+          ),
         ),
       ),
     );

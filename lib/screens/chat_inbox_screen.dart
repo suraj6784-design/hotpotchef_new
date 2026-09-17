@@ -1,7 +1,6 @@
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/chat_read_store.dart';
@@ -157,10 +156,7 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
     if (at == null) return '';
     final local = at.toLocal();
     final now = DateTime.now();
-    if (local.year == now.year && local.month == now.month && local.day == now.day) {
-      return DateFormat.jm().format(local);
-    }
-    return DateFormat('d MMM').format(local);
+    return formatAppWhen(local, now: now);
   }
 
   @override

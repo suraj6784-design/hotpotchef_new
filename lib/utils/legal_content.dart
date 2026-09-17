@@ -60,7 +60,7 @@ LegalDocument legalDocumentFor(LegalDocumentType type) {
           ),
           LegalSection(
             'Data and deletion',
-            'Location and payment-related data are used only to fulfil delivery, prevent fraud, and process checkout via Razorpay. You can request account deletion or a data export from Account; we process these subject to legal retention (for example tax and dispute records).',
+            'Location and payment-related data are used only to fulfil delivery, prevent fraud, and process checkout via Razorpay. You can deactivate or activate your account from Profile. We process personal data subject to legal retention (for example tax and dispute records).',
           ),
         ],
       );
@@ -87,7 +87,7 @@ LegalDocument legalDocumentFor(LegalDocumentType type) {
           ),
           LegalSection(
             'Retention and rights (DPDP)',
-            'Order records are kept as required for tax and dispute handling. You can update profile fields in the app, open an in-app ticket, or use Account → Request data export / Request account deletion to ask for access, correction, or erasure, subject to legal retention needs.',
+            'Order records are kept as required for tax and dispute handling. You can update profile fields in the app, open an in-app ticket, or deactivate / activate your account from Profile. Access, correction, or erasure requests are handled through Contact Us, subject to legal retention needs.',
           ),
           LegalSection(
             'Grievance',

@@ -30,14 +30,12 @@ import '../widgets/festival_hampers_banner.dart';
 import '../widgets/rescued_meals_banner.dart';
 import '../widgets/shelf_items_banner.dart';
 import '../widgets/society_nights_banner.dart';
-import '../widgets/ai_recommendations_section.dart';
 import '../services/delivery_estimator_service.dart';
 import '../utils/delivery_fee.dart';
 import '../utils/service_area.dart';
 import '../utils/diner_locale.dart';
 import '../utils/fssai_certificate_scan.dart';
 import '../screens/checkout_screen.dart';
-import '../widgets/last_order_banner.dart';
 import '../widgets/diner_storefront.dart';
 import 'address_form_screen.dart';
 
@@ -115,27 +113,6 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     {'name': 'High-protein', 'icon': Icons.fitness_center_outlined},
     {'name': 'Millet', 'icon': Icons.grain},
     {'name': 'Diabetic', 'icon': Icons.monitor_heart_outlined},
-  ];
-
-  final List<Map<String, dynamic>> _categories = const [
-    {'name': 'All', 'icon': Icons.restaurant_menu_outlined},
-    {'name': 'Festival Hamper', 'icon': Icons.card_giftcard_outlined},
-    {'name': 'Society Night', 'icon': Icons.apartment_outlined},
-    {'name': 'Shelf', 'icon': Icons.kitchen_outlined},
-    {'name': 'Maharashtrian', 'icon': Icons.set_meal_outlined},
-    {'name': 'Punjabi', 'icon': Icons.soup_kitchen_outlined},
-    {'name': 'South Indian', 'icon': Icons.rice_bowl_outlined},
-    {'name': 'North Indian', 'icon': Icons.dinner_dining_outlined},
-    {'name': 'Healthy', 'icon': Icons.eco_outlined},
-    {'name': 'Snacks', 'icon': Icons.bakery_dining_outlined},
-    {'name': 'Desserts', 'icon': Icons.icecream_outlined},
-  ];
-
-  final List<Map<String, dynamic>> _sortFilters = const [
-    {'name': kFeedSortNearby, 'icon': Icons.near_me_outlined},
-    {'name': kFeedSortEta, 'icon': Icons.schedule_outlined},
-    {'name': kFeedSortPrice, 'icon': Icons.currency_rupee},
-    {'name': kFeedSortRating, 'icon': Icons.star_outline},
   ];
 
   @override
@@ -833,7 +810,9 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     try {
       final rows = await Supabase.instance.client
           .from('chef_profiles')
-            .select('user_id, is_open, is_live, weekly_hours, default_prep_minutes')
+          .select(
+            'user_id, is_open, is_live, default_prep_minutes, kitchen_photos, local_kitchen_name, instagram_url, youtube_url, facebook_url',
+          )
           .inFilter('user_id', missing.toList());
       var closedChanged = false;
       for (final row in rows) {
@@ -850,7 +829,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       _chefOpenResolved.addAll(missing);
       if (closedChanged && mounted) setState(() {});
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to hydrate kitchen hours');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to hydrate kitchen profiles');
       _chefOpenResolved.addAll(missing);
     } finally {
       _hydratingKitchenHours = false;
@@ -1090,6 +1069,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     super.build(context);
     final isLoggedIn = Supabase.instance.client.auth.currentUser != null;
     final followedKitchens = ref.watch(kitchenFollowsProvider);
+    final cartCount = ref.watch(cartProvider).itemCount;
     final showFavorites = feedFavoritesFilterActive(
       signedIn: isLoggedIn,
       favoritesOnly: _showFavoritesOnly,
@@ -1344,7 +1324,8 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                 child: const Text('Sign In', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                               ),
                               ),
-                            ]
+                            ],
+                            _homeCartButton(cartCount),
                           ],
                         ),
                       ],
@@ -1436,43 +1417,11 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             ),
 
           if (!_hasActiveSearch) ...[
-            if (isLoggedIn) ...[
-              LastOrderReorderBanner(onAddedToCart: widget.onGoToCart, compact: true),
-              const AiRecommendationsSection(),
-            ],
             const SizedBox(height: 4),
             _filterChipRow(
               chips: _dietFilters,
               selected: _selectedDiet,
               onSelected: (name) => setState(() => _selectedDiet = name),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: _filterChipRow(
-                    chips: _sortFilters,
-                    selected: _selectedSort,
-                    onSelected: (name) => setState(() => _selectedSort = name),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(right: 12),
-                  child: PopupMenuButton<String>(
-                    tooltip: 'Cuisine',
-                    initialValue: _selectedCategory,
-                    onSelected: (name) => setState(() => _selectedCategory = name),
-                    itemBuilder: (context) => [
-                      for (final cat in _categories)
-                        PopupMenuItem(value: cat['name'] as String, child: Text(cat['name'] as String)),
-                    ],
-                    child: Chip(
-                      label: Text(_selectedCategory == 'All' ? 'Cuisine' : _selectedCategory.toString()),
-                      visualDensity: VisualDensity.compact,
-                    ),
-                  ),
-                ),
-              ],
             ),
             const SizedBox(height: 8),
           ],
@@ -1621,7 +1570,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     if (!_hasActiveSearch && !showFavorites && !showFollowing) ...[
-                      DinerSectionHeader(title: 'Trending Chefs'),
+                      DinerSectionHeader(
+                        title: DinerLocaleController.instance.copy.socialChefs,
+                        subtitle: DinerLocaleController.instance.copy.socialChefsSub,
+                      ),
                       _buildTrendingChefsStrip(meals),
                       DinerSectionHeader(title: 'Popular Dishes'),
                     ],
@@ -1876,6 +1828,26 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     );
   }
 
+  Widget _homeCartButton(int cartCount) {
+    return IconButton(
+      tooltip: 'Cart',
+      visualDensity: VisualDensity.compact,
+      onPressed: widget.onGoToCart,
+      style: IconButton.styleFrom(
+        foregroundColor: AppTheme.primary,
+        backgroundColor: AppTheme.surfaceOf(context),
+        minimumSize: const Size(36, 36),
+        maximumSize: const Size(36, 36),
+        padding: EdgeInsets.zero,
+      ),
+      icon: Badge(
+        isLabelVisible: cartCount > 0,
+        label: Text('$cartCount', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800)),
+        child: const Icon(Icons.shopping_bag_outlined, size: 18),
+      ),
+    );
+  }
+
   List<Widget> _homeTopHighlights({required bool isLoggedIn}) {
     return [
       const MembershipFlashBanner(),
@@ -1997,6 +1969,9 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         'fssai_number': profile['fssai_number'] ?? meal['fssai_number'],
         'image_url': meal['image_url'],
         'kitchen_photos': profile['kitchen_photos'],
+        'instagram_url': profile['instagram_url'],
+        'youtube_url': profile['youtube_url'],
+        'facebook_url': profile['facebook_url'],
       });
       if (chefs.length >= 8) break;
     }
@@ -2004,10 +1979,16 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   }
 
   Widget _buildTrendingChefsStrip(List<Map<String, dynamic>> meals) {
-    final chefs = _uniqueChefsFromMeals(meals);
+    final chefs = _uniqueChefsFromMeals(meals)
+      ..sort((a, b) {
+        final aSocial = ChefSocialLinks.fromMap(a).hasAny;
+        final bSocial = ChefSocialLinks.fromMap(b).hasAny;
+        if (aSocial == bSocial) return 0;
+        return aSocial ? -1 : 1;
+      });
     if (chefs.isEmpty) return const SizedBox.shrink();
     return SizedBox(
-      height: 168,
+      height: 188,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
@@ -2018,6 +1999,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           final id = chef['id']?.toString() ?? '';
           final name = chefDisplayName(chef);
           final rating = _chefRatings[id];
+          final social = ChefSocialLinks.fromMap(chef);
           final photos = kitchenPhotosFrom(chef['kitchen_photos']);
           final photo = photos.isNotEmpty ? photos.first : chef['image_url']?.toString();
           return GestureDetector(
@@ -2049,9 +2031,13 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    rating == null || !rating.hasReviews
-                        ? 'New kitchen'
-                        : '${rating.average.toStringAsFixed(1)} (${rating.count})',
+                    social.hasAny
+                        ? social.platformsLabel
+                        : (rating == null || !rating.hasReviews
+                            ? 'New kitchen'
+                            : '${rating.average.toStringAsFixed(1)} (${rating.count})'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: AppTheme.caption,
                   ),
                 ],

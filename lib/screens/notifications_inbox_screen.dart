@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/alert_service.dart';
@@ -87,7 +86,7 @@ class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
     if (diff.inMinutes < 60) return '${diff.inMinutes} mins ago';
     if (diff.inHours < 24) return '${diff.inHours} hours ago';
     if (diff.inDays < 7) return '${diff.inDays} days ago';
-    return DateFormat('d MMM, h:mm a').format(local);
+    return formatAppDateTime(local);
   }
 
   Future<void> _load() async {

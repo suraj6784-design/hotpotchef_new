@@ -38,6 +38,8 @@ class _LoyaltyBadgeCardState extends State<LoyaltyBadgeCard> {
   int _completedOrders = 0;
   int _streak = 0;
   String _referralCode = '';
+  int _referralsShared = 0;
+  double _referralCoins = 0;
 
   @override
   void initState() {
@@ -96,6 +98,33 @@ class _LoyaltyBadgeCardState extends State<LoyaltyBadgeCard> {
         }
       }
 
+      var shared = 0;
+      var rewarded = 0;
+      if (code.isNotEmpty) {
+        try {
+          shared = await _supabase.from('users').count(CountOption.exact).ilike('referred_by', code);
+        } catch (_) {
+          try {
+            shared = await _supabase.from('users').count(CountOption.exact).eq('referred_by', code);
+          } catch (_) {}
+        }
+        try {
+          rewarded = await _supabase
+              .from('users')
+              .count(CountOption.exact)
+              .ilike('referred_by', code)
+              .not('referral_rewarded_at', 'is', null);
+        } catch (_) {
+          try {
+            rewarded = await _supabase
+                .from('users')
+                .count(CountOption.exact)
+                .eq('referred_by', code)
+                .not('referral_rewarded_at', 'is', null);
+          } catch (_) {}
+        }
+      }
+
       if (!mounted) return;
       final ends = DateTime.tryParse(membership?['ends_at']?.toString() ?? '');
       final family = ends != null && ends.isAfter(DateTime.now());
@@ -107,6 +136,8 @@ class _LoyaltyBadgeCardState extends State<LoyaltyBadgeCard> {
         _completedOrders = delivered;
         _streak = (res?['current_streak'] as num?)?.toInt() ?? 0;
         _referralCode = code;
+        _referralsShared = shared;
+        _referralCoins = referralCoinsFromRewardedFriends(rewarded);
         _isLoading = false;
       });
     } catch (e, stack) {
@@ -146,44 +177,6 @@ class _LoyaltyBadgeCardState extends State<LoyaltyBadgeCard> {
       ),
     );
     if (mounted) unawaited(_fetchRewards());
-  }
-
-  Future<void> _cancelMembership() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Cancel Family member?'),
-        content: const Text(
-          'Free delivery ends today. Remaining days are not refunded. You can buy the plan again anytime.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Keep plan')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Cancel plan')),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    try {
-      final raw = await _supabase.rpc('diner_cancel_membership');
-      if (!mounted) return;
-      final data = raw is Map ? Map<String, dynamic>.from(raw) : null;
-      if (data?['success'] != true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(data?['error']?.toString() ?? 'Could not cancel')),
-        );
-        return;
-      }
-      await _fetchRewards();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Family member ended. Delivery fees apply on the next order.')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(networkErrorMessage(e))),
-      );
-    }
   }
 
   @override
@@ -242,7 +235,10 @@ class _LoyaltyBadgeCardState extends State<LoyaltyBadgeCard> {
                 child: _RewardCell(
                   icon: Icons.card_giftcard_outlined,
                   label: 'Referral',
-                  value: _referralCode.isEmpty ? '—' : _referralCode,
+                  value: referralCardStatsLabel(
+                    sharedCount: _referralsShared,
+                    coinsCredited: _referralCoins,
+                  ),
                   onTap: _referralCode.isEmpty ? null : _copyReferral,
                   onLongPress: _referralCode.isEmpty ? null : _shareReferral,
                 ),
@@ -261,15 +257,7 @@ class _LoyaltyBadgeCardState extends State<LoyaltyBadgeCard> {
             ),
           ],
           const SizedBox(height: 4),
-          if (_isFamilyMember)
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: _cancelMembership,
-                child: const Text('Cancel Family member'),
-              ),
-            )
-          else
+          if (!_isFamilyMember)
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(
@@ -310,7 +298,7 @@ class _RewardCell extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             value,
-            maxLines: 1,
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
             style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),

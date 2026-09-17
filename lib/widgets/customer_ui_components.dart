@@ -19,7 +19,7 @@ import '../widgets/kitchen_live_badge.dart';
 import '../utils/fssai_certificate_scan.dart';
 import '../utils/helpers.dart';
 import 'app_widgets.dart';
-import 'kitchen_hours_panel.dart';
+import 'diner_storefront.dart';
 import '../utils/meal_nutrition.dart';
 import '../utils/app_page.dart';
 import '../utils/app_theme.dart';
@@ -476,10 +476,9 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
   String _liveUrl = '';
   String _liveLabel = '';
   List<String> _photos = const [];
-  dynamic _weeklyHours;
-  int _prepMinutes = kDefaultPrepMinutes;
   ChefRatingSummary _rating = const ChefRatingSummary();
   List<Map<String, dynamic>> _recentReviews = const [];
+  ChefSocialLinks _social = const ChefSocialLinks();
   ChefCardCopy get _copy => chefCardCopy(_cardLocale);
 
   @override
@@ -538,7 +537,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
       try {
         final row = await client
             .from('chef_profiles')
-            .select('kitchen_story, hygiene_note, kitchen_photos, live_photo_url, live_photo_at, card_locale, local_kitchen_name, weekly_hours, default_prep_minutes')
+            .select('kitchen_story, hygiene_note, kitchen_photos, live_photo_url, live_photo_at, card_locale, local_kitchen_name, default_prep_minutes, instagram_url, youtube_url, facebook_url')
             .eq('user_id', chefId)
             .maybeSingle();
         if (row != null) kitchen = Map<String, dynamic>.from(row);
@@ -547,7 +546,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
         try {
           final row = await client
               .from('chef_profiles')
-              .select('kitchen_story, hygiene_note, kitchen_photos, live_photo_url, live_photo_at, card_locale, local_kitchen_name, weekly_hours, default_prep_minutes')
+              .select('kitchen_story, hygiene_note, kitchen_photos, live_photo_url, live_photo_at, card_locale, local_kitchen_name, default_prep_minutes, instagram_url, youtube_url, facebook_url')
               .eq('user_id', chefId)
               .maybeSingle();
           if (row != null) kitchen = Map<String, dynamic>.from(row);
@@ -596,9 +595,8 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
         _memberSince = joined == null ? '' : formatAppDate(joined);
         _story = kitchen?['kitchen_story']?.toString().trim() ?? '';
         _hygiene = kitchen?['hygiene_note']?.toString().trim() ?? '';
+        _social = ChefSocialLinks.fromMap(kitchen);
         _photos = kitchenPhotosFrom(kitchen?['kitchen_photos']);
-        _weeklyHours = kitchen?['weekly_hours'];
-        _prepMinutes = kitchenPrepMinutes(kitchen == null ? null : Map<String, dynamic>.from(kitchen));
         _liveUrl = isKitchenLivePhotoFresh(liveAt) ? liveUrl : '';
         _liveLabel = kitchenLivePhotoLabel(liveAt);
         _cookedLabel = copy.cookedMeals(cooked);
@@ -721,8 +719,6 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
               },
             ),
             const SizedBox(height: 12),
-            KitchenHoursPanel(weeklyHours: _weeklyHours, prepMinutes: _prepMinutes),
-            const SizedBox(height: 14),
             if (_loading)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 8),
@@ -810,6 +806,12 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
             if (_story.isNotEmpty) ...[
               const SizedBox(height: 12),
               Text(_story, style: TextStyle(fontSize: 13, height: 1.4, color: ink)),
+            ],
+            if (_social.hasAny) ...[
+              const SizedBox(height: 10),
+              Text('Also on', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: muted)),
+              const SizedBox(height: 6),
+              ChefSocialChips(links: _social, compact: true),
             ],
             const SizedBox(height: 12),
             _infoRow(
@@ -975,14 +977,14 @@ Future<bool> addMealToCartWithConflict({
     if (chefId.isNotEmpty) {
       final kitchen = await Supabase.instance.client
           .from('chef_profiles')
-          .select('is_open, weekly_hours')
+          .select('is_open')
           .eq('user_id', chefId)
           .maybeSingle();
       if (!isChefKitchenAcceptingOrders(kitchen)) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('This kitchen is closed right now. Check weekly hours and try later.'),
+              content: Text('This kitchen is offline. The chef will take new orders when they go live.'),
               backgroundColor: Colors.orangeAccent,
             ),
           );

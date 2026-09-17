@@ -13,5 +13,7 @@ void main() {
     expect(dinerCopy('mr').help, 'मदत');
     expect(dinerCopy('en').adjustBill, 'Adjust bill');
     expect(dinerCopy('en').forYou, 'For you');
+    expect(dinerCopy('en').socialChefs, contains('HotPotChef'));
+    expect(dinerCopy('hi').socialChefs, contains('HotPotChef'));
   });
 }

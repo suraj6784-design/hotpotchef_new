@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../utils/helpers.dart';
@@ -390,7 +389,7 @@ class _SupportTicketDetailScreenState extends State<_SupportTicketDetailScreen> 
                               if (raw != null) {
                                 final dt = DateTime.tryParse(raw);
                                 if (dt != null) {
-                                  timeStr = DateFormat('dd MMM, hh:mm a').format(dt.toLocal());
+                                  timeStr = formatAppDateTime(dt);
                                 }
                               }
                               return Align(

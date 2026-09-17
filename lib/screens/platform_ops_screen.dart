@@ -7,7 +7,6 @@ import 'package:flutter/services.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
-import 'package:intl/intl.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -2220,7 +2219,7 @@ class _OpsTicketThreadScreenState extends State<_OpsTicketThreadScreen> {
                               if (raw != null) {
                                 final dt = DateTime.tryParse(raw);
                                 if (dt != null) {
-                                  timeStr = '${formatFriendlyDate(dt)} · ${formatAppTime(dt)}';
+                                  timeStr = formatAppDateTime(dt);
                                 }
                               }
                               return Align(

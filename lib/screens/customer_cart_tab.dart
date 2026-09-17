@@ -274,9 +274,16 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                 
             // Safely fetch the exact time updated from the provider
             final exactTime = item.rawMealDetails['exact_time']?.toString();
-            final displayTimeSlot = (exactTime != null && exactTime.isNotEmpty) ? exactTime : rawSchedule;
+            final bookedSlot = [
+              item.timeSlot,
+              exactTime,
+            ].whereType<String>().map((s) => s.trim()).firstWhere(
+                  (s) => s.isNotEmpty && !isImmediateDeliverySlot(s) && !looksLikeChefServingWindow(s),
+                  orElse: () => '',
+                );
+            final displayTimeSlot = dinerSelectedClockLabel(bookedSlot);
             final slotIssue = cartLineSlotValidationError(
-              selectedSlot: item.timeSlot ?? displayTimeSlot,
+              selectedSlot: bookedSlot.isEmpty ? (item.timeSlot ?? exactTime ?? '') : bookedSlot,
               scheduledDate: item.scheduledDate,
               chefSchedule: rawSchedule,
             );
@@ -422,19 +429,28 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                       Expanded(
                         child: GestureDetector(
                           onTap: () async {
+                            final first = chefSlotPickerFirstDate(rawSchedule);
+                            final last = chefSlotPickerLastDate(rawSchedule);
+                            final initial = chefSlotPickerInitialDate(rawSchedule, item.scheduledDate);
                             final picked = await showDatePicker(
                               context: context,
-                              initialDate: item.scheduledDate,
-                              firstDate: DateTime.now(),
-                              lastDate: DateTime.now().add(const Duration(days: 30)),
+                              initialDate: initial.isBefore(first)
+                                  ? first
+                                  : (initial.isAfter(last) ? last : initial),
+                              firstDate: first,
+                              lastDate: last.isBefore(first) ? first : last,
+                              selectableDayPredicate: (day) => chefSlotAllowsDate(rawSchedule, day),
                             );
                             if (picked != null) {
                               ref.read(cartProvider.notifier).updateItemDate(cartItemId, picked);
                               final stillValid = !isCartSlotPassed(
-                                    item.timeSlot ?? displayTimeSlot,
+                                    bookedSlot.isEmpty ? (item.timeSlot ?? '') : bookedSlot,
                                     picked,
                                   ) &&
-                                  isCartSlotWithinChefWindow(displayTimeSlot, rawSchedule);
+                                  isCartSlotWithinChefWindow(
+                                    bookedSlot.isEmpty ? (item.timeSlot ?? '') : bookedSlot,
+                                    rawSchedule,
+                                  );
                               if (!stillValid) {
                                 final next = futureChefSubSlots(rawSchedule, scheduledDate: picked);
                                 if (next.isNotEmpty) {
@@ -497,7 +513,10 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                                           itemCount: subSlots.length,
                                           itemBuilder: (c, i) => ListTile(
                                             leading: const Icon(Icons.access_time, color: AppTheme.primary, size: 18),
-                                            title: Text(subSlots[i], style: const TextStyle(fontSize: 13)),
+                                            title: Text(
+                                              dinerSelectedClockLabel(subSlots[i]),
+                                              style: const TextStyle(fontSize: 13),
+                                            ),
                                             onTap: () => Navigator.pop(ctx, subSlots[i]),
                                           ),
                                         ),

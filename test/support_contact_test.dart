@@ -90,7 +90,32 @@ void main() {
     );
     expect(
       supportLinkedOrderCopy(),
-      isNot(contains('Include your order id')),
+      contains('Answer a few questions'),
+    );
+  });
+
+  test('support drill-down must reach a leaf and a note before submit', () {
+    const path = ['order', 'late', 'driver'];
+    expect(supportDrillIsLeaf(path, hasOrder: true), isTrue);
+    expect(supportDrillCanSubmit(path, 'late', hasOrder: true), isFalse);
+    expect(supportDrillCanSubmit(path, 'Driver waiting 25 min at the gate', hasOrder: true), isTrue);
+    expect(supportDrillCategory(path, hasOrder: true), 'delivery');
+    expect(supportDrillCanSubmit(['order', 'late'], 'Driver waiting 25 min at the gate', hasOrder: true), isFalse);
+    final body = supportDrillTicketBody(
+      path: path,
+      notes: 'Driver waiting 25 min at the gate',
+      orderNumber: 'OCB30688',
+      orderUuid: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      hasOrder: true,
+    );
+    expect(body, contains('Topic: This order'));
+    expect(body, contains('Issue 1: Running late or not arriving'));
+    expect(body, contains('Issue 2: Driver is delayed'));
+    expect(body, contains('Driver waiting 25 min at the gate'));
+    expect(body, contains('Order: OCB30688'));
+    expect(
+      supportDrillTicketSubject(path: path, orderNumber: 'OCB30688', hasOrder: true),
+      'HotPotChef support — Order OCB30688 — Driver is delayed',
     );
   });
 }
