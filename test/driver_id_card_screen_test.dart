@@ -19,6 +19,7 @@ void main() {
     final title = tester.widget<Text>(find.text('Digital ID Card'));
     expect(title.style?.color, AppTheme.textMain);
     expect(find.text('TEST DRIVER'), findsOneWidget);
+    expect(find.text('PH: 9876543210'), findsOneWidget);
   });
 
   testWidgets('ID card chrome uses dark background in dark theme', (tester) async {

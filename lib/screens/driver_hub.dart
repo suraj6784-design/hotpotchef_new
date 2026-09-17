@@ -41,6 +41,9 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
   bool _isOnline = true;
   String? _busyOrderId;
   String _welcomeName = 'Partner';
+  String _driverFullName = '';
+  String _driverPhone = '';
+  String? _driverAvatarUrl;
 
   @override
   void initState() {
@@ -60,17 +63,35 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
           .maybeSingle();
       final userRow = await Supabase.instance.client
           .from('users')
-          .select('name, full_name')
+          .select('name, full_name, phone, avatar_url')
           .eq('id', user.id)
           .maybeSingle();
       if (mounted) {
         setState(() {
           if (row != null) _isOnline = row['is_available'] != false;
           final raw = userRow?['name']?.toString() ?? userRow?['full_name']?.toString() ?? '';
-          if (raw.trim().isNotEmpty) _welcomeName = raw.trim().split(' ').first;
+          if (raw.trim().isNotEmpty) {
+            _driverFullName = raw.trim();
+            _welcomeName = raw.trim().split(' ').first;
+          }
+          final phone = userRow?['phone']?.toString() ??
+              user.userMetadata?['phone']?.toString() ??
+              user.phone ??
+              '';
+          if (phone.trim().isNotEmpty) _driverPhone = phone.trim();
+          final avatar = userRow?['avatar_url']?.toString();
+          if (avatar != null && avatar.trim().isNotEmpty) _driverAvatarUrl = avatar.trim();
         });
       }
     } catch (_) {}
+  }
+
+  void _openDigitalId() {
+    context.push('/driver-id-card', extra: {
+      'name': _driverFullName.isEmpty ? 'Delivery Partner' : _driverFullName,
+      'phone': _driverPhone,
+      if (_driverAvatarUrl != null) 'avatarUrl': _driverAvatarUrl,
+    });
   }
 
   Future<void> _toggleOnline() async {
@@ -413,7 +434,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 case 'chats':
                   context.push('/chats');
                 case 'id':
-                  context.push('/driver-id-card');
+                  _openDigitalId();
                 case 'logout':
                   AuthSession.confirmSignOut(context);
               }
@@ -571,7 +592,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 child: _driverToolCard(
                   icon: Icons.badge_outlined,
                   label: 'Digital ID',
-                  onTap: () => context.push('/driver-id-card'),
+                  onTap: _openDigitalId,
                 ),
               ),
             ],

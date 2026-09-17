@@ -1,5 +1,6 @@
 // lib/screens/driver_id_card_screen.dart
 
+import 'dart:async';
 import 'dart:ui' as ui;
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -7,8 +8,10 @@ import 'package:flutter/rendering.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../utils/app_theme.dart';
+import '../utils/network.dart';
 import '../widgets/app_widgets.dart';
 
 class DriverIdCardScreen extends StatefulWidget {
@@ -30,6 +33,54 @@ class DriverIdCardScreen extends StatefulWidget {
 class _DriverIdCardScreenState extends State<DriverIdCardScreen> {
   final GlobalKey _cardKey = GlobalKey();
   bool _isSaving = false;
+  late String _driverName;
+  late String _driverPhone;
+  String? _avatarUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _driverName = widget.driverName;
+    _driverPhone = widget.driverPhone;
+    _avatarUrl = widget.avatarUrl;
+    if (_driverPhone.trim().isEmpty ||
+        _driverName.trim().isEmpty ||
+        _driverName == 'Delivery Partner') {
+      unawaited(_hydrateFromProfile());
+    }
+  }
+
+  Future<void> _hydrateFromProfile() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) return;
+      final row = await Supabase.instance.client
+          .from('users')
+          .select('name, full_name, phone, avatar_url')
+          .eq('id', user.id)
+          .maybeSingle()
+          .withTimeout(NetworkTimeouts.standard);
+      final name = (row?['name'] ?? row?['full_name'] ?? user.userMetadata?['name'])
+              ?.toString()
+              .trim() ??
+          '';
+      final phone = (row?['phone'] ?? user.userMetadata?['phone'] ?? user.phone)
+              ?.toString()
+              .trim() ??
+          '';
+      final avatar = row?['avatar_url']?.toString().trim();
+      if (!mounted) return;
+      setState(() {
+        if (name.isNotEmpty) _driverName = name;
+        if (phone.isNotEmpty) _driverPhone = phone;
+        if (avatar != null && avatar.isNotEmpty) _avatarUrl = avatar;
+      });
+    } catch (e, stack) {
+      try {
+        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Driver ID card profile hydrate failure');
+      } catch (_) {}
+    }
+  }
 
   Future<void> _downloadAndShareId() async {
     final contextRef = _cardKey.currentContext;
@@ -165,8 +216,10 @@ class _DriverIdCardScreenState extends State<DriverIdCardScreen> {
                         child: CircleAvatar(
                           radius: 50,
                           backgroundColor: Colors.grey.shade300,
-                          backgroundImage: widget.avatarUrl != null ? NetworkImage(widget.avatarUrl!) : null,
-                          child: widget.avatarUrl == null
+                          backgroundImage: _avatarUrl != null && _avatarUrl!.isNotEmpty
+                              ? NetworkImage(_avatarUrl!)
+                              : null,
+                          child: _avatarUrl == null || _avatarUrl!.isEmpty
                               ? const Icon(Icons.person, size: 50, color: AppTheme.textMuted)
                               : null,
                         ),
@@ -175,13 +228,13 @@ class _DriverIdCardScreenState extends State<DriverIdCardScreen> {
 
                       // Driver Details
                       Text(
-                        widget.driverName.toUpperCase(),
+                        _driverName.toUpperCase(),
                         style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w900, fontSize: 22),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'PH: ${widget.driverPhone}',
+                        _driverPhone.trim().isEmpty ? 'Phone not on file' : 'PH: ${_driverPhone.trim()}',
                         style: const TextStyle(color: Colors.black54, fontWeight: FontWeight.bold, fontSize: 14),
                       ),
                       const SizedBox(height: 24),
