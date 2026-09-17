@@ -24,6 +24,7 @@ class OrderRepository {
     String? driverId,
     String? dispatchPhotoUrl,
     String? deliveryOtp,
+    String? podPhotoUrl,
   }) async {
     try {
       final Map<String, dynamic> updateData = {
@@ -49,13 +50,17 @@ class OrderRepository {
           if (deliveryOtp != null && deliveryOtp.trim().isNotEmpty) {
             params['p_otp'] = deliveryOtp.trim();
           }
+          if (podPhotoUrl != null && podPhotoUrl.trim().isNotEmpty) {
+            params['p_pod_url'] = podPhotoUrl.trim();
+          }
           final done = await _supabase.rpc('complete_delivery_order', params: params);
           if (done == true) {
             unawaited(_releaseChefPayout(orderId));
             return;
           }
         } catch (e) {
-          if (e.toString().contains('DELIVERY_PIN_REQUIRED')) rethrow;
+          if (e.toString().contains('DELIVERY_PIN_REQUIRED') ||
+              e.toString().contains('POD_PHOTO_REQUIRED')) rethrow;
         }
       }
 

@@ -41,6 +41,11 @@ void main() {
     expect(membershipMemberTitle({'member_title': 'Family member'}), 'Family member');
   });
 
+  test('membership GST is 18% included in the diner price', () {
+    expect(membershipGstIncluded(118), 18);
+    expect(membershipGstLineLabel(118), 'Includes GST ₹18 (18%)');
+  });
+
   test('membership days left follow the 1, 3, 6, 9 month plans', () {
     expect(membershipPlanMonthsFromDays(30), 1);
     expect(membershipPlanMonthsFromDays(90), 3);

@@ -20,7 +20,9 @@ import '../models/app_role.dart';
 import '../models/driver_delivery_model.dart';
 import '../services/auth_session.dart';
 import '../services/delivery_estimator_service.dart';
+import '../services/kitchen_media.dart';
 import '../services/order_lifecycle.dart';
+import '../widgets/driver_payout_cadence_card.dart';
 import '../widgets/kyc_reminder_banner.dart';
 
 class DriverHubScreen extends ConsumerStatefulWidget {
@@ -495,7 +497,9 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
+          const DriverPayoutCadenceCard(),
+          const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
@@ -771,7 +775,23 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
       },
     );
     controller.dispose();
-    return matched == true;
+    if (matched != true) return false;
+    if (!mounted) return false;
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: AppTheme.dialogShape,
+        title: const Text('Door photo'),
+        content: const Text(
+          'Take a timestamped photo at the door. Ops uses this with the PIN if a refund is raised.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Open camera')),
+        ],
+      ),
+    );
+    return proceed == true;
   }
 
   Widget _buildActiveDeliveryTab(List<DriverDeliveryModel> active, DriverDashboardNotifier notifier) {
@@ -904,11 +924,32 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                               if (!allowed || !mounted) return;
                             }
                             setState(() => _busyOrderId = delivery.orderId);
+                            String? podUrl;
+                            if (isOut) {
+                              try {
+                                podUrl = await captureDeliveryPodPhoto(orderId: delivery.orderId);
+                              } catch (_) {
+                                podUrl = null;
+                              }
+                              if (podUrl == null || podUrl.isEmpty) {
+                                if (mounted) {
+                                  setState(() => _busyOrderId = null);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Door photo is required to mark delivered.'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                                return;
+                              }
+                            }
                             final nextStatus = isOut ? DeliveryStatus.delivered : DeliveryStatus.outForDelivery;
                             final ok = await notifier.updateDeliveryStatus(
                               delivery.orderId,
                               nextStatus,
                               deliveryOtp: isOut ? delivery.deliveryOtp : null,
+                              podPhotoUrl: podUrl,
                             );
                             if (!mounted) return;
                             setState(() => _busyOrderId = null);

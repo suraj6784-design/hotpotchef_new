@@ -19,6 +19,7 @@ import '../utils/payment_preferences.dart';
 import '../utils/pricing_calculator.dart';
 import '../utils/legal_content.dart';
 import '../utils/membership.dart';
+import '../utils/checkout_retry_queue.dart';
 import '../utils/support.dart';
 import '../models/cart_enums.dart';
 import '../widgets/app_widgets.dart';
@@ -37,6 +38,7 @@ class CheckoutScreen extends StatefulWidget {
   final String? sharedPlaceLabel;
   final String? sharedDropoffNote;
   final String? sharedTimeSlot;
+  final bool membershipOnly;
 
   const CheckoutScreen({
     super.key,
@@ -51,6 +53,7 @@ class CheckoutScreen extends StatefulWidget {
     this.sharedPlaceLabel,
     this.sharedDropoffNote,
     this.sharedTimeSlot,
+    this.membershipOnly = false,
   });
 
   @override
@@ -214,7 +217,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _membershipWaivesDelivery = alreadyMember;
         _addMembership = alreadyMember
             ? false
-            : membershipOfferEligible(_membershipOffer) && await consumeAddMembershipAtCheckout();
+            : membershipOfferEligible(_membershipOffer) &&
+                (widget.membershipOnly || await consumeAddMembershipAtCheckout());
       }
     } catch (_) {}
 
@@ -230,12 +234,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
 
     try {
-      pricingRes = await _supabase
-          .rpc('calculate_cart_total', params: {
-            'p_items': widget.cartItems,
-            'p_user_id': user.id,
-          })
-          .withTimeout(NetworkTimeouts.standard) as Map<String, dynamic>?;
+      if (widget.cartItems.isNotEmpty) {
+        pricingRes = await _supabase
+            .rpc('calculate_cart_total', params: {
+              'p_items': widget.cartItems,
+              'p_user_id': user.id,
+            })
+            .withTimeout(NetworkTimeouts.standard) as Map<String, dynamic>?;
+      }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to calculate cart total');
     }
@@ -365,10 +371,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
-  bool get _showMembershipUpsell =>
-      !_membershipWaivesDelivery && membershipOfferEligible(_membershipOffer);
+  bool get _showMembershipUpsell => membershipOfferEligible(_membershipOffer);
 
   bool get _membershipOnThisOrder => _addMembership && _showMembershipUpsell;
+
+  bool get _membershipOnlyPay => widget.cartItems.isEmpty && _membershipOnThisOrder;
 
   double get _membershipFee =>
       _membershipOnThisOrder ? membershipOfferPrice(_membershipOffer) : 0;
@@ -511,8 +518,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     try {
       final user = _supabase.auth.currentUser;
       if (user == null) throw Exception('Authentication session expired');
-      if (widget.cartItems.isEmpty) throw Exception('Your cart is empty');
-      final slotIssue = cartItemsSlotValidationError(_checkoutCartItems());
+      if (widget.cartItems.isEmpty && !_membershipOnThisOrder) {
+        throw Exception(widget.membershipOnly
+            ? 'Family member is not available on this account'
+            : 'Your cart is empty');
+      }
+      final slotIssue = widget.cartItems.isEmpty
+          ? null
+          : cartItemsSlotValidationError(_checkoutCartItems());
       if (slotIssue != null) throw Exception(slotIssue);
       if (!canPaySharedCart(
         roomCode: widget.sharedRoomCode,
@@ -531,10 +544,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         try {
           final kitchens = await _supabase
               .from('chef_profiles')
-              .select('user_id, is_open')
+              .select('user_id, is_open, weekly_hours')
               .inFilter('user_id', chefIds)
               .withTimeout(NetworkTimeouts.short);
-          if (kitchens.any((row) => !isChefKitchenOpen(Map<String, dynamic>.from(row)))) {
+          if (kitchens.any((row) => !isChefKitchenAcceptingOrders(Map<String, dynamic>.from(row)))) {
             throw Exception(kitchenClosedCheckoutMessage(charged: false));
           }
         } catch (e) {
@@ -592,20 +605,31 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       }
 
       final preferredMethod = await loadPreferredPaymentMethod();
-      final methodOpts = razorpayMethodOptions(preferredMethod);
+      final savedVpa = await loadSavedVpa();
+      if (savedVpa != null) {
+        final unlocked = await unlockSavedPayInstrument();
+        if (!unlocked) {
+          _releaseInventoryHold();
+          throw Exception('Biometric unlock cancelled. Pay was not started.');
+        }
+      }
+      final methodOpts = razorpayMethodOptions(preferredMethod, savedVpa: savedVpa);
 
       final options = {
         'key': razorpayKey,
         'amount': amountInPaise,
         'name': 'HotPotChef',
-        'description': 'Order Checkout',
+        'description': _membershipOnlyPay ? 'Family member' : 'Order Checkout',
         'order_id': razorpayOrderId,
         'retry': {'enabled': false, 'max_count': 0},
         'send_sms_hash': true,
+        if ((data['razorpay_customer_id']?.toString() ?? '').startsWith('cust_'))
+          'customer_id': data['razorpay_customer_id'],
         'prefill': {
           'contact': phone,
           'email': user.email ?? '',
           'method': methodOpts['prefillMethod'],
+          if (methodOpts['vpa'] != null) 'vpa': methodOpts['vpa'],
         },
         'method': methodOpts['method'],
         'theme': {'color': '#F4511E'}
@@ -625,7 +649,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _placingOrder = false;
     _releaseInventoryHold();
     setState(() => _isCheckingOut = false);
-    _showSnackBar('Payment Cancelled or Failed: ${response.message ?? ''}', isError: true);
+    _showSnackBar(dinerPaymentFailureCopy(response.message), isError: true);
   }
 
   void _handleExternalWallet(ExternalWalletResponse response) {
@@ -964,7 +988,24 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       }
       await Future<void>.delayed(Duration(milliseconds: 400 * (attempt + 1)));
     }
-    if (lastError != null) throw lastError;
+    if (lastError != null) {
+      final network = networkErrorMessage(lastError);
+      if (network == NetworkException.offlineMessage || network == NetworkException.timedOutMessage) {
+        await saveCheckoutRetryJob(
+          CheckoutRetryJob(
+            paymentId: paymentId,
+            razorpayOrderId: razorpayOrderId,
+            signature: signature,
+            body: _verifiedPaymentBody(
+              paymentId: paymentId,
+              razorpayOrderId: razorpayOrderId,
+              signature: signature,
+            ),
+          ),
+        );
+      }
+      throw lastError;
+    }
     return null;
   }
 
@@ -991,6 +1032,23 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
       _orderRecorded = true;
       _heldRazorpayOrderId = null;
+      await clearCheckoutRetryJob();
+      if (placed['membership_only'] == true) {
+        unawaited(AppAnalytics.logPurchase(
+          orderId: 'membership',
+          value: _grandTotal,
+          paymentId: response.paymentId,
+        ));
+        if (mounted) {
+          widget.onOrderPlacedSuccess();
+          Navigator.pop(context);
+          _showSnackBar(
+            'You are now a Family member. Unlimited free delivery is on.',
+            isError: false,
+          );
+        }
+        return;
+      }
       final orderId = placed['order_id']?.toString();
       await _persistOrderDropoff(orderId);
       await _markSourceRequestOrdered(orderId);
@@ -1411,7 +1469,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Chefs cook to this window — not a restaurant ETA.',
+                  'Promised arrival uses kitchen hours, prep, and travel — not a pin on the map.',
                   style: AppTheme.caption,
                 ),
                 const SizedBox(height: 14),
@@ -1632,8 +1690,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ),
           if (_hasDelivery) const SizedBox(height: 16),
 
-          _buildPromoCard(),
-          const SizedBox(height: 16),
+          if (widget.cartItems.isNotEmpty) _buildPromoCard(),
+          if (widget.cartItems.isNotEmpty) const SizedBox(height: 16),
           if (_showMembershipUpsell)
             Padding(
               padding: const EdgeInsets.only(bottom: 16),
@@ -1663,7 +1721,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               children: [
                 const Text('Bill Summary', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const Divider(height: 20),
-                ..._checkoutFoodBillRows(),
+                if (widget.cartItems.isNotEmpty) ..._checkoutFoodBillRows(),
                 if (_promoSavings > 0) ...[
                   const SizedBox(height: 6),
                   Row(
@@ -1713,6 +1771,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       Text(formatRupees(_membershipFee)),
                     ],
                   ),
+                  Text(
+                    membershipGstLineLabel(_membershipFee),
+                    style: AppTheme.micro,
+                  ),
                 ],
                 if (_hasDelivery && _selectedTip > 0) ...[
                   const SizedBox(height: 6),
@@ -1725,7 +1787,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     ],
                   ),
                 ],
-                if (_userCoinBalance > 0) ...[
+                if (_userCoinBalance > 0 && widget.cartItems.isNotEmpty) ...[
                   const Divider(height: 20),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
@@ -1834,7 +1896,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 child: GradientButton(
                   label: (_applyCoins && _grandTotal < 1)
                       ? 'Place order with coins'
-                      : 'Pay ₹${_grandTotal.toStringAsFixed(0)}',
+                      : _membershipOnlyPay
+                          ? 'Pay membership ₹${_grandTotal.toStringAsFixed(0)}'
+                          : 'Pay ₹${_grandTotal.toStringAsFixed(0)}',
                   icon: Icons.lock_rounded,
                   loading: _isCheckingOut,
                   onPressed: _isCheckingOut ? null : _startRazorpayPayment,
@@ -1926,7 +1990,8 @@ class _CheckoutMembershipOfferCard extends StatelessWidget {
           Text(
             'Unlimited free delivery for $period. Added to this bill as ${membershipMemberTitle(offer)}.'
             ' List ₹${list.toStringAsFixed(0)}'
-            '${flashing ? ' · today ₹${flash.toStringAsFixed(0)}' : ''}.',
+            '${flashing ? ' · today ₹${flash.toStringAsFixed(0)}' : ''}.'
+            ' ${membershipGstLineLabel(flash)}.',
             style: AppTheme.caption,
           ),
           SwitchListTile(

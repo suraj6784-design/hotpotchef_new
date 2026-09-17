@@ -15,6 +15,7 @@ import 'utils/app_flavor.dart';
 import 'utils/helpers.dart';
 import 'utils/app_theme.dart';
 import 'utils/app_router.dart';
+import 'utils/diner_locale.dart';
 import 'services/push_notification_service.dart';
 import 'widgets/offline_banner.dart';
 
@@ -115,6 +116,7 @@ class _HotPotChefAppState extends State<HotPotChefApp> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       PushNotificationService.openPendingAlert();
     });
+    unawaited(DinerLocaleController.instance.load());
     _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       if (data.event == AuthChangeEvent.passwordRecovery) {
         AppRouter.router.go('/reset-password');

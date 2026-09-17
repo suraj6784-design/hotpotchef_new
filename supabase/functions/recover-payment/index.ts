@@ -2,7 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts'
 import { fetchPayment, refundPayment, verifyCheckoutSignature } from '../_shared/razorpay.ts'
-import { quotePaidCheckout } from '../_shared/checkout_quote.ts'
+import { grantMembershipFromPending, pendingCartIsEmpty, quotePaidCheckout } from '../_shared/checkout_quote.ts'
 
 type PendingCheckout = {
   user_id: string
@@ -163,7 +163,9 @@ serve(async (req) => {
       .eq('razorpay_order_id', razorpayOrderId)
       .maybeSingle()
 
-    if (!pending && Array.isArray(body.cart_items) && body.cart_items.length > 0) {
+    const canRebuild = (Array.isArray(body.cart_items) && body.cart_items.length > 0) ||
+      Boolean(body.add_membership)
+    if (!pending && canRebuild) {
       try {
         const quoted = await quotePaidCheckout(
           admin,
@@ -252,6 +254,28 @@ serve(async (req) => {
       }, refund.refunded ? 200 : 400)
     }
 
+    if (pending.user_id !== userData.user.id) {
+      return jsonResponse({ success: false, error: 'This payment does not belong to you' }, 403)
+    }
+
+    if (pendingCartIsEmpty(pending.cart_items) && pending.membership_plan_id) {
+      const granted = await grantMembershipFromPending(admin, pending as Record<string, unknown>)
+      if (granted.error || granted.data?.success !== true) {
+        const refund = await refundCaptured(payment, paymentId)
+        return jsonResponse({
+          success: false,
+          refunded: refund.refunded,
+          refund_id: refund.refundId,
+          error: granted.data?.error || granted.error?.message || 'Could not activate Family member',
+        }, refund.refunded ? 200 : 400)
+      }
+      return jsonResponse({
+        success: true,
+        membership_only: true,
+        already_member: granted.data?.already_member === true,
+      })
+    }
+
     const snapshot: PendingCheckout = {
       user_id: pending.user_id,
       cart_items: pending.cart_items,
@@ -262,10 +286,6 @@ serve(async (req) => {
       apply_coins: pending.apply_coins,
       tip_amount: Number(pending.tip_amount ?? 0),
       delivery_fee: Number(pending.delivery_fee ?? 0),
-    }
-
-    if (snapshot.user_id !== userData.user.id) {
-      return jsonResponse({ success: false, error: 'This payment does not belong to you' }, 403)
     }
 
     const { data: placed, error: placeError } = await placeFromPending(

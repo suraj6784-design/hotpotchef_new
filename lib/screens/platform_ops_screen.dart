@@ -1481,6 +1481,13 @@ class _RefundsOpsList extends StatelessWidget {
                     '${row['refund_id'] != null ? ' · refund ${row['refund_id']}' : ''}',
                     style: AppTheme.caption,
                   ),
+                  if (hasPodPhoto(row)) ...[
+                    const SizedBox(height: 8),
+                    DispatchPackedPhoto(
+                      url: orderPodPhotoUrl(row)!,
+                      caption: deliveryPodLabel(takenAt: orderPodPhotoAt(row)),
+                    ),
+                  ],
                   if (orderUuid.isNotEmpty) ...[
                     const SizedBox(height: 4),
                     Text(

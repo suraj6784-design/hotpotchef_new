@@ -18,6 +18,8 @@ import '../widgets/kitchen_live_badge.dart';
 
 import '../utils/fssai_certificate_scan.dart';
 import '../utils/helpers.dart';
+import 'app_widgets.dart';
+import 'kitchen_hours_panel.dart';
 import '../utils/meal_nutrition.dart';
 import '../utils/app_page.dart';
 import '../utils/app_theme.dart';
@@ -30,7 +32,6 @@ import '../services/chef_directory.dart';
 import '../services/reorder_service.dart';
 import 'weekly_plan_sheet.dart';
 import '../screens/auth_screen.dart';
-import 'app_widgets.dart';
 
 Future<void> shareMealOnWhatsApp(Map<String, dynamic> meal) async {
   final text = mealShareText(meal);
@@ -475,6 +476,8 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
   String _liveUrl = '';
   String _liveLabel = '';
   List<String> _photos = const [];
+  dynamic _weeklyHours;
+  int _prepMinutes = kDefaultPrepMinutes;
   ChefRatingSummary _rating = const ChefRatingSummary();
   List<Map<String, dynamic>> _recentReviews = const [];
   ChefCardCopy get _copy => chefCardCopy(_cardLocale);
@@ -535,7 +538,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
       try {
         final row = await client
             .from('chef_profiles')
-            .select('kitchen_story, hygiene_note, kitchen_photos, live_photo_url, live_photo_at, card_locale, local_kitchen_name')
+            .select('kitchen_story, hygiene_note, kitchen_photos, live_photo_url, live_photo_at, card_locale, local_kitchen_name, weekly_hours, default_prep_minutes')
             .eq('user_id', chefId)
             .maybeSingle();
         if (row != null) kitchen = Map<String, dynamic>.from(row);
@@ -544,7 +547,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
         try {
           final row = await client
               .from('chef_profiles')
-              .select('kitchen_story, hygiene_note, kitchen_photos, live_photo_url, live_photo_at, card_locale, local_kitchen_name')
+              .select('kitchen_story, hygiene_note, kitchen_photos, live_photo_url, live_photo_at, card_locale, local_kitchen_name, weekly_hours, default_prep_minutes')
               .eq('user_id', chefId)
               .maybeSingle();
           if (row != null) kitchen = Map<String, dynamic>.from(row);
@@ -594,6 +597,8 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
         _story = kitchen?['kitchen_story']?.toString().trim() ?? '';
         _hygiene = kitchen?['hygiene_note']?.toString().trim() ?? '';
         _photos = kitchenPhotosFrom(kitchen?['kitchen_photos']);
+        _weeklyHours = kitchen?['weekly_hours'];
+        _prepMinutes = kitchenPrepMinutes(kitchen == null ? null : Map<String, dynamic>.from(kitchen));
         _liveUrl = isKitchenLivePhotoFresh(liveAt) ? liveUrl : '';
         _liveLabel = kitchenLivePhotoLabel(liveAt);
         _cookedLabel = copy.cookedMeals(cooked);
@@ -715,6 +720,8 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
                 );
               },
             ),
+            const SizedBox(height: 12),
+            KitchenHoursPanel(weeklyHours: _weeklyHours, prepMinutes: _prepMinutes),
             const SizedBox(height: 14),
             if (_loading)
               const Padding(
@@ -968,14 +975,14 @@ Future<bool> addMealToCartWithConflict({
     if (chefId.isNotEmpty) {
       final kitchen = await Supabase.instance.client
           .from('chef_profiles')
-          .select('is_open')
+          .select('is_open, weekly_hours')
           .eq('user_id', chefId)
           .maybeSingle();
-      if (!isChefKitchenOpen(kitchen)) {
+      if (!isChefKitchenAcceptingOrders(kitchen)) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('This kitchen is closed right now.'),
+              content: Text('This kitchen is closed right now. Check weekly hours and try later.'),
               backgroundColor: Colors.orangeAccent,
             ),
           );

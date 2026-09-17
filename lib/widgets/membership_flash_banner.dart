@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../screens/checkout_screen.dart';
 import '../utils/helpers.dart';
 import '../utils/membership.dart';
-import 'app_widgets.dart';
+import 'customer_ui_components.dart';
 
 /// Home flash for admin-controlled membership pricing (e.g. ₹1 for 3 months).
 class MembershipFlashBanner extends StatefulWidget {
@@ -46,10 +47,38 @@ class _MembershipFlashBannerState extends State<MembershipFlashBanner> {
     setState(() => _busy = true);
     try {
       await rememberAddMembershipAtCheckout();
+      final planId = _offer?['plan_id']?.toString();
+      if (planId != null && planId.isNotEmpty) {
+        await Supabase.instance.client.rpc('diner_interest_in_membership', params: {'p_plan_id': planId});
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('We will add Family member on your next checkout. Toggle it on the bill.')),
       );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _buyNow() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final planId = _offer?['plan_id']?.toString();
+      if (planId != null && planId.isNotEmpty) {
+        await Supabase.instance.client.rpc('diner_interest_in_membership', params: {'p_plan_id': planId});
+      }
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => CheckoutScreen(
+            cartItems: const [],
+            membershipOnly: true,
+            onOrderPlacedSuccess: () {},
+          ),
+        ),
+      );
+      await _load();
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -85,11 +114,16 @@ class _MembershipFlashBannerState extends State<MembershipFlashBanner> {
                   Text(
                     'Unlimited free delivery for $period. '
                     '${flashing ? 'Flash ₹${flash.toStringAsFixed(0)}' : '₹${list.toStringAsFixed(0)}'}'
-                    '${flashing && list > flash ? ' (usually ₹${list.toStringAsFixed(0)})' : ''}.',
+                    '${flashing && list > flash ? ' (usually ₹${list.toStringAsFixed(0)})' : ''}. '
+                    '${membershipGstLineLabel(membershipOfferPrice(offer))}.',
                     style: AppTheme.caption,
                   ),
                 ],
               ),
+            ),
+            TextButton(
+              onPressed: _busy ? null : _buyNow,
+              child: const Text('Buy'),
             ),
           ],
         ),

@@ -2,6 +2,8 @@
 
 import 'package:geolocator/geolocator.dart';
 
+import '../utils/kitchen_promise.dart';
+
 class DeliveryEstimatorService {
   /// Maximum serviceable radius in kilometers for home kitchen deliveries
   static const double maxDeliveryRadiusKm = 15.0;
@@ -44,15 +46,8 @@ class DeliveryEstimatorService {
     return baseFee;
   }
 
-  /// Estimates delivery ETA in minutes assuming an average city speed of 20 km/h + 15 mins kitchen prep buffer
-  static int estimateEtaMinutes(double distanceKm) {
-    if (distanceKm <= 0) return 15;
-
-    const double averageSpeedKmh = 20.0;
-    double travelTimeHours = distanceKm / averageSpeedKmh;
-    int travelTimeMinutes = (travelTimeHours * 60).round();
-
-    // Add 15 mins base buffer for order dispatch, packaging handover, and rider pickup
-    return travelTimeMinutes + 15;
+  /// Estimates delivery ETA in minutes: kitchen prep window + city travel at 20 km/h.
+  static int estimateEtaMinutes(double distanceKm, {int prepMinutes = 30}) {
+    return promisedEtaMinutes(distanceKm: distanceKm, prepMinutes: prepMinutes);
   }
 }

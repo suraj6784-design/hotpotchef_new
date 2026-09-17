@@ -14,8 +14,9 @@ export function packagingFeeFromFoodTotal(food: number) {
   return food >= 199 ? 20 : 10
 }
 
-export function normalizeCartItems(raw: unknown) {
+export function normalizeCartItems(raw: unknown, allowEmpty = false) {
   if (!Array.isArray(raw) || raw.length === 0) {
+    if (allowEmpty) return []
     throw new Error('Cart is empty')
   }
   return raw.map((item) => {
@@ -60,7 +61,8 @@ export async function quotePaidCheckout(
   addMembership = false,
   planIdRaw: unknown = null,
 ): Promise<QuotedCheckout> {
-  const cartItems = normalizeCartItems(rawCart)
+  const membershipOnly = addMembership && (!Array.isArray(rawCart) || rawCart.length === 0)
+  const cartItems = normalizeCartItems(rawCart, membershipOnly)
   const tipAmount = Math.max(0, Math.min(500, asNumber(tipRaw, 0)))
   const dropLat = dropLatRaw == null ? null : asNumber(dropLatRaw, NaN)
   const dropLng = dropLngRaw == null ? null : asNumber(dropLngRaw, NaN)
@@ -79,6 +81,28 @@ export async function quotePaidCheckout(
     if (quote?.eligible === true && quote?.plan_id) {
       membershipFee = Math.max(0, asNumber(quote.offer_price_inr, 0))
       membershipPlanId = String(quote.plan_id)
+    }
+  }
+
+  if (membershipOnly) {
+    if (!membershipPlanId || membershipFee < 1) {
+      throw new Error('Family member is not available on this account')
+    }
+    const amountPaise = Math.round(membershipFee * 100)
+    if (amountPaise < 100) {
+      throw new Error('Payable amount is too small to charge')
+    }
+    return {
+      cartItems,
+      tipAmount: 0,
+      applyCoins: false,
+      coinsApplied: 0,
+      deliveryFee: 0,
+      membershipFee,
+      membershipPlanId,
+      amountPaise,
+      dropLat: null,
+      dropLng: null,
     }
   }
 
@@ -142,4 +166,25 @@ export async function quotePaidCheckout(
     dropLat: Number.isFinite(dropLat) ? dropLat : null,
     dropLng: Number.isFinite(dropLng) ? dropLng : null,
   }
+}
+
+export function pendingCartIsEmpty(cart: unknown) {
+  return !Array.isArray(cart) || cart.length === 0
+}
+
+export async function grantMembershipFromPending(
+  admin: SupabaseClient,
+  pending: Record<string, unknown>,
+) {
+  const planId = String(pending.membership_plan_id ?? '').trim()
+  const userId = String(pending.user_id ?? '').trim()
+  const amount = asNumber(pending.membership_fee, 0)
+  if (!planId || !userId) {
+    return { data: { success: false, error: 'Missing Family member checkout' }, error: null }
+  }
+  return await admin.rpc('grant_paid_membership', {
+    p_user_id: userId,
+    p_plan_id: planId,
+    p_amount: amount,
+  })
 }

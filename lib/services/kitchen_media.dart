@@ -152,6 +152,14 @@ Future<String?> capturePackedBoxPhoto({required String orderId}) {
   );
 }
 
+Future<String?> captureDeliveryPodPhoto({required String orderId}) {
+  return uploadKitchenImage(
+    source: ImageSource.camera,
+    folder: 'pod',
+    fileKey: orderId.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), ''),
+  );
+}
+
 Future<String?> uploadKitchenImage({
   ImageSource source = ImageSource.camera,
   String folder = 'kitchen',

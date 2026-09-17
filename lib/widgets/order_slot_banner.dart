@@ -35,8 +35,8 @@ class _OrderSlotBannerState extends State<OrderSlotBanner> {
 
   @override
   Widget build(BuildContext context) {
+    final start = orderPromisedAt(widget.order) ?? orderSlotStart(widget.order);
     final slot = formatDeliverySlotLabel(widget.order);
-    final start = orderSlotStart(widget.order);
     final left = formatSlotCountdown(start);
     final late = dinerSlotIsLate(widget.order);
     final hint = (widget.hint ?? '').trim();
@@ -73,6 +73,13 @@ class _OrderSlotBannerState extends State<OrderSlotBanner> {
                       fontWeight: FontWeight.w800,
                       color: late ? AppTheme.error : AppTheme.linkOf(context),
                     ),
+                  ),
+                ],
+                if (widget.diner && dinerLateOrderCopy(widget.order).isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    dinerLateOrderCopy(widget.order),
+                    style: const TextStyle(fontSize: 11, color: AppTheme.error, fontWeight: FontWeight.w700),
                   ),
                 ],
                 if (hint.isNotEmpty) ...[

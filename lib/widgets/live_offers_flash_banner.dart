@@ -100,13 +100,13 @@ class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
     try {
       final rows = await Supabase.instance.client
           .from('chef_profiles')
-          .select('user_id, is_open')
+          .select('user_id, is_open, weekly_hours')
           .inFilter('user_id', missing.toList());
       for (final row in rows) {
         final id = row['user_id']?.toString();
         if (id == null || id.isEmpty) continue;
         _resolvedChefIds.add(id);
-        if (!isChefKitchenOpen(Map<String, dynamic>.from(row))) {
+        if (!isChefKitchenAcceptingOrders(Map<String, dynamic>.from(row))) {
           _closedChefIds.add(id);
         }
       }

@@ -83,6 +83,19 @@ String membershipPlanPeriodLabel(int? durationDays) {
   return '$months month${months == 1 ? '' : 's'}';
 }
 
+/// GST at 18% included in the Family member price shown to diners.
+double membershipGstIncluded(num amount) {
+  final value = amount.toDouble();
+  if (!value.isFinite || value <= 0) return 0;
+  return ((value - (value / 1.18)) * 100).round() / 100;
+}
+
+String membershipGstLineLabel(num amount) {
+  final gst = membershipGstIncluded(amount);
+  if (gst <= 0) return 'GST included';
+  return 'Includes GST ₹${gst.toStringAsFixed(0)} (18%)';
+}
+
 double _money(dynamic raw) {
   if (raw is num) return raw.toDouble();
   return double.tryParse(raw?.toString() ?? '') ?? 0;

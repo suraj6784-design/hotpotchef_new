@@ -89,6 +89,7 @@ const kCustomerAccountRoutes = {
   '/order-history',
   '/bulk-request',
   '/support-tickets',
+  '/notifications',
 };
 
 const kAdminOnlyRoutes = {

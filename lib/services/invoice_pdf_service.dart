@@ -55,6 +55,7 @@ class InvoicePdfService {
       deliveryFee: bill.deliveryFee,
       tipAmount: bill.tipAmount,
       coinsApplied: bill.coinsApplied,
+      membershipFee: bill.membershipFee,
     );
   }
 
@@ -68,6 +69,7 @@ class InvoicePdfService {
     required double deliveryFee,
     double tipAmount = 0,
     double coinsApplied = 0,
+    double membershipFee = 0,
   }) async {
     showDialog(
       context: context,
@@ -92,6 +94,7 @@ class InvoicePdfService {
         deliveryFee: deliveryFee,
         tipAmount: tipAmount,
         coinsApplied: coinsApplied,
+        membershipFee: membershipFee,
         chefGstin: chef?['gstin']?.toString(),
         chefName: chefDisplayName(chef),
         fssaiNumber: chef?['fssai_number']?.toString(),
@@ -110,7 +113,8 @@ class InvoicePdfService {
             'delivery_fee': deliveryFee,
             'tip_amount': tipAmount,
             'coins_applied': coinsApplied,
-            'total_price': itemsTotal + packagingFee + deliveryFee + tipAmount - coinsApplied,
+            'membership_fee': bill.membershipFee,
+            'total_price': itemsTotal + packagingFee + deliveryFee + tipAmount + bill.membershipFee - coinsApplied,
             'order_type': deliveryFee > 0 ? 'Delivery' : 'Pickup',
           },
         ),
@@ -255,6 +259,10 @@ class InvoicePdfService {
                   _line('Promo (${orderBill.promoLabel ?? 'Offer'})', -orderBill.promoDiscount),
                 _line('Packaging', bill.packagingFee),
                 _line('Delivery', bill.deliveryFee),
+                if (bill.membershipFee > 0) ...[
+                  _line('Family member', bill.membershipFee),
+                  _line('GST in membership (18% included)', bill.membershipGst),
+                ],
                 if (bill.isTaxInvoice) ...[
                   pw.SizedBox(height: 6),
                   _line('Taxable value', bill.taxableValue),

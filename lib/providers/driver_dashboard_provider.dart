@@ -260,7 +260,12 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
 
   // --- Status Transition Handling ---
 
-  Future<bool> updateDeliveryStatus(String orderId, DeliveryStatus nextStatus, {String? deliveryOtp}) async {
+  Future<bool> updateDeliveryStatus(
+    String orderId,
+    DeliveryStatus nextStatus, {
+    String? deliveryOtp,
+    String? podPhotoUrl,
+  }) async {
     final user = _supabase.auth.currentUser;
     if (user == null) return false;
 
@@ -276,6 +281,7 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
         orderId: orderId,
         currentStatus: current,
         deliveryOtp: deliveryOtp,
+        podPhotoUrl: podPhotoUrl,
       );
 
       await loadDashboardData(isSilentRefresh: true);

@@ -9,6 +9,7 @@ import '../utils/helpers.dart';
 import '../utils/network.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/customer_ui_components.dart';
+import '../widgets/kitchen_hours_panel.dart';
 
 /// Deep link / App Link target for `https://hotpotchef.com/chef/{id}`.
 class ChefLinkScreen extends ConsumerStatefulWidget {
@@ -26,6 +27,8 @@ class _ChefLinkScreenState extends ConsumerState<ChefLinkScreen> {
   String _name = 'Home kitchen';
   String _fssai = '';
   String? _story;
+  dynamic _weeklyHours;
+  int _prepMinutes = 30;
   List<Map<String, dynamic>> _meals = const [];
 
   @override
@@ -67,7 +70,7 @@ class _ChefLinkScreenState extends ConsumerState<ChefLinkScreen> {
       try {
         final row = await client
             .from('chef_profiles')
-            .select('local_kitchen_name, kitchen_story')
+            .select('local_kitchen_name, kitchen_story, weekly_hours, default_prep_minutes')
             .eq('user_id', chefId)
             .maybeSingle();
         if (row != null) kitchen = Map<String, dynamic>.from(row);
@@ -107,6 +110,8 @@ class _ChefLinkScreenState extends ConsumerState<ChefLinkScreen> {
             : (userName.isNotEmpty ? userName : 'Home kitchen');
         _fssai = user?['fssai_number']?.toString().trim() ?? '';
         _story = kitchen?['kitchen_story']?.toString().trim();
+        _weeklyHours = kitchen?['weekly_hours'];
+        _prepMinutes = kitchenPrepMinutes(kitchen == null ? null : Map<String, dynamic>.from(kitchen));
         _meals = meals;
         _loading = false;
       });
@@ -168,6 +173,8 @@ class _ChefLinkScreenState extends ConsumerState<ChefLinkScreen> {
             const SizedBox(height: 10),
             Text(story, style: TextStyle(color: AppTheme.onSurfaceOf(context), height: 1.4)),
           ],
+          const SizedBox(height: 14),
+          KitchenHoursPanel(weeklyHours: _weeklyHours, prepMinutes: _prepMinutes),
           const SizedBox(height: 18),
           Text(
             'Available plates',

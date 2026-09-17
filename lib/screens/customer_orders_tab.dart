@@ -591,6 +591,13 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                               caption: dispatchPackedLabel(takenAt: orderDispatchPhotoAt(items.first)),
                             ),
                           ],
+                          if (hasPodPhoto(items.first)) ...[
+                            const SizedBox(height: 12),
+                            DispatchPackedPhoto(
+                              url: orderPodPhotoUrl(items.first)!,
+                              caption: deliveryPodLabel(takenAt: orderPodPhotoAt(items.first)),
+                            ),
+                          ],
                           if (!orderAllowsPartyChat(status)) ...[
                             const SizedBox(height: 12),
                             Container(

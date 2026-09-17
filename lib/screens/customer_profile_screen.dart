@@ -18,6 +18,7 @@ import '../providers/last_order_provider.dart';
 import '../providers/meal_plans_provider.dart';
 import '../services/auth_session.dart';
 import '../services/ticket_reply_seen_store.dart';
+import '../utils/diner_locale.dart';
 import '../utils/helpers.dart';
 import '../utils/network.dart';
 import '../utils/legal_content.dart';
@@ -56,6 +57,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
   int _orderCount = 0;
   String _email = '';
   String _preferredPayMethod = 'upi';
+  String? _savedVpa;
   String _supportTicketsSubtitle = 'Track replies and open conversations';
 
   bool _isLoading = true;
@@ -165,6 +167,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
       }).length;
 
       final preferredPay = await loadPreferredPaymentMethod();
+      final savedVpa = await loadSavedVpa();
       var ops = false;
       try {
         ops = await AuthSession.isPlatformOps().withTimeout(NetworkTimeouts.short);
@@ -204,6 +207,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
           _addresses = uniqueSavedAddresses(List<Map<String, dynamic>>.from(addressResponse));
           _orderCount = pastOrdersCount;
           _preferredPayMethod = preferredPay;
+          _savedVpa = savedVpa;
           _isPlatformOps = ops;
           _supportTicketsSubtitle = ticketsSubtitle;
           _isLoading = false;
@@ -925,6 +929,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
   void _showPaymentOptionsSheet() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     var selected = _preferredPayMethod;
+    final vpaController = TextEditingController(text: _savedVpa ?? '');
 
     showModalBottomSheet(
       context: context,
@@ -947,7 +952,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
               ),
               const SizedBox(height: 6),
               Text(
-                'Choose how Razorpay opens at checkout. Card, UPI, and bank details stay in Razorpay — HotPotChef never stores them.',
+                'Choose how Razorpay opens. Save a UPI ID on this phone (unlocked with biometrics). Card numbers stay in Razorpay.',
                 style: TextStyle(
                   fontSize: 12,
                   height: 1.35,
@@ -986,20 +991,40 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                   ),
                   onTap: () => setSheetState(() => selected = method),
                 ),
+              TextField(
+                controller: vpaController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: 'Saved UPI ID (optional)',
+                  hintText: 'name@upi',
+                ),
+              ),
               const SizedBox(height: 8),
               SizedBox(
                 height: 48,
                 child: ElevatedButton(
                   onPressed: () async {
+                    final vpa = vpaController.text.trim();
+                    if (vpa.isNotEmpty && !looksLikeVpa(vpa)) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        const SnackBar(content: Text('Enter a UPI ID like name@upi, or leave it blank.')),
+                      );
+                      return;
+                    }
                     await savePreferredPaymentMethod(selected);
+                    await saveSavedVpa(vpa);
                     if (!ctx.mounted) return;
                     Navigator.pop(ctx);
                     if (!mounted) return;
-                    setState(() => _preferredPayMethod = selected);
+                    setState(() {
+                      _preferredPayMethod = selected;
+                      _savedVpa = normalizeSavedVpa(vpa);
+                    });
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
-                          'Preferred payment: ${customerPayMethodLabel(selected)}',
+                          'Preferred payment: ${customerPayMethodLabel(selected)}'
+                          '${_savedVpa == null ? '' : ' · UPI saved on this phone'}',
                         ),
                       ),
                     );
@@ -1229,7 +1254,36 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                     title: 'Support tickets',
                     subtitle: _supportTicketsSubtitle,
                     onTap: () => context.push('/support-tickets'),
+                  ),
+                  PremiumProfileTile(
+                    icon: Icons.notifications_none_outlined,
+                    title: DinerLocaleController.instance.copy.notifications,
+                    subtitle: 'Kitchen, delivery, and support notes',
+                    onTap: () => context.push('/notifications'),
                     showDivider: false,
+                  ),
+                ],
+              ),
+              PremiumProfileSection(
+                title: DinerLocaleController.instance.copy.language,
+                caption: 'Home tabs and kitchen cards stay in this language.',
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                    child: Wrap(
+                      spacing: 8,
+                      children: [
+                        for (final locale in kDinerLocales)
+                          ChoiceChip(
+                            label: Text(dinerLocaleLabel(locale)),
+                            selected: DinerLocaleController.instance.code == locale,
+                            onSelected: (_) async {
+                              await DinerLocaleController.instance.setCode(locale);
+                              if (mounted) setState(() {});
+                            },
+                          ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -1239,7 +1293,9 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                   PremiumProfileTile(
                     icon: Icons.payments_outlined,
                     title: 'Payment options',
-                    subtitle: '${customerPayMethodLabel(_preferredPayMethod)} · Razorpay',
+                    subtitle: _savedVpa == null
+                        ? '${customerPayMethodLabel(_preferredPayMethod)} · Razorpay'
+                        : '${customerPayMethodLabel(_preferredPayMethod)} · saved UPI on this phone',
                     onTap: _showPaymentOptionsSheet,
                   ),
                   PremiumProfileTile(

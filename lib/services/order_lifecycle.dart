@@ -186,12 +186,18 @@ class OrderLifecycle {
     required String orderId,
     required String currentStatus,
     String? deliveryOtp,
+    String? podPhotoUrl,
   }) async {
     final next = nextDriverStatus(currentStatus);
     if (next == null) {
       throw Exception('No driver transition from "$currentStatus"');
     }
-    await _repo.updateOrderStatus(orderId: orderId, newStatus: next, deliveryOtp: deliveryOtp);
+    await _repo.updateOrderStatus(
+      orderId: orderId,
+      newStatus: next,
+      deliveryOtp: deliveryOtp,
+      podPhotoUrl: podPhotoUrl,
+    );
     if (next == OrderStatus.delivered) {
       unawaited(AppAnalytics.logOrderDelivered(orderId: orderId));
     }

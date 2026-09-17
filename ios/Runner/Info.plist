@@ -91,7 +91,9 @@
 			<string>UIInterfaceOrientationLandscapeRight</string>
 		</array>
 		<key>NSCameraUsageDescription</key>
-		<string>HotPotChef uses the camera so a chef can live-stream their kitchen.</string>
+		<string>HotPotChef uses the camera so a chef can live-stream their kitchen, pack a box, or capture a delivery photo.</string>
+		<key>NSFaceIDUsageDescription</key>
+		<string>HotPotChef uses Face ID to unlock your saved UPI ID at checkout.</string>
 		<key>NSMicrophoneUsageDescription</key>
 		<string>HotPotChef uses the microphone so diners can hear the kitchen while it is live.</string>
 		<key>UIStatusBarHidden</key>

@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { jsonResponse } from '../_shared/cors.ts'
 import { fetchPayment, hmacSha256Hex, refundPayment } from '../_shared/razorpay.ts'
+import { grantMembershipFromPending, pendingCartIsEmpty } from '../_shared/checkout_quote.ts'
 
 serve(async (req) => {
   try {
@@ -69,6 +70,34 @@ serve(async (req) => {
 
     if (!pending) {
       return jsonResponse({ skipped: true, reason: 'no pending checkout' })
+    }
+
+    if (pendingCartIsEmpty(pending.cart_items) && pending.membership_plan_id) {
+      const granted = await grantMembershipFromPending(admin, pending as Record<string, unknown>)
+      if (!granted.error && granted.data?.success === true) {
+        return jsonResponse({ success: true, membership_only: true })
+      }
+      await admin.rpc('release_checkout_inventory', {
+        p_razorpay_order_id: razorpayOrderId,
+        p_force: true,
+      })
+      try {
+        const payment = await fetchPayment(paymentId)
+        if (payment.status === 'captured') {
+          await refundPayment(paymentId)
+        }
+        return jsonResponse({
+          success: false,
+          refunded: true,
+          error: granted.data?.error || granted.error?.message || 'Membership could not be recorded',
+        })
+      } catch (refundErr) {
+        return jsonResponse({
+          success: false,
+          refunded: false,
+          error: refundErr.message,
+        }, 500)
+      }
     }
 
     const { data: placed, error } = await admin.rpc('place_customer_order', {

@@ -34,6 +34,8 @@ class GstInvoiceBreakdown {
     required this.cgst,
     required this.sgst,
     required this.grandTotal,
+    this.membershipFee = 0,
+    this.membershipGst = 0,
   });
 
   final bool isTaxInvoice;
@@ -52,14 +54,20 @@ class GstInvoiceBreakdown {
   final double cgst;
   final double sgst;
   final double grandTotal;
+  final double membershipFee;
+  final double membershipGst;
 
   double get gstTotal => roundMoney(cgst + sgst);
 
   String get documentTitle => isTaxInvoice ? 'TAX INVOICE' : 'BILL OF SUPPLY';
 
-  String get legalNote => isTaxInvoice
-      ? 'GST @ ${(gstRate * 100).toStringAsFixed(0)}% is included in food and packaging (HSN $hsn). Delivery is a HotPotChef service, not kitchen supply.'
-      : 'The kitchen has not provided a GSTIN, so this is a bill of supply and not a GST tax invoice. Delivery is charged by HotPotChef, not the kitchen.';
+  String get legalNote {
+    final kitchen = isTaxInvoice
+        ? 'GST @ ${(gstRate * 100).toStringAsFixed(0)}% is included in food and packaging (HSN $hsn). Delivery is a HotPotChef service, not kitchen supply.'
+        : 'The kitchen has not provided a GSTIN, so this is a bill of supply and not a GST tax invoice. Delivery is charged by HotPotChef, not the kitchen.';
+    if (membershipFee <= 0) return kitchen;
+    return '$kitchen Family member includes GST @ 18% (₹${membershipGst.toStringAsFixed(0)}).';
+  }
 }
 
 GstInvoiceBreakdown gstInvoiceBreakdown({
@@ -68,6 +76,7 @@ GstInvoiceBreakdown gstInvoiceBreakdown({
   required double deliveryFee,
   double tipAmount = 0,
   double coinsApplied = 0,
+  double membershipFee = 0,
   String? chefGstin,
   String? chefName,
   String? fssaiNumber,
@@ -78,11 +87,13 @@ GstInvoiceBreakdown gstInvoiceBreakdown({
   final delivery = roundMoney(deliveryFee);
   final tip = roundMoney(tipAmount);
   final coins = roundMoney(coinsApplied);
+  final membership = roundMoney(membershipFee);
   final isTax = gstin != null;
   final taxable = isTax ? roundMoney(chefSupply / (1 + restaurantGstRate)) : chefSupply;
   final gst = isTax ? roundMoney(chefSupply - taxable) : 0.0;
   final cgst = roundMoney(gst / 2);
   final sgst = roundMoney(gst - cgst);
+  final membershipGst = membership > 0 ? roundMoney(membership - (membership / 1.18)) : 0.0;
 
   return GstInvoiceBreakdown(
     isTaxInvoice: isTax,
@@ -97,10 +108,12 @@ GstInvoiceBreakdown gstInvoiceBreakdown({
     deliveryFee: delivery,
     tipAmount: tip,
     coinsApplied: coins,
+    membershipFee: membership,
+    membershipGst: membershipGst,
     taxableValue: taxable,
     cgst: cgst,
     sgst: sgst,
-    grandTotal: roundMoney(chefSupply + delivery + tip - coins),
+    grandTotal: roundMoney(chefSupply + delivery + tip + membership - coins),
   );
 }
 

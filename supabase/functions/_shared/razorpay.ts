@@ -65,6 +65,33 @@ export async function refundPayment(paymentId: string, amountPaise?: number) {
   return data
 }
 
+export async function ensureRazorpayCustomer(input: {
+  userId: string
+  email?: string | null
+  phone?: string | null
+  name?: string | null
+  existingId?: string | null
+}) {
+  if (input.existingId && input.existingId.startsWith('cust_')) return input.existingId
+  const { header } = razorpayAuthHeader()
+  const res = await fetch('https://api.razorpay.com/v1/customers', {
+    method: 'POST',
+    headers: { Authorization: header, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: (input.name || 'HotPotChef diner').slice(0, 120),
+      email: input.email || undefined,
+      contact: input.phone ? input.phone.replace(/\D/g, '').slice(-10) : undefined,
+      fail_existing: '0',
+      notes: { user_id: input.userId },
+    }),
+  })
+  const data = await res.json()
+  if (!res.ok) {
+    throw new Error(data?.error?.description || 'Could not save Razorpay customer')
+  }
+  return String(data.id || '')
+}
+
 export async function createRazorpayOrder(amountPaise: number, receipt: string, notes: Record<string, string>) {
   const { header } = razorpayAuthHeader()
   const res = await fetch('https://api.razorpay.com/v1/orders', {

@@ -47,6 +47,8 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
 
   late int _selectedIndex = widget.initialTab;
   bool _isKitchenOpen = true;
+  Map<String, dynamic> _weeklyHours = {};
+  int _prepMinutes = kDefaultPrepMinutes;
   String _fulfillmentFilter = 'All';
   String _historyFilter = 'Delivered';
   String _menuFilter = 'Active'; // Active | History
@@ -340,14 +342,16 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     try {
       final res = await _supabase
           .from('chef_profiles')
-          .select('is_open')
-          .eq('user_id', _currentUserId)
-          .maybeSingle();
-      if (res != null && mounted) {
-        setState(() {
-          _isKitchenOpen = res['is_open'] == true;
-        });
-      }
+            .select('is_open, weekly_hours, default_prep_minutes')
+            .eq('user_id', _currentUserId)
+            .maybeSingle();
+        if (res != null && mounted) {
+          setState(() {
+            _isKitchenOpen = res['is_open'] == true;
+            _weeklyHours = parseKitchenWeeklyHours(res['weekly_hours']);
+            _prepMinutes = kitchenPrepMinutes(Map<String, dynamic>.from(res));
+          });
+        }
     } catch (e) {
       debugPrint('Failed to load kitchen status: $e');
     }
@@ -392,6 +396,133 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             content: Text('Could not update kitchen availability. Try again.'),
             backgroundColor: Colors.red,
           ),
+        );
+      }
+    }
+  }
+
+  Future<void> _editKitchenHours() async {
+    var draft = Map<String, dynamic>.from(
+      _weeklyHours.isEmpty ? defaultKitchenWeeklyHours() : _weeklyHours,
+    );
+    var prep = _prepMinutes;
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheet) {
+            Future<void> pick(String key, String field) async {
+              final day = Map<String, dynamic>.from(draft[key] as Map? ?? {});
+              final current = parseKitchenClockMinutes(day[field]?.toString()) ?? (field == 'open' ? 11 * 60 : 22 * 60);
+              final picked = await showTimePicker(
+                context: ctx,
+                initialTime: TimeOfDay(hour: current ~/ 60, minute: current % 60),
+              );
+              if (picked == null) return;
+              day[field] = formatKitchenClockMinutes(picked.hour * 60 + picked.minute);
+              day['closed'] = false;
+              setSheet(() => draft[key] = day);
+            }
+
+            return Padding(
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + MediaQuery.viewInsetsOf(ctx).bottom),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Weekly hours & prep', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Diners see this as the kitchen promise. Online still pauses new orders when you flip Offline.',
+                      style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                    ),
+                    const SizedBox(height: 12),
+                    Text('Prep window: $prep min', style: const TextStyle(fontWeight: FontWeight.w700)),
+                    Slider(
+                      value: prep.toDouble(),
+                      min: 10,
+                      max: 90,
+                      divisions: 16,
+                      label: '$prep min',
+                      onChanged: (v) => setSheet(() => prep = v.round()),
+                    ),
+                    for (var i = 0; i < kKitchenHourKeys.length; i++) ...[
+                      Builder(builder: (_) {
+                        final key = kKitchenHourKeys[i];
+                        final day = Map<String, dynamic>.from(draft[key] as Map? ?? {});
+                        final closed = day['closed'] == true;
+                        return SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(kKitchenHourLabels[i], style: const TextStyle(fontWeight: FontWeight.w800)),
+                          subtitle: closed
+                              ? const Text('Closed')
+                              : Text(
+                                  '${formatKitchenClockLabel(parseKitchenClockMinutes(day['open']?.toString()) ?? 11 * 60)} – ${formatKitchenClockLabel(parseKitchenClockMinutes(day['close']?.toString()) ?? 22 * 60)}',
+                                ),
+                          value: !closed,
+                          onChanged: (on) {
+                            setSheet(() {
+                              if (on) {
+                                draft[key] = {
+                                  'closed': false,
+                                  'open': day['open'] ?? '11:00',
+                                  'close': day['close'] ?? '22:00',
+                                };
+                              } else {
+                                draft[key] = {'closed': true, 'open': '11:00', 'close': '22:00'};
+                              }
+                            });
+                          },
+                          secondary: closed
+                              ? null
+                              : IconButton(
+                                  tooltip: 'Set hours',
+                                  onPressed: () async {
+                                    await pick(key, 'open');
+                                    await pick(key, 'close');
+                                  },
+                                  icon: const Icon(Icons.schedule),
+                                ),
+                        );
+                      }),
+                    ],
+                    const SizedBox(height: 8),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('Save hours'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+    if (saved != true || !mounted) return;
+    try {
+      await _supabase.from('chef_profiles').upsert({
+        'user_id': _currentUserId,
+        'is_open': _isKitchenOpen,
+        'weekly_hours': draft,
+        'default_prep_minutes': prep,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      });
+      setState(() {
+        _weeklyHours = draft;
+        _prepMinutes = prep;
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Hours saved · ${kitchenWeeklyHoursLabel(draft)} · $prep min prep')),
+      );
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to save kitchen hours');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not save hours. Try again.'), backgroundColor: Colors.red),
         );
       }
     }
@@ -919,7 +1050,38 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                               : const Icon(Icons.circle, color: Colors.redAccent, size: 9),
                           const SizedBox(width: 6),
                           Text(
-                            _isKitchenOpen ? 'Online • Taking Orders' : 'Offline',
+                            !_isKitchenOpen
+                                ? 'Offline'
+                                : (isChefKitchenAcceptingOrders({
+                                      'is_open': true,
+                                      'weekly_hours': _weeklyHours,
+                                    })
+                                    ? 'Online • Taking Orders'
+                                    : 'Online • Outside hours'),
+                            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: _editKitchenHours,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: AppTheme.radiusLg,
+                        border: Border.all(color: Colors.white38),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.schedule, color: Colors.white, size: 14),
+                          const SizedBox(width: 6),
+                          Text(
+                            kitchenHoursPosted(_weeklyHours)
+                                ? kitchenWeeklyHoursLabel(_weeklyHours)
+                                : 'Set weekly hours',
                             style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
                           ),
                         ],

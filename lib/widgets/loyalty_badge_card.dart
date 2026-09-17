@@ -1,11 +1,14 @@
 // lib/widgets/loyalty_badge_card.dart
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
+import '../screens/checkout_screen.dart';
 import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
 import '../utils/membership.dart';
@@ -131,6 +134,58 @@ class _LoyaltyBadgeCardState extends State<LoyaltyBadgeCard> {
     );
   }
 
+  Future<void> _buyMembership() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CheckoutScreen(
+          cartItems: const [],
+          membershipOnly: true,
+          onOrderPlacedSuccess: () => unawaited(_fetchRewards()),
+        ),
+      ),
+    );
+    if (mounted) unawaited(_fetchRewards());
+  }
+
+  Future<void> _cancelMembership() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel Family member?'),
+        content: const Text(
+          'Free delivery ends today. Remaining days are not refunded. You can buy the plan again anytime.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Keep plan')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Cancel plan')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      final raw = await _supabase.rpc('diner_cancel_membership');
+      if (!mounted) return;
+      final data = raw is Map ? Map<String, dynamic>.from(raw) : null;
+      if (data?['success'] != true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(data?['error']?.toString() ?? 'Could not cancel')),
+        );
+        return;
+      }
+      await _fetchRewards();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Family member ended. Delivery fees apply on the next order.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(networkErrorMessage(e))),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) return const SizedBox.shrink();
@@ -205,6 +260,23 @@ class _LoyaltyBadgeCardState extends State<LoyaltyBadgeCard> {
               ),
             ),
           ],
+          const SizedBox(height: 4),
+          if (_isFamilyMember)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: _cancelMembership,
+                child: const Text('Cancel Family member'),
+              ),
+            )
+          else
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: _buyMembership,
+                child: const Text('Become a Family member'),
+              ),
+            ),
         ],
       ),
     );

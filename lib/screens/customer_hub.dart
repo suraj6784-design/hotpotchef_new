@@ -15,8 +15,10 @@ import '../providers/last_order_provider.dart';
 import '../providers/meal_plans_provider.dart';
 import '../services/auth_session.dart';
 import '../utils/app_haptics.dart';
+import '../utils/diner_locale.dart';
 import '../utils/helpers.dart';
 import '../widgets/app_widgets.dart';
+import '../widgets/checkout_retry_banner.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/diner_onboarding_coach.dart';
 import 'customer_feed_tab.dart';
@@ -129,6 +131,12 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
             index: _selectedIndex,
             children: pages,
           ),
+          const Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(bottom: false, child: CheckoutRetryBanner()),
+          ),
 
           if (cartState.items.isNotEmpty && _selectedIndex == 0)
             Positioned(
@@ -191,20 +199,26 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
             bottom: 12,
             left: 0,
             right: 0,
-            child: HubBottomDock(
-              selectedIndex: _selectedIndex,
-              onSelect: _onNavigationItemTapped,
-              destinations: [
-                const HubDockDestination(icon: Icons.cottage_outlined, selectedIcon: Icons.cottage, label: 'Home'),
-                HubDockDestination(
-                  icon: Icons.shopping_basket_outlined,
-                  selectedIcon: Icons.shopping_basket,
-                  label: 'Cart',
-                  badgeCount: cartState.itemCount,
-                ),
-                const HubDockDestination(icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: 'Orders'),
-                const HubDockDestination(icon: Icons.person_outline, selectedIcon: Icons.person, label: 'Account'),
-              ],
+            child: ListenableBuilder(
+              listenable: DinerLocaleController.instance,
+              builder: (context, _) {
+                final copy = DinerLocaleController.instance.copy;
+                return HubBottomDock(
+                  selectedIndex: _selectedIndex,
+                  onSelect: _onNavigationItemTapped,
+                  destinations: [
+                    HubDockDestination(icon: Icons.cottage_outlined, selectedIcon: Icons.cottage, label: copy.home),
+                    HubDockDestination(
+                      icon: Icons.shopping_basket_outlined,
+                      selectedIcon: Icons.shopping_basket,
+                      label: copy.cart,
+                      badgeCount: cartState.itemCount,
+                    ),
+                    HubDockDestination(icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: copy.orders),
+                    HubDockDestination(icon: Icons.person_outline, selectedIcon: Icons.person, label: copy.account),
+                  ],
+                );
+              },
             ),
           ),
           DinerOnboardingCoach(

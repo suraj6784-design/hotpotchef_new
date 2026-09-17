@@ -49,6 +49,20 @@ void main() {
     expect(bill.grandTotal, 200);
   });
 
+  test('Family member GST is listed separately from kitchen 5%', () {
+    final bill = gstInvoiceBreakdown(
+      itemsTotal: 190,
+      packagingFee: 10,
+      deliveryFee: 0,
+      membershipFee: 118,
+      chefGstin: '27AAPFU0939F1ZV',
+    );
+    expect(bill.membershipFee, 118);
+    expect(bill.membershipGst, 18);
+    expect(bill.grandTotal, 318);
+    expect(bill.legalNote.contains('Family member includes GST'), isTrue);
+  });
+
   test('Aadhaar is stored as last four only', () {
     expect(maskAadhaar('123412341234'), 'XXXX-XXXX-1234');
     expect(isFullAadhaar('123412341234'), isTrue);

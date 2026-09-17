@@ -1,7 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts'
-import { createRazorpayOrder } from '../_shared/razorpay.ts'
+import { createRazorpayOrder, ensureRazorpayCustomer } from '../_shared/razorpay.ts'
 import { quotePaidCheckout } from '../_shared/checkout_quote.ts'
 
 serve(async (req) => {
@@ -54,18 +54,20 @@ serve(async (req) => {
       body.membership_plan_id ?? null,
     )
     const cartItems = quoted.cartItems
+    const membershipOnly = cartItems.length === 0 && Boolean(quoted.membershipPlanId)
 
     const chefIds = [...new Set(
       cartItems
         .map((row) => String(row.chef_id ?? row.chefId ?? '').trim())
         .filter(Boolean),
     )]
-    if (chefIds.length > 0) {
-      const { data: kitchens } = await admin
-        .from('chef_profiles')
-        .select('user_id, is_open')
-        .in('user_id', chefIds)
-      if ((kitchens ?? []).some((row) => row.is_open === false)) {
+    if (!membershipOnly && chefIds.length > 0) {
+      const closed: string[] = []
+      for (const chefId of chefIds) {
+        const { data: open } = await admin.rpc('kitchen_accepting_orders', { p_chef_id: chefId })
+        if (open === false) closed.push(chefId)
+      }
+      if (closed.length > 0) {
         return jsonResponse({
           success: false,
           code: 'kitchen_closed',
@@ -103,17 +105,19 @@ serve(async (req) => {
     }
 
     await admin.rpc('expire_checkout_holds')
-    const { data: reserved, error: reserveError } = await admin.rpc('reserve_checkout_inventory', {
-      p_razorpay_order_id: rzpOrder.id,
-      p_cart_items: cartItems,
-      p_user_id: user.id,
-    })
-    if (reserveError || reserved?.success !== true) {
-      return jsonResponse({
-        success: false,
-        code: reserved?.code ?? 'sold_out',
-        error: reserved?.error || reserveError?.message || 'This meal just sold out. Nothing was charged.',
+    if (!membershipOnly) {
+      const { data: reserved, error: reserveError } = await admin.rpc('reserve_checkout_inventory', {
+        p_razorpay_order_id: rzpOrder.id,
+        p_cart_items: cartItems,
+        p_user_id: user.id,
       })
+      if (reserveError || reserved?.success !== true) {
+        return jsonResponse({
+          success: false,
+          code: reserved?.code ?? 'sold_out',
+          error: reserved?.error || reserveError?.message || 'This meal just sold out. Nothing was charged.',
+        })
+      }
     }
 
     if (quoted.coinsApplied > 0) {
@@ -135,12 +139,34 @@ serve(async (req) => {
       }
     }
 
+    let razorpayCustomerId: string | null = null
+    try {
+      const { data: profile } = await admin
+        .from('users')
+        .select('razorpay_customer_id, name, full_name, phone')
+        .eq('id', user.id)
+        .maybeSingle()
+      razorpayCustomerId = await ensureRazorpayCustomer({
+        userId: user.id,
+        email: user.email,
+        phone: profile?.phone ?? body.customer_phone,
+        name: profile?.name ?? profile?.full_name,
+        existingId: profile?.razorpay_customer_id,
+      })
+      if (razorpayCustomerId && razorpayCustomerId !== profile?.razorpay_customer_id) {
+        await admin.from('users').update({ razorpay_customer_id: razorpayCustomerId }).eq('id', user.id)
+      }
+    } catch (_) {
+      razorpayCustomerId = null
+    }
+
     return jsonResponse({
       success: true,
       order_id: rzpOrder.id,
       amount: quoted.amountPaise,
       currency: 'INR',
       hold_minutes: 15,
+      razorpay_customer_id: razorpayCustomerId,
     })
   } catch (err) {
     return jsonResponse({ success: false, error: err.message ?? 'Could not initialize payment' }, 400)

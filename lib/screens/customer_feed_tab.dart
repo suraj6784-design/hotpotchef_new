@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -28,11 +29,14 @@ import '../widgets/support_replied_banner.dart';
 import '../widgets/live_offers_flash_banner.dart';
 import '../widgets/membership_flash_banner.dart';
 import '../widgets/festival_hampers_banner.dart';
+import '../widgets/rescued_meals_banner.dart';
+import '../widgets/shelf_items_banner.dart';
 import '../widgets/society_nights_banner.dart';
 import '../widgets/ai_recommendations_section.dart';
 import '../widgets/sponsored_placement_banner.dart';
 import '../services/delivery_estimator_service.dart';
 import '../utils/delivery_fee.dart';
+import '../utils/kitchen_promise.dart';
 import '../utils/service_area.dart';
 import 'address_form_screen.dart';
 
@@ -90,6 +94,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   bool _hydratingRatings = false;
   final Set<String> _closedChefIds = {};
   final Set<String> _chefOpenResolved = {};
+  final Map<String, Map<String, dynamic>> _chefKitchenProfiles = {};
   bool _hydratingKitchenHours = false;
   StreamSubscription<AuthState>? _authSub;
   List<Map<String, dynamic>> _olderMeals = [];
@@ -823,15 +828,16 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     try {
       final rows = await Supabase.instance.client
           .from('chef_profiles')
-          .select('user_id, is_open')
+            .select('user_id, is_open, weekly_hours, default_prep_minutes')
           .inFilter('user_id', missing.toList());
       var closedChanged = false;
       for (final row in rows) {
         final id = row['user_id']?.toString();
         if (id == null || id.isEmpty) continue;
-        _chefOpenResolved.add(id);
         final profile = Map<String, dynamic>.from(row);
-        if (!isChefKitchenOpen(profile)) {
+        _chefOpenResolved.add(id);
+        _chefKitchenProfiles[id] = profile;
+        if (!isChefKitchenAcceptingOrders(profile)) {
           _closedChefIds.add(id);
           closedChanged = true;
         }
@@ -911,7 +917,13 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     if (!DeliveryEstimatorService.isWithinDeliveryRadius(distance)) {
       return 'Outside ${DeliveryEstimatorService.maxDeliveryRadiusKm.toInt()} km';
     }
-    return '${DeliveryEstimatorService.estimateEtaMinutes(distance)} min';
+    return '${DeliveryEstimatorService.estimateEtaMinutes(
+      distance,
+      prepMinutes: kitchenPrepMinutes(
+        _chefKitchenProfiles[meal['chef_id']?.toString()],
+        meal,
+      ),
+    )} min';
   }
 
   void _handleAddToCart(Map<String, dynamic> meal) async {
@@ -1255,6 +1267,20 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                 },
                               ),
                               const SizedBox(width: 4),
+                              IconButton(
+                                tooltip: 'Notifications',
+                                visualDensity: VisualDensity.compact,
+                                onPressed: () => context.push('/notifications'),
+                                style: IconButton.styleFrom(
+                                  foregroundColor: Colors.white,
+                                  backgroundColor: Colors.white.withValues(alpha: 0.12),
+                                  minimumSize: const Size(36, 36),
+                                  maximumSize: const Size(36, 36),
+                                  padding: EdgeInsets.zero,
+                                ),
+                                icon: const Icon(Icons.notifications_none, size: 18),
+                              ),
+                              const SizedBox(width: 4),
                               GestureDetector(
                                 onTap: widget.onProfileTap,
                                 child: Semantics(
@@ -1583,6 +1609,16 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         final chefId = meal['chef_id']?.toString() ?? '';
         return _chefRatings[chefId]?.average ?? 0;
       },
+      etaMinutes: (meal) {
+        final km = _distanceKmForMeal(meal);
+        return DeliveryEstimatorService.estimateEtaMinutes(
+          km ?? 0,
+          prepMinutes: kitchenPrepMinutes(
+            _chefKitchenProfiles[meal['chef_id']?.toString()],
+            meal,
+          ),
+        );
+      },
     );
   }
 
@@ -1777,6 +1813,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         onOfferTap: _onHomeOfferTap,
       ),
       const MembershipFlashBanner(),
+      const RescuedMealsBanner(),
       SponsoredPlacementBanner(
         destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
         destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
@@ -1808,6 +1845,13 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         destinationAddress: _selectedAddressMap,
         chefKitchenPins: _chefKitchenPins,
         onNightTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
+      ),
+      ShelfItemsBanner(
+        excludedChefIds: _closedChefIds,
+        destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
+        destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
+        chefKitchenPins: _chefKitchenPins,
+        onItemTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
       ),
       if (isLoggedIn) const WeeklyPlanDueBanner(),
       if (isLoggedIn) const AiRecommendationsSection(),

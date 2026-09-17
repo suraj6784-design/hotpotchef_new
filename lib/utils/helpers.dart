@@ -9,9 +9,11 @@ import 'package:flutter/services.dart';
 
 import 'app_theme.dart';
 import 'delivery_fee.dart';
+import 'kitchen_promise.dart';
 import 'fssai_certificate_scan.dart';
 import 'network.dart';
 import 'notification_copy.dart';
+import 'membership.dart';
 import 'pricing_calculator.dart';
 import 'meal_nutrition.dart';
 import 'service_area.dart';
@@ -20,7 +22,8 @@ import '../models/cart_enums.dart';
 import '../models/pricing_models.dart';
 
 // Export the theme so all screens automatically inherit it
-export 'app_theme.dart'; 
+export 'app_theme.dart';
+export 'kitchen_promise.dart'; 
 
 class Validators {
   static String? email(String? v) {
@@ -2902,12 +2905,12 @@ bool isKitchenClosedCheckoutError(Object? error, [Map<String, dynamic>? data]) {
 
 String kitchenClosedCheckoutMessage({required bool charged, bool refunded = false}) {
   if (charged && refunded) {
-    return 'This kitchen just went offline. Your payment was refunded and should return in 5–7 business days.';
+    return 'This kitchen just went offline. ${dinerRefundMoneyCopy(refunded: true)}';
   }
   if (charged) {
-    return 'This kitchen just went offline after payment. We are issuing a refund.';
+    return 'This kitchen just went offline after payment. ${dinerRefundMoneyCopy(refunded: false)}';
   }
-  return 'This kitchen just went offline. Nothing was charged — try another chef or come back later.';
+  return 'This kitchen is closed right now. Nothing was charged — try another chef or come back during weekly hours.';
 }
 
 String checkoutInitErrorMessage(Object? error, [Map<String, dynamic>? data]) {
@@ -2954,10 +2957,10 @@ List<Map<String, dynamic>> uniqueReviewableOrderItems(List<Map<String, dynamic>>
 
 String soldOutCheckoutMessage({required bool charged, bool refunded = false}) {
   if (charged && refunded) {
-    return 'This meal just sold out. Your payment was refunded and should return in 5–7 business days.';
+    return 'This meal just sold out. ${dinerRefundMoneyCopy(refunded: true)}';
   }
   if (charged) {
-    return 'This meal just sold out after payment. We are issuing a refund.';
+    return 'This meal just sold out after payment. ${dinerRefundMoneyCopy(refunded: false)}';
   }
   return 'This meal just sold out. Nothing was charged — pick another portion or chef.';
 }
@@ -3745,6 +3748,50 @@ DateTime? orderDispatchPhotoAt(Map<String, dynamic>? order) {
 
 bool hasDispatchPhoto(Map<String, dynamic>? order) => orderDispatchPhotoUrl(order) != null;
 
+String? orderPodPhotoUrl(Map<String, dynamic>? order) {
+  if (order == null) return null;
+  final url = (order['pod_photo_url'] ?? order['podPhotoUrl'])?.toString().trim() ?? '';
+  return url.startsWith('http') ? url : null;
+}
+
+DateTime? orderPodPhotoAt(Map<String, dynamic>? order) {
+  if (order == null) return null;
+  return DateTime.tryParse(order['pod_captured_at']?.toString() ?? order['pod_photo_at']?.toString() ?? '');
+}
+
+bool hasPodPhoto(Map<String, dynamic>? order) => orderPodPhotoUrl(order) != null;
+
+String deliveryPodLabel({DateTime? takenAt, DateTime? now}) {
+  final when = takenAt?.toLocal();
+  if (when == null) return 'Delivered · door photo on file';
+  return 'Delivered · door photo ${formatAppTime(when)}';
+}
+
+String dinerDoubleChargeCopy({required bool extraDebitShown}) {
+  if (extraDebitShown) {
+    return 'If your bank shows two HotPotChef debits, we keep one payment and refund the duplicate in 5–7 business days. Open Support with the Razorpay id if the extra debit stays.';
+  }
+  return 'Nothing extra was charged. A bank hold can still show for a day and then drop on its own.';
+}
+
+String dinerRefundMoneyCopy({required bool refunded}) {
+  if (refunded) {
+    return 'Refund started. The amount should return to the original method in 5–7 business days.';
+  }
+  return 'We are issuing a refund to the original method. If it is not visible in 5–7 business days, open Support with the order id.';
+}
+
+String dinerPaymentFailureCopy(String? gatewayMessage) {
+  final text = (gatewayMessage ?? '').toLowerCase();
+  if (text.contains('already') || text.contains('duplicate') || text.contains('paid')) {
+    return dinerDoubleChargeCopy(extraDebitShown: true);
+  }
+  if (text.contains('refund')) {
+    return dinerRefundMoneyCopy(refunded: true);
+  }
+  return 'Payment did not complete. Nothing was confirmed on this order. If a hold appears on your bank statement, it drops in 5–7 business days.';
+}
+
 String dispatchPackedLabel({DateTime? takenAt, DateTime? now}) {
   final when = takenAt?.toLocal();
   if (when == null) return 'Your box is packed';
@@ -3802,13 +3849,14 @@ List<CartItemAddOn> pricedAddOnsFromCatalog({
 const String kFeedSortNearby = 'Nearby';
 const String kFeedSortPrice = 'Price';
 const String kFeedSortRating = 'Rating';
-const String kFeedSortEta = 'ETA';
+const String kFeedSortEta = 'Arriving soon';
 
 List<Map<String, dynamic>> sortFeedMeals(
   List<Map<String, dynamic>> meals, {
   required String sort,
   required double? Function(Map<String, dynamic> meal) distanceKm,
   double Function(Map<String, dynamic> meal)? rating,
+  int Function(Map<String, dynamic> meal)? etaMinutes,
 }) {
   final copy = List<Map<String, dynamic>>.from(meals);
   int byDistance(Map<String, dynamic> a, Map<String, dynamic> b) {
@@ -3833,6 +3881,10 @@ List<Map<String, dynamic>> sortFeedMeals(
         final compared = rb.compareTo(ra);
         return compared != 0 ? compared : byDistance(a, b);
       case kFeedSortEta:
+        final ea = etaMinutes?.call(a) ?? 9999;
+        final eb = etaMinutes?.call(b) ?? 9999;
+        final compared = ea.compareTo(eb);
+        return compared != 0 ? compared : byDistance(a, b);
       case kFeedSortNearby:
       default:
         return byDistance(a, b);
@@ -4226,22 +4278,33 @@ bool dinerSlotCountdownActive(String? status) {
 }
 
 bool dinerSlotIsLate(Map<String, dynamic> order, {DateTime? now}) {
-  final start = orderSlotStart(order, now: now);
-  if (start == null) return false;
-  return start.isBefore(now ?? DateTime.now());
+  final promised = orderPromisedAt(order, now: now) ?? orderSlotStart(order, now: now);
+  if (promised == null) return false;
+  return promised.isBefore(now ?? DateTime.now());
 }
 
 /// Diner-facing promised slot, e.g. "Arriving by 8:00 PM · 12 min left".
 String dinerPromisedSlotCopy(Map<String, dynamic> order, {DateTime? now, String? status}) {
   if (!dinerSlotCountdownActive(status ?? order['status']?.toString())) return '';
-  final slot = formatDeliverySlotLabel(order, now: now);
-  final tick = formatSlotCountdown(orderSlotStart(order, now: now), now: now);
+  final promised = orderPromisedAt(order, now: now);
+  final start = promised ?? orderSlotStart(order, now: now);
+  final slot = promised != null
+      ? formatAppTime(promised)
+      : formatDeliverySlotLabel(order, now: now);
+  final tick = formatSlotCountdown(start, now: now);
+  final lateNote = dinerLateOrderCopy(order, now: now);
+  String core;
   if (tick.isEmpty) {
-    return slot == 'ASAP' ? 'Arriving ASAP' : 'Arriving by $slot';
+    core = slot == 'ASAP' ? 'Arriving ASAP' : 'Arriving by $slot';
+  } else if (tick == 'Due now') {
+    core = 'Due now · arriving by $slot';
+  } else if (tick.contains('late')) {
+    core = '$tick · promised $slot';
+  } else {
+    core = 'Arriving by $slot · $tick';
   }
-  if (tick == 'Due now') return 'Due now · arriving by $slot';
-  if (tick.contains('late')) return '$tick · promised $slot';
-  return 'Arriving by $slot · $tick';
+  if (lateNote.isEmpty) return core;
+  return '$core. $lateNote';
 }
 
 /// Live countdown against the scheduled drop-off, e.g. "12 min left" / "8 min late".
@@ -4265,6 +4328,7 @@ class OrderBillBreakdown {
     this.itemsGross = 0,
     this.promoDiscount = 0,
     this.promoLabel,
+    this.membershipFee = 0,
   });
 
   /// Food portion actually charged (after offer).
@@ -4279,6 +4343,7 @@ class OrderBillBreakdown {
   final double itemsGross;
   final double promoDiscount;
   final String? promoLabel;
+  final double membershipFee;
 
   double get displayItemsTotal =>
       itemsGross > itemsTotal + 0.5 ? itemsGross : (itemsGross > 0 ? itemsGross : itemsTotal);
@@ -4313,6 +4378,7 @@ OrderBillBreakdown orderBillBreakdown({
   final tip = parseMoney(source['tip_amount'] ?? source['tip']);
   var coins = parseMoney(source['coins_applied']);
   final storedDelivery = tryParseMoney(source['delivery_fee']);
+  final membershipFee = parseMoney(source['membership_fee']);
 
   final service = (source['order_type'] ?? source['service_type'] ?? '').toString().toLowerCase();
   final deliveryExpected = hasDelivery || service.contains('delivery');
@@ -4323,23 +4389,23 @@ OrderBillBreakdown orderBillBreakdown({
   } else if (storedDelivery != null) {
     delivery = storedDelivery;
   } else if (paidTotal > 0) {
-    delivery = paidTotal - itemsTotal - packaging - tip + coins;
+    delivery = paidTotal - itemsTotal - packaging - tip + coins - membershipFee;
     if (delivery < 0) delivery = 0;
   } else {
     delivery = 0;
   }
 
   if (storedPackaging == null && paidTotal > 0) {
-    final remainder = paidTotal - itemsTotal - delivery - tip + coins;
+    final remainder = paidTotal - itemsTotal - delivery - tip + coins - membershipFee;
     if (remainder > 0.5) packaging = remainder;
   }
 
-  final extras = packaging + delivery + tip;
+  final extras = packaging + delivery + tip + membershipFee;
   // Older rows stored food-only in total_price (e.g. ₹221) while packaging still applies.
   final paidLooksLikeItemsOnly =
       paidTotal > 0 && (paidTotal - itemsTotal).abs() < 0.5 && extras >= 0.5;
 
-  final computed = (itemsTotal + packaging + delivery + tip - coins).clamp(0, double.infinity);
+  final computed = (itemsTotal + packaging + delivery + tip + membershipFee - coins).clamp(0, double.infinity);
   final grand = (paidTotal > 0 && !paidLooksLikeItemsOnly) ? paidTotal : computed;
 
   return OrderBillBreakdown(
@@ -4352,6 +4418,7 @@ OrderBillBreakdown orderBillBreakdown({
     itemsGross: itemsGross,
     promoDiscount: promoDiscount,
     promoLabel: promoLabel,
+    membershipFee: membershipFee,
   );
 }
 
@@ -4390,6 +4457,19 @@ List<Widget> orderBillItemRows(BuildContext context, OrderBillBreakdown bill) {
 List<Widget> orderBillAdjustmentRows(BuildContext context, OrderBillBreakdown bill) {
   final ink = AppTheme.onSurfaceOf(context);
   final rows = <Widget>[];
+  if (bill.membershipFee > 0) {
+    rows.addAll([
+      const SizedBox(height: 10),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Text('Family member', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
+          Text('₹${bill.membershipFee.toInt()}', style: TextStyle(color: ink, fontSize: 13, fontWeight: FontWeight.w500)),
+        ],
+      ),
+      Text(membershipGstLineLabel(bill.membershipFee), style: AppTheme.micro),
+    ]);
+  }
   if (bill.tipAmount > 0) {
     rows.addAll([
       const SizedBox(height: 10),
@@ -4807,6 +4887,11 @@ bool isChefKitchenOpen(Map<String, dynamic>? profile) {
   final text = raw.toString().toLowerCase().trim();
   if (text == 'false' || text == '0' || text == 'offline' || text == 'closed') return false;
   return true;
+}
+
+bool isChefKitchenAcceptingOrders(Map<String, dynamic>? profile, {DateTime? now}) {
+  if (!isChefKitchenOpen(profile)) return false;
+  return kitchenHoursAccepting(profile?['weekly_hours'], now: now);
 }
 
 Map<String, double> kitchenPinMealFields(double lat, double lng) {

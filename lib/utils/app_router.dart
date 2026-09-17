@@ -30,6 +30,7 @@ import '../screens/customer_order_history_screen.dart';
 import '../screens/customer_bulk_request_screen.dart';
 import '../screens/customer_meal_plans_screen.dart';
 import '../screens/customer_support_tickets_screen.dart';
+import '../screens/notifications_inbox_screen.dart';
 import '../screens/driver_id_card_screen.dart';
 import '../screens/wrong_storefront_screen.dart';
 import '../services/auth_session.dart';
@@ -80,6 +81,7 @@ class AppRouter {
         '/chats',
         '/platform-ops',
         '/support-tickets',
+        '/notifications',
       };
       if (!isAuthenticated &&
           (signedInOnlyRoutes.contains(path) || path.startsWith('/chat/'))) {
@@ -241,6 +243,7 @@ class AppRouter {
       _fadeRoute('/order-history', (context, state) => const CustomerOrderHistoryScreen()),
       _fadeRoute('/bulk-request', (context, state) => const CustomerBulkRequestScreen()),
       _fadeRoute('/support-tickets', (context, state) => const CustomerSupportTicketsScreen()),
+      _fadeRoute('/notifications', (context, state) => const NotificationsInboxScreen()),
     ],
   );
 }
