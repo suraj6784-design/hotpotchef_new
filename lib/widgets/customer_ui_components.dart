@@ -21,6 +21,7 @@ import '../utils/helpers.dart';
 import 'app_widgets.dart';
 import 'diner_storefront.dart';
 import '../utils/meal_nutrition.dart';
+import '../utils/meal_publish_template.dart';
 import '../utils/app_page.dart';
 import '../utils/app_theme.dart';
 import '../utils/pricing_calculator.dart';
@@ -1547,6 +1548,69 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                         ),
                       ),
                       const SizedBox(height: 24),
+                      if (inferMealCuisine(meal).isNotEmpty || inferMealCourse(meal).isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Text(
+                            '${inferMealCuisine(meal)} · ${inferMealCourse(meal)}'
+                            '${mealIsSeasonal(meal) ? ' · Seasonal / limited' : ''}',
+                            style: AppTheme.caption.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      if (mealIngredientsLine(meal).isNotEmpty) ...[
+                        Text('Ingredients', style: AppTheme.homeSectionLabelOf(context).copyWith(fontSize: 16)),
+                        const SizedBox(height: 6),
+                        Text(mealIngredientsLine(meal), style: AppTheme.bodyMuted),
+                        const SizedBox(height: 12),
+                      ],
+                      if (mealAllergenList(meal).isNotEmpty) ...[
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            for (final allergen in mealAllergenList(meal))
+                              Chip(
+                                label: Text('Allergen: $allergen', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      if (mealPrepServingLine(meal).isNotEmpty) ...[
+                        _mealInfoChip(
+                          icon: Icons.soup_kitchen_outlined,
+                          label: 'Prep & serving',
+                          value: mealPrepServingLine(meal),
+                          background: isDark ? Colors.green.shade900.withValues(alpha: 0.3) : Colors.green.shade50,
+                          iconColor: Colors.green,
+                          textColor: isDark ? Colors.green.shade200 : Colors.green.shade800,
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                      if ((meal['delivery_estimate_minutes']?.toString() ?? '').isNotEmpty) ...[
+                        _mealInfoChip(
+                          icon: Icons.timer_outlined,
+                          label: 'Delivery estimate',
+                          value: '${meal['delivery_estimate_minutes']} min',
+                          background: isDark ? Colors.blue.shade900.withValues(alpha: 0.3) : Colors.blue.shade50,
+                          iconColor: Colors.blueAccent,
+                          textColor: isDark ? Colors.blue.shade200 : Colors.blue.shade800,
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                      if ((meal['video_url']?.toString() ?? '').isNotEmpty)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            onPressed: () {
+                              final uri = Uri.tryParse(meal['video_url'].toString());
+                              if (uri != null) launchUrl(uri, mode: LaunchMode.externalApplication);
+                            },
+                            icon: const Icon(Icons.play_circle_outline),
+                            label: const Text('Watch cooking / plating clip'),
+                          ),
+                        ),
                       _mealInfoChip(
                         icon: Icons.delivery_dining,
                         label: 'Delivery option',
@@ -1637,6 +1701,12 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                             'Delicious home-cooked meal prepared with love and high hygiene standards.',
                         style: AppTheme.bodyMuted,
                       ),
+                      if (mealChefTipLine(meal).isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        Text("Chef's tip", style: AppTheme.homeSectionLabelOf(context).copyWith(fontSize: 16)),
+                        const SizedBox(height: 6),
+                        Text(mealChefTipLine(meal), style: AppTheme.bodyMuted),
+                      ],
                     ],
                   ),
                 ),
@@ -1763,6 +1833,24 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                   ),
                 ),
               ),
+              if (!canAddToCart && mealAllowsAvailabilityNotify(meal)) ...[
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton.icon(
+                    onPressed: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('We will ping you when this plate is available again.'),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.notifications_active_outlined, size: 18),
+                    label: const Text('Notify me when available', style: TextStyle(fontWeight: FontWeight.w800)),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
