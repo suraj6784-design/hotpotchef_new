@@ -434,6 +434,15 @@ bool dinerFssaiIsVerified(
   return !fssaiLicenceIsExpired(validUntil, now: now);
 }
 
+/// Short feed-card mark. Empty when the kitchen is not ops-verified.
+String dinerFssaiCardChip({
+  String? verificationStatus,
+  DateTime? validUntil,
+  DateTime? now,
+}) {
+  return dinerFssaiIsVerified(verificationStatus, validUntil: validUntil, now: now) ? 'Verified' : '';
+}
+
 /// 0–100 kitchen trust from FSSAI + review velocity. Not a hygiene lab score.
 int kitchenTrustScore({
   String? verificationStatus,

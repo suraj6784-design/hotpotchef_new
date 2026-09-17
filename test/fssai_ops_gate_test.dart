@@ -83,6 +83,12 @@ void main() {
         dinerFssaiIsVerified('verified', validUntil: DateTime(2025, 1, 1), now: DateTime(2026, 9, 14)),
         isFalse,
       );
+      expect(dinerFssaiCardChip(verificationStatus: 'pending'), '');
+      expect(dinerFssaiCardChip(verificationStatus: 'verified'), 'Verified');
+      expect(
+        dinerFssaiCardChip(verificationStatus: 'verified', validUntil: DateTime(2025, 1, 1), now: DateTime(2026, 9, 14)),
+        '',
+      );
     });
 
     test('masks pan and bank', () {

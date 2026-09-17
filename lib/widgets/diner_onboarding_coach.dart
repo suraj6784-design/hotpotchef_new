@@ -14,14 +14,23 @@ class DinerOnboardingCoach extends StatefulWidget {
 }
 
 class _DinerOnboardingCoachState extends State<DinerOnboardingCoach> {
-  static const _key = 'diner_onboarding_v1';
+  static const _key = 'diner_onboarding_v2';
   int _step = 0;
   bool _visible = false;
 
   static const _copy = [
-    ('Find a kitchen', 'Home lists live plates near you. Open hours and FSSAI show on each card.'),
-    ('Checkout in minutes', 'Add a plate, pick an address, and pay in-app. Coins apply at pay if you have them.'),
-    ('Track your kitchen', 'Home is live plates. Account holds support, coins, and addresses. Orders fills in after you pay.'),
+    (
+      'Find a kitchen',
+      'Home lists live plates near you. Verified kitchens show a chip on the card. Hours and the FSSAI number open on the chef peek.',
+    ),
+    (
+      'Pay in four beats',
+      'Add a plate, or Pay on this plate to skip the cart. Address and Razorpay finish the order. Coins apply at pay if you turn them on.',
+    ),
+    (
+      'Track and help',
+      'Orders shows promised arrival, live track, chat, and Help. Account holds coins, addresses, and language.',
+    ),
   ];
 
   @override

@@ -19,6 +19,7 @@ import '../utils/payment_preferences.dart';
 import '../utils/pricing_calculator.dart';
 import '../utils/legal_content.dart';
 import '../utils/membership.dart';
+import '../utils/diner_locale.dart';
 import '../utils/checkout_retry_queue.dart';
 import '../utils/support.dart';
 import '../models/cart_enums.dart';
@@ -574,7 +575,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           'tip_amount': clampCheckoutTip(_selectedTip),
           'apply_coins': _applyCoins && _coinsAccepted,
           'add_membership': _membershipOnThisOrder,
-          'membership_plan_id': _membershipOnThisOrder ? _membershipOffer?['plan_id'] : null,
+          'membership_plan_id': _membershipOnThisOrder ? (_membershipOffer?['plan_id']) : null,
         },
       ).withTimeout(NetworkTimeouts.payment);
 
@@ -782,7 +783,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       'tip_amount': clampCheckoutTip(_selectedTip),
       'apply_coins': _applyCoins && _coinsAccepted,
       'add_membership': _membershipOnThisOrder,
-      'membership_plan_id': _membershipOnThisOrder ? _membershipOffer?['plan_id'] : null,
+      'membership_plan_id': _membershipOnThisOrder ? (_membershipOffer?['plan_id']) : null,
       'dropoff_lat': addressCoordinate(_selectedAddressData, latitude: true),
       'dropoff_lng': addressCoordinate(_selectedAddressData, latitude: false),
     };
@@ -1645,65 +1646,64 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ),
           const SizedBox(height: 16),
 
-          // Driver Tip Option
-          if (_hasDelivery)
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppTheme.surfaceOf(context),
-                borderRadius: AppTheme.radiusLg,
-                border: Border.all(color: AppTheme.hairlineOf(context)),
-                boxShadow: AppTheme.softShadow,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          if (widget.cartItems.isNotEmpty || _showMembershipUpsell || _hasDelivery)
+            Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                title: Text(
+                  DinerLocaleController.instance.copy.adjustBill,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                subtitle: const Text('Tip, promo, and Family member'),
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
+                  if (_hasDelivery)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.surfaceOf(context),
+                        borderRadius: AppTheme.radiusLg,
+                        border: Border.all(color: AppTheme.hairlineOf(context)),
+                      ),
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text('Optional rider tip',
                               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppTheme.onSurfaceOf(context))),
                           const SizedBox(height: 2),
-                          Text('100% of the tip amount goes directly to them',
-                              style: AppTheme.micro),
+                          Text('100% of the tip amount goes directly to them', style: AppTheme.micro),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              _buildTipChip(10),
+                              _buildTipChip(20),
+                              _buildTipChip(30),
+                              _buildTipChip(50),
+                              _buildTipChip(0, label: 'None'),
+                            ],
+                          ),
                         ],
                       ),
-                      const Icon(Icons.delivery_dining_outlined, color: AppTheme.textMuted, size: 22),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _buildTipChip(10),
-                      _buildTipChip(20),
-                      _buildTipChip(30),
-                      _buildTipChip(50),
-                      _buildTipChip(0, label: 'None'),
-                    ],
-                  ),
+                    ),
+                  if (widget.cartItems.isNotEmpty) _buildPromoCard(),
+                  if (_showMembershipUpsell)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8, bottom: 8),
+                      child: _CheckoutMembershipOfferCard(
+                        offer: _membershipOffer!,
+                        selected: _addMembership,
+                        onChanged: (value) {
+                          setState(() {
+                            _addMembership = value;
+                            _repriceDeliveryAfterPromo();
+                          });
+                        },
+                      ),
+                    ),
                 ],
-              ),
-            ),
-          if (_hasDelivery) const SizedBox(height: 16),
-
-          if (widget.cartItems.isNotEmpty) _buildPromoCard(),
-          if (widget.cartItems.isNotEmpty) const SizedBox(height: 16),
-          if (_showMembershipUpsell)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: _CheckoutMembershipOfferCard(
-                offer: _membershipOffer!,
-                selected: _addMembership,
-                onChanged: (value) {
-                  setState(() {
-                    _addMembership = value;
-                    _repriceDeliveryAfterPromo();
-                  });
-                },
               ),
             ),
 
@@ -1897,8 +1897,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   label: (_applyCoins && _grandTotal < 1)
                       ? 'Place order with coins'
                       : _membershipOnlyPay
-                          ? 'Pay membership ₹${_grandTotal.toStringAsFixed(0)}'
-                          : 'Pay ₹${_grandTotal.toStringAsFixed(0)}',
+                          ? '${DinerLocaleController.instance.copy.pay} membership ₹${_grandTotal.toStringAsFixed(0)}'
+                          : '${DinerLocaleController.instance.copy.pay} ₹${_grandTotal.toStringAsFixed(0)}',
                   icon: Icons.lock_rounded,
                   loading: _isCheckingOut,
                   onPressed: _isCheckingOut ? null : _startRazorpayPayment,

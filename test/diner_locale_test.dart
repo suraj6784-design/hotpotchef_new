@@ -9,5 +9,9 @@ void main() {
     expect(dinerCopy('hi').home, 'होम');
     expect(dinerCopy('mr').cart, 'कार्ट');
     expect(dinerCopy('en').notifications, 'Notifications');
+    expect(dinerCopy('hi').payThisPlate, 'इस प्लेट पर पे');
+    expect(dinerCopy('mr').help, 'मदत');
+    expect(dinerCopy('en').adjustBill, 'Adjust bill');
+    expect(dinerCopy('en').forYou, 'For you');
   });
 }

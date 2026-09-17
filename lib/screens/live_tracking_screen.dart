@@ -16,6 +16,7 @@ import 'package:go_router/go_router.dart';
 import '../services/order_lifecycle.dart';
 import '../utils/helpers.dart';
 import '../utils/support.dart';
+import '../utils/diner_locale.dart';
 import '../widgets/diner_order_progress.dart';
 
 class LiveTrackingScreen extends StatefulWidget {
@@ -636,7 +637,9 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
         ),
         actions: [
           IconButton(
-            tooltip: chatOpen ? 'Order group' : 'Chat closed — use Support',
+            tooltip: chatOpen
+                ? 'Order group'
+                : 'Chat closed — use ${widget.isDriver ? 'Support' : DinerLocaleController.instance.copy.help}',
             icon: Icon(
               Icons.chat_bubble_outline,
               color: chatOpen ? AppTheme.primary : Colors.grey,
@@ -645,13 +648,18 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                 ? _openOrderGroup
                 : () {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Order chat closed after delivery. Use Support for issues.'),
+                      SnackBar(
+                        content: Text(
+                          widget.isDriver
+                              ? 'Order chat closed after delivery. Use Support for issues.'
+                              : 'Order chat closed after delivery. Use ${DinerLocaleController.instance.copy.help} for issues.',
+                        ),
                       ),
                     );
                   },
           ),
           IconButton(
+            tooltip: widget.isDriver ? 'Support' : DinerLocaleController.instance.copy.help,
             icon: const Icon(Icons.support_agent, color: AppTheme.primary),
             onPressed: () {
               showContactSupportSheet(

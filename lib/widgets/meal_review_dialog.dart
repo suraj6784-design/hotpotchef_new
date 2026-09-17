@@ -56,7 +56,7 @@ class MealReviewDialog extends StatefulWidget {
 }
 
 class _MealReviewDialogState extends State<MealReviewDialog> {
-  int _rating = 5;
+  int _rating = 0;
   bool _submitting = false;
   final _comment = TextEditingController();
 
@@ -67,7 +67,7 @@ class _MealReviewDialogState extends State<MealReviewDialog> {
   }
 
   Future<void> _submit() async {
-    if (_submitting) return;
+    if (_submitting || _rating < 1) return;
     setState(() => _submitting = true);
     try {
       await widget.onSubmit(_rating, _comment.text.trim());
@@ -96,10 +96,22 @@ class _MealReviewDialogState extends State<MealReviewDialog> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            'How was the food from this home kitchen?',
+            'Tap a star to send. A note is optional.',
             style: TextStyle(color: muted, fontSize: 13),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _comment,
+            maxLines: 2,
+            enabled: !_submitting,
+            style: TextStyle(color: titleColor),
+            decoration: InputDecoration(
+              labelText: 'Leave a review (optional)',
+              labelStyle: TextStyle(color: muted),
+              alignLabelWithHint: true,
+            ),
+          ),
+          const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(5, (index) {
@@ -111,21 +123,12 @@ class _MealReviewDialogState extends State<MealReviewDialog> {
                 ),
                 onPressed: _submitting
                     ? null
-                    : () => setState(() => _rating = index + 1),
+                    : () {
+                        setState(() => _rating = index + 1);
+                        _submit();
+                      },
               );
             }),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _comment,
-            maxLines: 3,
-            enabled: !_submitting,
-            style: TextStyle(color: titleColor),
-            decoration: InputDecoration(
-              labelText: 'Leave a review (optional)',
-              labelStyle: TextStyle(color: muted),
-              alignLabelWithHint: true,
-            ),
           ),
         ],
       ),
@@ -134,20 +137,15 @@ class _MealReviewDialogState extends State<MealReviewDialog> {
           onPressed: _submitting ? null : () => Navigator.pop(context, false),
           child: Text('Skip', style: TextStyle(color: muted)),
         ),
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppTheme.primary,
-            foregroundColor: Colors.white,
+        if (_submitting)
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
           ),
-          onPressed: _submitting ? null : _submit,
-          child: _submitting
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                )
-              : const Text('Submit'),
-        ),
       ],
     );
   }

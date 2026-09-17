@@ -227,6 +227,24 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
+  Future<void> _signInWithOAuth(OAuthProvider provider) async {
+    setState(() {
+      _isLoading = true;
+      _authError = null;
+    });
+    try {
+      await _supabase.auth.signInWithOAuth(
+        provider,
+        redirectTo: 'hotpotchef://app/auth',
+      );
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'OAuth authentication failure');
+      _showAuthError('Could not open that sign-in. Use the OTP on this screen.');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   bool get _phoneOtpAuth => !kAppStorefront.isPartner && !_useEmailAuth;
 
   Future<void> _submitAuth() async {
@@ -990,6 +1008,30 @@ class _AuthScreenState extends State<AuthScreen> {
             loading: _isLoading,
             onPressed: _isLoading ? null : _submitAuth,
           ),
+          if (!kAppStorefront.isPartner) ...[
+            const SizedBox(height: 12),
+            Text('Or continue with', style: AppTheme.caption),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _isLoading ? null : () => _signInWithOAuth(OAuthProvider.google),
+                    icon: const Icon(Icons.g_mobiledata, size: 22),
+                    label: const Text('Google'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _isLoading ? null : () => _signInWithOAuth(OAuthProvider.apple),
+                    icon: const Icon(Icons.apple, size: 18),
+                    label: const Text('Apple'),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

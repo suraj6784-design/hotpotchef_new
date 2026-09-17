@@ -186,7 +186,7 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
                           ],
                         ),
                       ),
-                      Text('View cart', style: AppTheme.listTitleOf(context).copyWith(color: Colors.white, fontSize: 14)),
+                      Text(DinerLocaleController.instance.copy.viewCart, style: AppTheme.listTitleOf(context).copyWith(color: Colors.white, fontSize: 14)),
                       const SizedBox(width: 4),
                       const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 18),
                     ],

@@ -10,6 +10,7 @@ import 'dart:convert';
 import '../utils/helpers.dart';
 import '../utils/network.dart';
 import '../utils/support.dart';
+import '../utils/diner_locale.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/app_status_badge.dart';
@@ -149,7 +150,7 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                         orderNumber: displayOrderIdStr,
                         orderUuid: orderRecord['id']?.toString(),
                       ),
-                      child: const Text('Support', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 14)),
+                      child: Text(DinerLocaleController.instance.copy.help, style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 14)),
                     )
                   ],
                 ),
@@ -282,7 +283,7 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                             IconButton(
                               tooltip: orderAllowsPartyChat(orderRecord['status']?.toString())
                                   ? 'Order group'
-                                  : 'Chat closed — use Support',
+                                  : 'Chat closed — use ${DinerLocaleController.instance.copy.help}',
                               icon: Icon(
                                 Icons.chat_bubble_outline,
                                 color: orderAllowsPartyChat(orderRecord['status']?.toString())

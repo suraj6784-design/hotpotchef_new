@@ -320,6 +320,8 @@ class _OpsAnalyticsListState extends State<_OpsAnalyticsList> {
         const SizedBox(height: 16),
         _OpsGmvChart(series: snap.series, title: 'GMV by day'),
         const SizedBox(height: 16),
+        const _OpsPromiseDemandBoard(),
+        const SizedBox(height: 16),
         Text('Account mix', style: AppTheme.homeSectionLabelOf(context)),
         const SizedBox(height: 8),
         AppCard(
@@ -478,6 +480,36 @@ class _OpsCrmListState extends State<_OpsCrmList> {
 
   Future<void> _openContact(OpsCrmContact row) async {
     final note = TextEditingController();
+    String npsLine = '';
+    if (AppRole.parse(row.role) == AppRole.customer) {
+      try {
+        final raw = await Supabase.instance.client
+            .from('reviews')
+            .select('rating')
+            .eq('customer_id', row.id)
+            .limit(80)
+            .withTimeout(NetworkTimeouts.standard);
+        final ratings = <int>[];
+        for (final item in List<dynamic>.from(raw as List)) {
+          final map = Map<String, dynamic>.from(item as Map);
+          final rating = int.tryParse(map['rating']?.toString() ?? '') ?? 0;
+          if (rating >= 1 && rating <= 5) ratings.add(rating);
+        }
+        if (ratings.isNotEmpty) {
+          final avg = ratings.reduce((a, b) => a + b) / ratings.length;
+          final promoters = ratings.where((r) => r >= 5).length;
+          final detractors = ratings.where((r) => r <= 3).length;
+          final nps = ((promoters - detractors) / ratings.length * 100).round();
+          npsLine =
+              'Review NPS $nps · avg ${avg.toStringAsFixed(1)}/5 · ${ratings.length} plate ratings (5=promoter, ≤3=detractor)';
+        } else {
+          npsLine = 'No plate ratings yet';
+        }
+      } catch (_) {
+        npsLine = 'Ratings unavailable';
+      }
+    }
+    if (!mounted) return;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -494,6 +526,10 @@ class _OpsCrmListState extends State<_OpsCrmList> {
               Text(opsCrmSheetSubtitle(row), style: AppTheme.caption),
               const SizedBox(height: 12),
               Text(opsCrmSpendLabel(row), style: const TextStyle(fontWeight: FontWeight.w700)),
+              if (npsLine.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(npsLine, style: AppTheme.caption),
+              ],
               if (row.lastOrderAt.isNotEmpty && AppRole.parse(row.role) != AppRole.driver)
                 Text('Last order ${_opsShortDate(row.lastOrderAt)}', style: AppTheme.caption),
               if (opsCrmComplianceLine(row) case final compliance?)
@@ -887,6 +923,146 @@ class _OpsGmvChart extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _OpsPromiseDemandBoard extends StatefulWidget {
+  const _OpsPromiseDemandBoard();
+
+  @override
+  State<_OpsPromiseDemandBoard> createState() => _OpsPromiseDemandBoardState();
+}
+
+class _OpsPromiseDemandBoardState extends State<_OpsPromiseDemandBoard> {
+  bool _loading = true;
+  String? _error;
+  int _withPromise = 0;
+  int _lateDelivered = 0;
+  int _liveLate = 0;
+  Map<int, int> _hourCounts = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final since = DateTime.now().toUtc().subtract(const Duration(days: 7)).toIso8601String();
+      dynamic raw;
+      try {
+        raw = await Supabase.instance.client
+            .from('orders')
+            .select('id,status,promised_at,delivered_at,created_at')
+            .gte('created_at', since)
+            .limit(800)
+            .withTimeout(NetworkTimeouts.standard);
+      } catch (_) {
+        raw = await Supabase.instance.client
+            .from('orders')
+            .select('id,status,delivered_at,created_at')
+            .gte('created_at', since)
+            .limit(800)
+            .withTimeout(NetworkTimeouts.standard);
+      }
+      var withPromise = 0;
+      var lateDelivered = 0;
+      var liveLate = 0;
+      final hours = <int, int>{};
+      final now = DateTime.now();
+      final rows = raw is List ? raw : const [];
+      for (final item in rows) {
+        if (item is! Map) continue;
+        final order = Map<String, dynamic>.from(item);
+        final promised = orderPromisedAt(order);
+        if (promised == null) continue;
+        withPromise++;
+        hours[promised.hour] = (hours[promised.hour] ?? 0) + 1;
+        final delivered = DateTime.tryParse(order['delivered_at']?.toString() ?? '');
+        final status = order['status']?.toString().toLowerCase() ?? '';
+        if (delivered != null) {
+          if (delivered.toLocal().isAfter(promised.add(const Duration(minutes: kLateOrderGraceMinutes)))) {
+            lateDelivered++;
+          }
+        } else if (!status.contains('cancel') &&
+            !status.contains('reject') &&
+            orderIsPastPromise(order, now: now, graceMinutes: kLateOrderGraceMinutes)) {
+          liveLate++;
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _withPromise = withPromise;
+        _lateDelivered = lateDelivered;
+        _liveLate = liveLate;
+        _hourCounts = hours;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = opsFriendlyError(e);
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final peak = _hourCounts.values.fold<int>(0, (m, v) => v > m ? v : m);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Promise & slot demand', style: AppTheme.homeSectionLabelOf(context)),
+        const SizedBox(height: 4),
+        Text('Last 7 days vs promised_at (+${kLateOrderGraceMinutes}m grace).', style: AppTheme.caption),
+        const SizedBox(height: 8),
+        if (_loading)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (_error != null)
+          Text(_error!, style: AppTheme.caption)
+        else ...[
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _OpsMiniStat(label: 'Stamped promises', value: '$_withPromise'),
+              _OpsMiniStat(label: 'Late delivered', value: '$_lateDelivered'),
+              _OpsMiniStat(label: 'Live past promise', value: '$_liveLate'),
+            ],
+          ),
+          const SizedBox(height: 12),
+          AppCard(
+            child: _hourCounts.isEmpty
+                ? const Text('No promised slots in this window.', style: TextStyle(color: AppTheme.textMuted))
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Demand by promised hour', style: TextStyle(fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 8),
+                      for (final hour in (_hourCounts.keys.toList()..sort()))
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: _OpsMeterRow(
+                            label: '${hour.toString().padLeft(2, '0')}:00',
+                            value: '${_hourCounts[hour]}',
+                            ratio: peak <= 0 ? 0 : (_hourCounts[hour] ?? 0) / peak,
+                          ),
+                        ),
+                    ],
+                  ),
+          ),
+        ],
+      ],
     );
   }
 }

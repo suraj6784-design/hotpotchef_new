@@ -32,6 +32,15 @@ class DinerCopy {
     required this.familyMember,
     required this.buyMembership,
     required this.cancelMembership,
+    required this.add,
+    required this.pay,
+    required this.payThisPlate,
+    required this.track,
+    required this.help,
+    required this.viewCart,
+    required this.forYou,
+    required this.adjustBill,
+    required this.verified,
   });
 
   final String home;
@@ -43,6 +52,15 @@ class DinerCopy {
   final String familyMember;
   final String buyMembership;
   final String cancelMembership;
+  final String add;
+  final String pay;
+  final String payThisPlate;
+  final String track;
+  final String help;
+  final String viewCart;
+  final String forYou;
+  final String adjustBill;
+  final String verified;
 }
 
 DinerCopy dinerCopy(String? locale) {
@@ -58,6 +76,15 @@ DinerCopy dinerCopy(String? locale) {
         familyMember: 'Family member',
         buyMembership: 'Family member लें',
         cancelMembership: 'मेंबरशिप रद्द करें',
+        add: 'जोड़ें',
+        pay: 'पे',
+        payThisPlate: 'इस प्लेट पर पे',
+        track: 'ट्रैक',
+        help: 'मदद',
+        viewCart: 'कार्ट देखें',
+        forYou: 'आपके लिए',
+        adjustBill: 'बिल बदलें',
+        verified: 'वेरिफाइड',
       );
     case 'mr':
       return const DinerCopy(
@@ -70,6 +97,15 @@ DinerCopy dinerCopy(String? locale) {
         familyMember: 'Family member',
         buyMembership: 'Family member घ्या',
         cancelMembership: 'मेंबरशिप रद्द करा',
+        add: 'जोडा',
+        pay: 'पे',
+        payThisPlate: 'या प्लेटवर पे',
+        track: 'ट्रॅक',
+        help: 'मदत',
+        viewCart: 'कार्ट पहा',
+        forYou: 'तुमच्यासाठी',
+        adjustBill: 'बिल बदला',
+        verified: 'व्हेरिफाइड',
       );
     default:
       return const DinerCopy(
@@ -82,6 +118,15 @@ DinerCopy dinerCopy(String? locale) {
         familyMember: 'Family member',
         buyMembership: 'Become a Family member',
         cancelMembership: 'Cancel membership',
+        add: 'Add',
+        pay: 'Pay',
+        payThisPlate: 'Pay on this plate',
+        track: 'Track',
+        help: 'Help',
+        viewCart: 'View cart',
+        forYou: 'For you',
+        adjustBill: 'Adjust bill',
+        verified: 'Verified',
       );
   }
 }

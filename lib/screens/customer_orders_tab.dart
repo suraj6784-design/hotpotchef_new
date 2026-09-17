@@ -11,6 +11,7 @@ import '../utils/app_page.dart';
 import '../utils/helpers.dart';
 import '../utils/network.dart';
 import '../utils/support.dart';
+import '../utils/diner_locale.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/diner_order_progress.dart';
 import '../widgets/app_widgets.dart';
@@ -74,7 +75,12 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
   @override
   void initState() {
     super.initState();
+    DinerLocaleController.instance.addListener(_onDinerLocale);
     _initScopedStreams();
+  }
+
+  void _onDinerLocale() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -87,6 +93,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
 
   @override
   void dispose() {
+    DinerLocaleController.instance.removeListener(_onDinerLocale);
     _ordersSub?.cancel();
     _reqsSub?.cancel();
     _quotesSub?.cancel();
@@ -561,7 +568,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                         orderNumber: displayOrderIdStr,
                         orderUuid: items.first['order_id']?.toString() ?? items.first['id']?.toString(),
                       ),
-                      child: const Text('Support', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 14)),
+                      child: Text(DinerLocaleController.instance.copy.help, style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 14)),
                     )
                   ],
                 ),
@@ -608,7 +615,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                 borderRadius: AppTheme.radiusSm,
                               ),
                               child: const Text(
-                                'Order chat with the kitchen and delivery partner is closed. Tap Support above for any post-delivery issues.',
+                                'Order chat with the kitchen and delivery partner is closed. Tap Help above for any post-delivery issues.',
                                 style: TextStyle(fontSize: 12, height: 1.35, fontWeight: FontWeight.w600),
                               ),
                             ),
@@ -709,13 +716,27 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                             const SizedBox(height: 16),
                             Align(
                               alignment: Alignment.centerLeft,
-                              child: AppIconAction(
-                                icon: Icons.map_outlined,
-                                tooltip: 'Track live location',
-                                onPressed: () {
-                                  Navigator.pop(ctx);
-                                  _openTracking(trackableItem, items);
-                                },
+                              child: Row(
+                                children: [
+                                  AppIconAction(
+                                    icon: Icons.map_outlined,
+                                    tooltip: DinerLocaleController.instance.copy.track,
+                                    onPressed: () {
+                                      Navigator.pop(ctx);
+                                      _openTracking(trackableItem, items);
+                                    },
+                                  ),
+                                  const SizedBox(width: 8),
+                                  AppIconAction(
+                                    icon: Icons.support_agent_outlined,
+                                    tooltip: DinerLocaleController.instance.copy.help,
+                                    onPressed: () => showContactSupportSheet(
+                                      ctx,
+                                      orderNumber: displayOrderIdStr,
+                                      orderUuid: items.first['order_id']?.toString() ?? items.first['id']?.toString(),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
@@ -1680,15 +1701,16 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                               },
                             ),
                           ],
-                          if (trackableItem != null) ...[
+                          if (trackableItem != null || !isDelivered) ...[
                             const SizedBox(height: 12),
                             Row(
                               children: [
-                                AppIconAction(
-                                  icon: Icons.map_outlined,
-                                  tooltip: 'Track',
-                                  onPressed: () => _openTracking(trackableItem!, items),
-                                ),
+                                if (trackableItem != null)
+                                  AppIconAction(
+                                    icon: Icons.map_outlined,
+                                    tooltip: DinerLocaleController.instance.copy.track,
+                                    onPressed: () => _openTracking(trackableItem!, items),
+                                  ),
                                 if (_driverIdOf(items.first) != null) ...[
                                   const SizedBox(width: 8),
                                   AppIconAction(
@@ -1699,6 +1721,16 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                         : null,
                                   ),
                                 ],
+                                const SizedBox(width: 8),
+                                AppIconAction(
+                                  icon: Icons.support_agent_outlined,
+                                  tooltip: DinerLocaleController.instance.copy.help,
+                                  onPressed: () => showContactSupportSheet(
+                                    context,
+                                    orderNumber: displayOrderIdStr,
+                                    orderUuid: items.first['order_id']?.toString() ?? items.first['id']?.toString(),
+                                  ),
+                                ),
                               ],
                             ),
                           ],

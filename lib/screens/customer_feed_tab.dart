@@ -23,7 +23,6 @@ import '../providers/delivery_preference.dart';
 import '../providers/kitchen_follows_provider.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
-import '../widgets/daily_streak_banner.dart';
 import '../widgets/weekly_plan_banner.dart';
 import '../widgets/support_replied_banner.dart';
 import '../widgets/live_offers_flash_banner.dart';
@@ -33,11 +32,13 @@ import '../widgets/rescued_meals_banner.dart';
 import '../widgets/shelf_items_banner.dart';
 import '../widgets/society_nights_banner.dart';
 import '../widgets/ai_recommendations_section.dart';
-import '../widgets/sponsored_placement_banner.dart';
 import '../services/delivery_estimator_service.dart';
 import '../utils/delivery_fee.dart';
-import '../utils/kitchen_promise.dart';
 import '../utils/service_area.dart';
+import '../utils/diner_locale.dart';
+import '../utils/fssai_certificate_scan.dart';
+import '../screens/checkout_screen.dart';
+import '../widgets/last_order_banner.dart';
 import 'address_form_screen.dart';
 
 class CustomerFeedTab extends ConsumerStatefulWidget {
@@ -67,7 +68,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   late final Stream<List<Map<String, dynamic>>> _mealsStream;
   String _selectedCategory = 'All';
   String _selectedDiet = 'All';
-  String _selectedSort = kFeedSortNearby;
+  String _selectedSort = kFeedSortEta;
   String _currentAddress = 'Locating...';
   List<Map<String, dynamic>> _savedAddresses = [];
   /// GPS pin used for guests (and signed-in users without a saved map pin).
@@ -95,6 +96,9 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   final Set<String> _closedChefIds = {};
   final Set<String> _chefOpenResolved = {};
   final Map<String, Map<String, dynamic>> _chefKitchenProfiles = {};
+  final Map<String, Map<String, dynamic>> _chefTrust = {};
+  final Set<String> _chefTrustResolved = {};
+  bool _hydratingChefTrust = false;
   bool _hydratingKitchenHours = false;
   StreamSubscription<AuthState>? _authSub;
   List<Map<String, dynamic>> _olderMeals = [];
@@ -852,6 +856,36 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     }
   }
 
+  Future<void> _hydrateChefTrust(List<Map<String, dynamic>> meals) async {
+    final missing = <String>{};
+    for (final meal in meals) {
+      final chefId = meal['chef_id']?.toString();
+      if (chefId == null || chefId.isEmpty || _chefTrustResolved.contains(chefId)) continue;
+      missing.add(chefId);
+    }
+    if (missing.isEmpty || _hydratingChefTrust) return;
+    _hydratingChefTrust = true;
+    try {
+      final rows = await Supabase.instance.client
+          .from('users')
+          .select('id, fssai_number, fssai_verification_status, fssai_valid_until')
+          .inFilter('id', missing.toList());
+      for (final row in rows) {
+        final id = row['id']?.toString();
+        if (id == null || id.isEmpty) continue;
+        _chefTrustResolved.add(id);
+        _chefTrust[id] = Map<String, dynamic>.from(row);
+      }
+      _chefTrustResolved.addAll(missing);
+      if (mounted) setState(() {});
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to hydrate chef FSSAI chips');
+      _chefTrustResolved.addAll(missing);
+    } finally {
+      _hydratingChefTrust = false;
+    }
+  }
+
   List<Map<String, dynamic>> _openKitchenMeals(List<Map<String, dynamic>> meals) {
     return meals.where((meal) {
       final chefId = meal['chef_id']?.toString();
@@ -863,6 +897,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _hydrateChefKitchenPins(meals);
       _hydrateKitchenHours(meals);
+      _hydrateChefTrust(meals);
     });
     final pinned = _openKitchenMeals(
       meals
@@ -932,6 +967,42 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     showAddedToCartSnack(
       context,
       onViewCart: widget.onGoToCart,
+    );
+  }
+
+  Future<void> _payThisPlate(Map<String, dynamic> meal) async {
+    if (Supabase.instance.client.auth.currentUser == null) {
+      showAuthBottomSheet(context, () {
+        if (mounted) unawaited(_payThisPlate(meal));
+      });
+      return;
+    }
+    final added = await addMealToCartWithConflict(context: context, ref: ref, meal: meal);
+    if (!added || !mounted) return;
+    final mealId = meal['id']?.toString() ?? '';
+    final checkoutItems = ref
+        .read(cartProvider)
+        .items
+        .where((item) => item.mealId == mealId || item.chefId == (meal['chef_id']?.toString() ?? ''))
+        .map((item) => item.toCheckoutPayload())
+        .toList();
+    if (checkoutItems.isEmpty) {
+      widget.onGoToCart?.call();
+      return;
+    }
+    await Navigator.push(
+      context,
+      appMaterialRoute(
+        CheckoutScreen(
+          cartItems: checkoutItems,
+          preferredAddress: ref.read(selectedDeliveryAddressProvider),
+          preferredAddressId: ref.read(selectedDeliveryAddressProvider)?['id'],
+          onOrderPlacedSuccess: () {
+            ref.read(cartProvider.notifier).clearCart();
+            widget.onReorderToOrders?.call();
+          },
+        ),
+      ),
     );
   }
 
@@ -1398,6 +1469,17 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             ),
 
           if (!_hasActiveSearch) ...[
+            if (isLoggedIn) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                child: Text(
+                  DinerLocaleController.instance.copy.forYou,
+                  style: AppTheme.homeSectionLabelOf(context).copyWith(fontSize: 16),
+                ),
+              ),
+              LastOrderReorderBanner(onAddedToCart: widget.onGoToCart, compact: true),
+              const AiRecommendationsSection(),
+            ],
             const SizedBox(height: 4),
             _filterChipRow(
               chips: _dietFilters,
@@ -1405,16 +1487,32 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
               onSelected: (name) => setState(() => _selectedDiet = name),
             ),
             const SizedBox(height: 8),
-            _filterChipRow(
-              chips: _categories,
-              selected: _selectedCategory,
-              onSelected: (name) => setState(() => _selectedCategory = name),
-            ),
-            const SizedBox(height: 8),
-            _filterChipRow(
-              chips: _sortFilters,
-              selected: _selectedSort,
-              onSelected: (name) => setState(() => _selectedSort = name),
+            Row(
+              children: [
+                Expanded(
+                  child: _filterChipRow(
+                    chips: _sortFilters,
+                    selected: _selectedSort,
+                    onSelected: (name) => setState(() => _selectedSort = name),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: PopupMenuButton<String>(
+                    tooltip: 'Cuisine',
+                    initialValue: _selectedCategory,
+                    onSelected: (name) => setState(() => _selectedCategory = name),
+                    itemBuilder: (context) => [
+                      for (final cat in _categories)
+                        PopupMenuItem(value: cat['name'] as String, child: Text(cat['name'] as String)),
+                    ],
+                    child: Chip(
+                      label: Text(_selectedCategory == 'All' ? 'Cuisine' : _selectedCategory.toString()),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
           ],
@@ -1813,13 +1911,6 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         onOfferTap: _onHomeOfferTap,
       ),
       const MembershipFlashBanner(),
-      const RescuedMealsBanner(),
-      SponsoredPlacementBanner(
-        destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
-        destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
-        cityHint: _selectedAddressMap?['city']?.toString(),
-      ),
-      if (isLoggedIn) const DailyStreakBanner(compact: true),
       const SizedBox(height: 4),
     ];
   }
@@ -1827,35 +1918,40 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   List<Widget> _homeDiscoveryExtras({required bool isLoggedIn}) {
     return [
       const SizedBox(height: 8),
-      Padding(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
-        child: Text('More for you', style: AppTheme.homeSectionLabelOf(context).copyWith(fontSize: 16)),
+      Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          title: Text('More kitchens', style: AppTheme.homeSectionLabelOf(context).copyWith(fontSize: 16)),
+          subtitle: const Text('Rescued plates, hampers, society nights, shelf'),
+          children: [
+            const RescuedMealsBanner(),
+            FestivalHampersBanner(
+              excludedChefIds: _closedChefIds,
+              destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
+              destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
+              chefKitchenPins: _chefKitchenPins,
+              onHamperTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
+            ),
+            SocietyNightsBanner(
+              excludedChefIds: _closedChefIds,
+              destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
+              destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
+              destinationAddress: _selectedAddressMap,
+              chefKitchenPins: _chefKitchenPins,
+              onNightTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
+            ),
+            ShelfItemsBanner(
+              excludedChefIds: _closedChefIds,
+              destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
+              destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
+              chefKitchenPins: _chefKitchenPins,
+              onItemTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
+            ),
+            if (isLoggedIn) const WeeklyPlanDueBanner(),
+            const DynamicUIEngine(screenName: 'customer_feed'),
+          ],
+        ),
       ),
-      FestivalHampersBanner(
-        excludedChefIds: _closedChefIds,
-        destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
-        destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
-        chefKitchenPins: _chefKitchenPins,
-        onHamperTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
-      ),
-      SocietyNightsBanner(
-        excludedChefIds: _closedChefIds,
-        destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
-        destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
-        destinationAddress: _selectedAddressMap,
-        chefKitchenPins: _chefKitchenPins,
-        onNightTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
-      ),
-      ShelfItemsBanner(
-        excludedChefIds: _closedChefIds,
-        destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
-        destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
-        chefKitchenPins: _chefKitchenPins,
-        onItemTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
-      ),
-      if (isLoggedIn) const WeeklyPlanDueBanner(),
-      if (isLoggedIn) const AiRecommendationsSection(),
-      const DynamicUIEngine(screenName: 'customer_feed'),
     ];
   }
 
@@ -2176,6 +2272,28 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
+                                      if (dinerFssaiCardChip(
+                                            verificationStatus: (_chefTrust[meal['chef_id']?.toString()] ?? meal)['fssai_verification_status']?.toString(),
+                                            validUntil: parseStoredFssaiValidUntil((_chefTrust[meal['chef_id']?.toString()] ?? meal)['fssai_valid_until']),
+                                          )
+                                          .isNotEmpty) ...[
+                                        const SizedBox(width: 4),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: AppTheme.primary.withValues(alpha: 0.12),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: Text(
+                                            DinerLocaleController.instance.copy.verified,
+                                            style: const TextStyle(
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.w800,
+                                              color: AppTheme.primary,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                       MealRatingBadge(meal: meal),
                                     ],
                                   ),
@@ -2271,19 +2389,22 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                       icon: Icon(Icons.share_outlined, size: 18, color: AppTheme.onSurfaceOf(context)),
                                       onPressed: () => showMealShareSheet(context, meal),
                                     ),
-                                    Material(
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                      children: [
+                                        Material(
                                       color: Colors.transparent,
                                       child: Semantics(
                                         button: true,
                                         enabled: isAvailable,
                                         label: isAvailable
-                                            ? 'Add ${meal['title'] ?? 'meal'} to cart'
+                                            ? '${DinerLocaleController.instance.copy.add} ${meal['title'] ?? 'meal'}'
                                             : 'Kitchen closed',
                                         child: InkWell(
                                         borderRadius: AppTheme.radiusMd,
                                         onTap: isAvailable ? () => _handleAddToCart(meal) : null,
                                         child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                                           constraints: const BoxConstraints(minHeight: 44),
                                           decoration: BoxDecoration(
                                             gradient: isAvailable ? AppTheme.primaryGradient : null,
@@ -2298,7 +2419,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                                   size: 15, color: isAvailable ? Colors.white : AppTheme.textMuted),
                                               const SizedBox(width: 4),
                                               Text(
-                                                isAvailable ? 'Add' : 'Closed',
+                                                isAvailable ? DinerLocaleController.instance.copy.add : 'Closed',
                                                 style: TextStyle(
                                                     fontWeight: FontWeight.bold,
                                                     fontSize: 12,
@@ -2309,6 +2430,25 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                         ),
                                       ),
                                       ),
+                                    ),
+                                        if (isAvailable)
+                                          Semantics(
+                                            button: true,
+                                            label: DinerLocaleController.instance.copy.payThisPlate,
+                                            child: TextButton(
+                                              onPressed: () => _payThisPlate(meal),
+                                              style: TextButton.styleFrom(
+                                                visualDensity: VisualDensity.compact,
+                                                minimumSize: const Size(44, 36),
+                                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                              ),
+                                              child: Text(
+                                                DinerLocaleController.instance.copy.pay,
+                                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+                                              ),
+                                            ),
+                                          ),
+                                      ],
                                     ),
                                   ],
                                 ),
