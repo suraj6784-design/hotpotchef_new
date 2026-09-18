@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
@@ -239,8 +240,8 @@ class _LoyaltyBadgeCardState extends State<LoyaltyBadgeCard> {
                     sharedCount: _referralsShared,
                     coinsCredited: _referralCoins,
                   ),
-                  onTap: _referralCode.isEmpty ? null : _copyReferral,
-                  onLongPress: _referralCode.isEmpty ? null : _shareReferral,
+                  onTap: _referralCode.isEmpty ? null : () => context.push('/referral'),
+                  onLongPress: _referralCode.isEmpty ? null : _copyReferral,
                 ),
               ),
             ],

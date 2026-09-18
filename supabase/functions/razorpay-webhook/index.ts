@@ -1,21 +1,22 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { jsonResponse } from '../_shared/cors.ts'
-import { fetchPayment, hmacSha256Hex, refundPayment } from '../_shared/razorpay.ts'
+import { jsonResponse, optionsResponse } from '../_shared/cors.ts'
+import { fetchPayment, refundPayment } from '../_shared/razorpay.ts'
 import { grantMembershipFromPending, pendingCartIsEmpty } from '../_shared/checkout_quote.ts'
+import { verifyRazorpaySignature } from './signature.ts'
 
 serve(async (req) => {
-  try {
-    const secret = Deno.env.get('RAZORPAY_WEBHOOK_SECRET') ?? ''
-    if (!secret) {
-      return jsonResponse({ error: 'Webhook secret is not configured' }, 500)
-    }
+  if (req.method === 'OPTIONS') return optionsResponse()
 
+  try {
     const rawBody = await req.text()
-    const signature = req.headers.get('x-razorpay-signature') ?? ''
-    const expected = await hmacSha256Hex(rawBody, secret)
-    if (!signature || expected !== signature) {
-      return jsonResponse({ error: 'Invalid webhook signature' }, 400)
+    const verified = await verifyRazorpaySignature(
+      Deno.env.get('RAZORPAY_WEBHOOK_SECRET') ?? '',
+      rawBody,
+      req.headers.get('x-razorpay-signature'),
+    )
+    if (!verified.ok) {
+      return jsonResponse({ error: verified.error }, verified.status)
     }
 
     const payload = JSON.parse(rawBody)

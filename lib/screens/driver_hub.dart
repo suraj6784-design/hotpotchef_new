@@ -1242,6 +1242,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                             final ok = await notifier.updateDeliveryStatus(
                               delivery.orderId,
                               nextStatus,
+                              currentStatus: delivery.statusLabel,
                               deliveryOtp: isOut ? delivery.deliveryOtp : null,
                               podPhotoUrl: podUrl,
                             );

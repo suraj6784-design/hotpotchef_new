@@ -77,6 +77,27 @@ void main() {
       expect(OrderLifecycle.nextDriverStatus('Out for Delivery'), OrderStatus.delivered);
     });
 
+    test('driver advance uses live order status when the dashboard has it', () {
+      expect(
+        OrderLifecycle.driverAdvanceCurrentStatus(
+          markingDelivered: true,
+          liveStatus: 'Out for Delivery',
+        ),
+        'Out for Delivery',
+      );
+      expect(
+        OrderLifecycle.driverAdvanceCurrentStatus(
+          markingDelivered: false,
+          liveStatus: 'Driver Assigned',
+        ),
+        'Driver Assigned',
+      );
+      expect(
+        OrderLifecycle.driverAdvanceCurrentStatus(markingDelivered: true),
+        OrderStatus.outForDelivery,
+      );
+    });
+
     test('dispatch depends on delivery option', () {
       expect(
         OrderLifecycle.nextDispatchStatus('Ready for Pickup', ServiceType.deliveryPlatform),

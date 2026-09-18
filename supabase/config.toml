@@ -420,37 +420,22 @@ enabled = true
 [functions.ai-craving-matcher]
 enabled = true
 verify_jwt = true
-import_map = "./functions/ai-craving-matcher/deno.json"
-# Uncomment to specify a custom file path to the entrypoint.
-# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
 entrypoint = "./functions/ai-craving-matcher/index.ts"
-# Specifies static files to be bundled with the function. Supports glob patterns.
-# For example, if you want to serve static HTML pages in your function:
-# static_files = [ "./functions/ai-craving-matcher/*.html" ]
+# Do not set import_map. Nested deno.json + npm:@supabase/server caused live BOOT_ERROR.
 
 [functions.push-notifier]
 enabled = true
 # Auth is X-Webhook-Secret or service_role inside the function (anon JWT is not enough).
 verify_jwt = false
-import_map = "./functions/push-notifier/deno.json"
-# Uncomment to specify a custom file path to the entrypoint.
-# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
 entrypoint = "./functions/push-notifier/index.ts"
-# Specifies static files to be bundled with the function. Supports glob patterns.
-# For example, if you want to serve static HTML pages in your function:
-# static_files = [ "./functions/push-notifier/*.html" ]
+# Do not set import_map. Same BOOT_ERROR layout as ai-craving-matcher.
 
 [functions.send-push-notification]
 enabled = true
 # Auth is X-Webhook-Secret, service_role, or a verified user JWT inside the function.
 verify_jwt = false
-import_map = "./functions/send-push-notification/deno.json"
-# Uncomment to specify a custom file path to the entrypoint.
-# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
 entrypoint = "./functions/send-push-notification/index.ts"
-# Specifies static files to be bundled with the function. Supports glob patterns.
-# For example, if you want to serve static HTML pages in your function:
-# static_files = [ "./functions/send-push-notification/*.html" ]
+# Do not set import_map. FCM uses Web Crypto (_shared/fcm.ts), not npm:google-auth-library.
 
 [functions.create-split-order]
 enabled = true

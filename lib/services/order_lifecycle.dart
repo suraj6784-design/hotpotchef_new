@@ -144,6 +144,17 @@ class OrderLifecycle {
     return null;
   }
 
+  /// Prefer the live `orders.status` so Start/Complete cannot skip a step when
+  /// the dashboard row is stale. Fallback matches the button that was pressed.
+  static String driverAdvanceCurrentStatus({
+    required bool markingDelivered,
+    String? liveStatus,
+  }) {
+    final live = liveStatus?.trim() ?? '';
+    if (live.isNotEmpty) return live;
+    return markingDelivered ? OrderStatus.outForDelivery : OrderStatus.driverAssigned;
+  }
+
   Future<void> advanceKitchen({
     required String orderId,
     required String currentStatus,

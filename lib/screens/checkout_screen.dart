@@ -10,6 +10,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../services/app_analytics.dart';
 import '../services/auth_session.dart';
+import '../services/create_split_order_contract.dart';
 import '../providers/cart_provider.dart';
 import '../utils/helpers.dart';
 import '../utils/service_area.dart';
@@ -566,24 +567,33 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
       // Edge function calculates canonical price server-side to prevent tampering
       final response = await _supabase.functions.invoke(
-        'create-split-order',
-        body: {
-          'cart_items': _checkoutCartItems(),
-          'customer_email': user.email,
-          'customer_phone': phone,
-          'delivery_address': _formattedDeliveryAddress(),
-          'instructions': _orderInstructions(),
-          'dropoff_lat': addressCoordinate(_selectedAddressData, latitude: true),
-          'dropoff_lng': addressCoordinate(_selectedAddressData, latitude: false),
-          'tip_amount': clampCheckoutTip(_selectedTip),
-          'apply_coins': _applyCoins && _coinsAccepted,
-          'add_membership': _membershipOnThisOrder,
-          'membership_plan_id': _membershipOnThisOrder ? (_membershipOffer?['plan_id']) : null,
-        },
+        CreateSplitOrderRequest.functionName,
+        body: CreateSplitOrderRequest.toBody(
+          cartItems: _checkoutCartItems(),
+          customerEmail: user.email,
+          customerPhone: phone,
+          deliveryAddress: _formattedDeliveryAddress(),
+          instructions: _orderInstructions(),
+          dropoffLat: addressCoordinate(_selectedAddressData, latitude: true),
+          dropoffLng: addressCoordinate(_selectedAddressData, latitude: false),
+          tipAmount: clampCheckoutTip(_selectedTip),
+          applyCoins: _applyCoins && _coinsAccepted,
+          addMembership: _membershipOnThisOrder,
+          membershipPlanId: _membershipOnThisOrder ? (_membershipOffer?['plan_id']?.toString()) : null,
+        ),
       ).withTimeout(NetworkTimeouts.payment);
 
       if (response.status != 200 || response.data == null) {
-        throw Exception('Could not initialize secure payment order');
+        final payload = functionErrorPayload(response.data);
+        if (isSoldOutCheckoutError(payload?['error'], payload)) {
+          throw Exception(soldOutCheckoutMessage(charged: false));
+        }
+        if (isKitchenClosedCheckoutError(payload?['error'], payload)) {
+          throw Exception(kitchenClosedCheckoutMessage(charged: false));
+        }
+        throw Exception(
+          payload?['error'] ?? 'Could not initialize secure payment order',
+        );
       }
 
       final data = Map<String, dynamic>.from(response.data as Map);

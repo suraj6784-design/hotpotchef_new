@@ -41,6 +41,17 @@ void main() {
         isNull,
       );
     });
+
+    test('maps OAuth return hotpotchef://app/auth to /auth', () {
+      expect(
+        AppDeepLinks.locationFor(Uri.parse('hotpotchef://app/auth')),
+        '/auth',
+      );
+      expect(
+        AppDeepLinks.locationFor(Uri.parse('hotpotchef://app/auth/')),
+        '/auth',
+      );
+    });
   });
 
   group('AppDeepLinks.cartLocationFor', () {

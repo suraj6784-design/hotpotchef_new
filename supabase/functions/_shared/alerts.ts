@@ -1,5 +1,5 @@
-import { GoogleAuth } from 'npm:google-auth-library@9'
 import { type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { sendFcm } from './fcm.ts'
 
 type OrderAlert = {
   title: string
@@ -116,42 +116,6 @@ export function orderAlertCopy(opts: {
     }
   }
   return null
-}
-
-async function sendFcm(token: string, title: string, body: string, data: Record<string, string>) {
-  const raw = Deno.env.get('FIREBASE_SERVICE_ACCOUNT') ?? '{}'
-  const serviceAccountJson = JSON.parse(raw)
-  const projectId = serviceAccountJson.project_id
-  if (!projectId || !token) return
-
-  const auth = new GoogleAuth({
-    credentials: serviceAccountJson,
-    scopes: ['https://www.googleapis.com/auth/firebase.messaging'],
-  })
-  const client = await auth.getClient()
-  const accessToken = await client.getAccessToken()
-
-  await fetch(`https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken.token}`,
-    },
-    body: JSON.stringify({
-      message: {
-        token,
-        notification: { title, body },
-        data,
-        android: {
-          collapseKey: data.alert_id || 'hotpotchef',
-          notification: { tag: data.alert_id || 'hotpotchef' },
-        },
-        apns: {
-          headers: { 'apns-collapse-id': data.alert_id || 'hotpotchef' },
-        },
-      },
-    }),
-  })
 }
 
 async function sendEmail(to: string | null | undefined, subject: string, text: string) {

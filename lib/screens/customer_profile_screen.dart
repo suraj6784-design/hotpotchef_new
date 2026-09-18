@@ -9,7 +9,6 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:go_router/go_router.dart';
 
 import 'address_form_screen.dart';
-import 'auth_screen.dart';
 import '../providers/cart_provider.dart';
 import '../providers/favorites_provider.dart';
 import '../providers/kitchen_follows_provider.dart';
@@ -1105,7 +1104,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
           title: 'Sign in to manage your account',
           message: 'Save addresses, track HotPot Coins, and keep your dietary preferences in one place.',
           actionLabel: 'Go to Login',
-          onAction: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AuthScreen())),
+          onAction: () => context.go('/auth'),
         ),
       );
     }
