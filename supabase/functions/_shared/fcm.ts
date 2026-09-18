@@ -1,5 +1,7 @@
 // FCM HTTP v1 access token without npm:google-auth-library.
 // That package is a documented Edge BOOT_ERROR on this project.
+// Do not name a binding `auth` here or in send-push-notification (SyntaxError if
+// paired with authorizeInternalInvoke's historical `const auth`).
 
 type ServiceAccount = {
   client_email?: string

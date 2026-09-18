@@ -4,18 +4,23 @@ import { adminClient, isServiceRoleRequest, jsonUnauthorized, requireUser } from
 import { dispatchChatAlert, dispatchKitchenLiveAlert, dispatchOrderAlert, dispatchUserNotification, dispatchWelcome } from '../_shared/alerts.ts'
 import { authorizeInternalInvoke } from '../_shared/webhook_auth.ts'
 
+// Live BOOT_ERROR was `Uncaught SyntaxError: Identifier 'auth' has already been declared`
+// when a historical FCM path did `const auth = authorizeInternalInvoke(...)` then
+// `const auth = new GoogleAuth(...)`. Never bind `auth` in this file. FCM lives in
+// `_shared/fcm.ts` (Web Crypto). Hosted MCP flatten copies shared files to `./_shared/`.
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return optionsResponse()
 
   try {
     let callerId: string | null = null
-    const internal = authorizeInternalInvoke(req.headers)
-    if (internal.ok || isServiceRoleRequest(req)) {
+    const invokeAuth = authorizeInternalInvoke(req.headers)
+    if (invokeAuth.ok || isServiceRoleRequest(req)) {
       callerId = null
     } else {
-      const auth = await requireUser(req)
-      if (auth instanceof Response) return auth
-      callerId = auth.user.id
+      const session = await requireUser(req)
+      if (session instanceof Response) return session
+      callerId = session.user.id
     }
 
     const payload = await req.json()

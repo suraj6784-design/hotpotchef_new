@@ -4,6 +4,9 @@ import { adminClient, isServiceRoleRequest, jsonUnauthorized } from '../_shared/
 import { dispatchOrderAlert } from '../_shared/alerts.ts'
 import { authorizeInternalInvoke } from '../_shared/webhook_auth.ts'
 
+// Working FCM fallback if send-push-notification fails to boot. Anon/publishable
+// JWT is not enough — handler returns 401 Unauthorized (X-Webhook-Secret or service_role).
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return optionsResponse()
 
