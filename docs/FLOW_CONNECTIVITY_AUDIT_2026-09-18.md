@@ -22,6 +22,7 @@ Guest catalog, kitchen-open flags, mutating-edge JWT gates, Razorpay KEY_ID-only
 | `razorpay-webhook` v10 | Timing-safe HMAC; missing secret → **503** (was live 500); bad/missing sig → **401**; OPTIONS CORS; `place_customer_order` on `payment.captured` |
 | `ai-craving-matcher` v11 | Flattened `index.ts` + empty `deno.json`; esm.sh only. Live v10 was **503 BOOT_ERROR** (nested import_map + `npm:@supabase/server` + duplicate `const supabaseUrl`) |
 | `send-push-notification` v17 | Web Crypto FCM (no `npm:google-auth-library`); `verify_jwt=false`; OPTIONS **200**. User-reported v15 **503 BOOT_ERROR** |
+| send-push duplicate identifier | Live log `Identifier 'auth' has already been declared` (`authorizeInternalInvoke` + `GoogleAuth` both named `auth`). Git binds `invokeAuth` + `session`; regression in `identifier_test.ts` |
 | `push-notifier` v15 | Same flatten; `verify_jwt=false`; OPTIONS **200**. Live v13 nested import_map (booted but fragile) |
 | `create-chef-account` chef-role gate | `authorizeChefAccount` + `users.role` (was uid-only; git only) |
 | Checkout body locked to pending-checkout contract | Dropped stale `delivery_fee` / Route `chef_transfer` fields |
@@ -59,7 +60,7 @@ Evidence: `/opt/cursor/artifacts/flow_smoke.json` (REST/auth); `/opt/cursor/arti
 | `ai-search` POST `{}` + apikey only | 400/401 | **400** `Search prompt is required` | Handler reachable; prompt required |
 | `ai-craving-matcher` v10 | boot | **503 BOOT_ERROR** (before) | Nested `deno.json` + `npm:@supabase/server` + duplicate `const supabaseUrl` |
 | `ai-craving-matcher` v11 | 401 unauth | **OPTIONS 200 / POST 401** | Flattened; no BOOT_ERROR |
-| `send-push-notification` v15 | boot | **503 BOOT_ERROR** (user smoke) | Historical `import_map` / `npm:google-auth-library` |
+| `send-push-notification` v15 | boot | **503 BOOT_ERROR** (user smoke) | Log: `Identifier 'auth' has already been declared` (invoke `auth` + `GoogleAuth` `auth`); also import_map / google-auth-library |
 | `send-push-notification` v17 | 401 unauth | **OPTIONS 200 / POST 401** | Web Crypto FCM; `verify_jwt=false` |
 | `push-notifier` v13 | 401 | **401** (booted, nested map) | Same fragile layout as matcher v10 |
 | `push-notifier` v15 | 401 unauth | **OPTIONS 200 / POST 401** | Flattened; `verify_jwt=false` |
@@ -112,12 +113,27 @@ Legend: **OK** live or tests pass · **FIX** patched in this PR · **GAP** human
 | Driver `is_available` | 1 driver available (SQL) | Online toggle | `driver_profiles` own row | Offline snackbar | Role-gated write | **STATIC** | SQL count + `driver_hub.dart` |
 | Driver jobs realtime / navigate / complete | Realtime channel in code | Accept / Maps / Mark delivered | **FIX** live status; OTP+POD RPC | Door photo required | **FIX** no direct complete | **FIX** | `order_complete_rpc_test.dart` |
 | Admin `/platform-ops` | n/a | Login ops seat; invite `/ops-invite` | `platform_ops` row | “Ops access required” | JWT Admin ≠ desk | **STATIC** | `platform_ops_access.dart` |
-| `send-push-notification` / `push-notifier` | OPTIONS **200**; POST no JWT **401** | `AlertService` / `enqueueWelcomeDrip` / DB webhook | table/record or welcome | Fail closed | HMAC, service_role, or party JWT; anon rejected | **OK** live v17/v15 | `webhook_auth_test.ts` + live matrix |
+| `send-push-notification` / `push-notifier` | OPTIONS **200**; POST anon JWT **401** Unauthorized | `AlertService` / welcome drip / DB webhook → **send-push**; **push-notifier is the working fallback** if send-push fails to boot | table/record or welcome | Fail closed | HMAC, service_role, or party JWT; anon rejected | **OK** live + **FIX** identifier | `identifier_test.ts`; push-notifier 401 with publishable Bearer |
 | `razorpay-webhook` | OPTIONS **200**; unsigned **503** | Razorpay events | `payment.captured` → `place_customer_order` | Missing secret 503; bad sig 401 | HMAC required | **GAP** set secret | live v10 body `Webhook secret is not configured` |
 | `ai-craving-matcher` | OPTIONS **200**; POST 401 | Not called from Flutter (`ai-search` is) | Gemini embed + `match_meals` | 0 embeddings → empty | User JWT | **OK** live v11 | was BOOT_ERROR v10 |
 | Chef packaging store | REST `packaging_inventory` stream | Hub overflow **Packaging supplies** → tab 8 / `?tab=supplies` | Supply request insert | Crashlytics + copy | Chef role | **OK** | `chef_hub.dart` + `packaging_store_screen.dart` |
 | Chef ads / academy | GoRouter | Overflow → `/chef-advertise` `/chef-academy` | Boost edge `meal-boost` | Function errors | JWT chef | **STATIC** | `chef_boost_sheet.dart` |
 | Ops helpers | `manage-helper-account` | Desk create helper | `{ action, ... }` | “Could not update helper” | Ops JWT | **STATIC** | `platform_ops_desk_tabs.dart` |
+| Kitchen online switch | `chef_profiles` upsert | Hub switch / setup strip Go online | `is_open`; going live fires `AlertService.notifyKitchenLive` | Snackbar + revert switch | Own-row RLS | **STATIC** | `chef_hub.dart` `_toggleKitchenStatus` |
+| Chef Confirm → Ready | `orders.update` via `OrderLifecycle.advanceKitchen` | Orders card **Advance**; packed-box camera gate | Title Case status; `dispatch_photo_url` | Prep-window hint; photo required | Own chef_id row | **STATIC** | `_advanceKitchen` + `order_lifecycle_test.dart` |
+| Chef decline / diner cancel | `cancel-order` edge | Chef cancel button; diner “Cancel Full Order” | `{ order_id, reason }` | Refund copy until cooking/slot | JWT + actor | **OK** | `customer_orders_tab.dart` / `order_repository.dart` |
+| Chat send | `messages.insert` + send-push | Chat composer | `{ meal_id, sender_id, content }` | Network snackbar | INSERT own sender **FIX** | **STATIC** + **FIX** | `in_app_chat_screen.dart` |
+| Diner rate meal | `reviews` upsert/insert | Delivered sheet **Rate** | meal/order/chef ids | Silent catch on duplicate | JWT diner | **STATIC** | `meal_review_dialog.dart` |
+| Reorder | Local cart merge | Delivered/cancelled **Reorder these meals** | Cart lines | Kitchen closed later at checkout | Same as cart | **STATIC** | `customer_orders_tab.dart` |
+| Driver accept job | RPC `accept_delivery_order` | Open-job Accept | `p_order_id` | Race snackbar | Driver JWT | **STATIC** | `driver_dashboard_provider.dart` |
+| Driver Start / Mark delivered | `orders.update` then `complete_delivery_order` | Gradient **Start Delivery** / **Mark Delivered** | Live `orders.status`; OTP + POD photo | Door photo required | **FIX** no complete bypass | **FIX** | `driver_hub.dart` + `order_complete_rpc_test.dart` |
+| Driver navigate | Maps / Geolocator | Nav + external Maps icons | Dropoff vs kitchen | Maps key human gap | Location permission | **STATIC** | `driver_hub.dart` |
+| Coins-only checkout | `place-coins-order` | Checkout when coins cover total | `{ cart_items, ... }` | JWT 401 | User JWT | **STATIC** | `checkout_screen.dart` |
+| Membership flash | RPC `diner_flash_membership_offer` | Home banner / checkout add-on | plan_id + offer price | Ineligible silent | JWT diner | **STATIC** | `membership_flash_banner.dart` |
+| Shared cart join | RPC `join_shared_cart` | Cart import / room code | `p_room_code` | Host-only pay | JWT | **STATIC** | `shared_cart_service.dart` |
+| Daily streak | RPC `claim_daily_streak` | Home streak banner | `p_user_id` | Already-claimed | JWT | **STATIC** | `daily_streak_banner.dart` |
+| Meal publish + AI tags | meals insert + `ai-tag-meal` | `/chef-publish-meal` Save | meal row; optional tags | AI skip on error | Own chef meals | **STATIC** | `chef_publish_meal_screen.dart` |
+| Meal boost | `meal-boost` | Menu boost sheet | campaign create/confirm | Function error | Chef JWT | **STATIC** | `chef_boost_sheet.dart` |
 
 ---
 
@@ -164,10 +180,12 @@ Legend: **OK** live or tests pass · **FIX** patched in this PR · **GAP** human
 login/OTP/OAuth → resolveRole → ops seat? /platform-ops : role hub
 guest cart → auth sheet → CartMerge → checkout JWT → create-split-order
   → Razorpay (KEY_ID client) → recover-payment and/or razorpay-webhook
-order status → AlertService + send-push (user JWT or X-Webhook-Secret)
-  → FCM alertOpenPath → tracking / chat / hub tab
-chef is_open → kitchen_live push to followers; driver is_available → job pool
-chef overflow supplies → packaging store tab; ads → meal-boost
+chef Confirm/Ready (photo) → orders.update → AlertService + send-push
+  (push-notifier is DB-webhook fallback if send-push BOOT_ERRORs)
+diner cancel / chef decline → cancel-order
+chat composer → messages.insert → notifyChat → send-push
+driver Accept RPC → Start (status) → Mark delivered (PIN+POD RPC) → release-chef-payout
+kitchen is_open → notifyKitchenLive → follower FCM
 logout → FCM clear → diner /customer-hub or partner /auth
 ```
 
@@ -235,9 +253,10 @@ flutter test test/create_split_order_contract_test.dart \
   test/cart_merge_test.dart \
   test/route_authz_test.dart
 
-deno test --allow-env supabase/functions/razorpay-webhook/signature_test.ts \
+deno test --allow-env --allow-read supabase/functions/razorpay-webhook/signature_test.ts \
   supabase/functions/_shared/webhook_auth_test.ts \
-  supabase/functions/_shared/fcm_test.ts
+  supabase/functions/_shared/fcm_test.ts \
+  supabase/functions/send-push-notification/identifier_test.ts
 
 node --test supabase/functions/create-chef-account/*.test.mjs
 ```
