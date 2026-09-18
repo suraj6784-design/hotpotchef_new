@@ -14,13 +14,16 @@ Guest REST used the gitignored `.env` **publishable** anon key (`sb_publishable_
 
 Guest catalog, kitchen-open flags, mutating-edge JWT gates, Razorpay KEY_ID-only 401, FCM unauth 401, and Play listing 404 were **live-smoked**. Chef/driver/admin hubs were validated by **static contract + unit tests** (no role sessions in this environment).
 
-**P0/P1 code fixes in this PR** (not yet deployed to hosted Edge / not yet `db push`):
+**P0/P1 code + live Edge deploys in this PR** (`db push` still not applied):
 
 | Fix | Why |
 | --- | --- |
-| `create-split-order` sold-out now HTTP **400** | Inventory miss previously returned HTTP 200 + `success: false` |
-| `razorpay-webhook` uses `verifyRazorpaySignature` | Timing-safe HMAC; missing secret / bad sig → **401** (not 500/400); OPTIONS CORS |
-| `create-chef-account` chef-role gate | `authorizeChefAccount` + `users.role` (was uid-only) |
+| `create-split-order` sold-out now HTTP **400** | Inventory miss previously returned HTTP 200 + `success: false` (git only; live still v24) |
+| `razorpay-webhook` v10 | Timing-safe HMAC; missing secret → **503** (was live 500); bad/missing sig → **401**; OPTIONS CORS; `place_customer_order` on `payment.captured` |
+| `ai-craving-matcher` v11 | Flattened `index.ts` + empty `deno.json`; esm.sh only. Live v10 was **503 BOOT_ERROR** (nested import_map + `npm:@supabase/server` + duplicate `const supabaseUrl`) |
+| `send-push-notification` v17 | Web Crypto FCM (no `npm:google-auth-library`); `verify_jwt=false`; OPTIONS **200**. User-reported v15 **503 BOOT_ERROR** |
+| `push-notifier` v15 | Same flatten; `verify_jwt=false`; OPTIONS **200**. Live v13 nested import_map (booted but fragile) |
+| `create-chef-account` chef-role gate | `authorizeChefAccount` + `users.role` (was uid-only; git only) |
 | Checkout body locked to pending-checkout contract | Dropped stale `delivery_fee` / Route `chef_transfer` fields |
 | Complete-delivery no longer falls back to `orders.update` | Direct write skipped PIN/POD when RPC returned false |
 | Driver Start/Complete uses live `orders.status` | Button no longer invents Driver Assigned / Out for Delivery |
@@ -29,13 +32,13 @@ Guest catalog, kitchen-open flags, mutating-edge JWT gates, Razorpay KEY_ID-only
 | Guest profile login uses GoRouter `/auth` | Off-router `MaterialPageRoute` |
 | Migration `20260918040000_messages_insert_own_sender.sql` | INSERT `sender_id = auth.uid()`; revoke anon `complete_delivery_order` |
 
-**Do not treat this PR as deployed.** Hosted functions still run the previous builds until `supabase functions deploy`. Live `RAZORPAY_WEBHOOK_SECRET` is **unset** (unsigned POST → HTTP 500 `Webhook secret is not configured`).
+Live `RAZORPAY_WEBHOOK_SECRET` is still **unset**. Fail-closed is correct; human must set the secret. Unsigned POST is now **503** `Webhook secret is not configured` (not 500).
 
 ---
 
 ## 2. Connection establishment (live smoke)
 
-Evidence: `/opt/cursor/artifacts/flow_smoke.json` (statuses only; no keys).
+Evidence: `/opt/cursor/artifacts/flow_smoke.json` (REST/auth); `/opt/cursor/artifacts/live_matrix_after_redeploy.json` (Edge after v11/v17/v15/v10). Statuses only; no keys.
 
 | Surface | Expected | Live | Evidence |
 | --- | --- | --- | --- |
@@ -49,19 +52,40 @@ Evidence: `/opt/cursor/artifacts/flow_smoke.json` (statuses only; no keys).
 | RPC `calculate_cart_total` | 200 with `p_items` | Smoke used wrong `p_cart_items` → 404; **client uses `p_items`** | Flutter `checkout_screen.dart` matches live args `p_items jsonb, p_user_id uuid` |
 | Auth settings | 200 | **200** (with publishable key) | Dummy env key 401s |
 | Realtime WS via GET | upgrade 4xx | **500** Cloudflare 1101 | HTTP GET is not a WebSocket upgrade; client plugin still used in-app |
-| Edge OPTIONS (most) | 200 | **200** | create-split-order, cancel-order, create-chef-account, recover-payment, ai-search, place-coins-order, ops-cron |
-| Edge POST no `Authorization` (`verify_jwt=true`) | 401 | **401** `UNAUTHORIZED_NO_AUTH_HEADER` | create-split-order, cancel-order, recover-payment, release-chef-payout, create-chef-account |
-| Edge POST publishable as Bearer | 401 | **401** `UNAUTHORIZED_INVALID_JWT_FORMAT` | Not a user JWT; cannot mutate |
+| Edge OPTIONS (most) | 200 | **200** | create-split-order, cancel-order, create-chef-account, ai-search, ops-cron, matcher v11, send-push v17, push-notifier v15, razorpay-webhook v10 |
+| Edge POST no `Authorization` (`verify_jwt=true`) | 401 | **401** `UNAUTHORIZED_NO_AUTH_HEADER` | create-split-order, cancel-order, create-chef-account, release-chef-payout, matcher |
+| Edge POST no auth (`verify_jwt=false` push) | 401 handler | **401** `Unauthorized` | send-push v17 / push-notifier v15 reach the function (gateway no longer 401s OPTIONS) |
+| Edge POST publishable as Bearer | 401 | **401** `UNAUTHORIZED_INVALID_JWT_FORMAT` or handler Unauthorized | Not a user JWT; cannot mutate |
 | `ai-search` POST `{}` + apikey only | 400/401 | **400** `Search prompt is required` | Handler reachable; prompt required |
-| `razorpay-webhook` unsigned | 400/401 | **500** secret missing | **Human: set `RAZORPAY_WEBHOOK_SECRET`** |
-| `razorpay-webhook` OPTIONS | 200 | **500** (live handler has no OPTIONS) | Fixed in this PR |
-| `send-push-notification` / `push-notifier` OPTIONS | 200 | **401** | Live `verify_jwt=true`; git `config.toml` is `false` |
-| `ops-cron` no JWT | 401 | **401** | Internal secret required |
+| `ai-craving-matcher` v10 | boot | **503 BOOT_ERROR** (before) | Nested `deno.json` + `npm:@supabase/server` + duplicate `const supabaseUrl` |
+| `ai-craving-matcher` v11 | 401 unauth | **OPTIONS 200 / POST 401** | Flattened; no BOOT_ERROR |
+| `send-push-notification` v15 | boot | **503 BOOT_ERROR** (user smoke) | Historical `import_map` / `npm:google-auth-library` |
+| `send-push-notification` v17 | 401 unauth | **OPTIONS 200 / POST 401** | Web Crypto FCM; `verify_jwt=false` |
+| `push-notifier` v13 | 401 | **401** (booted, nested map) | Same fragile layout as matcher v10 |
+| `push-notifier` v15 | 401 unauth | **OPTIONS 200 / POST 401** | Flattened; `verify_jwt=false` |
+| `razorpay-webhook` unsigned v8 | 401/503 | **500** secret missing | User smoke; fail-closed but wrong status |
+| `razorpay-webhook` unsigned v10 | 503 | **503** secret missing | OPTIONS **200**; still needs human secret |
+| `ops-cron` / `release-chef-payout` no secret | 401 | **401** Unauthorized | Internal secret required |
 | Razorpay `GET /v1/orders` with KEY_ID only | 401 | **401** | Secret is server-only |
 | FCM HTTP v1 unauth | 401 | **401** | Project `hotpotchef-c53fa` reachable |
 | Play listing `com.hotpotchef.app` | 404 | **404** | Human store-listing gap |
 
 SQL (service role, aggregates only): 48 meals (5 Available / 43 Archived); 0 embeddings; 2 chef kitchens open; 1 driver available; 76 orders; 19 users.
+
+Live Edge versions after this audit’s redeploy:
+
+| Function | Version | verify_jwt | Note |
+| --- | --- | --- | --- |
+| create-split-order | 24 | true | Git sold-out 400 not on this build |
+| razorpay-webhook | 10 | false | OPTIONS 200; unsigned 503 |
+| send-push-notification | 17 | false | OPTIONS 200; Web Crypto FCM |
+| push-notifier | 15 | false | OPTIONS 200 |
+| ai-craving-matcher | 11 | true | OPTIONS 200; was BOOT_ERROR v10 |
+| ai-search | 17 | true | POST `{}` → 400 prompt required |
+| create-chef-account | 7 | true | Git role gate not on this build |
+| release-chef-payout | 5 | true | OPTIONS 401 at gateway |
+| ops-cron | 4 | false | POST no secret → 401 |
+| cancel-order | 4 | true | POST no JWT → 401 |
 
 ---
 
@@ -88,8 +112,12 @@ Legend: **OK** live or tests pass · **FIX** patched in this PR · **GAP** human
 | Driver `is_available` | 1 driver available (SQL) | Online toggle | `driver_profiles` own row | Offline snackbar | Role-gated write | **STATIC** | SQL count + `driver_hub.dart` |
 | Driver jobs realtime / navigate / complete | Realtime channel in code | Accept / Maps / Mark delivered | **FIX** live status; OTP+POD RPC | Door photo required | **FIX** no direct complete | **FIX** | `order_complete_rpc_test.dart` |
 | Admin `/platform-ops` | n/a | Login ops seat; invite `/ops-invite` | `platform_ops` row | “Ops access required” | JWT Admin ≠ desk | **STATIC** | `platform_ops_access.dart` |
-| `send-push-notification` / `push-notifier` | OPTIONS 401 live; POST no JWT 401 | Order status / chat / welcome | table/record or welcome | Fail closed | HMAC or service_role; anon rejected | **GAP** deploy `verify_jwt=false` | `webhook_auth_test.ts` + live |
-| `razorpay-webhook` | **500 secret missing** | Razorpay events | `payment.captured` → `place_customer_order` | **FIX** 401 HMAC locally | HMAC required | **GAP** set secret + deploy | live body `Webhook secret is not configured` |
+| `send-push-notification` / `push-notifier` | OPTIONS **200**; POST no JWT **401** | `AlertService` / `enqueueWelcomeDrip` / DB webhook | table/record or welcome | Fail closed | HMAC, service_role, or party JWT; anon rejected | **OK** live v17/v15 | `webhook_auth_test.ts` + live matrix |
+| `razorpay-webhook` | OPTIONS **200**; unsigned **503** | Razorpay events | `payment.captured` → `place_customer_order` | Missing secret 503; bad sig 401 | HMAC required | **GAP** set secret | live v10 body `Webhook secret is not configured` |
+| `ai-craving-matcher` | OPTIONS **200**; POST 401 | Not called from Flutter (`ai-search` is) | Gemini embed + `match_meals` | 0 embeddings → empty | User JWT | **OK** live v11 | was BOOT_ERROR v10 |
+| Chef packaging store | REST `packaging_inventory` stream | Hub overflow **Packaging supplies** → tab 8 / `?tab=supplies` | Supply request insert | Crashlytics + copy | Chef role | **OK** | `chef_hub.dart` + `packaging_store_screen.dart` |
+| Chef ads / academy | GoRouter | Overflow → `/chef-advertise` `/chef-academy` | Boost edge `meal-boost` | Function errors | JWT chef | **STATIC** | `chef_boost_sheet.dart` |
+| Ops helpers | `manage-helper-account` | Desk create helper | `{ action, ... }` | “Could not update helper” | Ops JWT | **STATIC** | `platform_ops_desk_tabs.dart` |
 
 ---
 
@@ -102,8 +130,8 @@ Legend: **OK** live or tests pass · **FIX** patched in this PR · **GAP** human
 | Guest profile “Go to Login” | `MaterialPageRoute(AuthScreen)` | `context.go('/auth')` |
 | Cart not on dock | FAB / `?tab=cart` only | By design; noted |
 | Partner browse-as-guest | Early return | By design |
-| Promo-only inbox rows | `_openRow` no-op if no path | Remaining |
-| Packaging store | Embed-only, no GoRoute | Remaining |
+| Promo-only inbox rows | `_openRow` → `alertOpenPath` returns null without order/meal/kyc | Remaining (marks read only) |
+| Packaging store | Chef hub tab 8 / `?tab=supplies` (not a standalone GoRoute) | Wired; not dead |
 
 ---
 
@@ -125,6 +153,7 @@ Legend: **OK** live or tests pass · **FIX** patched in this PR · **GAP** human
 | Sold-out / kitchen closed | Server `code` + diner copy; **FIX** HTTP 400 + parse non-200 body |
 | Offline / timeout | `NetworkTimeouts`, `OfflineBannerHost`, retry queue |
 | Auth 401 | “Please sign in to continue.” |
+| Razorpay webhook secret unset | Live **503** fail-closed (was 500 on v8) |
 | Recovery | `recover-payment` + `CheckoutRetryBanner` |
 
 ---
@@ -133,13 +162,16 @@ Legend: **OK** live or tests pass · **FIX** patched in this PR · **GAP** human
 
 ```
 login/OTP/OAuth → resolveRole → ops seat? /platform-ops : role hub
-guest cart → auth sheet → CartMerge → checkout JWT
-order → tracking → chatPath → inbox/FCM alertOpenPath
-chef is_open / driver is_available → feed + job pool
+guest cart → auth sheet → CartMerge → checkout JWT → create-split-order
+  → Razorpay (KEY_ID client) → recover-payment and/or razorpay-webhook
+order status → AlertService + send-push (user JWT or X-Webhook-Secret)
+  → FCM alertOpenPath → tracking / chat / hub tab
+chef is_open → kitchen_live push to followers; driver is_available → job pool
+chef overflow supplies → packaging store tab; ads → meal-boost
 logout → FCM clear → diner /customer-hub or partner /auth
 ```
 
-Covered by `cart_merge_test.dart`, `route_authz_test.dart`, `hub_role_integrity_test.dart`, `auth_recovery_referral_test.dart`, `deep_link_coordinator_test.dart`.
+Covered by `cart_merge_test.dart`, `route_authz_test.dart`, `hub_role_integrity_test.dart`, `auth_recovery_referral_test.dart`, `deep_link_coordinator_test.dart`, live Edge matrix.
 
 ---
 
@@ -156,7 +188,7 @@ Covered by `cart_merge_test.dart`, `route_authz_test.dart`, `hub_role_integrity_
 
 **Fixed in git (apply/deploy to take effect):**
 
-- Webhook HMAC timing-safe + 401 contract.
+- Webhook HMAC timing-safe + **503** when secret unset (live v10).
 - Chef payout role gate.
 - Chat INSERT own `sender_id`.
 - Revoke anon EXECUTE on `complete_delivery_order`.
@@ -169,7 +201,7 @@ Covered by `cart_merge_test.dart`, `route_authz_test.dart`, `hub_role_integrity_
 | `messages` SELECT USING `(true)` | Any signed-in user can read all chats | Needs room-membership policy; not applied live (could break group/bulk rooms) |
 | `users` SELECT USING `(true)` for authenticated + column SELECT on bank/PAN/Aadhaar | Signed-in diner can read other users’ KYC columns | Split KYC table or column-secure view; chef/driver profile still `select()` own row |
 | Live `RAZORPAY_WEBHOOK_SECRET` unset | Captures never record via webhook; recover-payment is the only path | `supabase secrets set RAZORPAY_WEBHOOK_SECRET=…` |
-| Live `send-push-notification` / `push-notifier` `verify_jwt=true` vs git `false` | OPTIONS 401; DB webhook must send a JWT | Redeploy with git `config.toml` |
+| `ai-craving-matcher` unused by Flutter | Diner search uses `ai-search` + ILIKE fallback | Keep matcher for semantic RPC; 0 embeddings |
 | `spatial_ref_sys` RLS off | PostGIS catalog; advisor noise | Do not enable blindly |
 | Owner email allowlist in client RouteAuthz | Must stay in sync with `is_platform_ops()` | Server still gates the desk |
 
@@ -177,8 +209,9 @@ Covered by `cart_merge_test.dart`, `route_authz_test.dart`, `hub_role_integrity_
 
 ## 9. Human-only gaps
 
-1. **Set and rotate `RAZORPAY_WEBHOOK_SECRET`** on the hosted function; confirm Razorpay dashboard webhook URL.
-2. **Deploy** this PR’s edge functions (`create-split-order`, `razorpay-webhook`, `create-chef-account`) and **`db push`** `20260918040000_messages_insert_own_sender.sql`.
+1. **Set and rotate `RAZORPAY_WEBHOOK_SECRET`** on the hosted function; confirm Razorpay dashboard webhook URL. Live unsigned POST is **503** until then.
+2. **Deploy** remaining git-only edges (`create-split-order` sold-out 400, `create-chef-account` role gate) and **`db push`** `20260918040000_messages_insert_own_sender.sql`.
+   Matcher / send-push / push-notifier / razorpay-webhook **already redeployed** (v11 / v17 / v15 / v10).
 3. **Maps:** `GOOGLE_MAPS_API_KEY` is present in `.env`; restrict in Cloud Console; iOS still needs `GMSServices.provideAPIKey`. Rotate if the key was ever committed.
 4. **Store listings:** Play `com.hotpotchef.app` HTTP 404; `PLAY_STORE_URL` / `APP_STORE_URL` empty.
 5. **iOS Firebase:** no live `GoogleService-Info.plist`.
@@ -202,8 +235,9 @@ flutter test test/create_split_order_contract_test.dart \
   test/cart_merge_test.dart \
   test/route_authz_test.dart
 
-deno test supabase/functions/razorpay-webhook/signature_test.ts \
-  supabase/functions/_shared/webhook_auth_test.ts
+deno test --allow-env supabase/functions/razorpay-webhook/signature_test.ts \
+  supabase/functions/_shared/webhook_auth_test.ts \
+  supabase/functions/_shared/fcm_test.ts
 
 node --test supabase/functions/create-chef-account/*.test.mjs
 ```
