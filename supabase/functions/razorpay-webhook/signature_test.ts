@@ -1,9 +1,9 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts"
 import { hmacSha256Hex, verifyRazorpaySignature } from "./signature.ts"
 
-Deno.test("missing webhook secret is 401, not 500", async () => {
+Deno.test("missing webhook secret is 503, not 500", async () => {
   const result = await verifyRazorpaySignature("", "{}", "abc")
-  assertEquals(result.status, 401)
+  assertEquals(result.status, 503)
   assertEquals(result.error, "Webhook secret is not configured")
 })
 

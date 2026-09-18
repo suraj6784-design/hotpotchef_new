@@ -31,7 +31,9 @@ export async function verifyRazorpaySignature(
 ): Promise<{ ok: boolean; status: number; error?: string }> {
   const configured = secret.trim()
   if (!configured) {
-    return { ok: false, status: 401, error: "Webhook secret is not configured" }
+    // Fail closed. 503 (not 500): the function booted, but ops has not set
+    // RAZORPAY_WEBHOOK_SECRET. Client unsigned/invalid signatures stay 401.
+    return { ok: false, status: 503, error: "Webhook secret is not configured" }
   }
   const provided = (headerSignature ?? "").trim()
   if (!provided) {
