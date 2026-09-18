@@ -3090,6 +3090,17 @@ bool isKitchenClosedCheckoutError(Object? error, [Map<String, dynamic>? data]) {
       text.contains('kitchen just went offline');
 }
 
+/// Pull JSON from a Supabase FunctionException / Map without importing supabase here.
+Map<String, dynamic>? functionErrorPayload(Object? error) {
+  if (error is Map<String, dynamic>) return error;
+  if (error is Map) return Map<String, dynamic>.from(error);
+  try {
+    final details = (error as dynamic).details;
+    if (details is Map) return Map<String, dynamic>.from(details);
+  } catch (_) {}
+  return null;
+}
+
 String kitchenClosedCheckoutMessage({required bool charged, bool refunded = false}) {
   if (charged && refunded) {
     return 'This kitchen just went offline. ${dinerRefundMoneyCopy(refunded: true)}';
@@ -3101,9 +3112,18 @@ String kitchenClosedCheckoutMessage({required bool charged, bool refunded = fals
 }
 
 String checkoutInitErrorMessage(Object? error, [Map<String, dynamic>? data]) {
-  if (isSoldOutCheckoutError(error, data)) return soldOutCheckoutMessage(charged: false);
-  if (isKitchenClosedCheckoutError(error, data)) {
+  final payload = data ?? functionErrorPayload(error);
+  if (isSoldOutCheckoutError(error, payload)) return soldOutCheckoutMessage(charged: false);
+  if (isKitchenClosedCheckoutError(error, payload)) {
     return kitchenClosedCheckoutMessage(charged: false);
+  }
+  final server = payload?['error']?.toString().trim() ?? '';
+  if (server.isNotEmpty) {
+    final lowered = server.toLowerCase();
+    if (lowered.contains('unauthorized') || lowered.contains('sign in')) {
+      return 'Please sign in to continue.';
+    }
+    return server;
   }
   return 'Initialization Failed: ${networkErrorMessage(error)}';
 }

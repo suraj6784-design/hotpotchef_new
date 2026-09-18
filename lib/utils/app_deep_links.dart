@@ -17,6 +17,7 @@ abstract final class AppDeepLinks {
   static String? locationFor(Uri uri) {
     if (isCartLink(uri)) return cartLocation;
     if (isPasswordResetCallback(uri)) return resetPasswordLocation;
+    if (isAuthCallback(uri)) return '/auth';
     return null;
   }
 
@@ -52,6 +53,18 @@ abstract final class AppDeepLinks {
     }
 
     return path == cartLocation;
+  }
+
+  /// Google / Apple OAuth returns to `hotpotchef://app/auth`.
+  static bool isAuthCallback(Uri uri) {
+    final scheme = uri.scheme.toLowerCase();
+    final host = uri.host.toLowerCase();
+    final path = routerPath(uri);
+    if (scheme != StoreLinks.appScheme) return false;
+    if (host == StoreLinks.appHost) {
+      return path == '/auth' || path.isEmpty || path == '/';
+    }
+    return host == 'auth' || path == '/auth';
   }
 
   static bool isPasswordResetCallback(Uri uri) {

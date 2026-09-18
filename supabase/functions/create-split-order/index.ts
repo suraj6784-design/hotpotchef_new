@@ -116,7 +116,7 @@ serve(async (req) => {
           success: false,
           code: reserved?.code ?? 'sold_out',
           error: reserved?.error || reserveError?.message || 'This meal just sold out. Nothing was charged.',
-        })
+        }, 400)
       }
     }
 
