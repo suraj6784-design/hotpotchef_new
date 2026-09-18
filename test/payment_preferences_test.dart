@@ -18,6 +18,8 @@ void main() {
     expect(methods['upi'], isTrue);
     expect(methods['card'], isTrue);
     expect(methods['netbanking'], isTrue);
+    expect(methods['wallet'], isFalse);
+    expect((opts['displayHide'] as List).length, 3);
     expect(razorpayIsTestKey('rzp_test_abc'), isTrue);
     expect(razorpayIsTestKey('rzp_live_abc'), isFalse);
   });

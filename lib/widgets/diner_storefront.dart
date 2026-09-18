@@ -300,3 +300,20 @@ class ChefSocialChips extends StatelessWidget {
     );
   }
 }
+
+/// Diner dock is Home, Orders, Account, Alerts. Cart is not a dock tab, so it
+/// must not highlight Home — otherwise tapping Home is ignored as "already selected".
+int dinerHubDockIndex(int hubIndex) {
+  switch (hubIndex) {
+    case 1:
+      return -1;
+    case 2:
+      return 1;
+    case 3:
+      return 2;
+    case 4:
+      return 3;
+    default:
+      return 0;
+  }
+}

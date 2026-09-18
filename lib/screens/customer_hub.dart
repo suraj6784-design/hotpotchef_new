@@ -21,6 +21,7 @@ import '../widgets/app_widgets.dart';
 import '../widgets/checkout_retry_banner.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/diner_onboarding_coach.dart';
+import '../widgets/diner_storefront.dart';
 import 'customer_feed_tab.dart';
 import 'customer_cart_tab.dart';
 import 'customer_orders_tab.dart';
@@ -85,18 +86,7 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
     });
   }
 
-  int get _dockIndex {
-    switch (_selectedIndex) {
-      case 2:
-        return 1;
-      case 3:
-        return 2;
-      case 4:
-        return 3;
-      default:
-        return 0;
-    }
-  }
+  int get _dockIndex => dinerHubDockIndex(_selectedIndex);
 
   void _onDockTapped(int dock) {
     _onNavigationItemTapped(const [0, 2, 3, 4][dock]);
@@ -157,7 +147,7 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
             child: SafeArea(bottom: false, child: CheckoutRetryBanner()),
           ),
 
-          if (cartState.items.isNotEmpty && (_selectedIndex == 0 || _selectedIndex == 1))
+          if (cartState.items.isNotEmpty && _selectedIndex == 0)
             Positioned(
               bottom: 92,
               left: 20,

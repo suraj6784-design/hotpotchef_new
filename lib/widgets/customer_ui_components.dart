@@ -1176,6 +1176,7 @@ class MealDetailsBody extends StatefulWidget {
 
 class _MealDetailsBodyState extends State<MealDetailsBody> {
   int _quantity = 1;
+  bool _notifyBusy = false;
   final Set<String> _selectedAddOnIds = {};
 
   List<CartItemAddOn> get _availableAddOns => ReorderService.parseMealAddOns(
@@ -1200,6 +1201,50 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
       chefId: widget.meal['chef_id']?.toString(),
       title: widget.meal['title']?.toString(),
     ));
+  }
+
+  Future<void> _requestAvailabilityNotify() async {
+    if (_notifyBusy) return;
+    final mealId = widget.meal['id']?.toString() ?? '';
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sign in to get a ping when this plate is back.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    if (mealId.isEmpty) return;
+    setState(() => _notifyBusy = true);
+    try {
+      await Supabase.instance.client.from('meal_notify_requests').upsert(
+        {
+          'diner_id': user.id,
+          'meal_id': mealId,
+        },
+        onConflict: 'diner_id,meal_id',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('We will ping you when this plate is available again.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Meal notify request failed');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not save notify request. Try again.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _notifyBusy = false);
+    }
   }
 
   @override
@@ -1838,14 +1883,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                 SizedBox(
                   width: double.infinity,
                   child: TextButton.icon(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('We will ping you when this plate is available again.'),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                    },
+                    onPressed: _notifyBusy ? null : _requestAvailabilityNotify,
                     icon: const Icon(Icons.notifications_active_outlined, size: 18),
                     label: const Text('Notify me when available', style: TextStyle(fontWeight: FontWeight.w800)),
                   ),

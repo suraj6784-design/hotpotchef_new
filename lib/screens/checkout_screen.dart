@@ -636,6 +636,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           if (methodOpts['vpa'] != null) 'vpa': methodOpts['vpa'],
         },
         'method': methodOpts['method'],
+        'config': {
+          'display': {'hide': methodOpts['displayHide']},
+        },
         'theme': {'color': '#F4511E'}
       };
 
@@ -1908,6 +1911,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'UPI, card, or netbanking. No cash on delivery.',
+            textAlign: TextAlign.center,
+            style: AppTheme.microOf(context),
           ),
           if (razorpayIsTestKey(appEnv('RAZORPAY_KEY_ID'))) ...[
             const SizedBox(height: 6),

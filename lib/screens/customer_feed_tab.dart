@@ -63,7 +63,9 @@ class CustomerFeedTab extends ConsumerStatefulWidget {
 
 class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     with AutomaticKeepAliveClientMixin {
-  late final Stream<List<Map<String, dynamic>>> _mealsStream;
+  late Stream<List<Map<String, dynamic>>> _mealsStream;
+  List<Map<String, dynamic>>? _mealsRestSnapshot;
+  bool _loadingMealsRest = false;
   String _selectedCategory = 'All';
   String _selectedDiet = 'All';
   String _selectedSort = kFeedSortEta;
@@ -121,12 +123,8 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   @override
   void initState() {
     super.initState();
-    _mealsStream = Supabase.instance.client
-        .from('meals')
-        .stream(primaryKey: ['id'])
-        .eq('status', 'Available')
-        .order('created_at', ascending: false)
-        .limit(kHomeMealStreamLimit);
+    _bindMealsStream();
+    unawaited(_refreshMealsRestSnapshot());
     _bootstrapDeliveryPin();
     _fetchDietaryPrefs();
     _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
@@ -140,6 +138,43 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         _fetchDietaryPrefs();
       }
     });
+  }
+
+  void _bindMealsStream() {
+    _mealsStream = Supabase.instance.client
+        .from('meals')
+        .stream(primaryKey: ['id'])
+        .eq('status', 'Available')
+        .order('created_at', ascending: false)
+        .limit(kHomeMealStreamLimit);
+  }
+
+  Future<void> _refreshMealsRestSnapshot() async {
+    if (_loadingMealsRest) return;
+    _loadingMealsRest = true;
+    try {
+      final rows = await Supabase.instance.client
+          .from('meals')
+          .select()
+          .eq('status', 'Available')
+          .order('created_at', ascending: false)
+          .limit(kHomeMealStreamLimit)
+          .withTimeout(NetworkTimeouts.standard);
+      if (!mounted) return;
+      setState(() {
+        _mealsRestSnapshot = List<Map<String, dynamic>>.from(rows as List);
+        _loadingMealsRest = false;
+      });
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Home meals REST fallback failed');
+      if (mounted) setState(() => _loadingMealsRest = false);
+    }
+  }
+
+  void _retryMealsFeed() {
+    _bindMealsStream();
+    unawaited(_refreshMealsRestSnapshot());
+    setState(() {});
   }
 
   Future<void> _bootstrapDeliveryPin() async {
@@ -1516,19 +1551,24 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             StreamBuilder<List<Map<String, dynamic>>>(
               stream: _mealsStream,
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
+                final streamed = snapshot.data;
+                final mealsSource = (streamed != null && streamed.isNotEmpty)
+                    ? streamed
+                    : _mealsRestSnapshot;
+                if ((snapshot.connectionState == ConnectionState.waiting && mealsSource == null) ||
+                    (_loadingMealsRest && mealsSource == null)) {
                   return const MealListSkeleton(count: 4);
                 }
-                if (snapshot.hasError) {
+                if (mealsSource == null) {
                   return EmptyState(
                     icon: Icons.wifi_off_rounded,
                     title: 'Trouble reaching the kitchen',
                     message: 'We couldn\'t load fresh meals right now. Please check your connection and try again.',
                     actionLabel: 'Retry',
-                    onAction: () => setState(() {}),
+                    onAction: _retryMealsFeed,
                   );
                 }
-                if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                if (mealsSource.isEmpty) {
                   return const EmptyState(
                     icon: Icons.restaurant_menu_rounded,
                     title: 'No meals published yet',
@@ -1536,7 +1576,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                   );
                 }
 
-                var meals = snapshot.data!.where((m) {
+                var meals = mealsSource.where((m) {
                   final status = m['status']?.toString().toLowerCase() ?? '';
                   final isInventory = (m['customer_name'] == null || m['customer_name'].toString().isEmpty);
                   if (!isInventory || status == 'paused' || status == 'cancelled') return false;
@@ -1587,7 +1627,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                       showFollowing: showFollowing,
                       hasFollows: followedKitchens.isNotEmpty,
                     ),
-                    if (!_olderMealsExhausted && snapshot.data!.length >= kHomeMealStreamLimit)
+                    if (!_olderMealsExhausted && mealsSource.length >= kHomeMealStreamLimit)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
                         child: TextButton(

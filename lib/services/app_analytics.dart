@@ -58,6 +58,10 @@ class AppAnalytics {
     return _log('order_delivered', {'transaction_id': orderId});
   }
 
+  static Future<void> logSupportTicket({required String category}) {
+    return _log('support_ticket', {'category': category});
+  }
+
   static Future<void> _log(String name, Map<String, Object> params) async {
     try {
       await FirebaseAnalytics.instance.logEvent(name: name, parameters: params);
