@@ -30,6 +30,12 @@ fun decodeDartDefines(encodedList: String?): List<String> {
 fun dartDefinesContainKey(encodedList: String?, key: String): Boolean =
     decodeDartDefines(encodedList).any { it.startsWith("$key=") }
 
+fun storefrontFlavorCompiled(encodedList: String?, flavorName: String): Boolean {
+    val decoded = decodeDartDefines(encodedList)
+    return decoded.any { it == "APP_FLAVOR=$flavorName" } ||
+        decoded.any { it == "FLUTTER_APP_FLAVOR=$flavorName" }
+}
+
 /**
  * Ensures diner/partner Android flavors compile Dart with `APP_FLAVOR=<flavor>`.
  * Leaves an explicit CLI `--dart-define=APP_FLAVOR=...` in place.
@@ -151,20 +157,22 @@ flutter {
     source = "../.."
 }
 
-// `--flavor partner` already sets FLUTTER_APP_FLAVOR. Also inject APP_FLAVOR so
-// kAppStorefront cannot silently default to diner when the CLI omits the extra define.
+// FlutterPlugin.register writes dartDefines *after* withType.configureEach, so a
+// configuration-time assignment is overwritten. The Windows partner APK failed
+// with FLUTTER_APP_FLAVOR=partner present and APP_FLAVOR missing. Inject and
+// assert at execution time (doFirst), after Flutter has set the property.
 tasks.withType<FlutterTask>().configureEach {
-    dartDefines = withStorefrontDartDefine(dartDefines, flavor)
     doFirst {
+        dartDefines = withStorefrontDartDefine(dartDefines, flavor)
         val flavorName = flavor?.trim().orEmpty()
         if (flavorName != "diner" && flavorName != "partner") {
             return@doFirst
         }
-        val decoded = decodeDartDefines(dartDefines)
-        if (decoded.none { it == "APP_FLAVOR=$flavorName" }) {
+        if (!storefrontFlavorCompiled(dartDefines, flavorName)) {
             throw GradleException(
                 "$name: storefront flavor '$flavorName' must compile with " +
-                    "APP_FLAVOR=$flavorName. Got dart-defines: $decoded"
+                    "APP_FLAVOR=$flavorName or FLUTTER_APP_FLAVOR=$flavorName. " +
+                    "Got dart-defines: ${decodeDartDefines(dartDefines)}"
             )
         }
     }
@@ -187,15 +195,26 @@ tasks.register("assertStorefrontFlavorDefines") {
         check(withStorefrontDartDefine(alreadySet, "partner") == alreadySet) {
             "explicit APP_FLAVOR dart-define must not be overwritten"
         }
+
+        // Reproduce the Windows compileFlutterBuildPartnerDebug input: Flutter
+        // already set FLUTTER_APP_FLAVOR=partner and then overwrote any
+        // configuration-time APP_FLAVOR. Execution-time inject must append it.
+        val flutterPartnerDefines = listOf(
+            "FLUTTER_APP_FLAVOR=partner",
+            "FLUTTER_VERSION=3.44.8",
+        ).joinToString(",") { encodeDartDefine(it) }
+        check(!dartDefinesContainKey(flutterPartnerDefines, "APP_FLAVOR"))
+        val injected = withStorefrontDartDefine(flutterPartnerDefines, "partner")
+        check(decodeDartDefines(injected).contains("APP_FLAVOR=partner")) {
+            "execution-time inject must append APP_FLAVOR=partner, got ${decodeDartDefines(injected)}"
+        }
+        check(storefrontFlavorCompiled(flutterPartnerDefines, "partner")) {
+            "FLUTTER_APP_FLAVOR=partner alone must satisfy the compile assert"
+        }
+        check(!storefrontFlavorCompiled(flutterPartnerDefines, "diner"))
+
         android.productFlavors.getByName("diner")
         android.productFlavors.getByName("partner")
-        tasks.withType<FlutterTask>().forEach { task ->
-            val flavorName = task.flavor?.trim().orEmpty()
-            if (flavorName != "diner" && flavorName != "partner") return@forEach
-            check(decodeDartDefines(task.dartDefines).any { it == "APP_FLAVOR=$flavorName" }) {
-                "${task.name} is missing APP_FLAVOR=$flavorName (got ${decodeDartDefines(task.dartDefines)})"
-            }
-        }
         logger.lifecycle("Storefront dart-defines: diner=APP_FLAVOR=diner, partner=APP_FLAVOR=partner")
     }
 }
