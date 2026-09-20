@@ -1,3 +1,5 @@
+import com.flutter.gradle.tasks.FlutterTask
+import java.util.Base64
 import java.util.Properties
 
 plugins {
@@ -6,6 +8,38 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
+}
+
+/** Base64-encodes one `KEY=value` dart-define the same way the Flutter tool does. */
+fun encodeDartDefine(entry: String): String =
+    Base64.getEncoder().encodeToString(entry.toByteArray(Charsets.UTF_8))
+
+fun decodeDartDefines(encodedList: String?): List<String> {
+    if (encodedList.isNullOrBlank()) return emptyList()
+    return encodedList.split(',').mapNotNull { token ->
+        val trimmed = token.trim()
+        if (trimmed.isEmpty()) return@mapNotNull null
+        try {
+            String(Base64.getDecoder().decode(trimmed), Charsets.UTF_8)
+        } catch (_: IllegalArgumentException) {
+            trimmed
+        }
+    }
+}
+
+fun dartDefinesContainKey(encodedList: String?, key: String): Boolean =
+    decodeDartDefines(encodedList).any { it.startsWith("$key=") }
+
+/**
+ * Ensures diner/partner Android flavors compile Dart with `APP_FLAVOR=<flavor>`.
+ * Leaves an explicit CLI `--dart-define=APP_FLAVOR=...` in place.
+ */
+fun withStorefrontDartDefine(existing: String?, flavorName: String?): String? {
+    val flavor = flavorName?.trim().orEmpty()
+    if (flavor != "diner" && flavor != "partner") return existing
+    if (dartDefinesContainKey(existing, "APP_FLAVOR")) return existing
+    val encoded = encodeDartDefine("APP_FLAVOR=$flavor")
+    return if (existing.isNullOrBlank()) encoded else "$existing,$encoded"
 }
 
 val keystoreProperties = Properties()
@@ -115,6 +149,59 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+// `--flavor partner` already sets FLUTTER_APP_FLAVOR. Also inject APP_FLAVOR so
+// kAppStorefront cannot silently default to diner when the CLI omits the extra define.
+tasks.withType<FlutterTask>().configureEach {
+    dartDefines = withStorefrontDartDefine(dartDefines, flavor)
+    doFirst {
+        val flavorName = flavor?.trim().orEmpty()
+        if (flavorName != "diner" && flavorName != "partner") {
+            return@doFirst
+        }
+        val decoded = decodeDartDefines(dartDefines)
+        if (decoded.none { it == "APP_FLAVOR=$flavorName" }) {
+            throw GradleException(
+                "$name: storefront flavor '$flavorName' must compile with " +
+                    "APP_FLAVOR=$flavorName. Got dart-defines: $decoded"
+            )
+        }
+    }
+}
+
+tasks.register("assertStorefrontFlavorDefines") {
+    group = "verification"
+    description =
+        "Fail if diner/partner flavors would not inject APP_FLAVOR dart-defines."
+    doLast {
+        val partner = withStorefrontDartDefine(null, "partner")
+        val diner = withStorefrontDartDefine(null, "diner")
+        check(decodeDartDefines(partner) == listOf("APP_FLAVOR=partner")) {
+            "partner flavor must encode APP_FLAVOR=partner, got ${decodeDartDefines(partner)}"
+        }
+        check(decodeDartDefines(diner) == listOf("APP_FLAVOR=diner")) {
+            "diner flavor must encode APP_FLAVOR=diner, got ${decodeDartDefines(diner)}"
+        }
+        val alreadySet = encodeDartDefine("APP_FLAVOR=diner")
+        check(withStorefrontDartDefine(alreadySet, "partner") == alreadySet) {
+            "explicit APP_FLAVOR dart-define must not be overwritten"
+        }
+        android.productFlavors.getByName("diner")
+        android.productFlavors.getByName("partner")
+        tasks.withType<FlutterTask>().forEach { task ->
+            val flavorName = task.flavor?.trim().orEmpty()
+            if (flavorName != "diner" && flavorName != "partner") return@forEach
+            check(decodeDartDefines(task.dartDefines).any { it == "APP_FLAVOR=$flavorName" }) {
+                "${task.name} is missing APP_FLAVOR=$flavorName (got ${decodeDartDefines(task.dartDefines)})"
+            }
+        }
+        logger.lifecycle("Storefront dart-defines: diner=APP_FLAVOR=diner, partner=APP_FLAVOR=partner")
+    }
+}
+
+tasks.matching { it.name == "check" }.configureEach {
+    dependsOn("assertStorefrontFlavorDefines")
 }
 
 fun keytoolFingerprints(storeFile: File, alias: String, storePassword: String, keyPassword: String): String {

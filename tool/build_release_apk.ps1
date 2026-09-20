@@ -20,6 +20,8 @@ $common = @(
     "--target-platform", "android-arm64"
 )
 
+# APP_FLAVOR is also injected from the Android product flavor; the extra
+# dart-define keeps scripts explicit if someone builds without Gradle wiring.
 flutter build apk @common --flavor diner --dart-define=APP_FLAVOR=diner
 flutter build apk @common --flavor partner --dart-define=APP_FLAVOR=partner
 
