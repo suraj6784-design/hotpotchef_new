@@ -475,7 +475,7 @@ void main() {
     );
     expect(
       alertOpenPath({'order_id': 'ord-1', 'status': 'Delivered'}, role: 'Customer'),
-      '/order-history',
+      '/customer-hub?tab=orders&past=1',
     );
     expect(
       alertOpenPath({'order_id': 'ord-1'}, role: 'Chef'),
@@ -495,11 +495,11 @@ void main() {
     );
     expect(
       alertOpenPath({'kind': 'kyc_pending'}, role: 'chef'),
-      '/chef-profile',
+      '/chef-hub?tab=profile',
     );
     expect(
       alertOpenPath({'kind': 'kyc_pending', 'role': 'driver'}),
-      '/driver-profile',
+      '/driver-hub?tab=profile',
     );
     expect(customerHubTabIndex('orders'), 2);
     expect(customerHubTabIndex('account'), 3);

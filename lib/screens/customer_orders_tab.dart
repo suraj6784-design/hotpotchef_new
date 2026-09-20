@@ -32,6 +32,7 @@ class CustomerOrdersTab extends ConsumerStatefulWidget {
   final VoidCallback onLogout;
   final VoidCallback? onReorderToCart;
   final int refreshEpoch;
+  final bool initialShowPast;
 
   const CustomerOrdersTab({
     super.key,
@@ -39,6 +40,7 @@ class CustomerOrdersTab extends ConsumerStatefulWidget {
     required this.onLogout,
     this.onReorderToCart,
     this.refreshEpoch = 0,
+    this.initialShowPast = false,
   });
 
   @override
@@ -51,7 +53,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
   List<Map<String, dynamic>> _activeRequests = [];
   Map<String, dynamic>? _savedDropoffAddress;
   bool _isLoading = true;
-  bool _showPast = false;
+  late bool _showPast = widget.initialShowPast;
   final Map<String, List<Map<String, dynamic>>> _quotesByRequest = {};
 
   StreamSubscription? _ordersSub;

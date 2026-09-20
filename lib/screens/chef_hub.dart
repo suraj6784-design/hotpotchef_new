@@ -32,7 +32,6 @@ import '../widgets/kyc_reminder_banner.dart';
 import '../widgets/chef_onboarding_coach.dart';
 import '../widgets/diner_storefront.dart';
 import 'packaging_store_screen.dart';
-import 'chef_publish_meal_screen.dart';
 import 'chef_profile_screen.dart';
 import 'notifications_inbox_screen.dart';
 
@@ -803,7 +802,11 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                     Column(
                   children: [
                     if (_selectedIndex != 2 && _selectedIndex != 3) _buildHeader(),
-                    if (_selectedIndex == 0) const KycReminderBanner(profilePath: '/chef-profile'),
+                    if (_selectedIndex == 0)
+                    KycReminderBanner(
+                      profilePath: '/chef-profile',
+                      onOpenProfile: () => setState(() => _selectedIndex = 2),
+                    ),
                     if (_selectedIndex == 0)
                     ChefSetupStrip(
                       profile: _chefProfile,
@@ -852,29 +855,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                       child: HubBottomDock(
                         selectedIndex: _selectedIndex > 3 ? 0 : _selectedIndex,
                         onSelect: (idx) => setState(() => _selectedIndex = idx),
-                        destinations: [
-                          const HubDockDestination(
-                            icon: Icons.home_outlined,
-                            selectedIcon: Icons.home_rounded,
-                            label: 'Home',
-                          ),
-                          HubDockDestination(
-                            icon: Icons.receipt_long_outlined,
-                            selectedIcon: Icons.receipt_long,
-                            label: 'Orders',
-                            badgeCount: pendingCount,
-                          ),
-                          const HubDockDestination(
-                            icon: Icons.person_outline_rounded,
-                            selectedIcon: Icons.person_rounded,
-                            label: 'Profile',
-                          ),
-                          const HubDockDestination(
-                            icon: Icons.notifications_none_rounded,
-                            selectedIcon: Icons.notifications_rounded,
-                            label: 'Alerts',
-                          ),
-                        ],
+                        destinations: partnerHubDockDestinations(orderBadge: pendingCount),
                       ),
                     ),
                   ],
@@ -944,8 +925,8 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   context.push('/chef-advertise');
                 case 'academy':
                   context.push('/chef-academy');
-                case 'profile':
-                  setState(() => _selectedIndex = 2);
+                case 'driver':
+                  AuthSession.switchPartnerPortal(context, AppRole.driver);
                 case 'ops':
                   context.go('/platform-ops');
                 case 'logout':
@@ -961,6 +942,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               const PopupMenuItem(value: 'supplies', child: Text('Packaging supplies')),
               const PopupMenuItem(value: 'ads', child: Text('Refer brand')),
               const PopupMenuItem(value: 'academy', child: Text('Academy')),
+              const PopupMenuItem(value: 'driver', child: Text('Delivery portal')),
               if (_isPlatformOps) const PopupMenuItem(value: 'ops', child: Text('Admin')),
               const PopupMenuItem(value: 'logout', child: Text('Log out')),
             ],
@@ -1127,31 +1109,6 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               ),
             ),
           ],
-        ),
-        const SizedBox(height: 14),
-        Material(
-          color: AppTheme.primary.withValues(alpha: 0.08),
-          borderRadius: AppTheme.radiusLg,
-          child: InkWell(
-            onTap: () => AuthSession.switchPartnerPortal(context, AppRole.driver),
-            borderRadius: AppTheme.radiusLg,
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Row(
-                children: [
-                  const Icon(Icons.delivery_dining_outlined, color: AppTheme.primary),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Want to deliver instead? Switch to the delivery portal and track earnings on the go.',
-                      style: AppTheme.caption.copyWith(fontWeight: FontWeight.w700, color: AppTheme.onSurfaceOf(context)),
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right_rounded, color: AppTheme.primary),
-                ],
-              ),
-            ),
-          ),
         ),
       ],
     );
@@ -1634,13 +1591,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   }
 
   void _openMealEditor(Map<String, dynamic> meal) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ChefPublishMealScreen(
-          existingMeal: Map<String, dynamic>.from(meal),
-        ),
-      ),
-    );
+    context.push('/chef-publish-meal', extra: Map<String, dynamic>.from(meal));
   }
 
   Future<void> _quickRestockMeal(Map<String, dynamic> meal) async {

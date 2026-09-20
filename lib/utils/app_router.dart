@@ -135,6 +135,12 @@ class AppRouter {
         return '/wrong-app';
       }
 
+      // Dock Alerts is the inbox. `/notifications` is a deep-link alias.
+      if (isAuthenticated && path == '/notifications') {
+        final inbox = roleHubAlertsPath(role);
+        return inbox == '/notifications' ? null : inbox;
+      }
+
       if (!isAuthenticated &&
           kAppStorefront.isPartner &&
           (path == '/customer-hub' || path == '/referral' || path == '/customer-plans')) {
@@ -176,8 +182,9 @@ class AppRouter {
           final userId = Supabase.instance.client.auth.currentUser?.id ?? 'guest';
           final tab = state.uri.queryParameters['tab'];
           return CustomerHubScreen(
-            key: ValueKey('customer-$userId-${tab ?? ''}-${state.uri.queryParameters['preview'] ?? ''}'),
+            key: ValueKey('customer-$userId-${tab ?? ''}-${state.uri.queryParameters['preview'] ?? ''}-${state.uri.queryParameters['past'] ?? ''}'),
             initialTab: userId == 'guest' ? 0 : customerHubTabIndex(tab),
+            initialOrdersPast: state.uri.queryParameters['past'] == '1',
             skipHubRoleGuard:
                 state.uri.queryParameters['preview'] == kCustomerHubAdminPreviewValue,
           );
@@ -190,7 +197,13 @@ class AppRouter {
           initialTab: chefHubTabIndex(state.uri.queryParameters['tab']),
         ),
       ),
-      _fadeRoute('/driver-hub', (context, state) => const DriverHubScreen()),
+      _fadeRoute(
+        '/driver-hub',
+        (context, state) => DriverHubScreen(
+          key: ValueKey('driver-${state.uri.query}'),
+          initialTab: driverHubTabIndex(state.uri.queryParameters['tab']),
+        ),
+      ),
       _fadeRoute('/chef-publish-meal', (context, state) {
         final extra = state.extra;
         final meal = extra is Map<String, dynamic>

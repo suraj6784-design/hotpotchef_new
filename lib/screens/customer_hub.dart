@@ -30,11 +30,13 @@ import 'notifications_inbox_screen.dart';
 class CustomerHubScreen extends ConsumerStatefulWidget {
   static bool returnToCartAfterLogin = false;
   final int initialTab;
+  final bool initialOrdersPast;
   final bool skipHubRoleGuard;
 
   const CustomerHubScreen({
     super.key,
     this.initialTab = 0,
+    this.initialOrdersPast = false,
     this.skipHubRoleGuard = false,
   });
 
@@ -127,6 +129,7 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
       CustomerOrdersTab(
         key: ValueKey('orders-$sessionKey'),
         refreshEpoch: _ordersEpoch,
+        initialShowPast: widget.initialOrdersPast,
         onProfileTap: _navigateToProfile,
         onLogout: _handleLogout,
         onReorderToCart: () => _onNavigationItemTapped(2),

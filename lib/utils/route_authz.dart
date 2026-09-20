@@ -60,6 +60,11 @@ abstract final class RouteAuthz {
 
   static const customerOnlyPaths = {
     '/customer-profile',
+    '/referral',
+    '/order-history',
+    '/customer-plans',
+    '/bulk-request',
+    '/support-tickets',
   };
 
   static const adminPaths = {

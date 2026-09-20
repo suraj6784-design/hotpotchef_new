@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../screens/legal_document_screen.dart';
 import 'helpers.dart';
 import 'legal_content.dart';
 
@@ -468,9 +467,7 @@ Future<void> openLegalDocument(BuildContext context, LegalDocumentType type) asy
     if (launched || !context.mounted) return;
   }
   if (!context.mounted) return;
-  await Navigator.of(context).push(
-    MaterialPageRoute(builder: (_) => LegalDocumentScreen(type: type)),
-  );
+  context.push(legalPathFor(type));
 }
 
 /// Creates an in-app support ticket via `create_support_ticket`.

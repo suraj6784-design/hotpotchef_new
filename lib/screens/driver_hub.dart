@@ -29,14 +29,16 @@ import 'driver_profile_screen.dart';
 import 'notifications_inbox_screen.dart';
 
 class DriverHubScreen extends ConsumerStatefulWidget {
-  const DriverHubScreen({super.key});
+  const DriverHubScreen({super.key, this.initialTab = 0});
+
+  final int initialTab;
 
   @override
   ConsumerState<DriverHubScreen> createState() => _DriverHubScreenState();
 }
 
 class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
-  int _selectedIndex = 0;
+  late int _selectedIndex = widget.initialTab;
   int _ordersStage = 0;
   bool _isOnline = true;
   String? _busyOrderId;
@@ -335,7 +337,11 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
             Column(
               children: [
             if (_selectedIndex != 2 && _selectedIndex != 3) _buildPartnerHeader(),
-                if (_selectedIndex == 0) const KycReminderBanner(profilePath: '/driver-profile'),
+                if (_selectedIndex == 0)
+                  KycReminderBanner(
+                    profilePath: '/driver-profile',
+                    onOpenProfile: () => setState(() => _selectedIndex = 2),
+                  ),
                 Expanded(
                   child: HubTabSwitcher(
                     index: _selectedIndex,
@@ -351,29 +357,9 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               child: HubBottomDock(
                 selectedIndex: _selectedIndex,
                 onSelect: (idx) => setState(() => _selectedIndex = idx),
-                destinations: [
-                  const HubDockDestination(
-                    icon: Icons.home_outlined,
-                    selectedIcon: Icons.home_rounded,
-                    label: 'Home',
-                  ),
-                  HubDockDestination(
-                    icon: Icons.receipt_long_outlined,
-                    selectedIcon: Icons.receipt_long,
-                    label: 'Orders',
-                    badgeCount: dashboardState.availableDeliveries.length,
-                  ),
-                  const HubDockDestination(
-                    icon: Icons.person_outline_rounded,
-                    selectedIcon: Icons.person_rounded,
-                    label: 'Profile',
-                  ),
-                  const HubDockDestination(
-                    icon: Icons.notifications_none_rounded,
-                    selectedIcon: Icons.notifications_rounded,
-                    label: 'Alerts',
-                  ),
-                ],
+                destinations: partnerHubDockDestinations(
+                  orderBadge: dashboardState.availableDeliveries.length,
+                ),
               ),
             ),
           ],
@@ -412,15 +398,12 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                   AuthSession.switchPartnerPortal(context, AppRole.chef);
                 case 'chats':
                   context.push('/chats');
-                case 'id':
-                  context.push('/driver-id-card');
                 case 'logout':
                   AuthSession.confirmSignOut(context);
               }
             },
             itemBuilder: (context) => [
               const PopupMenuItem(value: 'chef', child: Text('Chef portal')),
-              const PopupMenuItem(value: 'id', child: Text('Digital ID')),
               const PopupMenuItem(value: 'chats', child: Text('Order chats')),
               const PopupMenuItem(value: 'logout', child: Text('Log out')),
             ],
@@ -575,31 +558,6 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 14),
-          Material(
-            color: AppTheme.primary.withValues(alpha: 0.08),
-            borderRadius: AppTheme.radiusLg,
-            child: InkWell(
-              onTap: () => AuthSession.switchPartnerPortal(context, AppRole.chef),
-              borderRadius: AppTheme.radiusLg,
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Row(
-                  children: [
-                    const Icon(Icons.soup_kitchen_outlined, color: AppTheme.primary),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Want to cook instead? Switch to the chef portal and publish plates from your kitchen.',
-                        style: AppTheme.caption.copyWith(fontWeight: FontWeight.w700, color: AppTheme.onSurfaceOf(context)),
-                      ),
-                    ),
-                    const Icon(Icons.chevron_right_rounded, color: AppTheme.primary),
-                  ],
-                ),
-              ),
-            ),
           ),
         ],
       ),

@@ -178,7 +178,7 @@ class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
     return Scaffold(
       backgroundColor: AppTheme.canvasOf(context),
       appBar: AppBar(
-        title: const Text('Notifications'),
+        title: Text(DinerLocaleController.instance.copy.notifications),
         automaticallyImplyLeading: !widget.embedded,
         leading: widget.embedded
             ? null
@@ -188,7 +188,7 @@ class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
                   if (context.canPop()) {
                     context.pop();
                   } else {
-                    context.go('/customer-hub');
+                    context.go(AuthSession.roleFromSession().hubPath);
                   }
                 },
               ),

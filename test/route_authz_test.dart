@@ -75,6 +75,11 @@ void main() {
       expect(RouteAuthz.classify('/reset-callback'), RouteAccess.shared);
       expect(RouteAuthz.classify('/legal/privacy'), RouteAccess.shared);
       expect(RouteAuthz.classify('/legal/terms'), RouteAccess.shared);
+      expect(RouteAuthz.classify('/referral'), RouteAccess.customer);
+      expect(RouteAuthz.classify('/order-history'), RouteAccess.customer);
+      expect(RouteAuthz.classify('/bulk-request'), RouteAccess.customer);
+      expect(RouteAuthz.classify('/support-tickets'), RouteAccess.customer);
+      expect(RouteAuthz.classify('/notifications'), RouteAccess.shared);
     });
 
     test('future chef/driver/customer paths inherit the prefix group', () {
@@ -107,6 +112,10 @@ void main() {
 
     test('sends guests on customer-only profile to /auth', () {
       expect(guest('/customer-profile'), '/auth');
+      expect(guest('/referral'), '/auth');
+      expect(guest('/order-history'), '/auth');
+      expect(guest('/bulk-request'), '/auth');
+      expect(guest('/support-tickets'), '/auth');
     });
 
     test('allows guest access to customer hub, cart deep link, and auth', () {
@@ -232,6 +241,10 @@ void main() {
           rawRole: 'chef',
           path: '/customer-profile',
         ),
+        '/chef-hub',
+      );
+      expect(
+        RouteAuthz.resolveRedirect(isAuthenticated: true, rawRole: 'chef', path: '/referral'),
         '/chef-hub',
       );
     });

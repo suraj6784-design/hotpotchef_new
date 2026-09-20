@@ -686,7 +686,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                         return InkWell(
                           onTap: () {
                             Navigator.pop(ctx);
-                            context.push('/order-history');
+                            context.go(dinerOrdersPath(past: true));
                           },
                           child: Padding(
                             padding: const EdgeInsets.symmetric(vertical: 8),
@@ -748,7 +748,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                         child: TextButton(
                           onPressed: () {
                             Navigator.pop(ctx);
-                            context.push('/order-history');
+                            context.go(dinerOrdersPath(past: true));
                           },
                           child: const Text('See all orders'),
                         ),

@@ -7,7 +7,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import 'map_picker_screen.dart';
-import 'driver_id_card_screen.dart';
 import '../models/app_role.dart';
 import '../services/auth_session.dart';
 import '../utils/app_page.dart';
@@ -323,18 +322,14 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     );
   }
 
-  // --- Digital ID Card Modal ---
+  // --- Digital ID (GoRouter `/driver-id-card`) ---
 
   void _showDigitalIDCard() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => DriverIdCardScreen(
-          driverName: _nameController.text.isEmpty ? 'Delivery Partner' : _nameController.text,
-          driverPhone: _phoneController.text,
-          avatarUrl: _avatarUrl,
-        ),
-      ),
-    );
+    context.push('/driver-id-card', extra: {
+      'name': _nameController.text.isEmpty ? 'Delivery Partner' : _nameController.text,
+      'phone': _phoneController.text,
+      'avatarUrl': _avatarUrl,
+    });
   }
 
   // --- UI Tree ---
