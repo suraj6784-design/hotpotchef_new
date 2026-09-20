@@ -338,7 +338,11 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
           _ordersStage = 2;
         }),
       ),
-      const NotificationsInboxScreen(embedded: true, partnerInbox: true),
+      NotificationsInboxScreen(
+        key: ValueKey('driver-alerts-${Supabase.instance.client.auth.currentUser?.id ?? 'guest'}'),
+        embedded: true,
+        partnerInbox: true,
+      ),
     ];
 
     return PopScope(

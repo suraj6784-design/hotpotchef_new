@@ -17,4 +17,11 @@ void main() {
     expect(AppStorefront.partner.allowsRole(AppRole.customer), isFalse);
     expect(AppStorefront.partner.wrongAccountMessage(AppRole.customer), contains('HotPotChef'));
   });
+
+  test('FLUTTER_APP_FLAVOR from --flavor partner is enough without APP_FLAVOR', () {
+    expect(parseAppStorefront('', 'partner'), AppStorefront.partner);
+    expect(parseAppStorefront('diner', 'partner'), AppStorefront.diner);
+    expect(parseAppStorefront('partner', ''), AppStorefront.partner);
+    expect(parseAppStorefront('', ''), AppStorefront.diner);
+  });
 }

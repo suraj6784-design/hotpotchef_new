@@ -148,22 +148,12 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   }
 
   void _bindMealsStream() {
-    // Guest Realtime does `select *`, which anon column grants reject.
-    if (Supabase.instance.client.auth.currentSession == null) {
-      _mealsStream = Stream<List<Map<String, dynamic>>>.value(const []);
-      return;
-    }
-    _mealsStream = Supabase.instance.client
-        .from('meals')
-        .stream(primaryKey: ['id'])
-        .eq('status', 'Available')
-        .order('created_at', ascending: false)
-        .limit(kHomeMealStreamLimit);
+    // Realtime always `select *`, which rejects guest column grants and can
+    // fail JSON on meals.embedding (vector). Home uses the REST catalog select.
+    _mealsStream = Stream<List<Map<String, dynamic>>>.value(const []);
   }
 
-  Future<void> _refreshMealsRestSnapshot() async {
-    if (_loadingMealsRest) return;
-    _loadingMealsRest = true;
+  Future<List<Map<String, dynamic>>> _fetchHomeMealCatalog() async {
     try {
       final rows = await Supabase.instance.client
           .from('meals')
@@ -172,9 +162,28 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           .order('created_at', ascending: false)
           .limit(kHomeMealStreamLimit)
           .withTimeout(NetworkTimeouts.standard);
+      return List<Map<String, dynamic>>.from(rows as List);
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Home meals catalog select failed');
+      final rows = await Supabase.instance.client
+          .from('meals')
+          .select(kHomeMealCatalogSelectMinimal)
+          .eq('status', 'Available')
+          .order('created_at', ascending: false)
+          .limit(kHomeMealStreamLimit)
+          .withTimeout(NetworkTimeouts.standard);
+      return List<Map<String, dynamic>>.from(rows as List);
+    }
+  }
+
+  Future<void> _refreshMealsRestSnapshot() async {
+    if (_loadingMealsRest) return;
+    _loadingMealsRest = true;
+    try {
+      final rows = await _fetchHomeMealCatalog();
       if (!mounted) return;
       setState(() {
-        _mealsRestSnapshot = List<Map<String, dynamic>>.from(rows as List);
+        _mealsRestSnapshot = rows;
         _loadingMealsRest = false;
       });
     } catch (e, stack) {

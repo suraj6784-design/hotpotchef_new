@@ -101,6 +101,7 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
     final sessionKey = Supabase.instance.client.auth.currentUser?.id ?? 'guest';
     final List<Widget> pages = [
       CustomerFeedTab(
+        key: ValueKey('home-$sessionKey'),
         favoriteMeals: favoritesList,
         onToggleFavorite: (id) => ref.read(favoritesProvider.notifier).toggleFavorite(id),
         onProfileTap: _navigateToProfile,
@@ -129,7 +130,10 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
           if (mounted) setState(() => _selectedIndex = 0);
         },
       ),
-      const NotificationsInboxScreen(embedded: true),
+      NotificationsInboxScreen(
+        key: ValueKey('alerts-$sessionKey'),
+        embedded: true,
+      ),
     ];
 
     return Scaffold(

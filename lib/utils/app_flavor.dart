@@ -3,8 +3,9 @@ import '../models/app_role.dart';
 /// Compile-time storefront. `diner` is HotPotChef; `partner` is HotPotChef Partner.
 enum AppStorefront { diner, partner }
 
-AppStorefront get kAppStorefront {
-  const raw = String.fromEnvironment('APP_FLAVOR', defaultValue: 'diner');
+/// `--dart-define=APP_FLAVOR=partner` wins; otherwise Flutter's `--flavor` (`FLUTTER_APP_FLAVOR`).
+AppStorefront parseAppStorefront(String appFlavor, [String flutterAppFlavor = '']) {
+  final raw = appFlavor.trim().isNotEmpty ? appFlavor : flutterAppFlavor;
   switch (raw.trim().toLowerCase()) {
     case 'partner':
     case 'chef':
@@ -13,6 +14,12 @@ AppStorefront get kAppStorefront {
     default:
       return AppStorefront.diner;
   }
+}
+
+AppStorefront get kAppStorefront {
+  const app = String.fromEnvironment('APP_FLAVOR');
+  const flutter = String.fromEnvironment('FLUTTER_APP_FLAVOR');
+  return parseAppStorefront(app, flutter);
 }
 
 extension AppStorefrontX on AppStorefront {

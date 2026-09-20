@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -29,11 +31,21 @@ class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
   String? _error;
   String _filter = 'all';
   List<Map<String, dynamic>> _rows = const [];
+  StreamSubscription<AuthState>? _authSub;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((_) {
+      if (mounted) unawaited(_load());
+    });
+  }
+
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    super.dispose();
   }
 
   bool _isOrderKind(Map<String, dynamic> row) {

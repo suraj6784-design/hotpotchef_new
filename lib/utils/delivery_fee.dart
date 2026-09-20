@@ -22,6 +22,12 @@ const String kHomeMealCatalogSelect =
     'boosted_until, calories_kcal, carbs_g, fat_g, fiber_g, protein_g, portion_weight_g, '
     'is_hamper, is_hosting, is_shelf_item, is_society_night, '
     'shelf_kind, society_label, source_meal_id';
+
+/// Narrower Home select if a catalog column grant is missing.
+const String kHomeMealCatalogSelectMinimal =
+    'id, chef_id, chef_name, title, description, status, quantity, price, image_url, '
+    'time_slot, service_type, category, is_veg, '
+    'latitude, longitude, pickup_lat, pickup_lng, created_at';
 const double kMaxCheckoutTip = 500;
 
 double clampCheckoutTip(num? raw) {

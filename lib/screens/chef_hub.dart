@@ -785,7 +785,11 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 _buildHomeTab(orders, pendingCount: pendingCount),
                 _buildOrdersWorkspace(orders),
                 const ChefProfileScreen(embedded: true),
-                const NotificationsInboxScreen(embedded: true, partnerInbox: true),
+                NotificationsInboxScreen(
+                  key: ValueKey('chef-alerts-$_currentUserId'),
+                  embedded: true,
+                  partnerInbox: true,
+                ),
                 _buildMenuTab(),
                 _buildDispatchTab(orders),
                 _buildHistoryTab(orders),
