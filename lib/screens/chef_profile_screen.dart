@@ -745,7 +745,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
               children: [
                 PremiumProfileTile(
                   icon: Icons.payments_outlined,
-                  title: 'Kitchen take-home',
+                  title: 'Earnings analytics',
                   subtitle: 'Today and completed sales in ₹',
                   onTap: () => context.push('/chef-analytics'),
                   showDivider: false,

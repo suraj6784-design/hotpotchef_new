@@ -959,6 +959,55 @@ int chefHubTabIndex(String? tab) {
   }
 }
 
+int driverHubTabIndex(String? tab) {
+  switch (tab?.trim().toLowerCase()) {
+    case 'orders':
+      return 1;
+    case 'profile':
+    case 'account':
+      return 2;
+    case 'alerts':
+    case 'notifications':
+      return 3;
+    default:
+      return 0;
+  }
+}
+
+/// Dock Alerts tab for the signed-in role. `/notifications` is an alias only.
+String roleHubAlertsPath(AppRole role) {
+  switch (role) {
+    case AppRole.chef:
+      return '/chef-hub?tab=alerts';
+    case AppRole.driver:
+      return '/driver-hub?tab=alerts';
+    case AppRole.admin:
+      return '/notifications';
+    case AppRole.customer:
+      return '/customer-hub?tab=alerts';
+  }
+}
+
+/// Dock Profile tab. Standalone `/chef-profile` and `/driver-profile` stay for
+/// deep links opened outside a hub.
+String roleHubProfilePath(AppRole role) {
+  switch (role) {
+    case AppRole.chef:
+      return '/chef-hub?tab=profile';
+    case AppRole.driver:
+      return '/driver-hub?tab=profile';
+    case AppRole.admin:
+      return '/platform-ops';
+    case AppRole.customer:
+      return '/customer-hub?tab=profile';
+  }
+}
+
+/// Diner Orders dock. Past plates live on the same tab (`past=1`), not `/order-history`.
+String dinerOrdersPath({bool past = false}) {
+  return past ? '/customer-hub?tab=orders&past=1' : '/customer-hub?tab=orders';
+}
+
 bool isPastOrderStatus(String? status) {
   final current = (status ?? '').trim().toLowerCase();
   if (current.contains('out for delivery') || current.contains('out_for_delivery')) {
@@ -1029,9 +1078,9 @@ String? alertOpenPath(Map<String, String?> data, {String? role}) {
     if (parsedRole.contains('driver') ||
         parsedRole.contains('delivery') ||
         fromPayload.contains('driver')) {
-      return '/driver-profile';
+      return roleHubProfilePath(AppRole.driver);
     }
-    return '/chef-profile';
+    return roleHubProfilePath(AppRole.chef);
   }
 
   final orderId = (data['order_id'] ?? '').trim();
@@ -1044,7 +1093,7 @@ String? alertOpenPath(Map<String, String?> data, {String? role}) {
   if (!past && isLiveTrackingStatus(data['status'])) {
     return '/tracking?orderId=$orderId';
   }
-  return past ? '/order-history' : '/customer-hub?tab=orders';
+  return dinerOrdersPath(past: past);
 }
 
 bool isLiveTrackingStatus(String? status) {
@@ -1473,8 +1522,6 @@ bool isStackAlertPath(String path) {
   return route.startsWith('/chat/') ||
       route.startsWith('/meal/') ||
       route.startsWith('/chef/') ||
-      route == '/chef-profile' ||
-      route == '/driver-profile' ||
       route == '/cart' ||
       route.startsWith('/cart?');
 }

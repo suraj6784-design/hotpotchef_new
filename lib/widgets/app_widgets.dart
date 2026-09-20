@@ -674,6 +674,33 @@ class HubDockDestination {
   });
 }
 
+/// Chef + driver dock. Labels stay aligned with diner English (`Profile` / `Alerts`).
+List<HubDockDestination> partnerHubDockDestinations({int orderBadge = 0}) {
+  return [
+    const HubDockDestination(
+      icon: Icons.home_outlined,
+      selectedIcon: Icons.home_rounded,
+      label: 'Home',
+    ),
+    HubDockDestination(
+      icon: Icons.receipt_long_outlined,
+      selectedIcon: Icons.receipt_long,
+      label: 'Orders',
+      badgeCount: orderBadge,
+    ),
+    const HubDockDestination(
+      icon: Icons.person_outline_rounded,
+      selectedIcon: Icons.person_rounded,
+      label: 'Profile',
+    ),
+    const HubDockDestination(
+      icon: Icons.notifications_none_rounded,
+      selectedIcon: Icons.notifications_rounded,
+      label: 'Alerts',
+    ),
+  ];
+}
+
 /// Keeps every hub tab mounted. Only the selected child is painted.
 class HubTabSwitcher extends StatelessWidget {
   final int index;

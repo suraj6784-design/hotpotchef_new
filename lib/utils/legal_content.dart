@@ -1,5 +1,20 @@
 enum LegalDocumentType { terms, privacy, faq, cancellation }
 
+/// Canonical in-app legal route. Chrome (profile, checkout, auth) must use this
+/// instead of a second `MaterialPageRoute` stack.
+String legalPathFor(LegalDocumentType type) {
+  switch (type) {
+    case LegalDocumentType.terms:
+      return '/legal/terms';
+    case LegalDocumentType.privacy:
+      return '/legal/privacy';
+    case LegalDocumentType.faq:
+      return '/legal/faq';
+    case LegalDocumentType.cancellation:
+      return '/legal/cancellation';
+  }
+}
+
 /// In-app fallback copy. Public site mirrors this in `website/js/legal-content.js`
 /// at /terms, /privacy, /faq, /cancellation.
 class LegalSection {
