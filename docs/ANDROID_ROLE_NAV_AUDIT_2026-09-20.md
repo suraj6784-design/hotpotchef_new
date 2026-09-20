@@ -57,10 +57,11 @@ Converted in this pass: legal, chef meal editor, driver ID from Profile.
 
 ## Flavor / APK confusion (code-proven)
 
-Compile-time `APP_FLAVOR` (`lib/utils/app_flavor.dart`):
+Compile-time storefront (`lib/utils/app_flavor.dart`):
 
-- Default / diner → `HotPotChef`, signup `Customer` only
-- `partner` / `chef` / `driver` → `HotPotChef Partner`, signup Chef + Delivery Partner
+- `--flavor diner` / default → `HotPotChef`, signup `Customer` only
+- `--flavor partner` (Flutter `FLUTTER_APP_FLAVOR` + Gradle-injected `APP_FLAVOR`) / aliases `chef` / `driver` → `HotPotChef Partner`, signup Chef + Delivery Partner
+- Do **not** rely on a manual `--dart-define=APP_FLAVOR=partner` — Android flavors inject it. iOS has no matching schemes.
 - Admin is allowed on both APKs
 - Mismatch → `/wrong-app` then Sign out (copy names the **other** app)
 

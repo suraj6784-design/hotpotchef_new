@@ -23,8 +23,22 @@ Delivery options: Chef-Self, Delivery Partner, Customer Pickup, Dine In.
 Configure `.env` with `SUPABASE_URL` and `SUPABASE_ANON_KEY`, then:
 
 ```bash
-flutter run --flavor diner --dart-define=APP_FLAVOR=diner --dart-define-from-file=.env
-flutter run --flavor partner --dart-define=APP_FLAVOR=partner --dart-define-from-file=.env
+# --flavor selects the Android product flavor *and* the Dart storefront
+# (FLUTTER_APP_FLAVOR + Gradle-injected APP_FLAVOR). Do not omit --flavor on
+# Partner; a flavor-less build defaults to diner even if you install the
+# com.hotpotchef.partner APK from an older artifact.
+flutter run --flavor diner --dart-define-from-file=.env
+flutter run --flavor partner --dart-define-from-file=.env
+```
+
+iOS has a single `Runner` scheme (no diner/partner Xcode flavors). `--flavor`
+is Android-only until matching iOS schemes exist.
+
+Verify Partner compiles as Partner (must not skip):
+
+```bash
+flutter test test/app_flavor_partner_compile_test.dart --flavor partner
+cd android && ./gradlew :app:assertStorefrontFlavorDefines
 ```
 
 Release APKs (diner **HotPotChef** + partner **HotPotChef Partner**; Razorpay keys stay from `.env`):

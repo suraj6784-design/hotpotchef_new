@@ -1,11 +1,17 @@
 import '../models/app_role.dart';
 
 /// Compile-time storefront. `diner` is HotPotChef; `partner` is HotPotChef Partner.
+///
+/// Resolution (first non-empty wins):
+/// 1. Flutter `--flavor` / Android `productFlavors` via `FLUTTER_APP_FLAVOR`
+///    (injected automatically; also mirrored as `APP_FLAVOR` from Gradle)
+/// 2. Explicit `--dart-define=APP_FLAVOR=...` (release scripts, tests)
+/// 3. Default `diner`
 enum AppStorefront { diner, partner }
 
-AppStorefront get kAppStorefront {
-  const raw = String.fromEnvironment('APP_FLAVOR', defaultValue: 'diner');
-  switch (raw.trim().toLowerCase()) {
+/// Maps a raw flavor / dart-define string to a storefront. Exposed for tests.
+AppStorefront storefrontFromFlavorName(String? raw) {
+  switch ((raw ?? '').trim().toLowerCase()) {
     case 'partner':
     case 'chef':
     case 'driver':
@@ -13,6 +19,12 @@ AppStorefront get kAppStorefront {
     default:
       return AppStorefront.diner;
   }
+}
+
+AppStorefront get kAppStorefront {
+  const fromFlavor = String.fromEnvironment('FLUTTER_APP_FLAVOR');
+  const explicit = String.fromEnvironment('APP_FLAVOR');
+  return storefrontFromFlavorName(fromFlavor.isNotEmpty ? fromFlavor : explicit);
 }
 
 extension AppStorefrontX on AppStorefront {

@@ -20,6 +20,10 @@ jobs:
       # Pre-existing infos/warnings. Fail on errors only.
       - run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - run: flutter test
+      # Partner storefront is compile-time. Default flutter test stays diner;
+      # this run fails if --flavor partner does not set kAppStorefront=partner.
+      - name: Partner flavor compiles as Partner
+        run: flutter test test/app_flavor_partner_compile_test.dart --flavor partner
 
   deno:
     runs-on: ubuntu-latest

@@ -61,6 +61,7 @@ void main() {
     });
 
     test('partner APK rejects diner accounts', () {
+      expect(storefrontFromFlavorName('partner'), AppStorefront.partner);
       expect(AppStorefront.partner.allowsRole(AppRole.chef), isTrue);
       expect(AppStorefront.partner.allowsRole(AppRole.driver), isTrue);
       expect(AppStorefront.partner.allowsRole(AppRole.customer), isFalse);
