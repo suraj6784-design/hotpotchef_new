@@ -14,16 +14,37 @@ import '../utils/app_theme.dart';
 import '../utils/network.dart';
 import '../widgets/app_widgets.dart';
 
+String displayDriverIdCardNo(String? raw) {
+  final v = (raw ?? '').trim().toUpperCase();
+  return v.isEmpty ? 'Pending assignment' : v;
+}
+
+String displayDriverBloodGroup(String? raw) {
+  final v = (raw ?? '').trim().toUpperCase();
+  return v.isEmpty ? 'Not on file' : v;
+}
+
+String displayDriverEmergencyContact(String? raw) {
+  final v = (raw ?? '').trim();
+  return v.isEmpty ? 'Not on file' : v;
+}
+
 class DriverIdCardScreen extends StatefulWidget {
   final String driverName;
   final String driverPhone;
   final String? avatarUrl;
+  final String? idCardNo;
+  final String? bloodGroup;
+  final String? emergencyPhone;
 
   const DriverIdCardScreen({
     super.key,
     required this.driverName,
     required this.driverPhone,
     this.avatarUrl,
+    this.idCardNo,
+    this.bloodGroup,
+    this.emergencyPhone,
   });
 
   @override
@@ -36,6 +57,9 @@ class _DriverIdCardScreenState extends State<DriverIdCardScreen> {
   late String _driverName;
   late String _driverPhone;
   String? _avatarUrl;
+  late String _idCardNo;
+  late String _bloodGroup;
+  late String _emergencyPhone;
 
   @override
   void initState() {
@@ -43,23 +67,36 @@ class _DriverIdCardScreenState extends State<DriverIdCardScreen> {
     _driverName = widget.driverName;
     _driverPhone = widget.driverPhone;
     _avatarUrl = widget.avatarUrl;
-    if (_driverPhone.trim().isEmpty ||
-        _driverName.trim().isEmpty ||
-        _driverName == 'Delivery Partner') {
-      unawaited(_hydrateFromProfile());
-    }
+    _idCardNo = widget.idCardNo ?? '';
+    _bloodGroup = widget.bloodGroup ?? '';
+    _emergencyPhone = widget.emergencyPhone ?? '';
+    unawaited(_hydrateFromProfile());
   }
 
   Future<void> _hydrateFromProfile() async {
     try {
-      final user = Supabase.instance.client.auth.currentUser;
+      late final User? user;
+      try {
+        user = Supabase.instance.client.auth.currentUser;
+      } catch (_) {
+        return;
+      }
       if (user == null) return;
       final row = await Supabase.instance.client
           .from('users')
-          .select('name, full_name, phone, avatar_url')
+          .select('name, full_name, phone, avatar_url, driver_id_no, blood_group, emergency_phone')
           .eq('id', user.id)
           .maybeSingle()
           .withTimeout(NetworkTimeouts.standard);
+      var idNo = (row?['driver_id_no'] ?? '').toString().trim();
+      if (idNo.isEmpty) {
+        try {
+          final issued = await Supabase.instance.client
+              .rpc('ensure_own_driver_id_no')
+              .withTimeout(NetworkTimeouts.standard);
+          idNo = issued?.toString().trim() ?? '';
+        } catch (_) {}
+      }
       final name = (row?['name'] ?? row?['full_name'] ?? user.userMetadata?['name'])
               ?.toString()
               .trim() ??
@@ -69,11 +106,16 @@ class _DriverIdCardScreenState extends State<DriverIdCardScreen> {
               .trim() ??
           '';
       final avatar = row?['avatar_url']?.toString().trim();
+      final blood = (row?['blood_group'] ?? '').toString().trim();
+      final emergency = (row?['emergency_phone'] ?? '').toString().trim();
       if (!mounted) return;
       setState(() {
         if (name.isNotEmpty) _driverName = name;
         if (phone.isNotEmpty) _driverPhone = phone;
         if (avatar != null && avatar.isNotEmpty) _avatarUrl = avatar;
+        if (idNo.isNotEmpty) _idCardNo = idNo;
+        if (blood.isNotEmpty) _bloodGroup = blood;
+        if (emergency.isNotEmpty) _emergencyPhone = emergency;
       });
     } catch (e, stack) {
       try {
@@ -237,7 +279,38 @@ class _DriverIdCardScreenState extends State<DriverIdCardScreen> {
                         _driverPhone.trim().isEmpty ? 'Phone not on file' : 'PH: ${_driverPhone.trim()}',
                         style: const TextStyle(color: Colors.black54, fontWeight: FontWeight.bold, fontSize: 14),
                       ),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 10),
+                      Text(
+                        'ID ${displayDriverIdCardNo(_idCardNo)}',
+                        style: const TextStyle(
+                          color: AppTheme.primary,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 13,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: _IdMetaChip(
+                                label: 'Blood group',
+                                value: displayDriverBloodGroup(_bloodGroup),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _IdMetaChip(
+                                label: 'Emergency',
+                                value: displayDriverEmergencyContact(_emergencyPhone),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
 
                       // Footer Bar
                       Container(
@@ -283,6 +356,49 @@ class _DriverIdCardScreenState extends State<DriverIdCardScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _IdMetaChip extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _IdMetaChip({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF4EE),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label.toUpperCase(),
+            style: const TextStyle(
+              color: Colors.black45,
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.4,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.black87,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
       ),
     );
   }

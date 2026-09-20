@@ -162,7 +162,17 @@ class AppRouter {
           initialTab: chefHubTabIndex(state.uri.queryParameters['tab']),
         ),
       ),
-      _fadeRoute('/driver-hub', (context, state) => const DriverHubScreen()),
+      _fadeRoute(
+        '/driver-hub',
+        (context, state) {
+          final wallet = state.uri.queryParameters['tab'] == 'wallet';
+          return DriverHubScreen(
+            key: ValueKey('driver-${state.uri.query}'),
+            initialTab: wallet ? 1 : 0,
+            initialOrdersStage: wallet ? 2 : 0,
+          );
+        },
+      ),
       _fadeRoute('/chef-publish-meal', (context, state) {
         final extra = state.extra;
         final meal = extra is Map<String, dynamic>
@@ -228,6 +238,9 @@ class AppRouter {
           driverName: extra['name']?.toString() ?? 'Delivery Partner',
           driverPhone: extra['phone']?.toString() ?? '',
           avatarUrl: extra['avatarUrl']?.toString(),
+          idCardNo: extra['idCardNo']?.toString(),
+          bloodGroup: extra['bloodGroup']?.toString(),
+          emergencyPhone: extra['emergencyPhone']?.toString(),
         );
       }),
       _fadeRoute('/chef-analytics', (context, state) => const ChefAnalyticsScreen()),

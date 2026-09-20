@@ -10,7 +10,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../utils/helpers.dart';
-import '../utils/app_flavor.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/app_status_badge.dart';
@@ -29,21 +28,27 @@ import 'driver_profile_screen.dart';
 import 'notifications_inbox_screen.dart';
 
 class DriverHubScreen extends ConsumerStatefulWidget {
-  const DriverHubScreen({super.key});
+  const DriverHubScreen({super.key, this.initialTab = 0, this.initialOrdersStage = 0});
+
+  final int initialTab;
+  final int initialOrdersStage;
 
   @override
   ConsumerState<DriverHubScreen> createState() => _DriverHubScreenState();
 }
 
 class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
-  int _selectedIndex = 0;
-  int _ordersStage = 0;
+  late int _selectedIndex = widget.initialTab;
+  late int _ordersStage = widget.initialOrdersStage;
   bool _isOnline = true;
   String? _busyOrderId;
   String _welcomeName = 'Partner';
   String _driverFullName = '';
   String _driverPhone = '';
   String? _driverAvatarUrl;
+  String _driverIdNo = '';
+  String _driverBloodGroup = '';
+  String _driverEmergencyPhone = '';
 
   @override
   void initState() {
@@ -63,7 +68,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
           .maybeSingle();
       final userRow = await Supabase.instance.client
           .from('users')
-          .select('name, full_name, phone, avatar_url')
+          .select('name, full_name, phone, avatar_url, driver_id_no, blood_group, emergency_phone')
           .eq('id', user.id)
           .maybeSingle();
       if (mounted) {
@@ -81,6 +86,12 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
           if (phone.trim().isNotEmpty) _driverPhone = phone.trim();
           final avatar = userRow?['avatar_url']?.toString();
           if (avatar != null && avatar.trim().isNotEmpty) _driverAvatarUrl = avatar.trim();
+          final idNo = userRow?['driver_id_no']?.toString().trim() ?? '';
+          if (idNo.isNotEmpty) _driverIdNo = idNo;
+          final blood = userRow?['blood_group']?.toString().trim() ?? '';
+          if (blood.isNotEmpty) _driverBloodGroup = blood;
+          final emergency = userRow?['emergency_phone']?.toString().trim() ?? '';
+          if (emergency.isNotEmpty) _driverEmergencyPhone = emergency;
         });
       }
     } catch (_) {}
@@ -91,6 +102,9 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
       'name': _driverFullName.isEmpty ? 'Delivery Partner' : _driverFullName,
       'phone': _driverPhone,
       if (_driverAvatarUrl != null) 'avatarUrl': _driverAvatarUrl,
+      'idCardNo': _driverIdNo,
+      'bloodGroup': _driverBloodGroup,
+      'emergencyPhone': _driverEmergencyPhone,
     });
   }
 
@@ -317,7 +331,13 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
     final List<Widget> pages = [
       _buildHomeTab(dashboardState),
       _buildOrdersWorkspace(dashboardState, notifier),
-      const DriverProfileScreen(embedded: true),
+      DriverProfileScreen(
+        embedded: true,
+        onOpenWallet: () => setState(() {
+          _selectedIndex = 1;
+          _ordersStage = 2;
+        }),
+      ),
       const NotificationsInboxScreen(embedded: true, partnerInbox: true),
     ];
 
@@ -358,9 +378,12 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
             if (_selectedIndex != 2 && _selectedIndex != 3) _buildPartnerHeader(),
                 if (_selectedIndex == 0) const KycReminderBanner(profilePath: '/driver-profile'),
                 Expanded(
-                  child: HubTabSwitcher(
-                    index: _selectedIndex,
-                    children: pages,
+                  child: Padding(
+                    padding: EdgeInsets.only(bottom: hubDockBodyGap(context)),
+                    child: HubTabSwitcher(
+                      index: _selectedIndex,
+                      children: pages,
+                    ),
                   ),
                 ),
               ],
@@ -429,8 +452,6 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
             tooltip: 'More',
             onSelected: (value) {
               switch (value) {
-                case 'chef':
-                  AuthSession.switchPartnerPortal(context, AppRole.chef);
                 case 'chats':
                   context.push('/chats');
                 case 'id':
@@ -440,7 +461,6 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               }
             },
             itemBuilder: (context) => [
-              const PopupMenuItem(value: 'chef', child: Text('Chef portal')),
               const PopupMenuItem(value: 'id', child: Text('Digital ID')),
               const PopupMenuItem(value: 'chats', child: Text('Order chats')),
               const PopupMenuItem(value: 'logout', child: Text('Log out')),
@@ -471,48 +491,6 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               message: state.errorMessage,
               actionLabel: 'Retry',
               onAction: () => ref.read(driverDashboardProvider.notifier).loadDashboardData(),
-            ),
-            const SizedBox(height: 16),
-          ],
-          if (kAppStorefront.isPartner) ...[
-            Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: AppTheme.surfaceOf(context),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: AppTheme.hairlineOf(context)),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => AuthSession.switchPartnerPortal(context, AppRole.chef),
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 10),
-                        child: Text(
-                          'Chef Portal',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      decoration: BoxDecoration(
-                        color: AppTheme.primary,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: const Text(
-                        'Delivery Partner',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
             ),
             const SizedBox(height: 16),
           ],
@@ -596,31 +574,6 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 14),
-          Material(
-            color: AppTheme.primary.withValues(alpha: 0.08),
-            borderRadius: AppTheme.radiusLg,
-            child: InkWell(
-              onTap: () => AuthSession.switchPartnerPortal(context, AppRole.chef),
-              borderRadius: AppTheme.radiusLg,
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Row(
-                  children: [
-                    const Icon(Icons.soup_kitchen_outlined, color: AppTheme.primary),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Want to cook instead? Switch to the chef portal and publish plates from your kitchen.',
-                        style: AppTheme.caption.copyWith(fontWeight: FontWeight.w700, color: AppTheme.onSurfaceOf(context)),
-                      ),
-                    ),
-                    const Icon(Icons.chevron_right_rounded, color: AppTheme.primary),
-                  ],
-                ),
-              ),
-            ),
           ),
         ],
       ),

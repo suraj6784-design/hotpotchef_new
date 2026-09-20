@@ -15,14 +15,18 @@ import '../utils/helpers.dart';
 import '../utils/network.dart';
 import '../utils/pinned_address.dart';
 import '../utils/gst_invoice.dart';
+import '../utils/kyc_checklist.dart';
+import '../widgets/app_widgets.dart';
 import '../widgets/avatar_upload.dart';
 import '../widgets/change_password_dialog.dart';
 import '../widgets/premium_profile_template.dart';
+import '../services/kitchen_media.dart';
 
 class DriverProfileScreen extends StatefulWidget {
-  const DriverProfileScreen({super.key, this.embedded = false});
+  const DriverProfileScreen({super.key, this.embedded = false, this.onOpenWallet});
 
   final bool embedded;
+  final VoidCallback? onOpenWallet;
 
   @override
   State<DriverProfileScreen> createState() => _DriverProfileScreenState();
@@ -48,6 +52,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
 
   String _bloodGroup = 'O+';
   String? _avatarUrl;
+  String _driverIdNo = '';
 
   final _houseController = TextEditingController();
   final _streetController = TextEditingController();
@@ -60,6 +65,10 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
   final _dlNumberController = TextEditingController();
   final _insurancePolicyController = TextEditingController();
   String _vehicleType = '2-Wheeler (Petrol)';
+  String? _drivingLicenseUrl;
+  String? _insurancePolicyUrl;
+  String? _aadhaarProofUrl;
+  String? _uploadingKycKind;
 
   double? _latitude;
   double? _longitude;
@@ -124,6 +133,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
         _ifscController.text = userData['bank_ifsc']?.toString() ?? userData['ifsc_code']?.toString() ?? '';
         _bloodGroup = userData['blood_group']?.toString() ?? 'O+';
         _avatarUrl = userData['avatar_url']?.toString();
+        _driverIdNo = userData['driver_id_no']?.toString().trim() ?? '';
 
         _vehicleModelController.text = userData['vehicle_model']?.toString() ?? '';
         _vehicleRegNoController.text = userData['vehicle_reg_no']?.toString() ?? userData['vehicle_number']?.toString() ?? '';
@@ -133,6 +143,9 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
             '';
         _insurancePolicyController.text = userData['insurance_policy_no']?.toString() ?? '';
         _vehicleType = userData['vehicle_type']?.toString() ?? '2-Wheeler (Petrol)';
+        _drivingLicenseUrl = userData['driving_license_url']?.toString();
+        _insurancePolicyUrl = userData['insurance_policy_url']?.toString();
+        _aadhaarProofUrl = userData['aadhaar_proof_url']?.toString();
 
         _latitude = (userData['lat'] as num?)?.toDouble() ??
             (userData['latitude'] as num?)?.toDouble();
@@ -283,6 +296,9 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
         'dl_number': dlNumber,
         'driving_license_no': dlNumber,
         'insurance_policy_no': insurance,
+        'driving_license_url': _drivingLicenseUrl,
+        'insurance_policy_url': _insurancePolicyUrl,
+        'aadhaar_proof_url': _aadhaarProofUrl,
         if (isFullAadhaar(aadhaarInput)) 'aadhaar_masked': maskAadhaar(aadhaarInput),
         if (_avatarUrl != null) 'avatar_url': _avatarUrl,
         'updated_at': DateTime.now().toIso8601String(),
@@ -332,9 +348,64 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
           driverName: _nameController.text.isEmpty ? 'Delivery Partner' : _nameController.text,
           driverPhone: _phoneController.text,
           avatarUrl: _avatarUrl,
+          idCardNo: _driverIdNo,
+          bloodGroup: _bloodGroup,
+          emergencyPhone: _emergencyPhoneController.text,
         ),
       ),
     );
+  }
+
+  Map<String, dynamic> get _kycRow => {
+        'role': AppRole.driver.storageValue,
+        'name': _nameController.text,
+        'phone': _phoneController.text,
+        'bank_account_number': _bankAccountController.text,
+        'bank_ifsc': _ifscController.text,
+        'pan_number': _panController.text,
+        'aadhaar_masked': _aadhaarMaskedController.text,
+        'aadhaar_proof_url': _aadhaarProofUrl,
+        'driving_license_url': _drivingLicenseUrl,
+        'insurance_policy_url': _insurancePolicyUrl,
+        'vehicle_type': _vehicleType,
+        'vehicle_reg_no': _vehicleRegNoController.text,
+      };
+
+  Future<void> _uploadKycDoc(String kind) async {
+    if (_uploadingKycKind != null) return;
+    final source = await pickKitchenImageSource(context);
+    if (source == null || !mounted) return;
+    setState(() => _uploadingKycKind = kind);
+    try {
+      final uploaded = await pickAndUploadKitchenImage(
+        source: source,
+        folder: 'kyc',
+        fileKey: kind,
+      );
+      final url = uploaded?.url;
+      if (url == null || !mounted) return;
+      final column = switch (kind) {
+        'driving-license' => 'driving_license_url',
+        'insurance-policy' => 'insurance_policy_url',
+        _ => 'aadhaar_proof_url',
+      };
+      final user = _supabase.auth.currentUser;
+      if (user != null) {
+        await _supabase.from('users').update({column: url}).eq('id', user.id);
+      }
+      if (!mounted) return;
+      setState(() {
+        if (kind == 'driving-license') _drivingLicenseUrl = url;
+        if (kind == 'insurance-policy') _insurancePolicyUrl = url;
+        if (kind == 'aadhaar-card') _aadhaarProofUrl = url;
+      });
+      _showSnackBar('Document uploaded.');
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Driver KYC document upload failed');
+      if (mounted) _showSnackBar('Could not upload that document. Try again.', isError: true);
+    } finally {
+      if (mounted) setState(() => _uploadingKycKind = null);
+    }
   }
 
   // --- UI Tree ---
@@ -395,7 +466,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
       body: Form(
         key: _formKey,
         child: ListView(
-          padding: const EdgeInsets.only(bottom: 28),
+          padding: EdgeInsets.only(bottom: widget.embedded ? hubDockBodyGap(context) : 28),
           children: [
             PremiumProfileHero(
               workspace: ProfileWorkspace.driver,
@@ -426,7 +497,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                       _driverBadge(
                         'KYC',
                         Icons.badge_outlined,
-                        _aadhaarMaskedController.text.trim().isNotEmpty && _panController.text.trim().isNotEmpty,
+                        !kycChecklistFor(_kycRow).incomplete,
                       ),
                       _driverBadge('Vehicle', Icons.two_wheeler_outlined, _vehicleRegNoController.text.trim().isNotEmpty),
                     ],
@@ -441,7 +512,13 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                   icon: Icons.payments_outlined,
                   title: 'Run wallet',
                   subtitle: 'Delivery fee + tip in ₹. Bank payout after KYC by ops.',
-                  onTap: () => context.go('/driver-hub'),
+                  onTap: () {
+                    if (widget.onOpenWallet != null) {
+                      widget.onOpenWallet!();
+                      return;
+                    }
+                    context.go('/driver-hub?tab=wallet');
+                  },
                   showDivider: false,
                 ),
               ],
@@ -724,6 +801,41 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                     controller: _insurancePolicyController,
                     label: 'Vehicle Insurance Policy Number',
                     prefixIcon: Icons.security,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Photo proofs',
+                    style: TextStyle(fontWeight: FontWeight.w800, color: titleColor),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Upload clear photos of the original cards. KYC turns green when all three are on file.',
+                    style: TextStyle(color: muted, fontSize: 12, height: 1.35),
+                  ),
+                  const SizedBox(height: 10),
+                  PremiumProfileKycDocTile(
+                    title: 'Driving licence',
+                    hint: 'Front of DL',
+                    imageUrl: _drivingLicenseUrl,
+                    uploading: _uploadingKycKind == 'driving-license',
+                    enabled: true,
+                    onUpload: () => _uploadKycDoc('driving-license'),
+                  ),
+                  PremiumProfileKycDocTile(
+                    title: 'Insurance policy',
+                    hint: 'Policy schedule or card',
+                    imageUrl: _insurancePolicyUrl,
+                    uploading: _uploadingKycKind == 'insurance-policy',
+                    enabled: true,
+                    onUpload: () => _uploadKycDoc('insurance-policy'),
+                  ),
+                  PremiumProfileKycDocTile(
+                    title: 'Aadhaar card',
+                    hint: 'Front of Aadhaar (we store the photo, last 4 digits only in text)',
+                    imageUrl: _aadhaarProofUrl,
+                    uploading: _uploadingKycKind == 'aadhaar-card',
+                    enabled: true,
+                    onUpload: () => _uploadKycDoc('aadhaar-card'),
                   ),
               ],
             ),
