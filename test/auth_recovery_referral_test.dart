@@ -1,9 +1,21 @@
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hotpotchef_new/services/auth_session.dart';
 import 'package:hotpotchef_new/utils/helpers.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
+  test('stale GoTrue refresh tokens are detected so startup can sign out', () {
+    expect(
+      AuthSession.isStaleRefreshAuthError(
+        AuthException('Invalid Refresh Token: Refresh Token Not Found', code: 'refresh_token_not_found'),
+      ),
+      isTrue,
+    );
+    expect(AuthSession.isStaleRefreshAuthError(AuthException('Invalid login credentials')), isFalse);
+  });
+
   test('password reset link matches the app scheme the OS already opens', () {
     expect(passwordResetRedirectUri, 'hotpotchef://app/reset-password');
     expect(isPasswordRecoveryPath('/reset-password'), isTrue);

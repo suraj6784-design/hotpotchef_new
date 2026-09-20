@@ -62,7 +62,7 @@ class CustomerFeedTab extends ConsumerStatefulWidget {
 }
 
 class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
-    with AutomaticKeepAliveClientMixin {
+    with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
   late Stream<List<Map<String, dynamic>>> _mealsStream;
   List<Map<String, dynamic>>? _mealsRestSnapshot;
   bool _loadingMealsRest = false;
@@ -123,12 +123,19 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _bindMealsStream();
     unawaited(_refreshMealsRestSnapshot());
-    _bootstrapDeliveryPin();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) unawaited(_bootstrapDeliveryPin());
+      });
+    });
     _fetchDietaryPrefs();
     _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       if (!mounted) return;
+      _bindMealsStream();
+      unawaited(_refreshMealsRestSnapshot());
       if (data.session == null) {
         setState(_resetGuestFeedState);
         _captureDeviceLocation();
@@ -141,6 +148,11 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   }
 
   void _bindMealsStream() {
+    // Guest Realtime does `select *`, which anon column grants reject.
+    if (Supabase.instance.client.auth.currentSession == null) {
+      _mealsStream = Stream<List<Map<String, dynamic>>>.value(const []);
+      return;
+    }
     _mealsStream = Supabase.instance.client
         .from('meals')
         .stream(primaryKey: ['id'])
@@ -155,7 +167,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     try {
       final rows = await Supabase.instance.client
           .from('meals')
-          .select()
+          .select(kHomeMealCatalogSelect)
           .eq('status', 'Available')
           .order('created_at', ascending: false)
           .limit(kHomeMealStreamLimit)
@@ -172,6 +184,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   }
 
   void _retryMealsFeed() {
+    _loadingMealsRest = false;
     _bindMealsStream();
     unawaited(_refreshMealsRestSnapshot());
     setState(() {});
@@ -232,9 +245,14 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
 
       Position position;
       try {
-        position = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-        ).timeout(const Duration(seconds: 8));
+        final last = await Geolocator.getLastKnownPosition();
+        if (last != null && last.latitude != 0 && last.longitude != 0) {
+          position = last;
+        } else {
+          position = await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
+          ).timeout(const Duration(seconds: 8));
+        }
       } catch (_) {
         final last = await Geolocator.getLastKnownPosition();
         if (last == null || (last.latitude == 0 && last.longitude == 0)) {
@@ -325,9 +343,17 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _authSub?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      setState(() {});
+    }
   }
 
   bool _checkIfTimePassed(Map<String, dynamic> meal) {
@@ -380,7 +406,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
 
       final localResponse = await client
           .from('meals')
-          .select()
+          .select(kHomeMealCatalogSelect)
           .eq('status', 'Available')
           .limit(kHomeMealStreamLimit)
           .withTimeout(NetworkTimeouts.standard);
@@ -774,7 +800,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       final to = from + kHomeMealPageSize - 1;
       final rows = await Supabase.instance.client
           .from('meals')
-          .select()
+          .select(kHomeMealCatalogSelect)
           .eq('status', 'Available')
           .order('created_at', ascending: false)
           .range(from, to)
@@ -882,19 +908,25 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     _hydratingChefTrust = true;
     try {
       final rows = await Supabase.instance.client
-          .from('users')
-          .select('id, fssai_number, fssai_verification_status, fssai_valid_until')
-          .inFilter('id', missing.toList());
-      for (final row in rows) {
+          .rpc('chef_fssai_public', params: {'p_ids': missing.toList()})
+          .withTimeout(NetworkTimeouts.standard);
+      final list = rows is List ? rows : const [];
+      for (final raw in list) {
+        if (raw is! Map) continue;
+        final row = Map<String, dynamic>.from(raw);
         final id = row['id']?.toString();
         if (id == null || id.isEmpty) continue;
         _chefTrustResolved.add(id);
-        _chefTrust[id] = Map<String, dynamic>.from(row);
+        _chefTrust[id] = row;
       }
       _chefTrustResolved.addAll(missing);
       if (mounted) setState(() {});
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to hydrate chef FSSAI chips');
+      final denied = e.toString().contains('42501') ||
+          e.toString().toLowerCase().contains('permission denied');
+      if (!denied) {
+        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to hydrate chef FSSAI chips');
+      }
       _chefTrustResolved.addAll(missing);
     } finally {
       _hydratingChefTrust = false;
@@ -1552,7 +1584,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
               stream: _mealsStream,
               builder: (context, snapshot) {
                 final streamed = snapshot.data;
-                final mealsSource = (streamed != null && streamed.isNotEmpty)
+                final mealsSource = (streamed != null && streamed.isNotEmpty && !snapshot.hasError)
                     ? streamed
                     : _mealsRestSnapshot;
                 if ((snapshot.connectionState == ConnectionState.waiting && mealsSource == null) ||

@@ -41,6 +41,28 @@ class AuthSession {
     _tableRoleCache = null;
   }
 
+  static bool isStaleRefreshAuthError(Object error) {
+    if (error is AuthException) {
+      final code = (error.code ?? '').toLowerCase();
+      final message = error.message.toLowerCase();
+      return code.contains('refresh_token') || message.contains('refresh token');
+    }
+    return error.toString().toLowerCase().contains('refresh token');
+  }
+
+  /// Drop a persisted session that GoTrue can no longer refresh (emulator/device leftovers).
+  static Future<void> discardStaleSession() async {
+    if (_client.auth.currentSession == null) return;
+    try {
+      await _client.auth.refreshSession();
+    } catch (e) {
+      if (!isStaleRefreshAuthError(e)) return;
+      try {
+        await _client.auth.signOut();
+      } catch (_) {}
+    }
+  }
+
   /// Router and hubs prefer `public.users.role` over a stale JWT claim.
   static AppRole resolveRoleFromSources({
     String? email,

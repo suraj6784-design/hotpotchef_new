@@ -24,28 +24,13 @@ class PushNotificationService {
 
   static Future<void> initialize() async {
     try {
-      // 1. Request Permission for iOS / Web / Android 13+
-      NotificationSettings settings = await _messaging.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
-
-      if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-        debugPrint('User granted notification permissions.');
-      } else {
-        debugPrint('User declined or accepted provisional permissions.');
-      }
-
-      // 2. Set background message handler
+      // Background handler must be registered before runApp. Do not prompt
+      // for notification permission here — that pauses the first Android frame
+      // and can leave Flutter with a zero-width surface.
       FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-      // 3. Fetch and save the FCM Token to Supabase for the current user
-      await syncTokenForCurrentUser();
-
-      // 4. Listen for token refreshes
       _messaging.onTokenRefresh.listen((newToken) {
-        _updateTokenInDatabase(newToken);
+        unawaited(_updateTokenInDatabase(newToken));
       });
 
       // 5. Handle foreground messages with an in-app banner
@@ -68,16 +53,34 @@ class PushNotificationService {
 
       _supabase.auth.onAuthStateChange.listen((data) {
         if (data.session != null) {
-          AlertService.start();
+          unawaited(AlertService.start());
+          unawaited(syncTokenForCurrentUser());
         } else {
           AlertService.stop();
         }
       });
       await AlertService.start();
-
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Error initializing PushNotifications service');
       debugPrint('Error initializing PushNotifications: $e');
+    }
+  }
+
+  static Future<void> requestPermissionAndSync() async {
+    try {
+      final settings = await _messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+      if (settings.authorizationStatus == AuthorizationStatus.authorized) {
+        debugPrint('User granted notification permissions.');
+      } else {
+        debugPrint('User declined or accepted provisional permissions.');
+      }
+      await syncTokenForCurrentUser();
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Error requesting notification permission');
     }
   }
 
@@ -112,9 +115,19 @@ class PushNotificationService {
 
       debugPrint('FCM Token successfully updated in Supabase.');
     } catch (e, stack) {
+      if (_isStaleSessionError(e)) {
+        try {
+          await _supabase.auth.signOut();
+        } catch (_) {}
+        return;
+      }
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to update token in database');
       debugPrint('Failed to update token in database: $e');
     }
+  }
+
+  static bool _isStaleSessionError(Object error) {
+    return error.toString().toLowerCase().contains('refresh token');
   }
 
   static void openFromMessage(RemoteMessage message) {

@@ -13,7 +13,9 @@ import '../utils/helpers.dart';
 import '../utils/fssai_certificate_scan.dart';
 import '../utils/pinned_address.dart';
 import '../utils/gst_invoice.dart';
+import '../utils/kyc_checklist.dart';
 import '../utils/network.dart';
+import '../widgets/app_widgets.dart';
 import '../widgets/avatar_upload.dart';
 import '../widgets/change_password_dialog.dart';
 import '../widgets/premium_profile_template.dart';
@@ -74,8 +76,10 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
   bool _isSettingUpPayout = false;
   bool _payoutEnabled = false;
   bool _uploadingFssaiProof = false;
+  String? _uploadingKycKind;
   bool _isPlatformOps = false;
   String? _fssaiProofUrl;
+  String? _aadhaarProofUrl;
   String _fssaiVerificationStatus = 'unsubmitted';
   String? _fssaiReviewNote;
 
@@ -88,6 +92,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
   DateTime? _fssaiValidUntil;
   final _gstinController = TextEditingController();
   final _panController = TextEditingController();
+  final _aadhaarMaskedController = TextEditingController();
   final _gatewayAccountController = TextEditingController();
 
   final _bankAccountController = TextEditingController();
@@ -132,6 +137,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     _fssaiAddressController.dispose();
     _gstinController.dispose();
     _panController.dispose();
+    _aadhaarMaskedController.dispose();
     _gatewayAccountController.dispose();
     _bankAccountController.dispose();
     _ifscController.dispose();
@@ -177,6 +183,9 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     _avatarUrl = userData?['avatar_url']?.toString();
     _payoutEnabled = userData?['payout_enabled'] == true || _gatewayAccountController.text.isNotEmpty;
     _fssaiProofUrl = userData?['fssai_proof_url']?.toString();
+    _aadhaarProofUrl = userData?['aadhaar_proof_url']?.toString();
+    final rawAadhaar = userData?['aadhaar_masked']?.toString() ?? '';
+    _aadhaarMaskedController.text = maskAadhaar(rawAadhaar);
     _fssaiVerificationStatus = normalizeFssaiVerificationStatus(userData?['fssai_verification_status']?.toString());
     _fssaiReviewNote = userData?['fssai_review_note']?.toString();
 
@@ -377,7 +386,50 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     try {
       await _supabase.from('users').update(_fssaiDetailFields(proofUrl: proofUrl)).eq('id', user.id);
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'FSSAI scanned fields save failed');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'FSSAI details persist failed');
+    }
+  }
+
+  Map<String, dynamic> get _kycRow => {
+        'role': 'chef',
+        'name': _nameController.text,
+        'phone': _phoneController.text,
+        'fssai_number': _fssaiController.text,
+        'fssai_proof_url': _fssaiProofUrl,
+        'fssai_valid_until': _fssaiValidUntil == null ? null : fssaiValidUntilIsoDate(_fssaiValidUntil),
+        'fssai_verification_status': _fssaiVerificationStatus,
+        'aadhaar_proof_url': _aadhaarProofUrl,
+        'lat': _latitude,
+        'lng': _longitude,
+        'bank_account_number': _bankAccountController.text,
+        'bank_ifsc': _ifscController.text,
+      };
+
+  Future<void> _uploadAadhaarProof() async {
+    if (_uploadingKycKind != null) return;
+    final source = await pickKitchenImageSource(context);
+    if (source == null || !mounted) return;
+    setState(() => _uploadingKycKind = 'aadhaar-card');
+    try {
+      final uploaded = await pickAndUploadKitchenImage(
+        source: source,
+        folder: 'kyc',
+        fileKey: 'aadhaar-card',
+      );
+      final url = uploaded?.url;
+      if (url == null || !mounted) return;
+      final user = _supabase.auth.currentUser;
+      if (user != null) {
+        await _supabase.from('users').update({'aadhaar_proof_url': url}).eq('id', user.id);
+      }
+      if (!mounted) return;
+      setState(() => _aadhaarProofUrl = url);
+      _showSnackBar('Aadhaar card uploaded.');
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chef Aadhaar proof upload failed');
+      if (mounted) _showSnackBar('Could not upload Aadhaar. Try again.', isError: true);
+    } finally {
+      if (mounted) setState(() => _uploadingKycKind = null);
     }
   }
 
@@ -544,6 +596,8 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
         ..._fssaiDetailFields(),
         'gstin': _gstinController.text.trim().toUpperCase(),
         if (isValidPan(_panController.text)) 'pan_number': _panController.text.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase(),
+        if (isFullAadhaar(_aadhaarMaskedController.text)) 'aadhaar_masked': maskAadhaar(_aadhaarMaskedController.text),
+        'aadhaar_proof_url': _aadhaarProofUrl,
         'address': formattedAddress,
         'house_no': house,
         'street': street,
@@ -699,7 +753,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
       body: Form(
         key: _formKey,
         child: ListView(
-          padding: const EdgeInsets.only(bottom: 28),
+          padding: EdgeInsets.only(bottom: widget.embedded ? hubDockBodyGap(context) : 28),
           children: [
             PremiumProfileHero(
               workspace: ProfileWorkspace.chef,
@@ -729,6 +783,11 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                     runSpacing: 8,
                     children: [
                       _chefBadge('Certified', Icons.verified_outlined, true),
+                      _chefBadge(
+                        'KYC',
+                        Icons.badge_outlined,
+                        !kycChecklistFor(_kycRow).incomplete,
+                      ),
                       _chefBadge(
                         'FSSAI',
                         Icons.health_and_safety_outlined,
@@ -894,6 +953,24 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                       child: const Text('Apply or verify on FoSCoS ↗',
                           style: TextStyle(color: Colors.blueAccent, fontSize: 12, decoration: TextDecoration.underline)),
                     ),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildValidatedTextField(
+                    controller: _aadhaarMaskedController,
+                    label: 'Aadhaar (last 4 stored only)',
+                    prefixIcon: Icons.credit_card,
+                    keyboardType: TextInputType.number,
+                    maxLength: 12,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  ),
+                  const SizedBox(height: 8),
+                  PremiumProfileKycDocTile(
+                    title: 'Aadhaar card',
+                    hint: 'Front of Aadhaar. KYC turns green with FSSAI certificate + this photo.',
+                    imageUrl: _aadhaarProofUrl,
+                    uploading: _uploadingKycKind == 'aadhaar-card',
+                    enabled: true,
+                    onUpload: _uploadAadhaarProof,
                   ),
                   if (_isPlatformOps)
                     ListTile(

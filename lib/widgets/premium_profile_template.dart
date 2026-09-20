@@ -425,3 +425,85 @@ class PremiumProfileVersionFooter extends StatelessWidget {
     );
   }
 }
+
+class PremiumProfileKycDocTile extends StatelessWidget {
+  const PremiumProfileKycDocTile({
+    super.key,
+    required this.title,
+    required this.hint,
+    required this.imageUrl,
+    required this.uploading,
+    required this.enabled,
+    required this.onUpload,
+  });
+
+  final String title;
+  final String hint;
+  final String? imageUrl;
+  final bool uploading;
+  final bool enabled;
+  final VoidCallback onUpload;
+
+  bool get _hasDoc => (imageUrl ?? '').trim().isNotEmpty;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceOf(context),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: _hasDoc ? AppTheme.live.withValues(alpha: 0.35) : AppTheme.hairlineOf(context),
+        ),
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              width: 56,
+              height: 56,
+              child: _hasDoc
+                  ? Image.network(
+                      imageUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) {
+                        return ColoredBox(
+                          color: AppTheme.live.withValues(alpha: 0.12),
+                          child: const Icon(Icons.check_circle, color: AppTheme.live),
+                        );
+                      },
+                    )
+                  : ColoredBox(
+                      color: AppTheme.canvasOf(context),
+                      child: const Icon(Icons.photo_camera_outlined, color: AppTheme.textMuted),
+                    ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                const SizedBox(height: 2),
+                Text(
+                  _hasDoc ? 'Uploaded — KYC uses this photo' : hint,
+                  style: AppTheme.caption.copyWith(color: _hasDoc ? AppTheme.live : AppTheme.textMuted),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: (!enabled || uploading) ? null : onUpload,
+            child: uploading
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : Text(_hasDoc ? 'Replace' : 'Upload'),
+          ),
+        ],
+      ),
+    );
+  }
+}

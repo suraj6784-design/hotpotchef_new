@@ -16,6 +16,7 @@ import 'utils/helpers.dart';
 import 'utils/app_theme.dart';
 import 'utils/app_router.dart';
 import 'utils/diner_locale.dart';
+import 'services/auth_session.dart';
 import 'services/push_notification_service.dart';
 import 'widgets/offline_banner.dart';
 
@@ -50,6 +51,7 @@ void main() async {
       url: supabaseUrl,
       anonKey: supabaseAnonKey,
     );
+    await AuthSession.discardStaleSession();
 
     await PushNotificationService.initialize();
 
@@ -115,6 +117,7 @@ class _HotPotChefAppState extends State<HotPotChefApp> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       PushNotificationService.openPendingAlert();
+      unawaited(PushNotificationService.requestPermissionAndSync());
     });
     unawaited(DinerLocaleController.instance.load());
     _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {

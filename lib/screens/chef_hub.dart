@@ -12,7 +12,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../utils/helpers.dart';
-import '../utils/app_flavor.dart';
 import '../utils/fssai_certificate_scan.dart';
 import '../utils/network.dart';
 import '../utils/meal_nutrition.dart';
@@ -838,9 +837,12 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                         ),
                       ),
                     Expanded(
-                      child: HubTabSwitcher(
-                        index: _selectedIndex,
-                        children: tabs,
+                      child: Padding(
+                        padding: EdgeInsets.only(bottom: hubDockBodyGap(context)),
+                        child: HubTabSwitcher(
+                          index: _selectedIndex,
+                          children: tabs,
+                        ),
                       ),
                     ),
                   ],
@@ -921,25 +923,26 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 style: AppTheme.sectionTitleOf(context),
               ),
             ),
+          IconButton(
+            tooltip: 'Kitchen take-home',
+            onPressed: () => setState(() => _selectedIndex = 6),
+            icon: const Icon(Icons.payments_outlined),
+          ),
+          IconButton(
+            tooltip: 'Order chats',
+            onPressed: () => context.push('/chats'),
+            icon: const Icon(Icons.forum_outlined),
+          ),
           PopupMenuButton<String>(
             tooltip: 'More',
             onSelected: (value) {
               switch (value) {
-                case 'chats':
-                  context.push('/chats');
                 case 'leads':
                   setState(() => _selectedIndex = 7);
                 case 'supplies':
                   setState(() => _selectedIndex = 8);
-                case 'dispatch':
-                  setState(() {
-                    _selectedIndex = 1;
-                    _ordersStage = 2;
-                  });
                 case 'menu':
                   setState(() => _selectedIndex = 4);
-                case 'history':
-                  setState(() => _selectedIndex = 6);
                 case 'ads':
                   context.push('/chef-advertise');
                 case 'academy':
@@ -954,9 +957,6 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             },
             itemBuilder: (context) => [
               const PopupMenuItem(value: 'menu', child: Text('Menu')),
-              const PopupMenuItem(value: 'dispatch', child: Text('Dispatch')),
-              const PopupMenuItem(value: 'history', child: Text('Kitchen take-home')),
-              const PopupMenuItem(value: 'chats', child: Text('Order chats')),
               const PopupMenuItem(value: 'leads', child: Text('Catering leads')),
               const PopupMenuItem(value: 'supplies', child: Text('Packaging supplies')),
               const PopupMenuItem(value: 'ads', child: Text('Refer brand')),
@@ -996,48 +996,6 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
       children: [
-        if (kAppStorefront.isPartner) ...[
-          Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: AppTheme.surfaceOf(context),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: AppTheme.hairlineOf(context)),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primary,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: const Text(
-                      'Chef Portal',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13),
-                    ),
-                  ),
-                ),
-                Expanded(
-                    child: GestureDetector(
-                    onTap: () => AuthSession.switchPartnerPortal(context, AppRole.driver),
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 10),
-                      child: Text(
-                        'Delivery Partner',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-        ],
         Row(
           children: [
             Expanded(
@@ -1127,31 +1085,6 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               ),
             ),
           ],
-        ),
-        const SizedBox(height: 14),
-        Material(
-          color: AppTheme.primary.withValues(alpha: 0.08),
-          borderRadius: AppTheme.radiusLg,
-          child: InkWell(
-            onTap: () => AuthSession.switchPartnerPortal(context, AppRole.driver),
-            borderRadius: AppTheme.radiusLg,
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Row(
-                children: [
-                  const Icon(Icons.delivery_dining_outlined, color: AppTheme.primary),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Want to deliver instead? Switch to the delivery portal and track earnings on the go.',
-                      style: AppTheme.caption.copyWith(fontWeight: FontWeight.w700, color: AppTheme.onSurfaceOf(context)),
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right_rounded, color: AppTheme.primary),
-                ],
-              ),
-            ),
-          ),
         ),
       ],
     );

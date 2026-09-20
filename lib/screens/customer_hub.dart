@@ -136,9 +136,14 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
       backgroundColor: AppTheme.canvasOf(context),
       body: Stack(
         children: [
-          HubTabSwitcher(
-            index: _selectedIndex,
-            children: pages,
+          Positioned.fill(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: hubDockBodyGap(context)),
+              child: HubTabSwitcher(
+                index: _selectedIndex,
+                children: pages,
+              ),
+            ),
           ),
           const Positioned(
             top: 0,

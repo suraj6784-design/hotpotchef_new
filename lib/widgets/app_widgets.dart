@@ -695,6 +695,11 @@ class HubTabSwitcher extends StatelessWidget {
   }
 }
 
+/// Space so hub tab content clears the overlaid [HubBottomDock].
+double hubDockBodyGap(BuildContext context) {
+  return 80 + MediaQuery.paddingOf(context).bottom;
+}
+
 /// Full-width storefront bar used on diner, chef, and driver hubs.
 ///
 /// Overlay with [Positioned] — never pass as [Scaffold.bottomNavigationBar].
