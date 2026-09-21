@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'utils/app_env.dart';
@@ -23,42 +22,108 @@ import 'widgets/offline_banner.dart';
 // Global Messenger Key to show Push Notifications across all screens
 final GlobalKey<ScaffoldMessengerState> globalMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  runApp(const _HotPotBootApp());
+}
 
-  try {
-    await loadAppEnv();
+/// Paints a cream splash immediately so Firebase/Supabase/FCM cannot leave a
+/// white native window. Heavy init runs after the first frame.
+class _HotPotBootApp extends StatefulWidget {
+  const _HotPotBootApp();
 
-    await Firebase.initializeApp();
+  @override
+  State<_HotPotBootApp> createState() => _HotPotBootAppState();
+}
 
-    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
-    PlatformDispatcher.instance.onError = (error, stack) {
-      FirebaseCrashlytics.instance.recordError(error, stack, fatal: false);
-      return true;
-    };
-    GoogleFonts.config.allowRuntimeFetching = false;
+class _HotPotBootAppState extends State<_HotPotBootApp> {
+  Widget? _app;
+  String? _error;
 
-    final supabaseUrl = appEnv('SUPABASE_URL');
-    final supabaseAnonKey = appEnv('SUPABASE_ANON_KEY');
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_bootstrap());
+    });
+  }
 
-    if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
-      throw StateError(
-        'Missing backend config. Rebuild with --dart-define-from-file=.env',
-      );
+  Future<void> _bootstrap() async {
+    try {
+      await loadAppEnv();
+      await Firebase.initializeApp().timeout(const Duration(seconds: 10));
+
+      FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+      PlatformDispatcher.instance.onError = (error, stack) {
+        FirebaseCrashlytics.instance.recordError(error, stack, fatal: false);
+        return true;
+      };
+      GoogleFonts.config.allowRuntimeFetching = false;
+
+      final supabaseUrl = appEnv('SUPABASE_URL');
+      final supabaseAnonKey = appEnv('SUPABASE_ANON_KEY');
+
+      if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
+        throw StateError(
+          'Missing backend config. Rebuild with --dart-define-from-file=.env',
+        );
+      }
+
+      await Supabase.initialize(
+        url: supabaseUrl,
+        anonKey: supabaseAnonKey,
+      ).timeout(const Duration(seconds: 10));
+      unawaited(PushNotificationService.initialize());
+      unawaited(AuthSession.discardStaleSession());
+
+      if (!mounted) return;
+      setState(() {
+        _app = const ProviderScope(child: HotPotChefApp());
+      });
+    } catch (error, stack) {
+      debugPrint('HotPotChef failed to start: $error\n$stack');
+      if (!mounted) return;
+      setState(() => _error = error.toString());
     }
+  }
 
-    await Supabase.initialize(
-      url: supabaseUrl,
-      anonKey: supabaseAnonKey,
+  @override
+  Widget build(BuildContext context) {
+    if (_error != null) {
+      return _StartupFailedApp(message: _error!);
+    }
+    return _app ?? const _LaunchPlaceholder();
+  }
+}
+
+class _LaunchPlaceholder extends StatelessWidget {
+  const _LaunchPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return const MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        backgroundColor: Color(0xFFF6EEE6),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: Color(0xFFE85A24)),
+              SizedBox(height: 20),
+              Text(
+                'HotPotChef',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF241F1C),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
-    await AuthSession.discardStaleSession();
-
-    await PushNotificationService.initialize();
-
-    runApp(const ProviderScope(child: HotPotChefApp()));
-  } catch (error, stack) {
-    debugPrint('HotPotChef failed to start: $error\n$stack');
-    runApp(_StartupFailedApp(message: error.toString()));
   }
 }
 
@@ -117,6 +182,11 @@ class _HotPotChefAppState extends State<HotPotChefApp> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       PushNotificationService.openPendingAlert();
+    });
+    // Notification permission dialog can zero the Android surface if it
+    // opens on the first diner frame — wait until Home has painted.
+    Future<void>.delayed(const Duration(seconds: 3), () {
+      if (!mounted) return;
       unawaited(PushNotificationService.requestPermissionAndSync());
     });
     unawaited(DinerLocaleController.instance.load());
@@ -135,23 +205,16 @@ class _HotPotChefAppState extends State<HotPotChefApp> {
 
   @override
   Widget build(BuildContext context) {
-    return ScreenUtilInit(
-      designSize: const Size(375, 812),
-      minTextAdapt: true,
-      splitScreenMode: true,
+    return MaterialApp.router(
+      title: kAppStorefront.appName,
+      scaffoldMessengerKey: globalMessengerKey,
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: ThemeMode.system,
+      routerConfig: AppRouter.router,
       builder: (context, child) {
-        return MaterialApp.router(
-          title: kAppStorefront.appName,
-          scaffoldMessengerKey: globalMessengerKey,
-          debugShowCheckedModeBanner: false,
-          theme: AppTheme.lightTheme,
-          darkTheme: AppTheme.darkTheme,
-          themeMode: ThemeMode.system, // Respect system light/dark mode settings
-          routerConfig: AppRouter.router,
-          builder: (context, child) {
-            return OfflineBannerHost(child: child ?? const SizedBox.shrink());
-          },
-        );
+        return OfflineBannerHost(child: child ?? const SizedBox.shrink());
       },
     );
   }

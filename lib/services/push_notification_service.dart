@@ -46,10 +46,7 @@ class PushNotificationService {
       });
 
       FirebaseMessaging.onMessageOpenedApp.listen(openFromMessage);
-      final initial = await _messaging.getInitialMessage();
-      if (initial != null) {
-        _pendingData = Map<String, dynamic>.from(initial.data);
-      }
+      unawaited(_captureLaunchMessage());
 
       _supabase.auth.onAuthStateChange.listen((data) {
         if (data.session != null) {
@@ -59,11 +56,20 @@ class PushNotificationService {
           AlertService.stop();
         }
       });
-      await AlertService.start();
+      unawaited(AlertService.start());
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Error initializing PushNotifications service');
       debugPrint('Error initializing PushNotifications: $e');
     }
+  }
+
+  static Future<void> _captureLaunchMessage() async {
+    try {
+      final initial = await _messaging.getInitialMessage().timeout(const Duration(seconds: 3));
+      if (initial != null) {
+        _pendingData = Map<String, dynamic>.from(initial.data);
+      }
+    } catch (_) {}
   }
 
   static Future<void> requestPermissionAndSync() async {

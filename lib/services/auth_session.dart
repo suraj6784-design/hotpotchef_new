@@ -54,7 +54,9 @@ class AuthSession {
   static Future<void> discardStaleSession() async {
     if (_client.auth.currentSession == null) return;
     try {
-      await _client.auth.refreshSession();
+      await _client.auth.refreshSession().timeout(const Duration(seconds: 4));
+    } on TimeoutException {
+      return;
     } catch (e) {
       if (!isStaleRefreshAuthError(e)) return;
       try {

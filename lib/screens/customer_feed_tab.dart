@@ -234,12 +234,19 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       if (!serviceEnabled) {
         _applyDeviceLocationFallback(
           message: notifyOnFailure ? 'Turn on location to see kitchens near you.' : null,
+          silent: !notifyOnFailure,
         );
         return;
       }
 
       var permission = await Geolocator.checkPermission();
+      // Do not auto-prompt on Home boot — the permission sheet can leave Android
+      // with a zero-size Flutter surface (white screen) on diner.
       if (permission == LocationPermission.denied) {
+        if (!notifyOnFailure) {
+          _applyDeviceLocationFallback(silent: true);
+          return;
+        }
         permission = await Geolocator.requestPermission();
       }
       if (permission == LocationPermission.denied ||
@@ -248,6 +255,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           message: notifyOnFailure
               ? 'Allow location access so guest browsing matches kitchens after Sign In.'
               : null,
+          silent: !notifyOnFailure,
         );
         return;
       }
@@ -267,6 +275,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         if (last == null || (last.latitude == 0 && last.longitude == 0)) {
           _applyDeviceLocationFallback(
             message: 'Turn on location or drop a pin to see kitchens near you.',
+            silent: !notifyOnFailure,
           );
           return;
         }
@@ -330,13 +339,14 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Guest delivery location capture failed');
       _applyDeviceLocationFallback(
         message: notifyOnFailure ? 'Could not read your location. Try again.' : null,
+        silent: !notifyOnFailure,
       );
     } finally {
       _resolvingDeviceLocation = false;
     }
   }
 
-  void _applyDeviceLocationFallback({String? message}) {
+  void _applyDeviceLocationFallback({String? message, bool silent = false}) {
     if (!mounted) return;
     setState(() {
       _deviceLocationPin = null;
@@ -344,6 +354,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         _currentAddress = 'Select Delivery Address';
       }
     });
+    if (silent) return;
     final text = message ?? 'Turn on location or drop a pin to see kitchens near you.';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(text), backgroundColor: Colors.orange),
