@@ -32,6 +32,23 @@ void main() {
     expect(parts.street, 'Thergaon');
   });
 
+  test('locality pin label prefers suburb and PIN over city-only', () {
+    expect(
+      formatLocalityPinLabel(
+        street: '9, Thergaon',
+        city: 'Pimpri-Chinchwad',
+        pincode: '411033',
+      ),
+      '9, Thergaon, Pimpri-Chinchwad - 411033',
+    );
+    expect(
+      formatLocalityPinLabel(
+        formatted: '9, Thergaon, Pimpri-Chinchwad, Maharashtra 411033, India',
+      ),
+      '9, Thergaon, Pimpri-Chinchwad - 411033',
+    );
+  });
+
   test('parseFormattedAddress reads Plus Code Google lines', () {
     final parts = parseFormattedAddress(
       'JQGH+P9V, Chinchwad, Pimpri-Chinchwad, Maharashtra 411033, India',

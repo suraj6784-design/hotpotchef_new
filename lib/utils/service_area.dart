@@ -113,9 +113,9 @@ Map<String, dynamic> launchCityDefaultPin() {
   final city = kLaunchCities.first;
   return {
     'id': 'launch-city-${city.id}',
-    'title': 'Current location',
+    'title': city.label,
     'landmark': city.label,
-    'address': city.label,
+    'address': 'Select location',
     'city': city.label,
     'pincode': '411001',
     'postal_code': '411001',

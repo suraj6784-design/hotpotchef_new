@@ -119,24 +119,37 @@ void main() {
   });
 
   test('home Live / Pre-order / Healthy chips filter the catalog', () {
-    final now = DateTime(2026, 9, 17);
+    final evening = DateTime(2026, 9, 21, 19, 39);
+    final noon = DateTime(2026, 9, 21, 12);
     final quinoa = {'title': 'Quinoa bowl', 'category': 'Healthy & Salads'};
     final ragi = {'title': 'Ragi dosa', 'is_veg': true};
     final dal = {'title': 'Dal tadka', 'time_slot': 'ASAP'};
-    final booked = {'title': 'Biryani', 'time_slot': '7:00 PM to 8:00 PM'};
-    final futureOneOff = {'title': 'Weekend thali', 'time_slot': '20 Sep, 1:00 PM to 2:00 PM'};
+    final dinner = {'title': 'Biryani', 'time_slot': 'Daily (6:30 PM to 9:30 PM)'};
+    final breakfast = {'title': 'Breakfast', 'time_slot': 'Daily (8:00 AM to 11:00 AM)'};
+    final booked = {'title': 'Hourly thali', 'time_slot': '7:00 PM to 8:00 PM'};
+    final futureOneOff = {'title': 'Weekend thali', 'time_slot': '22 Sep, 1:00 PM to 2:00 PM'};
 
     expect(mealMatchesHomeMode(quinoa, mode: 'heat'), isTrue);
     expect(mealMatchesHomeMode(ragi, mode: 'healthy'), isTrue);
     expect(mealMatchesHomeMode(dal, mode: 'heat'), isFalse);
-    expect(mealMatchesHomeMode(booked, mode: 'preorder'), isTrue);
-    expect(mealMatchesHomeMode(dal, mode: 'preorder'), isFalse);
-    expect(mealMatchesHomeMode(dal, mode: 'live'), isTrue);
-    expect(mealMatchesHomeMode(futureOneOff, mode: 'live', now: now), isFalse);
-    expect(mealMatchesHomeMode(futureOneOff, mode: 'preorder', now: now), isTrue);
+    expect(mealMatchesHomeMode(dal, mode: 'preorder', now: evening), isFalse);
+    expect(mealMatchesHomeMode(dal, mode: 'live', now: evening), isTrue);
+
+    expect(mealMatchesHomeMode(dinner, mode: 'live', now: evening), isTrue);
+    expect(mealMatchesHomeMode(dinner, mode: 'preorder', now: evening), isTrue);
+    expect(mealMatchesHomeMode(breakfast, mode: 'live', now: evening), isFalse);
+    expect(mealMatchesHomeMode(breakfast, mode: 'preorder', now: evening), isTrue);
+
+    expect(mealMatchesHomeMode(booked, mode: 'live', now: evening), isTrue);
+    expect(mealMatchesHomeMode(booked, mode: 'preorder', now: evening), isTrue);
+    expect(mealMatchesHomeMode(booked, mode: 'live', now: noon), isFalse);
+    expect(mealMatchesHomeMode(booked, mode: 'preorder', now: noon), isTrue);
+
+    expect(mealMatchesHomeMode(futureOneOff, mode: 'live', now: evening), isFalse);
+    expect(mealMatchesHomeMode(futureOneOff, mode: 'preorder', now: evening), isTrue);
     expect(
-      mealMatchesHomeMode(booked, mode: 'live', chefProfile: {'is_live': true}),
-      isTrue,
+      mealMatchesHomeMode(dinner, mode: 'live', now: evening, chefProfile: {'is_open': false}),
+      isFalse,
     );
   });
 

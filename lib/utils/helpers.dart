@@ -1171,6 +1171,86 @@ String feedDietChipFromPreference(String? preference) {
   }
 }
 
+({int start, int end})? _slotServingRangeMinutes(String? slot) {
+  final text = (slot ?? '').trim();
+  if (text.isEmpty || isImmediateDeliverySlot(text)) return null;
+  final range = _chefScheduleTimeRange(text);
+  final clocks = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)', caseSensitive: false).allMatches(range).toList();
+  if (clocks.isEmpty) return null;
+  int toMins(RegExpMatch m) {
+    var h = int.parse(m.group(1)!);
+    final ampm = m.group(3)!.toUpperCase();
+    if (ampm == 'PM' && h != 12) h += 12;
+    if (ampm == 'AM' && h == 12) h = 0;
+    return h * 60 + int.parse(m.group(2)!);
+  }
+
+  final start = toMins(clocks.first);
+  var end = clocks.length >= 2 ? toMins(clocks[1]) : start + 60;
+  if (end <= start) end += 24 * 60;
+  return (start: start, end: end);
+}
+
+bool _homeSlotAllowsDay(String slot, DateTime day, DateTime now) {
+  final d = calendarDay(day);
+  if (d.isBefore(calendarDay(now))) return false;
+  final pinned = parseSlotCalendarDay(slot, now: now);
+  if (pinned != null) return calendarDay(pinned) == d;
+  final days = chefServingWeekdays(slot);
+  if (days != null && days.isNotEmpty) return days.contains(d.weekday);
+  return true;
+}
+
+bool _kitchenIsClosed(Map<String, dynamic>? chefProfile) {
+  if (chefProfile == null) return false;
+  final open = chefProfile['is_open'];
+  if (open == false) return true;
+  return open?.toString().trim().toLowerCase() == 'false';
+}
+
+/// Live Order: chef is accepting this plate at [now] (inside today's window).
+bool mealSlotIsAcceptingNow(
+  Map<String, dynamic> meal, {
+  DateTime? now,
+  Map<String, dynamic>? chefProfile,
+}) {
+  if (_kitchenIsClosed(chefProfile)) return false;
+  final n = (now ?? DateTime.now()).toLocal();
+  final slot = meal['time_slot']?.toString().trim() ?? '';
+  if (isImmediateDeliverySlot(slot)) {
+    return chefProfile?['is_live'] == true || chefProfile?['is_open'] == true || chefProfile == null;
+  }
+  if (!_homeSlotAllowsDay(slot, n, n)) return false;
+  final range = _slotServingRangeMinutes(slot);
+  if (range == null) return false;
+  var mins = n.hour * 60 + n.minute;
+  if (range.end >= 24 * 60 && mins < range.start) mins += 24 * 60;
+  return mins >= range.start && mins < range.end;
+}
+
+/// Pre-order: at least one bookable clock slot still ahead of [now].
+bool mealHasPreOrderSlot(Map<String, dynamic> meal, {DateTime? now}) {
+  final n = (now ?? DateTime.now()).toLocal();
+  final slot = meal['time_slot']?.toString().trim() ?? '';
+  if (slot.isEmpty || isImmediateDeliverySlot(slot)) return false;
+  if (isChefMealArchived(meal)) return false;
+  final today = calendarDay(n);
+  for (var i = 0; i < 15; i++) {
+    final day = today.add(Duration(days: i));
+    if (!_homeSlotAllowsDay(slot, day, n)) continue;
+    final remaining = futureChefSubSlots(slot, scheduledDate: day, now: n);
+    if (remaining.isNotEmpty) return true;
+    if (i == 0) {
+      final range = _slotServingRangeMinutes(slot);
+      if (range != null) {
+        final start = DateTime(day.year, day.month, day.day).add(Duration(minutes: range.start));
+        if (start.isAfter(n)) return true;
+      }
+    }
+  }
+  return false;
+}
+
 /// Home quick chips: Live / Pre-order / Healthy. Default Live keeps the accepting catalog.
 bool mealMatchesHomeMode(
   Map<String, dynamic> meal, {
@@ -1181,7 +1261,7 @@ bool mealMatchesHomeMode(
   switch (mode.trim().toLowerCase()) {
     case 'preorder':
     case 'pre-order':
-      return orderIsPreOrderSlot(meal);
+      return mealHasPreOrderSlot(meal, now: now);
     case 'heat':
     case 'healthy':
       if (mealMatchesCuisine(meal, 'Healthy')) return true;
@@ -1189,13 +1269,7 @@ bool mealMatchesHomeMode(
       if (tags is List && tags.isNotEmpty) return true;
       return mealMatchesFeedDiet(meal, 'High-protein') || mealMatchesFeedDiet(meal, 'Millet');
     case 'live':
-      if (chefProfile?['is_live'] == true) return true;
-      if (isImmediateDeliverySlot(meal['time_slot']?.toString())) return true;
-      final n = now ?? DateTime.now();
-      final day = parseSlotCalendarDay(meal['time_slot']?.toString(), now: n);
-      // Future-dated one-offs belong on Pre-order, not the Live strip.
-      if (day != null && calendarDay(day).isAfter(calendarDay(n))) return false;
-      return true;
+      return mealSlotIsAcceptingNow(meal, now: now, chefProfile: chefProfile);
     default:
       return true;
   }

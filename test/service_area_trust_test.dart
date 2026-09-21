@@ -52,6 +52,8 @@ void main() {
         isFalse,
       );
       expect(launchCityDefaultPin()['city'], 'Pune');
+      expect(launchCityDefaultPin()['address'], 'Select location');
+      expect(launchCityDefaultPin()['is_launch_city'], isTrue);
     });
 
     test('pageCatalog slices later plates for Home load-more', () {

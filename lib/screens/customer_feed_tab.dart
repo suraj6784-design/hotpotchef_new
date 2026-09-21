@@ -127,9 +127,6 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     _bindMealsStream();
     unawaited(_refreshMealsRestSnapshot());
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && !_hasDeliveryPin) {
-        _applyDeliveryPin(launchCityDefaultPin(), preferOverSaved: false);
-      }
       Future<void>.delayed(const Duration(milliseconds: 500), () {
         if (mounted) unawaited(_bootstrapDeliveryPin());
       });
@@ -206,12 +203,15 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     final user = Supabase.instance.client.auth.currentUser;
     if (user != null) {
       await _fetchUserAddresses(preserveActivePin: false);
-      if (_hasDeliveryPin) return;
-    }
-    if (!_hasDeliveryPin) {
-      _applyDeliveryPin(launchCityDefaultPin(), preferOverSaved: false);
+      if (_hasDeliveryPin && _deviceLocationPin?['is_launch_city'] != true) return;
     }
     await _captureDeviceLocation();
+    if (!_hasDeliveryPin || _deviceLocationPin?['is_launch_city'] == true) {
+      if (_deviceLocationPin?['is_device_location'] == true) return;
+      if (!_hasDeliveryPin) {
+        _applyDeliveryPin(launchCityDefaultPin(), preferOverSaved: false);
+      }
+    }
   }
 
   void _resetGuestFeedState() {
@@ -221,9 +221,9 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     _selectedDiet = 'All';
     _selectedCategory = 'All';
     _savedAddresses = [];
-    _deviceLocationPin = launchCityDefaultPin();
-    _currentAddress = _deviceLocationPin!['address']?.toString() ?? 'Pune';
-    ref.read(selectedDeliveryAddressProvider.notifier).setAddress(_deviceLocationPin);
+    _deviceLocationPin = null;
+    _currentAddress = 'Locating...';
+    ref.read(selectedDeliveryAddressProvider.notifier).setAddress(null);
   }
 
   bool get _isUsingDevicePin {
@@ -268,13 +268,19 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
 
       Position position;
       try {
-        final last = await Geolocator.getLastKnownPosition();
-        if (last != null && last.latitude != 0 && last.longitude != 0) {
-          position = last;
-        } else {
+        if (notifyOnFailure) {
           position = await Geolocator.getCurrentPosition(
             locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
-          ).timeout(const Duration(seconds: 8));
+          ).timeout(const Duration(seconds: 12));
+        } else {
+          final last = await Geolocator.getLastKnownPosition();
+          if (last != null && last.latitude != 0 && last.longitude != 0) {
+            position = last;
+          } else {
+            position = await Geolocator.getCurrentPosition(
+              locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
+            ).timeout(const Duration(seconds: 8));
+          }
         }
       } catch (_) {
         final last = await Geolocator.getLastKnownPosition();
@@ -299,13 +305,16 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         state = parts.state;
         pincode = parts.pincode;
         street = parts.street;
-        final formatted = parts.formatted.isNotEmpty
-            ? parts.formatted
-            : [parts.street, parts.city, parts.state, parts.pincode]
-                .where((part) => part.isNotEmpty)
-                .join(', ');
-        if (formatted.isNotEmpty) {
-          label = formatted;
+        final localityLabel = formatLocalityPinLabel(
+          street: parts.street,
+          city: parts.city,
+          pincode: parts.pincode,
+          formatted: parts.formatted,
+        );
+        if (localityLabel.isNotEmpty) {
+          label = localityLabel;
+        } else if (city.isNotEmpty && pincode.isNotEmpty) {
+          label = '$city - $pincode';
         } else if (city.isNotEmpty) {
           label = city;
         }
@@ -322,6 +331,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         'city': city,
         'state': state,
         'pincode': pincode,
+        'postal_code': pincode,
         'latitude': position.latitude,
         'longitude': position.longitude,
         'lat': position.latitude,
@@ -356,7 +366,11 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   }
 
   void _applyDeviceLocationFallback({String? message, bool silent = false}) {
-    _applyDeliveryPin(launchCityDefaultPin(), preferOverSaved: false);
+    if (_deviceLocationPin?['is_device_location'] == true) {
+      if (silent) return;
+    } else {
+      _applyDeliveryPin(launchCityDefaultPin(), preferOverSaved: false);
+    }
     if (silent) return;
     final text = message ?? 'Showing ${kLaunchCities.first.label} kitchens. Tap the pin to use current location.';
     ScaffoldMessenger.of(context).showSnackBar(
@@ -1117,11 +1131,19 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                 color: brandPrimary,
               ),
               title: Text(
-                _hasDeliveryPin ? (_deviceLocationPin?['address']?.toString() ?? _currentAddress) : 'Location not set',
+                _hasDeliveryPin
+                    ? (_deviceLocationPin?['is_launch_city'] == true
+                        ? 'Select location'
+                        : (_deviceLocationPin?['address']?.toString() ?? _currentAddress))
+                    : 'Location not set',
                 style: TextStyle(fontWeight: FontWeight.w700, color: AppTheme.onSurfaceOf(context)),
               ),
               subtitle: Text(
-                _resolvingDeviceLocation ? 'Updating…' : 'Current location',
+                _resolvingDeviceLocation
+                    ? 'Updating…'
+                    : (_deviceLocationPin?['is_launch_city'] == true
+                        ? 'Tap to use pin and locality'
+                        : 'Current location'),
                 style: const TextStyle(fontSize: 12),
               ),
             ),

@@ -112,6 +112,7 @@ PinnedAddressParts parseGoogleAddressComponents(
   Iterable<dynamic> components, {
   String formatted = '',
 }) {
+  var streetNumber = '';
   var streetName = '';
   var sublocality = '';
   var locality = '';
@@ -126,7 +127,9 @@ PinnedAddressParts parseGoogleAddressComponents(
     final longName = _clean(raw['long_name']?.toString());
     if (longName.isEmpty) continue;
 
-    if (types.contains('route')) {
+    if (types.contains('street_number')) {
+      streetNumber = longName;
+    } else if (types.contains('route')) {
       streetName = longName;
     } else if (types.contains('sublocality_level_1') || types.contains('sublocality')) {
       sublocality = longName;
@@ -144,7 +147,9 @@ PinnedAddressParts parseGoogleAddressComponents(
   }
 
   final city = locality.isNotEmpty ? locality : adminArea2;
-  final street = [streetName, sublocality].where((part) => part.isNotEmpty && !_isPlusCode(part)).join(', ');
+  final street = [streetNumber, streetName, sublocality]
+      .where((part) => part.isNotEmpty && !_isPlusCode(part))
+      .join(', ');
   final parsed = parseFormattedAddress(formatted);
 
   return PinnedAddressParts(
@@ -216,6 +221,51 @@ PinnedAddressParts partsFromPlacemark(Placemark place) {
       _clean(place.postalCode),
     ].where((part) => part.isNotEmpty).join(', '),
   );
+}
+
+/// Header / sheet label: locality (and house if present), then PIN. Never city-only
+/// when a suburb or PIN is available.
+String formatLocalityPinLabel({
+  String street = '',
+  String city = '',
+  String pincode = '',
+  String formatted = '',
+}) {
+  final locality = <String>[];
+  for (final raw in [street, city]) {
+    final part = raw.trim();
+    if (part.isEmpty) continue;
+    final lower = part.toLowerCase();
+    if (locality.any((kept) => kept.toLowerCase() == lower)) continue;
+    if (locality.any((kept) => kept.toLowerCase().contains(lower))) continue;
+    locality.add(part);
+  }
+  final pin = pincode.trim();
+  if (locality.isNotEmpty) {
+    if (pin.isNotEmpty && !locality.any((p) => p.contains(pin))) {
+      return '${locality.join(', ')} - $pin';
+    }
+    return locality.join(', ');
+  }
+  if (formatted.trim().isNotEmpty) {
+    final fromLine = parseFormattedAddress(formatted);
+    final tokens = formatted
+        .split(',')
+        .map((part) => part.replaceAll(RegExp(r'\b\d{6}\b'), '').trim())
+        .where((part) => part.isNotEmpty)
+        .where((part) => !_isPlusCode(part))
+        .where((part) => part.toLowerCase() != 'india')
+        .where((part) => fromLine.state.isEmpty || part.toLowerCase() != fromLine.state.toLowerCase())
+        .toList();
+    final streetFromLine = tokens.length > 1 ? tokens.sublist(0, tokens.length - 1).join(', ') : '';
+    final cityFromLine = tokens.isNotEmpty ? tokens.last : fromLine.city;
+    return formatLocalityPinLabel(
+      street: streetFromLine,
+      city: cityFromLine,
+      pincode: pin.isNotEmpty ? pin : fromLine.pincode,
+    );
+  }
+  return pin;
 }
 
 String _firstNonEmpty(Iterable<String?> values) {
