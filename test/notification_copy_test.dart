@@ -210,6 +210,63 @@ void main() {
     expect(rooms.any((room) => room.title == 'Office lunch'), isFalse);
   });
 
+  test('inbox hides delivered and cancelled order chats', () {
+    final rooms = mergeChatInboxRooms(
+      myId: 'cust',
+      orders: [
+        {
+          'id': 'live-order',
+          'order_id': 'LIVE1234-xyz',
+          'status': 'Preparing',
+          'customer_id': 'cust',
+          'chef_id': 'chef',
+          'created_at': '2026-01-01T00:00:00Z',
+        },
+        {
+          'id': 'old-order',
+          'order_id': 'OLD12345-xyz',
+          'status': 'Delivered',
+          'customer_id': 'cust',
+          'chef_id': 'chef',
+          'created_at': '2026-01-01T01:00:00Z',
+        },
+      ],
+      requests: const [],
+      messages: [
+        {
+          'meal_id': 'LIVE1234-xyz',
+          'content': 'On the stove',
+          'created_at': '2026-01-03T10:00:00Z',
+          'sender_id': 'chef',
+        },
+        {
+          'meal_id': 'OLD12345-xyz',
+          'content': 'Enjoy',
+          'created_at': '2026-01-03T11:00:00Z',
+          'sender_id': 'chef',
+        },
+      ],
+    );
+    expect(rooms, hasLength(1));
+    expect(rooms.first.title, 'Order LIVE1234');
+  });
+
+  test('inbox ignores orphan chats with no live order', () {
+    final rooms = mergeChatInboxRooms(
+      myId: 'cust',
+      orders: const [],
+      requests: const [],
+      messages: [
+        {
+          'meal_id': 'legacy-room',
+          'content': 'Still there?',
+          'created_at': '2026-01-04T00:00:00Z',
+        },
+      ],
+    );
+    expect(rooms, isEmpty);
+  });
+
   test('inbox lists a catering chat after the first message', () {
     final rooms = mergeChatInboxRooms(
       myId: 'cust',
@@ -237,24 +294,6 @@ void main() {
     expect(rooms.first.preview, 'We can do 40 plates');
   });
 
-  test('inbox keeps a sent message that has no matching order', () {
-    final rooms = mergeChatInboxRooms(
-      myId: 'cust',
-      orders: const [],
-      requests: const [],
-      messages: [
-        {
-          'meal_id': 'legacy-room',
-          'content': 'Still there?',
-          'created_at': '2026-01-04T00:00:00Z',
-        },
-      ],
-    );
-    expect(rooms, hasLength(1));
-    expect(rooms.first.roomId, 'legacy-room');
-    expect(rooms.first.preview, 'Still there?');
-  });
-
   test('KYC reminder copy names missing fields', () {
     final chef = kycReminderCopy(role: 'Chef', missing: ['FSSAI number', 'Kitchen pin']);
     expect(chef.title, 'Complete your KYC');
@@ -264,5 +303,12 @@ void main() {
     final diner = kycReminderCopy(role: 'Customer', missing: ['FSSAI number']);
     expect(diner.body, contains('do not submit FSSAI'));
     expect(diner.body, isNot(contains('kitchen KYC')));
+  });
+
+  test('partner alerts empty copy names KYC when it is still open', () {
+    final pending = partnerAlertsEmptyCopy(kycIncomplete: true, missing: ['Aadhaar card', 'Kitchen pin']);
+    expect(pending.title, 'KYC still needs you');
+    expect(pending.message, contains('Aadhaar card'));
+    expect(partnerAlertsEmptyCopy(kycIncomplete: false).title, 'You are up to date');
   });
 }

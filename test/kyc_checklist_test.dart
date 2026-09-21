@@ -122,4 +122,30 @@ void main() {
     );
     expect(next?.$3, ChefSetupTarget.profile);
   });
+
+  test('KYC coach stays hidden once kitchen KYC is complete', () {
+    expect(
+      chefKycCoachShouldShow({
+        'name': 'newchef16',
+        'phone': '8446609281',
+        'fssai_number': '12345678901234',
+        'fssai_proof_url': 'https://example.com/fssai.jpg',
+        'fssai_verification_status': 'pending',
+        'fssai_valid_until': '2027-01-01',
+        'aadhaar_proof_url': 'https://example.com/aadhaar.jpg',
+        'lat': 18.59,
+        'lng': 73.77,
+      }),
+      isFalse,
+    );
+    expect(
+      chefKycCoachShouldShow({
+        'name': 'newchef16',
+        'phone': '8446609281',
+        'fssai_number': '',
+        'fssai_proof_url': '',
+      }),
+      isTrue,
+    );
+  });
 }

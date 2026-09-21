@@ -257,3 +257,22 @@ KycReminderCopy kycReminderCopy({
         : 'Still needed: $listed$extra. Open Profile to finish so we can keep your kitchen live.',
   );
 }
+
+({String title, String message}) partnerAlertsEmptyCopy({
+  required bool kycIncomplete,
+  List<String> missing = const [],
+}) {
+  if (kycIncomplete) {
+    final listed = missing.map((e) => e.trim()).where((e) => e.isNotEmpty).take(4).join(', ');
+    return (
+      title: 'KYC still needs you',
+      message: listed.isEmpty
+          ? 'Finish remaining documents on Profile. Order and kitchen notes will show here once they arrive.'
+          : 'Still needed: $listed. Open Profile to complete these — you are not fully live yet.',
+    );
+  }
+  return (
+    title: 'You are up to date',
+    message: 'Kitchen, delivery, and support notes land here.',
+  );
+}

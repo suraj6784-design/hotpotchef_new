@@ -505,24 +505,6 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                 ],
               ),
             ),
-            PremiumProfileSection(
-              title: 'Earnings Overview',
-              children: [
-                PremiumProfileTile(
-                  icon: Icons.payments_outlined,
-                  title: 'Run wallet',
-                  subtitle: 'Delivery fee + tip in ₹. Bank payout after KYC by ops.',
-                  onTap: () {
-                    if (widget.onOpenWallet != null) {
-                      widget.onOpenWallet!();
-                      return;
-                    }
-                    context.go('/driver-hub?tab=wallet');
-                  },
-                  showDivider: false,
-                ),
-              ],
-            ),
             PremiumProfileStatsRow(
               stats: [
                 PremiumProfileStat(label: 'Home pin', value: _latitude != null ? 'Pinned' : 'Needed'),

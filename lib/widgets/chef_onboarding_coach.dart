@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/app_theme.dart';
 import '../utils/fssai_certificate_scan.dart';
 import '../utils/helpers.dart';
+import '../utils/kyc_checklist.dart';
 
 class ChefSetupStrip extends StatelessWidget {
   const ChefSetupStrip({
@@ -130,15 +131,19 @@ enum ChefSetupTarget { profile, publish, online }
   return null;
 }
 
+bool chefKycCoachShouldShow(Map<String, dynamic> profile) {
+  return kycChecklistFor({'role': 'chef', ...profile}).incomplete;
+}
+
 class ChefOnboardingCoach extends StatefulWidget {
   const ChefOnboardingCoach({
     super.key,
+    required this.profile,
     required this.onOpenProfile,
-    required this.onPublish,
   });
 
+  final Map<String, dynamic> profile;
   final VoidCallback onOpenProfile;
-  final VoidCallback onPublish;
 
   @override
   State<ChefOnboardingCoach> createState() => _ChefOnboardingCoachState();
@@ -146,23 +151,8 @@ class ChefOnboardingCoach extends StatefulWidget {
 
 class _ChefOnboardingCoachState extends State<ChefOnboardingCoach> {
   static const _key = 'chef_onboarding_v1';
-  int _step = 0;
   bool _visible = false;
-
-  static const _copy = [
-    (
-      'Licence and pin',
-      'Profile needs a 14-digit FSSAI number, a licence photo, and your kitchen map pin. Ops verifies FSSAI before you can publish.',
-    ),
-    (
-      'Go online, then publish',
-      'Turn Online on the dashboard. Then publish a dish with a real clock window, price, portions, and at least one service type.',
-    ),
-    (
-      'Offers, boosts, and payouts',
-      'Meal offers and ₹99 Home boosts are self-serve. Brand Sponsored ads go through HotPotChef. Bank details save here; Route payouts start after a live acc_ account is linked.',
-    ),
-  ];
+  bool _dismissed = false;
 
   @override
   void initState() {
@@ -179,16 +169,22 @@ class _ChefOnboardingCoachState extends State<ChefOnboardingCoach> {
   Future<void> _finish() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_key, true);
-    if (mounted) setState(() => _visible = false);
+    if (mounted) setState(() {
+      _visible = false;
+      _dismissed = true;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_visible) return const SizedBox.shrink();
-    final item = _copy[_step];
+    if (_dismissed || !_visible || !chefKycCoachShouldShow(widget.profile)) {
+      return const SizedBox.shrink();
+    }
+    final kyc = kycChecklistFor({'role': 'chef', ...widget.profile});
+    final missing = kyc.missing;
     return Positioned.fill(
       child: Material(
-        color: Colors.black54,
+        color: Colors.black45,
         child: SafeArea(
           child: Align(
             alignment: Alignment.bottomCenter,
@@ -197,35 +193,69 @@ class _ChefOnboardingCoachState extends State<ChefOnboardingCoach> {
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   color: AppTheme.surfaceOf(context),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: AppTheme.brandGlow(opacity: 0.08),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('${_step + 1} of ${_copy.length}', style: AppTheme.caption),
-                      const SizedBox(height: 6),
-                      Text(item.$1, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
-                      const SizedBox(height: 6),
-                      Text(item.$2),
-                      const SizedBox(height: 12),
                       Row(
                         children: [
-                          TextButton(onPressed: _finish, child: const Text('Skip')),
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: AppTheme.primary.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(Icons.badge_outlined, color: AppTheme.primary),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Text(
+                              'Finish kitchen verification',
+                              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Diners only see a live kitchen after these Profile items are in. Takes a couple of minutes.',
+                        style: AppTheme.caption.copyWith(height: 1.35, fontSize: 13),
+                      ),
+                      if (missing.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: missing
+                              .take(6)
+                              .map(
+                                (item) => Chip(
+                                  visualDensity: VisualDensity.compact,
+                                  label: Text(item, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                                  backgroundColor: AppTheme.primary.withValues(alpha: 0.08),
+                                  side: BorderSide.none,
+                                ),
+                              )
+                              .toList(),
+                        ),
+                      ],
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          TextButton(onPressed: _finish, child: const Text('Later')),
                           const Spacer(),
                           FilledButton(
                             onPressed: () {
-                              if (_step >= _copy.length - 1) {
-                                widget.onPublish();
-                                _finish();
-                              } else {
-                                if (_step == 0) widget.onOpenProfile();
-                                setState(() => _step++);
-                              }
+                              widget.onOpenProfile();
+                              _finish();
                             },
-                            child: Text(_step >= _copy.length - 1 ? 'Publish' : 'Next'),
+                            child: const Text('Open Profile'),
                           ),
                         ],
                       ),

@@ -240,7 +240,7 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text(
-                                'Kitchen take-home',
+                                'Payout & Analytics',
                                 style: TextStyle(
                                   color: AppTheme.textMuted,
                                   fontSize: 12,

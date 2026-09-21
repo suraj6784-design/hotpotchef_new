@@ -41,6 +41,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
   late int _selectedIndex = widget.initialTab;
   late int _ordersStage = widget.initialOrdersStage;
   bool _isOnline = true;
+  String? _acceptingOrderId;
   String? _busyOrderId;
   String _welcomeName = 'Partner';
   String _driverFullName = '';
@@ -452,23 +453,15 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
             Expanded(
               child: Text('Delivery Orders', style: AppTheme.sectionTitleOf(context)),
             ),
-          PopupMenuButton<String>(
-            tooltip: 'More',
-            onSelected: (value) {
-              switch (value) {
-                case 'chats':
-                  context.push('/chats');
-                case 'id':
-                  _openDigitalId();
-                case 'logout':
-                  AuthSession.confirmSignOut(context);
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'id', child: Text('Digital ID')),
-              const PopupMenuItem(value: 'chats', child: Text('Order chats')),
-              const PopupMenuItem(value: 'logout', child: Text('Log out')),
-            ],
+          IconButton(
+            tooltip: 'Order chats',
+            onPressed: () => context.push('/chats'),
+            icon: const Icon(Icons.forum_outlined),
+          ),
+          IconButton(
+            tooltip: 'Log out',
+            onPressed: () => AuthSession.confirmSignOut(context),
+            icon: const Icon(Icons.logout_rounded),
           ),
         ],
       ),
@@ -964,15 +957,30 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               GradientButton(
                 label: 'Accept Delivery',
                 icon: Icons.check_rounded,
-                onPressed: () async {
-                    final success = await notifier.acceptOrder(delivery.orderId);
-                    if (success && mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Order accepted. Open Active to navigate.'), backgroundColor: Colors.green),
-                      );
-                      setState(() => _ordersStage = 1);
-                    }
-                  },
+                loading: _acceptingOrderId == delivery.orderId,
+                onPressed: _acceptingOrderId != null
+                    ? null
+                    : () async {
+                        setState(() => _acceptingOrderId = delivery.orderId);
+                        final success = await notifier.acceptOrder(delivery.orderId);
+                        if (!mounted) return;
+                        setState(() => _acceptingOrderId = null);
+                        if (success) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Order accepted. Open Active to navigate.'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                          setState(() => _ordersStage = 1);
+                          return;
+                        }
+                        final reason = ref.read(driverDashboardProvider).errorMessage ??
+                            'Could not accept this run. Try again.';
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(reason), backgroundColor: Colors.redAccent),
+                        );
+                      },
               ),
             ],
           ),

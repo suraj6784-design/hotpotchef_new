@@ -768,8 +768,6 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                 isEditing: _isEditing,
                 onUploadComplete: (newUrl) => setState(() => _avatarUrl = newUrl),
               ),
-              onEdit: () => setState(() => _isEditing = !_isEditing),
-              editLabel: _isEditing ? 'Stop editing' : 'Edit kitchen card',
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -798,18 +796,6 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                   ),
                 ],
               ),
-            ),
-            PremiumProfileSection(
-              title: 'Earnings Overview',
-              children: [
-                PremiumProfileTile(
-                  icon: Icons.payments_outlined,
-                  title: 'Kitchen take-home',
-                  subtitle: 'Today and completed sales in ₹',
-                  onTap: () => context.push('/chef-analytics'),
-                  showDivider: false,
-                ),
-              ],
             ),
             PremiumProfileStatsRow(
               stats: [

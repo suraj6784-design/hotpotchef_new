@@ -832,7 +832,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                             switch (_selectedIndex) {
                               4 => 'Menu',
                               5 => 'Dispatch',
-                              6 => 'Kitchen take-home',
+                              6 => 'Payout & Analytics',
                               7 => openLeadsCount > 0 ? 'Catering leads ($openLeadsCount)' : 'Catering leads',
                               _ => 'Packaging supplies',
                             },
@@ -887,8 +887,8 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 ),
               ),
                   ChefOnboardingCoach(
+                    profile: _chefProfile,
                     onOpenProfile: () => setState(() => _selectedIndex = 2),
-                    onPublish: () => context.push('/chef-publish-meal'),
                   ),
                 ],
               );
@@ -928,47 +928,25 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               ),
             ),
           IconButton(
-            tooltip: 'Kitchen take-home',
-            onPressed: () => setState(() => _selectedIndex = 6),
-            icon: const Icon(Icons.payments_outlined),
-          ),
-          IconButton(
             tooltip: 'Order chats',
             onPressed: () => context.push('/chats'),
             icon: const Icon(Icons.forum_outlined),
           ),
-          PopupMenuButton<String>(
-            tooltip: 'More',
-            onSelected: (value) {
-              switch (value) {
-                case 'leads':
-                  setState(() => _selectedIndex = 7);
-                case 'supplies':
-                  setState(() => _selectedIndex = 8);
-                case 'menu':
-                  setState(() => _selectedIndex = 4);
-                case 'ads':
-                  context.push('/chef-advertise');
-                case 'academy':
-                  context.push('/chef-academy');
-                case 'profile':
-                  setState(() => _selectedIndex = 2);
-                case 'ops':
-                  context.go('/platform-ops');
-                case 'logout':
-                  AuthSession.confirmSignOut(context);
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'menu', child: Text('Menu')),
-              const PopupMenuItem(value: 'leads', child: Text('Catering leads')),
-              const PopupMenuItem(value: 'supplies', child: Text('Packaging supplies')),
-              const PopupMenuItem(value: 'ads', child: Text('Refer brand')),
-              const PopupMenuItem(value: 'academy', child: Text('Academy')),
-              if (_isPlatformOps) const PopupMenuItem(value: 'ops', child: Text('Admin')),
-              const PopupMenuItem(value: 'logout', child: Text('Log out')),
-            ],
+          IconButton(
+            tooltip: 'Log out',
+            onPressed: () => AuthSession.confirmSignOut(context),
+            icon: const Icon(Icons.logout_rounded),
           ),
+          if (_isPlatformOps)
+            PopupMenuButton<String>(
+              tooltip: 'Admin',
+              onSelected: (value) {
+                if (value == 'ops') context.go('/platform-ops');
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem(value: 'ops', child: Text('Admin')),
+              ],
+            ),
         ],
       ),
     );
@@ -1056,10 +1034,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 'Total Earnings',
                 '₹${profit.toStringAsFixed(0)}',
                 onTap: () {
-                  setState(() {
-                    _selectedIndex = 1;
-                    _ordersStage = 3;
-                  });
+                  setState(() => _selectedIndex = 6);
                 },
               ),
             ),
@@ -1068,30 +1043,64 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         const SizedBox(height: 18),
         Text('Quick Chef Tools', style: AppTheme.homeSectionLabelOf(context)),
         const SizedBox(height: 10),
+        ..._chefToolRows([
+          (
+            icon: Icons.cloud_upload_outlined,
+            label: 'Upload Menu',
+            onTap: () => context.push('/chef-publish-meal'),
+          ),
+          (
+            icon: Icons.restaurant_menu_rounded,
+            label: 'Active Dishes',
+            onTap: () => setState(() {
+              _selectedIndex = 4;
+              _menuFilter = 'Active';
+            }),
+          ),
+          (
+            icon: Icons.celebration_outlined,
+            label: 'Catering leads',
+            onTap: () => setState(() => _selectedIndex = 7),
+          ),
+          (
+            icon: Icons.inventory_2_outlined,
+            label: 'Packaging',
+            onTap: () => setState(() => _selectedIndex = 8),
+          ),
+          (
+            icon: Icons.campaign_outlined,
+            label: 'Refer brand',
+            onTap: () => context.push('/chef-advertise'),
+          ),
+          (
+            icon: Icons.school_outlined,
+            label: 'Academy',
+            onTap: () => context.push('/chef-academy'),
+          ),
+        ]),
+      ],
+    );
+  }
+
+  List<Widget> _chefToolRows(List<({IconData icon, String label, VoidCallback onTap})> tools) {
+    final rows = <Widget>[];
+    for (var i = 0; i < tools.length; i += 2) {
+      if (i > 0) rows.add(const SizedBox(height: 10));
+      rows.add(
         Row(
           children: [
-            Expanded(
-              child: _chefToolCard(
-                icon: Icons.cloud_upload_outlined,
-                label: 'Upload Menu',
-                onTap: () => context.push('/chef-publish-meal'),
-              ),
-            ),
+            Expanded(child: _chefToolCard(icon: tools[i].icon, label: tools[i].label, onTap: tools[i].onTap)),
             const SizedBox(width: 10),
             Expanded(
-              child: _chefToolCard(
-                icon: Icons.restaurant_menu_rounded,
-                label: 'Active Dishes',
-                onTap: () => setState(() {
-                  _selectedIndex = 4;
-                  _menuFilter = 'Active';
-                }),
-              ),
+              child: i + 1 < tools.length
+                  ? _chefToolCard(icon: tools[i + 1].icon, label: tools[i + 1].label, onTap: tools[i + 1].onTap)
+                  : const SizedBox.shrink(),
             ),
           ],
         ),
-      ],
-    );
+      );
+    }
+    return rows;
   }
 
   Widget _chefToolCard({required IconData icon, required String label, required VoidCallback onTap}) {
@@ -2113,7 +2122,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         AppCard(
           child: Column(
             children: [
-              Text('Kitchen take-home', style: AppTheme.metaOf(context).copyWith(fontSize: 13)),
+              Text('Payout & Analytics', style: AppTheme.metaOf(context).copyWith(fontSize: 13)),
               const SizedBox(height: 6),
               Text(formatRupees(revenue),
                   style: AppTheme.sectionTitleOf(context).copyWith(color: AppTheme.success, fontSize: 28)),

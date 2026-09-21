@@ -1508,6 +1508,21 @@ List<String> cateringRequestChatMemberIds(
   return members.toList();
 }
 
+bool orderChatIsActive(Map<String, dynamic> order) {
+  final s = (order['status']?.toString() ?? '').trim().toLowerCase();
+  if (s.isEmpty) return true;
+  if (s.contains('cancel') || s.contains('reject') || s.contains('refund')) return false;
+  if (s.contains('out for delivery') || s.contains('out_for_delivery')) return true;
+  if (s.contains('delivered') || s.contains('completed')) return false;
+  return true;
+}
+
+bool cateringChatIsActive(Map<String, dynamic> request) {
+  final s = (request['status']?.toString() ?? '').trim().toLowerCase();
+  if (s.contains('cancel') || s.contains('closed') || s.contains('reject')) return false;
+  return true;
+}
+
 List<ChatInboxItem> mergeChatInboxRooms({
   required String myId,
   required List<Map<String, dynamic>> orders,
@@ -1518,6 +1533,7 @@ List<ChatInboxItem> mergeChatInboxRooms({
   final catalog = <String, ChatInboxItem>{};
 
   for (final order in orders) {
+    if (!orderChatIsActive(order)) continue;
     final roomId = orderChatRoomId(order);
     if (roomId.isEmpty) continue;
     final label = formatOrderId(order['order_id']?.toString() ?? order['id']?.toString(), roomId);
@@ -1535,6 +1551,7 @@ List<ChatInboxItem> mergeChatInboxRooms({
   }
 
   for (final request in requests) {
+    if (!cateringChatIsActive(request)) continue;
     final roomId = request['id']?.toString() ?? '';
     if (roomId.isEmpty) continue;
     final members = cateringRequestChatMemberIds(
@@ -1571,28 +1588,17 @@ List<ChatInboxItem> mergeChatInboxRooms({
     final message = entry.value;
     final existing = catalog[entry.key];
     final preview = chatPreview(message['content']?.toString());
-    if (existing != null) {
-      rooms[entry.key] = ChatInboxItem(
-        roomId: existing.roomId,
-        title: existing.title,
-        preview: preview,
-        memberIds: existing.memberIds,
-        otherUserId: existing.otherUserId,
-        lastAt: DateTime.tryParse(message['created_at']?.toString() ?? '') ?? existing.lastAt,
-        lastSenderId: message['sender_id']?.toString() ?? existing.lastSenderId,
-        isGroup: existing.isGroup,
-      );
-    } else {
-      rooms[entry.key] = ChatInboxItem(
-        roomId: entry.key,
-        title: 'Chat',
-        preview: preview,
-        memberIds: const [],
-        lastAt: DateTime.tryParse(message['created_at']?.toString() ?? ''),
-        lastSenderId: message['sender_id']?.toString(),
-        isGroup: false,
-      );
-    }
+    if (existing == null) continue;
+    rooms[entry.key] = ChatInboxItem(
+      roomId: existing.roomId,
+      title: existing.title,
+      preview: preview,
+      memberIds: existing.memberIds,
+      otherUserId: existing.otherUserId,
+      lastAt: DateTime.tryParse(message['created_at']?.toString() ?? '') ?? existing.lastAt,
+      lastSenderId: message['sender_id']?.toString() ?? existing.lastSenderId,
+      isGroup: existing.isGroup,
+    );
   }
 
   final list = rooms.values.toList()
