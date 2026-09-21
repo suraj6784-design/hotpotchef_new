@@ -15,7 +15,7 @@ const int kHomeMealPageSize = 80;
 const String kHomeMealCatalogSelect =
     'id, chef_id, chef_name, title, description, status, quantity, price, image_url, '
     'time_slot, service_type, category, is_veg, health_tags, add_ons, '
-    'latitude, longitude, pickup_lat, pickup_lng, '
+    'latitude, longitude, pickup_lat, pickup_lng, hosting_address, '
     'average_rating, review_count, created_at, updated_at, '
     'offer_type, discount_value, max_discount_cap, offer_valid_until, '
     'promo_code, promo_discount_type, promo_discount_value, accepts_hotpot_coins, '

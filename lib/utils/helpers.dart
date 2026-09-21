@@ -2333,12 +2333,6 @@ bool mealFailsCurrentCatalogRequirements(Map<String, dynamic> meal) {
   if ((meal['service_type'] ?? meal['selected_service_type'] ?? '').toString().trim().isEmpty) {
     return true;
   }
-  if (kitchenCoordinate(meal, latitude: true) == null ||
-      kitchenCoordinate(meal, latitude: false) == null) {
-    return true;
-  }
-  final address = (meal['hosting_address'] ?? meal['address'] ?? '').toString().trim();
-  if (address.isEmpty) return true;
   return false;
 }
 
@@ -3140,6 +3134,25 @@ List<Map<String, dynamic>> uniqueReviewableOrderItems(List<Map<String, dynamic>>
     unique.add(item);
   }
   return unique;
+}
+
+/// Only the review written for this order. Never reuse a rating from another order
+/// of the same plate, or a row that stored the meal id as `order_id`.
+Map<String, Map<String, dynamic>> reviewsForOrderMeals({
+  required Iterable<Map<String, dynamic>> rows,
+  required String? orderId,
+}) {
+  final want = (orderId ?? '').trim();
+  final keyed = <String, Map<String, dynamic>>{};
+  if (want.isEmpty) return keyed;
+  for (final row in rows) {
+    final rowOrder = row['order_id']?.toString().trim() ?? '';
+    if (rowOrder != want) continue;
+    final mealId = row['meal_id']?.toString().trim() ?? '';
+    if (mealId.isEmpty) continue;
+    keyed[mealId] = row;
+  }
+  return keyed;
 }
 
 String soldOutCheckoutMessage({required bool charged, bool refunded = false}) {
@@ -5251,11 +5264,12 @@ bool mealInDeliveryRadius(
 }) {
   if (destinationLat == null || destinationLng == null) return false;
   if (destinationLat == 0 || destinationLng == 0) return false;
-  final startLat = kitchenCoordinate(meal, latitude: true);
-  final startLng = kitchenCoordinate(meal, latitude: false);
-  if (startLat == null || startLng == null) return false;
-  final roadKm = haversineKm(startLat, startLng, destinationLat, destinationLng) * roadMultiplier;
-  return roadKm <= maxRoadKm;
+  return kitchenServesDinerPin(
+    kitchenLat: kitchenCoordinate(meal, latitude: true),
+    kitchenLng: kitchenCoordinate(meal, latitude: false),
+    dinerLat: destinationLat,
+    dinerLng: destinationLng,
+  );
 }
 
 /// Soft-warn when a society-night label does not match the group place / address.

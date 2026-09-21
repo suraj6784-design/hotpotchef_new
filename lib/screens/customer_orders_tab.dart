@@ -996,13 +996,13 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         child: OrderItemReviewButtons(
                           items: items,
-                          orderId: items.first['id']?.toString(),
+                          orderId: resolvedOrderId(items.first),
                           onRate: (item) {
                             Navigator.pop(ctx);
                             if (!mounted) return;
                             _showReviewDialog(
                               item,
-                              orderId: items.first['id']?.toString(),
+                              orderId: resolvedOrderId(items.first),
                               chefId: chefId,
                             );
                           },

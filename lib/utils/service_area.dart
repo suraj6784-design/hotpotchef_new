@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 /// Launch-city serviceability. City 2 adds another [ServiceCity] — do not clone schema.
 class ServiceCity {
   const ServiceCity({
@@ -104,4 +106,55 @@ List<T> pageCatalog<T>(List<T> items, {required int page, int pageSize = 80}) {
   if (start >= items.length) return <T>[];
   final end = (start + pageSize).clamp(0, items.length);
   return items.sublist(start, end);
+}
+
+/// Guest / first-open pin when GPS is unavailable. No permission prompt.
+Map<String, dynamic> launchCityDefaultPin() {
+  final city = kLaunchCities.first;
+  return {
+    'id': 'launch-city-${city.id}',
+    'title': 'Current location',
+    'landmark': city.label,
+    'address': city.label,
+    'city': city.label,
+    'pincode': '411001',
+    'postal_code': '411001',
+    'latitude': city.centerLat,
+    'longitude': city.centerLng,
+    'lat': city.centerLat,
+    'lng': city.centerLng,
+    'is_launch_city': true,
+  };
+}
+
+/// Home radius: same launch city is always in range (Thergaon vs FC Pune
+/// exceeds 15 km × 1.3 road). Missing kitchen coords still list while hydrating.
+bool kitchenServesDinerPin({
+  double? kitchenLat,
+  double? kitchenLng,
+  double? dinerLat,
+  double? dinerLng,
+  String? dinerPincode,
+  String? kitchenPincode,
+}) {
+  final dinerCity = serviceCityForPin(dinerPincode) ?? serviceCityForCoord(dinerLat, dinerLng);
+  final kitchenCity =
+      serviceCityForPin(kitchenPincode) ?? serviceCityForCoord(kitchenLat, kitchenLng);
+  if (dinerCity != null && kitchenCity != null && dinerCity.id == kitchenCity.id) {
+    return true;
+  }
+  if (kitchenLat == null || kitchenLng == null || dinerLat == null || dinerLng == null) {
+    return dinerCity != null;
+  }
+  const maxKm = 15.0;
+  const earthKm = 6371.0;
+  final dLat = (dinerLat - kitchenLat) * math.pi / 180;
+  final dLng = (dinerLng - kitchenLng) * math.pi / 180;
+  final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+      math.cos(kitchenLat * math.pi / 180) *
+          math.cos(dinerLat * math.pi / 180) *
+          math.sin(dLng / 2) *
+          math.sin(dLng / 2);
+  final km = earthKm * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+  return km > 0 && km <= maxKm;
 }

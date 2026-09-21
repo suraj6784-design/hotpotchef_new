@@ -25,6 +25,35 @@ void main() {
       expect(serviceAreaCheckoutWarning(), isNull);
     });
 
+    test('Thergaon and FC Pune kitchens serve the same diner pin', () {
+      expect(
+        kitchenServesDinerPin(
+          kitchenLat: 18.5204,
+          kitchenLng: 73.8567,
+          dinerLat: 18.61,
+          dinerLng: 73.77,
+        ),
+        isTrue,
+      );
+      expect(
+        kitchenServesDinerPin(
+          dinerLat: 18.61,
+          dinerLng: 73.77,
+        ),
+        isTrue,
+      );
+      expect(
+        kitchenServesDinerPin(
+          kitchenLat: 19.07,
+          kitchenLng: 72.87,
+          dinerLat: 18.52,
+          dinerLng: 73.85,
+        ),
+        isFalse,
+      );
+      expect(launchCityDefaultPin()['city'], 'Pune');
+    });
+
     test('pageCatalog slices later plates for Home load-more', () {
       final items = List.generate(200, (i) => i);
       expect(pageCatalog(items, page: 0, pageSize: 80), hasLength(80));

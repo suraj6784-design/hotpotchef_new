@@ -239,7 +239,18 @@ void main() {
       mealFailsCurrentCatalogRequirements(_live({
         'title': 'Veg Thali',
         'price': 150,
+        'hosting_address': '',
       })),
+      isFalse,
+    );
+    expect(
+      mealFailsCurrentCatalogRequirements(_live({
+        'title': 'Pin-only thali',
+        'price': 150,
+      })
+        ..remove('hosting_address')
+        ..remove('pickup_lat')
+        ..remove('pickup_lng')),
       isFalse,
     );
     expect(mealHasPlaceholderOrMissingSlot({'time_slot': 'Flexible'}), isTrue);

@@ -127,6 +127,9 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     _bindMealsStream();
     unawaited(_refreshMealsRestSnapshot());
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_hasDeliveryPin) {
+        _applyDeliveryPin(launchCityDefaultPin(), preferOverSaved: false);
+      }
       Future<void>.delayed(const Duration(milliseconds: 500), () {
         if (mounted) unawaited(_bootstrapDeliveryPin());
       });
@@ -205,6 +208,9 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       await _fetchUserAddresses(preserveActivePin: false);
       if (_hasDeliveryPin) return;
     }
+    if (!_hasDeliveryPin) {
+      _applyDeliveryPin(launchCityDefaultPin(), preferOverSaved: false);
+    }
     await _captureDeviceLocation();
   }
 
@@ -215,9 +221,9 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     _selectedDiet = 'All';
     _selectedCategory = 'All';
     _savedAddresses = [];
-    _deviceLocationPin = null;
-    _currentAddress = 'Locating...';
-    ref.read(selectedDeliveryAddressProvider.notifier).setAddress(null);
+    _deviceLocationPin = launchCityDefaultPin();
+    _currentAddress = _deviceLocationPin!['address']?.toString() ?? 'Pune';
+    ref.read(selectedDeliveryAddressProvider.notifier).setAddress(_deviceLocationPin);
   }
 
   bool get _isUsingDevicePin {
@@ -324,17 +330,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       };
 
       if (!mounted) return;
-      setState(() {
-        _deviceLocationPin = pin;
-        // Do not steal a saved address the diner already picked.
-        final keepSavedSelection = _savedAddresses.any(
-          (addr) => addr['address']?.toString() == _currentAddress,
-        );
-        if (!keepSavedSelection) {
-          _currentAddress = label;
-          ref.read(selectedDeliveryAddressProvider.notifier).setAddress(pin);
-        }
-      });
+      _applyDeliveryPin(pin, preferOverSaved: false);
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Guest delivery location capture failed');
       _applyDeviceLocationFallback(
@@ -346,16 +342,23 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     }
   }
 
-  void _applyDeviceLocationFallback({String? message, bool silent = false}) {
+  void _applyDeliveryPin(Map<String, dynamic> pin, {required bool preferOverSaved}) {
     if (!mounted) return;
     setState(() {
-      _deviceLocationPin = null;
-      if (_currentAddress == 'Locating...' || _currentAddress.isEmpty) {
-        _currentAddress = 'Select Delivery Address';
+      _deviceLocationPin = pin;
+      final keepSavedSelection = !preferOverSaved &&
+          _savedAddresses.any((addr) => addr['address']?.toString() == _currentAddress);
+      if (!keepSavedSelection) {
+        _currentAddress = pin['address']?.toString() ?? 'Near you';
+        ref.read(selectedDeliveryAddressProvider.notifier).setAddress(pin);
       }
     });
+  }
+
+  void _applyDeviceLocationFallback({String? message, bool silent = false}) {
+    _applyDeliveryPin(launchCityDefaultPin(), preferOverSaved: false);
     if (silent) return;
-    final text = message ?? 'Turn on location or drop a pin to see kitchens near you.';
+    final text = message ?? 'Showing ${kLaunchCities.first.label} kitchens. Tap the pin to use current location.';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(text), backgroundColor: Colors.orange),
     );
@@ -980,20 +983,19 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     final endLng = addressCoordinate(dest, latitude: false);
     if (endLat == null || endLng == null) return [];
 
+    final dinerPin = dest?['postal_code']?.toString() ?? dest?['pincode']?.toString();
     final inRange = <Map<String, dynamic>>[];
     for (final meal in pinned) {
       final startLat = kitchenCoordinate(meal, latitude: true);
       final startLng = kitchenCoordinate(meal, latitude: false);
-      if (startLat == null || startLng == null) {
-        continue;
-      }
-      final distance = DeliveryEstimatorService.calculateDistanceKm(
-        startLat: startLat,
-        startLng: startLng,
-        endLat: endLat,
-        endLng: endLng,
-      );
-      if (DeliveryEstimatorService.isWithinDeliveryRadius(distance)) {
+      if (kitchenServesDinerPin(
+        kitchenLat: startLat,
+        kitchenLng: startLng,
+        dinerLat: endLat,
+        dinerLng: endLng,
+        dinerPincode: dinerPin,
+        kitchenPincode: meal['pincode']?.toString() ?? meal['postal_code']?.toString(),
+      )) {
         inRange.add(meal);
       }
     }
@@ -1016,7 +1018,13 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       endLng: endLng,
     );
     if (distance <= 0) return null;
-    if (!DeliveryEstimatorService.isWithinDeliveryRadius(distance)) {
+    if (!DeliveryEstimatorService.isWithinDeliveryRadius(distance) &&
+        !kitchenServesDinerPin(
+          kitchenLat: startLat,
+          kitchenLng: startLng,
+          dinerLat: endLat,
+          dinerLng: endLng,
+        )) {
       return 'Outside ${DeliveryEstimatorService.maxDeliveryRadiusKm.toInt()} km';
     }
     return '${DeliveryEstimatorService.estimateEtaMinutes(
