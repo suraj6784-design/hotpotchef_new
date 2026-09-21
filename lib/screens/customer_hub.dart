@@ -20,7 +20,6 @@ import '../utils/helpers.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/checkout_retry_banner.dart';
 import '../widgets/customer_ui_components.dart';
-import '../widgets/diner_onboarding_coach.dart';
 import '../widgets/diner_storefront.dart';
 import 'customer_feed_tab.dart';
 import 'customer_cart_tab.dart';
@@ -233,10 +232,6 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
                 );
               },
             ),
-          ),
-          DinerOnboardingCoach(
-            onGoHome: () => _onNavigationItemTapped(0),
-            onGoCart: () => _onNavigationItemTapped(1),
           ),
         ],
       ),

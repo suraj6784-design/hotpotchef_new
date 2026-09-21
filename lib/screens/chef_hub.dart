@@ -797,9 +797,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 const PackagingStoreScreen(),
               ];
 
-              return Stack(
-                children: [
-                  Scaffold(
+              return Scaffold(
                 backgroundColor: AppTheme.canvasOf(context),
                 body: Stack(
                   children: [
@@ -885,12 +883,6 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                     ),
                   ],
                 ),
-              ),
-                  ChefOnboardingCoach(
-                    profile: _chefProfile,
-                    onOpenProfile: () => setState(() => _selectedIndex = 2),
-                  ),
-                ],
               );
                 },
               );

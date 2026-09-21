@@ -183,12 +183,6 @@ class _HotPotChefAppState extends State<HotPotChefApp> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       PushNotificationService.openPendingAlert();
     });
-    // Notification permission dialog can zero the Android surface if it
-    // opens on the first diner frame — wait until Home has painted.
-    Future<void>.delayed(const Duration(seconds: 3), () {
-      if (!mounted) return;
-      unawaited(PushNotificationService.requestPermissionAndSync());
-    });
     unawaited(DinerLocaleController.instance.load());
     _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       if (data.event == AuthChangeEvent.passwordRecovery) {
