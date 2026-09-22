@@ -12,7 +12,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../utils/app_page.dart';
 import '../utils/helpers.dart';
 import '../utils/customer_constants.dart';
-import '../utils/dynamic_ui_engine.dart';
 import '../utils/network.dart';
 import '../utils/pinned_address.dart';
 import '../utils/pricing_calculator.dart';
@@ -22,13 +21,9 @@ import '../providers/delivery_preference.dart';
 import '../providers/kitchen_follows_provider.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
-import '../widgets/weekly_plan_banner.dart';
 import '../widgets/support_replied_banner.dart';
 import '../widgets/live_offers_flash_banner.dart';
 import '../widgets/membership_flash_banner.dart';
-import '../widgets/festival_hampers_banner.dart';
-import '../widgets/shelf_items_banner.dart';
-import '../widgets/society_nights_banner.dart';
 import '../services/delivery_estimator_service.dart';
 import '../utils/delivery_fee.dart';
 import '../utils/service_area.dart';
@@ -1713,7 +1708,6 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                     if (!_hasActiveSearch && !showFavorites && !showFollowing) ...[
                       DinerSectionHeader(
                         title: DinerLocaleController.instance.copy.socialChefs,
-                        subtitle: DinerLocaleController.instance.copy.socialChefsSub,
                       ),
                       _buildTrendingChefsStrip(meals),
                       DinerSectionHeader(title: 'Popular Dishes'),
@@ -1736,7 +1730,6 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                           child: Text(_loadingOlderMeals ? 'Loading more plates…' : 'Show more plates'),
                         ),
                       ),
-                    ..._homeDiscoveryExtras(isLoggedIn: isLoggedIn),
                   ],
                 );
               },
@@ -1998,45 +1991,6 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     ];
   }
 
-  List<Widget> _homeDiscoveryExtras({required bool isLoggedIn}) {
-    return [
-      const SizedBox(height: 8),
-      Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          title: Text('More kitchens', style: AppTheme.homeSectionLabelOf(context).copyWith(fontSize: 16)),
-          subtitle: const Text('Hampers, society nights, shelf'),
-          children: [
-            FestivalHampersBanner(
-              excludedChefIds: _closedChefIds,
-              destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
-              destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
-              chefKitchenPins: _chefKitchenPins,
-              onHamperTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
-            ),
-            SocietyNightsBanner(
-              excludedChefIds: _closedChefIds,
-              destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
-              destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
-              destinationAddress: _selectedAddressMap,
-              chefKitchenPins: _chefKitchenPins,
-              onNightTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
-            ),
-            ShelfItemsBanner(
-              excludedChefIds: _closedChefIds,
-              destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
-              destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
-              chefKitchenPins: _chefKitchenPins,
-              onItemTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
-            ),
-            if (isLoggedIn) const WeeklyPlanDueBanner(),
-            const DynamicUIEngine(screenName: 'customer_feed'),
-          ],
-        ),
-      ),
-    ];
-  }
-
   Widget _filterChipRow({
     required List<Map<String, dynamic>> chips,
     required String selected,
@@ -2130,12 +2084,12 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       });
     if (chefs.isEmpty) return const SizedBox.shrink();
     return SizedBox(
-      height: 188,
+      height: 52,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
         itemCount: chefs.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 12),
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
           final chef = chefs[index];
           final id = chef['id']?.toString() ?? '';
@@ -2144,43 +2098,50 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           final social = ChefSocialLinks.fromMap(chef);
           final photos = kitchenPhotosFrom(chef['kitchen_photos']);
           final photo = photos.isNotEmpty ? photos.first : chef['image_url']?.toString();
+          final meta = social.hasAny
+              ? social.platformsLabel
+              : (rating == null || !rating.hasReviews
+                  ? 'New kitchen'
+                  : '${rating.average.toStringAsFixed(1)} (${rating.count})');
           return GestureDetector(
             onTap: id.isEmpty ? null : () => _filterFeedToChef(chef),
             child: Container(
               width: 168,
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               decoration: AppTheme.cardDecoration(isDark: Theme.of(context).brightness == Brightness.dark),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: [
                   CircleAvatar(
-                    radius: 28,
+                    radius: 16,
                     backgroundColor: AppTheme.photoFallback,
                     backgroundImage: (photo != null && photo.isNotEmpty) ? CachedNetworkImageProvider(photo) : null,
                     child: (photo == null || photo.isEmpty)
                         ? Text(
                             name.isEmpty ? 'C' : name[0].toUpperCase(),
-                            style: const TextStyle(fontWeight: FontWeight.w800),
+                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
                           )
                         : null,
                   ),
-                  const SizedBox(height: 10),
-                  Text(
-                    name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTheme.cardTitleOf(context).copyWith(fontSize: 14),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    social.hasAny
-                        ? social.platformsLabel
-                        : (rating == null || !rating.hasReviews
-                            ? 'New kitchen'
-                            : '${rating.average.toStringAsFixed(1)} (${rating.count})'),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTheme.caption,
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTheme.cardTitleOf(context).copyWith(fontSize: 13, height: 1.1),
+                        ),
+                        Text(
+                          meta,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTheme.caption.copyWith(fontSize: 11, height: 1.1),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
