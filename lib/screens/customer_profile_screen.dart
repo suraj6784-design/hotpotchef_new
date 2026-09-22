@@ -9,7 +9,6 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:go_router/go_router.dart';
 
 import 'address_form_screen.dart';
-import 'auth_screen.dart';
 import '../providers/cart_provider.dart';
 import '../providers/favorites_provider.dart';
 import '../providers/kitchen_follows_provider.dart';
@@ -28,6 +27,7 @@ import '../widgets/loyalty_badge_card.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/change_password_dialog.dart';
 import '../widgets/premium_profile_template.dart';
+import '../widgets/customer_ui_components.dart';
 
 class CustomerProfileScreen extends ConsumerStatefulWidget {
   final VoidCallback? onLogout;
@@ -1104,8 +1104,10 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
           icon: Icons.person_outline_rounded,
           title: 'Sign in to manage your account',
           message: 'Save addresses, track HotPot Coins, and keep your dietary preferences in one place.',
-          actionLabel: 'Go to Login',
-          onAction: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AuthScreen())),
+          actionLabel: 'Sign In',
+          onAction: () => showAuthBottomSheet(context, () {
+            if (mounted) setState(() {});
+          }),
         ),
       );
     }

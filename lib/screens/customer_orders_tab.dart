@@ -1508,7 +1508,8 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                   if (!status.contains('cancelled') && !status.contains('rejected')) allCancelled = false;
                   if (status.contains('delivered') || status.contains('completed')) isDelivered = true;
 
-                  if (OrderLifecycle.isTrackable(item['status']?.toString())) {
+                  if (serviceType.contains('delivery') &&
+                      OrderLifecycle.isTrackable(item['status']?.toString())) {
                     trackableItem = item;
                   }
                 }
@@ -1601,7 +1602,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                       ? 'Delivered'
                                       : allCancelled
                                           ? 'Cancelled'
-                                          : (trackableItem != null ? 'On the way' : groupStatus),
+                                          : OrderLifecycle.dinerOrderCardBadge(groupStatus),
                                   style: TextStyle(
                                     color: isDelivered ? AppTheme.live : AppTheme.primary,
                                     fontWeight: FontWeight.w800,

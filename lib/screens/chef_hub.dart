@@ -695,28 +695,11 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-
-        final shouldExit = await showDialog<bool>(
+        await handleHubHardwareBack(
           context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Exit App'),
-            content: const Text('Are you sure you want to exit?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Exit'),
-              ),
-            ],
-          ),
+          selectedIndex: _selectedIndex,
+          goHome: () => setState(() => _selectedIndex = 0),
         );
-
-        if (shouldExit == true) {
-          SystemNavigator.pop();
-        }
       },
       child: StreamBuilder<List<Map<String, dynamic>>>(
         stream: _ordersStream,
@@ -912,13 +895,20 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 style: AppTheme.sectionTitleOf(context).copyWith(color: AppTheme.primary, fontSize: 18),
               ),
             ),
-          ] else
+          ] else ...[
+            if (!overflow)
+              IconButton(
+                tooltip: 'Back to home',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => setState(() => _selectedIndex = 0),
+              ),
             Expanded(
               child: Text(
                 overflow ? '' : 'Chef Orders',
                 style: AppTheme.sectionTitleOf(context),
               ),
             ),
+          ],
           IconButton(
             tooltip: 'Order chats',
             onPressed: () => context.push('/chats'),
@@ -1453,12 +1443,17 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       itemBuilder: (context, index) {
         final order = dispatches[index];
         final status = order['status']?.toString() ?? '';
-        final isOut = OrderLifecycle.normalize(status) == 'out for delivery';
-        final driverAssigned = OrderLifecycle.normalize(status).contains('assigned');
+        final isOut = OrderLifecycle.canDriverCompleteRun(status);
+        final driverAssigned = OrderLifecycle.normalize(status).contains('assigned') ||
+            OrderLifecycle.isHeadingToPickup(status);
         final svc = _orderService(order);
         final dispatchLabel = () {
           if (isOut) return 'Mark Delivered';
-          if (svc.usesDeliveryPartner) return 'Waiting for a delivery partner';
+          if (svc.usesDeliveryPartner) {
+            if (OrderLifecycle.isHeadingToPickup(status)) return 'Partner on the way to pickup';
+            if (driverAssigned) return 'Partner assigned';
+            return 'Waiting for a delivery partner';
+          }
           if (svc == ServiceType.deliverySelf) return 'Dispatch (Chef-Self)';
           if (svc == ServiceType.dineIn) return 'Mark Dine-In Complete';
           return 'Mark Picked Up';
@@ -1548,7 +1543,9 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 Text(
                   isOut
                       ? 'A delivery partner is on the way. They mark this order delivered.'
-                      : driverAssigned
+                      : OrderLifecycle.isHeadingToPickup(status)
+                          ? 'A delivery partner is on the way to your kitchen for pickup.'
+                          : driverAssigned
                           ? 'A delivery partner has this order. They will start and complete the run.'
                           : ((order['order_type']?.toString() ?? '').trim().isEmpty)
                               ? 'Drivers only see Delivery Partner jobs. Confirm the service type is Delivery Partner, then mark Ready for Pickup.'

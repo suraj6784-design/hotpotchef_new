@@ -115,6 +115,27 @@ class PricingCalculator {
     return true;
   }
 
+  /// Chef Edit Meal: a past end date must not block Update or hide the %.
+  /// Returns UTC ISO when the local end is still ahead; otherwise null (keep until off).
+  static String? chefOfferExpiryIso({
+    required OfferType offerType,
+    DateTime? endDate,
+    int hour = 23,
+    int minute = 59,
+    DateTime? now,
+  }) {
+    if (offerType == OfferType.none || endDate == null) return null;
+    final localExpiry = DateTime(
+      endDate.year,
+      endDate.month,
+      endDate.day,
+      hour.clamp(0, 23),
+      minute.clamp(0, 59),
+    );
+    if (!localExpiry.isAfter(now ?? DateTime.now())) return null;
+    return localExpiry.toUtc().toIso8601String();
+  }
+
   /// Checks if an offer is currently live.
   static bool isOfferActive(
     Map<String, dynamic> mealDetails, {

@@ -350,28 +350,11 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        
-        final shouldExit = await showDialog<bool>(
+        await handleHubHardwareBack(
           context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Exit App'),
-            content: const Text('Are you sure you want to exit?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Exit'),
-              ),
-            ],
-          ),
+          selectedIndex: _selectedIndex,
+          goHome: () => setState(() => _selectedIndex = 0),
         );
-
-        if (shouldExit == true) {
-          SystemNavigator.pop();
-        }
       },
       child: Scaffold(
         backgroundColor: AppTheme.canvasOf(context),
@@ -449,10 +432,16 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 style: AppTheme.sectionTitleOf(context).copyWith(color: AppTheme.primary, fontSize: 18),
               ),
             ),
-          ] else
+          ] else ...[
+            IconButton(
+              tooltip: 'Back to home',
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => setState(() => _selectedIndex = 0),
+            ),
             Expanded(
               child: Text('Delivery Orders', style: AppTheme.sectionTitleOf(context)),
             ),
+          ],
           IconButton(
             tooltip: 'Order chats',
             onPressed: () => context.push('/chats'),
@@ -1090,7 +1079,9 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
         final delivery = active[index];
         final rawStatus = delivery.statusLabel.isEmpty ? delivery.status.toDbValue() : delivery.statusLabel;
         final isOut = OrderLifecycle.canDriverCompleteRun(rawStatus);
-        final canStart = OrderLifecycle.canDriverStartRun(rawStatus);
+        final canConfirmPickup = OrderLifecycle.canDriverConfirmPickup(rawStatus);
+        final actionLabel = OrderLifecycle.driverHubActionLabel(rawStatus);
+        final badgeLabel = OrderLifecycle.driverHubBadge(rawStatus);
 
         return AppCard(
           margin: const EdgeInsets.only(bottom: 16),
@@ -1102,7 +1093,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 children: [
                   Text('Run #${formatOrderId(null, delivery.orderId)}',
                       style: AppTheme.micro),
-                  AppStatusBadge(status: rawStatus),
+                  AppStatusBadge(status: badgeLabel),
                 ],
               ),
               const SizedBox(height: 12),
@@ -1184,13 +1175,17 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 ],
               ),
               const SizedBox(height: 10),
-              if (isOut || canStart)
+              if (actionLabel.isNotEmpty)
                 Semantics(
                   button: true,
-                  label: isOut ? 'Mark Delivered' : 'Start Delivery',
+                  label: actionLabel,
                   child: GradientButton(
-                    label: isOut ? 'Mark Delivered' : 'Start Delivery',
-                    icon: isOut ? Icons.check_rounded : Icons.delivery_dining_rounded,
+                    label: actionLabel,
+                    icon: isOut
+                        ? Icons.check_rounded
+                        : (canConfirmPickup
+                            ? Icons.inventory_2_outlined
+                            : Icons.two_wheeler_rounded),
                     height: 48,
                     loading: _busyOrderId == delivery.orderId,
                     gradient: isOut
@@ -1224,22 +1219,24 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                                 return;
                               }
                             }
-                            final nextStatus = isOut ? DeliveryStatus.delivered : DeliveryStatus.outForDelivery;
                             final ok = await notifier.updateDeliveryStatus(
                               delivery.orderId,
-                              nextStatus,
+                              rawStatus,
                               deliveryOtp: isOut ? delivery.deliveryOtp : null,
                               podPhotoUrl: podUrl,
                             );
                             if (!mounted) return;
                             setState(() => _busyOrderId = null);
+                            final successMessage = isOut
+                                ? 'Marked as delivered.'
+                                : (canConfirmPickup
+                                    ? 'Picked up — navigate to the customer.'
+                                    : 'On the way to pickup — navigate to the kitchen.');
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: Text(
                                   ok
-                                      ? (isOut
-                                          ? 'Marked as delivered.'
-                                          : 'Out for delivery — navigate to the customer.')
+                                      ? successMessage
                                       : (ref.read(driverDashboardProvider).errorMessage ??
                                           'Could not update this run. Try again.'),
                                 ),
@@ -1251,7 +1248,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 )
               else
                 const Text(
-                  'The kitchen is still preparing this order. Start Delivery unlocks after Ready for Pickup.',
+                  'The kitchen is still preparing this order. Pickup unlocks after Ready for Pickup.',
                   style: TextStyle(fontSize: 13, color: AppTheme.textMuted, height: 1.35),
                 ),
             ],

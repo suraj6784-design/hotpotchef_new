@@ -72,8 +72,9 @@ void main() {
       expect(OrderLifecycle.nextDriverStatus('Pending Chef Approval'), isNull);
       expect(OrderLifecycle.nextDriverStatus('Confirmed'), isNull);
       expect(OrderLifecycle.nextDriverStatus('Preparing'), isNull);
-      expect(OrderLifecycle.nextDriverStatus('Ready for Pickup'), OrderStatus.outForDelivery);
-      expect(OrderLifecycle.nextDriverStatus('Driver Assigned'), OrderStatus.outForDelivery);
+      expect(OrderLifecycle.nextDriverStatus('Ready for Pickup'), OrderStatus.headingToKitchen);
+      expect(OrderLifecycle.nextDriverStatus('Driver Assigned'), OrderStatus.headingToKitchen);
+      expect(OrderLifecycle.nextDriverStatus('Heading to Kitchen'), OrderStatus.outForDelivery);
       expect(OrderLifecycle.nextDriverStatus('Out for Delivery'), OrderStatus.delivered);
     });
 
@@ -92,6 +93,10 @@ void main() {
       );
       expect(
         OrderLifecycle.nextDriverStatus('Driver Assigned'),
+        OrderStatus.headingToKitchen,
+      );
+      expect(
+        OrderLifecycle.nextDriverStatus('Heading to Kitchen'),
         OrderStatus.outForDelivery,
       );
       expect(
@@ -156,19 +161,34 @@ void main() {
       );
     });
 
-    test('trackable from kitchen accept until delivered', () {
-      expect(OrderLifecycle.isTrackable('Pending Chef Approval'), isTrue);
-      expect(OrderLifecycle.isTrackable('Preparing'), isTrue);
+    test('live tracking only after the kitchen is ready for pickup', () {
+      expect(OrderLifecycle.isTrackable('Pending Chef Approval'), isFalse);
+      expect(OrderLifecycle.isTrackable('Confirmed'), isFalse);
+      expect(OrderLifecycle.isTrackable('Preparing'), isFalse);
       expect(OrderLifecycle.isTrackable('Ready for Pickup'), isTrue);
       expect(OrderLifecycle.isTrackable('Driver Assigned'), isTrue);
+      expect(OrderLifecycle.isTrackable('Heading to Kitchen'), isTrue);
+      expect(OrderLifecycle.isTrackable('Out for Delivery'), isTrue);
       expect(OrderLifecycle.isTrackable('Delivered'), isFalse);
       expect(OrderLifecycle.isTrackable('Cancelled'), isFalse);
+      expect(OrderLifecycle.dinerOrderCardBadge('Pending Chef Approval'), 'Waiting for chef');
+      expect(OrderLifecycle.dinerOrderCardBadge('Ready for Pickup'), 'Ready for pickup');
+    });
+
+    test('driver hub shows pickup-run badge and actions', () {
+      expect(OrderLifecycle.driverHubBadge('Driver Assigned'), 'On the way to pickup');
+      expect(OrderLifecycle.driverHubActionLabel('Driver Assigned'), 'On the way to pickup');
+      expect(OrderLifecycle.driverHubBadge('Heading to Kitchen'), 'On the way to pickup');
+      expect(OrderLifecycle.driverHubActionLabel('Heading to Kitchen'), 'Picked up');
+      expect(OrderLifecycle.driverHubActionLabel('Out for Delivery'), 'Mark Delivered');
     });
 
     test('diner progress is Kitchen → Packed → On the way → Delivered', () {
       expect(OrderLifecycle.dinerProgressStep('Confirmed'), 0);
       expect(OrderLifecycle.dinerProgressStep('Preparing'), 0);
       expect(OrderLifecycle.dinerProgressStep('Ready for Pickup'), 1);
+      expect(OrderLifecycle.dinerProgressStep('Driver Assigned'), 2);
+      expect(OrderLifecycle.dinerProgressStep('Heading to Kitchen'), 2);
       expect(OrderLifecycle.dinerProgressStep('Out for Delivery'), 2);
       expect(OrderLifecycle.dinerProgressStep('Delivered'), 3);
       expect(OrderLifecycle.dinerProgressStep('Cancelled'), -1);

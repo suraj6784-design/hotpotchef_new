@@ -5,6 +5,7 @@ class OrderStatus {
   static const preparing = 'Preparing';
   static const readyForPickup = 'Ready for Pickup';
   static const driverAssigned = 'Driver Assigned';
+  static const headingToKitchen = 'Heading to Kitchen';
   static const outForDelivery = 'Out for Delivery';
   static const delivered = 'Delivered';
   static const cancelled = 'Cancelled';

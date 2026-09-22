@@ -23,6 +23,11 @@ class AppStatusBadge extends StatelessWidget {
     } else if (lowerStatus.contains('confirm') || lowerStatus.contains('preparing')) {
       baseColor = AppTheme.info;
       iconData = Icons.soup_kitchen_rounded;
+    } else if (lowerStatus.contains('heading') ||
+        lowerStatus.contains('assigned') ||
+        lowerStatus.contains('on the way to pickup')) {
+      baseColor = AppTheme.primary;
+      iconData = Icons.two_wheeler_rounded;
     } else if (lowerStatus.contains('ready') || lowerStatus.contains('out for delivery')) {
       baseColor = AppTheme.primary;
       iconData = Icons.local_shipping_rounded;

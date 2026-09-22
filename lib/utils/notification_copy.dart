@@ -64,7 +64,7 @@ String orderAlertStage(String? status) {
     return 'out';
   }
   if (current.contains('deliver') || current.contains('complet')) return 'delivered';
-  if (current.contains('assign')) return 'assigned';
+  if (current.contains('assign') || current.contains('heading')) return 'assigned';
   if (current.contains('ready') || current.contains('pack')) return 'ready';
   if (current.contains('prepar')) return 'preparing';
   if (current.contains('confirm')) return 'confirmed';

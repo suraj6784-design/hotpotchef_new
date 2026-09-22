@@ -223,6 +223,21 @@ void main() {
       ]);
       expect(offerFlashSubhead(card), '2 plates · tap to see all Flash Sale deals');
     });
+
+    test('percentage carousel card shows the chef 10% not a blank % Discount', () {
+      final card = buildOfferFlashGroupCard('percentage', [
+        _live({
+          'id': 'biryani',
+          'title': 'Veg Biryani',
+          'price': 121,
+          'offer_type': 'percentage',
+          'discount_value': 10,
+          'image_url': 'https://example.com/biryani.jpg',
+        }),
+      ]);
+      expect(offerFlashHeadline(card), '10% OFF');
+      expect(offerFlashSubhead(card), '10% OFF · tap to open');
+    });
   });
 
   test('incomplete leftover plates fail current catalog requirements', () {

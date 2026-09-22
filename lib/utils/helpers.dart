@@ -1049,7 +1049,10 @@ bool isLiveTrackingStatus(String? status) {
       current.contains('complet')) {
     return false;
   }
-  return current.contains('ready') || current.contains('assigned') || current.contains('out');
+  return current.contains('ready') ||
+      current.contains('assigned') ||
+      current.contains('heading') ||
+      current.contains('out');
 }
 
 String mealDietHaystack(Map<String, dynamic> meal) {
@@ -2566,10 +2569,14 @@ String? offerFlashGroupKeyForMeal(Map<String, dynamic> meal) {
 
 Map<String, dynamic> buildOfferFlashGroupCard(String groupKey, List<Map<String, dynamic>> meals) {
   Map<String, dynamic> rep = Map<String, dynamic>.from(meals.first);
+  var bestScore = -1.0;
   for (final meal in meals) {
-    if ((meal['image_url']?.toString() ?? '').trim().isNotEmpty) {
+    final hasImage = (meal['image_url']?.toString() ?? '').trim().isNotEmpty;
+    final discount = double.tryParse(meal['discount_value']?.toString() ?? '') ?? 0;
+    final score = discount * 10 + (hasImage ? 1 : 0);
+    if (score > bestScore) {
+      bestScore = score;
       rep = Map<String, dynamic>.from(meal);
-      break;
     }
   }
   rep['_offer_group'] = groupKey;
@@ -2625,6 +2632,16 @@ String? offerFlashGroupKey(Map<String, dynamic> meal) {
 
 String offerFlashHeadline(Map<String, dynamic> meal, {DateTime? now}) {
   final group = offerFlashGroupKey(meal);
+  if (group == 'percentage') {
+    final badge = PricingCalculator.offerBadgeLabel(meal).trim();
+    if (RegExp(r'^\d+% OFF$').hasMatch(badge)) return badge;
+    return '% Discount';
+  }
+  if (group == 'flat') {
+    final badge = PricingCalculator.offerBadgeLabel(meal).trim();
+    if (badge.startsWith('FLAT ₹')) return badge;
+    return 'Flat Discount';
+  }
   if (group != null) {
     switch (group) {
       case 'festive':
@@ -2633,10 +2650,6 @@ String offerFlashHeadline(Map<String, dynamic> meal, {DateTime? now}) {
         return 'Flash Sale';
       case 'bogo':
         return 'BOGO';
-      case 'percentage':
-        return '% Discount';
-      case 'flat':
-        return 'Flat Discount';
     }
   }
   if (isMealBoosted(meal, now: now) && PricingCalculator.mealPromoCode(meal) == null) {
@@ -2656,8 +2669,8 @@ String offerFlashSubhead(Map<String, dynamic> meal) {
   final group = offerFlashGroupKey(meal);
   if (group != null) {
     final count = int.tryParse(meal['_offer_group_count']?.toString() ?? meal['_bogo_count']?.toString() ?? '') ?? 0;
-    final label = offerFlashGroupLabel(group);
-    if (count > 1) return '$count plates · tap to see all $label deals';
+    final label = offerFlashHeadline(meal);
+    if (count > 1) return '$count plates · tap to see all ${offerFlashGroupLabel(group)} deals';
     return '$label · tap to open';
   }
   final type = OfferType.fromString(meal['offer_type']?.toString());
@@ -2977,31 +2990,6 @@ int rescuedPlatesFromOrderItems(Iterable<dynamic> items) =>
 
 int rescuedPlatesFromOrders(Iterable<dynamic> orders) =>
     preOrderedPlatesFromOrders(orders);
-
-String rescuedMealsHeadline({required int rescuedPlates, required int onOfferPlates}) {
-  if (rescuedPlates > 0) {
-    final plateWord = rescuedPlates == 1 ? 'plate' : 'plates';
-    return 'Saved from waste · $rescuedPlates $plateWord pre-ordered';
-  }
-  if (onOfferPlates > 0) {
-    final plateWord = onOfferPlates == 1 ? 'meal' : 'meals';
-    return '$onOfferPlates slotted $plateWord ready to pre-order';
-  }
-  return 'Pre-order a slot — kitchens cook only what you book';
-}
-
-String rescuedMealsSubhead({required int rescuedPlates, required int onOfferPlates}) {
-  if (rescuedPlates > 0 && onOfferPlates > 0) {
-    return 'Chefs cook to booked demand. $onOfferPlates more slots open now.';
-  }
-  if (rescuedPlates > 0) {
-    return 'Neighbours booked ahead so home kitchens cooked only what was needed.';
-  }
-  if (onOfferPlates > 0) {
-    return 'Book a time slot. Fresh food, no guesswork leftovers.';
-  }
-  return 'HotPotChef is pre-order first — less waste than cooking on hope.';
-}
 
 bool isMealExpired(String? timeSlot, {DateTime? orderDate, DateTime? now}) {
   if (timeSlot == null || timeSlot.isEmpty) return false;

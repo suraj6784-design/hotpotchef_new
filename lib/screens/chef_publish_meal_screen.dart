@@ -212,11 +212,11 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
         : OfferType.none;
     _promoAdvanced = _promoController.text.trim().isNotEmpty || _promoExtraType != OfferType.none;
 
-    // Offer validity timestamp
+    // Offer validity timestamp. A past end date was hiding the % on diner Home.
     final validUntilStr = meal['offer_valid_until']?.toString();
     if (validUntilStr != null && validUntilStr.isNotEmpty) {
       final dt = DateTime.tryParse(validUntilStr)?.toLocal();
-      if (dt != null) {
+      if (dt != null && !dt.isBefore(DateTime.now())) {
         _offerEndDate = dt;
         _offerEndTime = TimeOfDay(hour: dt.hour, minute: dt.minute);
       }
@@ -546,24 +546,13 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
         debugPrint('AI tagging function skipped: $aiErr');
       }
 
-      // Handle Promotion Timestamp Windows
-      String? offerExpiryIso;
-      if (_selectedOfferType != OfferType.none && _offerEndDate != null) {
-        final time = _offerEndTime ?? const TimeOfDay(hour: 23, minute: 59);
-        final localExpiry = DateTime(
-          _offerEndDate!.year,
-          _offerEndDate!.month,
-          _offerEndDate!.day,
-          time.hour,
-          time.minute,
-        );
-
-        if (localExpiry.isBefore(DateTime.now())) {
-          throw Exception('The promotion expiration date must be in the future.');
-        }
-
-        offerExpiryIso = localExpiry.toUtc().toIso8601String();
-      }
+      final offerEndTime = _offerEndTime ?? const TimeOfDay(hour: 23, minute: 59);
+      final offerExpiryIso = PricingCalculator.chefOfferExpiryIso(
+        offerType: _selectedOfferType,
+        endDate: _offerEndDate,
+        hour: offerEndTime.hour,
+        minute: offerEndTime.minute,
+      );
 
       final promoCode = _promoController.text.trim().toUpperCase();
       var discountVal = double.tryParse(_discountController.text.trim()) ?? 0.0;
@@ -1572,7 +1561,12 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                   ],
 
                   if (_selectedOfferType != OfferType.none) ...[
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Diners see this % on Home after Update Meal. End date is optional — leave it off so the discount stays until you change the offer.',
+                      style: AppTheme.micro,
+                    ),
+                    const SizedBox(height: 8),
                     Row(
                       children: [
                         Expanded(
@@ -1580,27 +1574,39 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                             icon: const Icon(Icons.calendar_month, size: 16),
                             label: Text(
                               _offerEndDate == null
-                                  ? 'Offer End Date'
+                                  ? 'No end date'
                                   : '${_offerEndDate!.day}/${_offerEndDate!.month}/${_offerEndDate!.year}',
                               style: const TextStyle(fontSize: 12),
                             ),
                             onPressed: () async {
+                              final now = DateTime.now();
                               final picked = await showDatePicker(
                                 context: context,
-                                initialDate: DateTime.now().add(const Duration(days: 1)),
-                                firstDate: DateTime.now(),
-                                lastDate: DateTime.now().add(const Duration(days: 90)),
+                                initialDate: now.add(const Duration(days: 7)),
+                                firstDate: now,
+                                lastDate: now.add(const Duration(days: 90)),
                               );
                               if (picked != null) setState(() => _offerEndDate = picked);
                             },
                           ),
                         ),
+                        if (_offerEndDate != null)
+                          IconButton(
+                            tooltip: 'Keep discount until turned off',
+                            onPressed: () => setState(() {
+                              _offerEndDate = null;
+                              _offerEndTime = null;
+                            }),
+                            icon: const Icon(Icons.close, size: 18),
+                          ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: OutlinedButton.icon(
                             icon: const Icon(Icons.access_time, size: 16),
                             label: Text(
-                              _offerEndTime == null ? 'Offer End Time' : _offerEndTime!.format(context),
+                              _offerEndDate == null
+                                  ? 'No end time'
+                                  : (_offerEndTime ?? const TimeOfDay(hour: 23, minute: 59)).format(context),
                               style: const TextStyle(fontSize: 12),
                             ),
                             onPressed: () async {

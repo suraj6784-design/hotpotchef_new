@@ -27,7 +27,6 @@ import '../widgets/support_replied_banner.dart';
 import '../widgets/live_offers_flash_banner.dart';
 import '../widgets/membership_flash_banner.dart';
 import '../widgets/festival_hampers_banner.dart';
-import '../widgets/rescued_meals_banner.dart';
 import '../widgets/shelf_items_banner.dart';
 import '../widgets/society_nights_banner.dart';
 import '../services/delivery_estimator_service.dart';
@@ -106,6 +105,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   bool _loadingOlderMeals = false;
   bool _olderMealsExhausted = false;
   bool _addressPickerOpen = false;
+  final ScrollController _feedScrollController = ScrollController();
 
   final List<Map<String, dynamic>> _dietFilters = const [
     {'name': 'All', 'icon': Icons.tune},
@@ -153,27 +153,48 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     _mealsStream = Stream<List<Map<String, dynamic>>>.value(const []);
   }
 
-  Future<List<Map<String, dynamic>>> _fetchHomeMealCatalog() async {
-    try {
-      final rows = await Supabase.instance.client
+  Future<List<Map<String, dynamic>>> _fetchMealsCatalog({String? chefId}) async {
+    Future<List<Map<String, dynamic>>> run(String columns) async {
+      var query = Supabase.instance.client
           .from('meals')
-          .select(kHomeMealCatalogSelect)
-          .eq('status', 'Available')
-          .order('created_at', ascending: false)
-          .limit(kHomeMealStreamLimit)
-          .withTimeout(NetworkTimeouts.standard);
-      return List<Map<String, dynamic>>.from(rows as List);
-    } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Home meals catalog select failed');
-      final rows = await Supabase.instance.client
-          .from('meals')
-          .select(kHomeMealCatalogSelectMinimal)
-          .eq('status', 'Available')
+          .select(columns)
+          .eq('status', 'Available');
+      if (chefId != null && chefId.isNotEmpty) {
+        query = query.eq('chef_id', chefId);
+      }
+      final rows = await query
           .order('created_at', ascending: false)
           .limit(kHomeMealStreamLimit)
           .withTimeout(NetworkTimeouts.standard);
       return List<Map<String, dynamic>>.from(rows as List);
     }
+
+    try {
+      return await run(kHomeMealCatalogSelect);
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(
+        e,
+        stack,
+        reason: chefId == null ? 'Home meals catalog select failed' : 'Chef kitchen catalog select failed',
+      );
+      return run(kHomeMealCatalogSelectMinimal);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchHomeMealCatalog() => _fetchMealsCatalog();
+
+  void _scrollFeedHome() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final controller = _feedScrollController;
+      if (!controller.hasClients) return;
+      final position = controller.position;
+      if (!position.hasPixels || !position.hasContentDimensions) return;
+      if (position.pixels <= position.minScrollExtent) return;
+      try {
+        controller.jumpTo(position.minScrollExtent);
+      } catch (_) {}
+    });
   }
 
   Future<void> _refreshMealsRestSnapshot() async {
@@ -383,6 +404,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     WidgetsBinding.instance.removeObserver(this);
     _authSub?.cancel();
     _searchController.dispose();
+    _feedScrollController.dispose();
     super.dispose();
   }
 
@@ -409,6 +431,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         _offerBrowseLabel = null;
       _offerBrowseGroupKey = null;
       });
+      _scrollFeedHome();
       return;
     }
 
@@ -605,41 +628,37 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     final id = chef['id']?.toString() ?? '';
     if (id.isEmpty) return;
     final name = chefDisplayName(chef);
+    final local = (_mealsRestSnapshot ?? [])
+        .where((m) => m['chef_id']?.toString() == id)
+        .toList();
     setState(() {
-      _isAiSearching = true;
+      _isAiSearching = local.isEmpty;
       _hasActiveSearch = true;
       _filteredChefId = id;
       _filteredChefName = name;
       _offerBrowseLabel = null;
       _offerBrowseGroupKey = null;
       _searchController.text = name;
+      _aiSearchResults = local;
+      final others = _chefSearchResults.where((c) => c['id']?.toString() != id).toList();
+      _chefSearchResults = [chef, ...others];
     });
+    _scrollFeedHome();
     try {
-      final rows = await Supabase.instance.client
-          .from('meals')
-          .select()
-          .eq('status', 'Available')
-          .eq('chef_id', id)
-          .limit(kHomeMealStreamLimit)
-          .withTimeout(NetworkTimeouts.standard);
-      final meals = List<Map<String, dynamic>>.from(rows as List).where((m) {
+      var meals = (await _fetchMealsCatalog(chefId: id)).where((m) {
         final status = m['status']?.toString().toLowerCase() ?? '';
         final isInventory = (m['customer_name'] == null || m['customer_name'].toString().isEmpty);
         return isInventory && status != 'paused' && status != 'cancelled';
       }).toList();
+      if (meals.isEmpty) meals = local;
       if (!mounted) return;
-      setState(() {
-        _aiSearchResults = meals;
-        // Keep the selected chef first in the strip.
-        final others = _chefSearchResults.where((c) => c['id']?.toString() != id).toList();
-        _chefSearchResults = [chef, ...others];
-      });
+      setState(() => _aiSearchResults = meals);
+      _scrollFeedHome();
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Filter feed to chef failed');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(networkErrorMessage(e)), backgroundColor: Colors.red),
-      );
+      setState(() => _aiSearchResults = local);
+      _scrollFeedHome();
     } finally {
       if (mounted) setState(() => _isAiSearching = false);
     }
@@ -656,6 +675,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       _offerBrowseLabel = null;
       _offerBrowseGroupKey = null;
     });
+    _scrollFeedHome();
+    if (_mealsRestSnapshot == null || _mealsRestSnapshot!.isEmpty) {
+      unawaited(_refreshMealsRestSnapshot());
+    }
   }
 
   Future<void> _showGroupedOfferMeals(String groupKey) async {
@@ -671,17 +694,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       _searchController.clear();
     });
     try {
-      final client = Supabase.instance.client;
-      final rows = await client
-          .from('meals')
-          .select()
-          .eq('status', 'Available')
-          .limit(kHomeMealStreamLimit)
-          .withTimeout(NetworkTimeouts.standard);
       final destLat = addressCoordinate(_selectedAddressMap, latitude: true);
       final destLng = addressCoordinate(_selectedAddressMap, latitude: false);
       final meals = <Map<String, dynamic>>[];
-      for (final raw in List<Map<String, dynamic>>.from(rows as List)) {
+      for (final raw in await _fetchMealsCatalog()) {
         if (offerFlashGroupKeyForMeal(raw) != groupKey) continue;
         if (!mealHasFlashableOffer(raw)) continue;
         final chefId = raw['chef_id']?.toString() ?? '';
@@ -704,6 +720,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       });
       if (!mounted) return;
       setState(() => _aiSearchResults = meals);
+      _scrollFeedHome();
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: '$label offer browse failed');
       if (!mounted) return;
@@ -1197,6 +1214,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     );
 
     return SingleChildScrollView(
+      controller: _feedScrollController,
       padding: const EdgeInsets.only(bottom: 120),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1492,6 +1510,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
 
           if (!_hasActiveSearch)
             LiveOffersFlashBanner(
+              meals: _mealsRestSnapshot ?? const [],
               excludedChefIds: _closedChefIds,
               destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
               destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
@@ -1609,20 +1628,21 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           else if (_hasActiveSearch) ...[
             if (_chefSearchResults.isNotEmpty) _buildChefSearchStrip(_chefSearchResults),
             _buildMealGrid(
-              _applyFeedChips(_mealsForSelectedAddress(_filterFollowedMeals(
-                () {
-                  var meals = showFavorites
-                      ? _aiSearchResults.where((m) => widget.favoriteMeals.contains(m['id'].toString())).toList()
-                      : List<Map<String, dynamic>>.from(_aiSearchResults);
-                  final chefId = _filteredChefId;
-                  if (chefId != null && chefId.isNotEmpty) {
-                    meals = meals.where((m) => m['chef_id']?.toString() == chefId).toList();
-                  }
-                  return meals;
-                }(),
-                followedKitchens,
-                showFollowing,
-              ))),
+              () {
+                var meals = showFavorites
+                    ? _aiSearchResults.where((m) => widget.favoriteMeals.contains(m['id'].toString())).toList()
+                    : List<Map<String, dynamic>>.from(_aiSearchResults);
+                final chefId = _filteredChefId;
+                if (chefId != null && chefId.isNotEmpty) {
+                  meals = meals.where((m) => m['chef_id']?.toString() == chefId).toList();
+                  return _applyFeedChips(meals);
+                }
+                return _applyFeedChips(_mealsForSelectedAddress(_filterFollowedMeals(
+                  meals,
+                  followedKitchens,
+                  showFollowing,
+                )));
+              }(),
               isLoggedIn: isLoggedIn,
               showFavorites: showFavorites,
               showFollowing: showFollowing,
@@ -1737,15 +1757,17 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   }
 
   List<Map<String, dynamic>> _applyFeedChips(List<Map<String, dynamic>> meals) {
+    final kitchenBrowse = _filteredChefId != null && _filteredChefId!.isNotEmpty;
     final filtered = meals
         .where((meal) =>
             mealMatchesFeedDiet(meal, _selectedDiet) &&
             mealMatchesCuisine(meal, _selectedCategory) &&
-            mealMatchesHomeMode(
-              meal,
-              mode: _homeMode,
-              chefProfile: _chefKitchenProfiles[meal['chef_id']?.toString()],
-            ))
+            (kitchenBrowse ||
+                mealMatchesHomeMode(
+                  meal,
+                  mode: _homeMode,
+                  chefProfile: _chefKitchenProfiles[meal['chef_id']?.toString()],
+                )))
         .toList();
     WidgetsBinding.instance.addPostFrameCallback((_) => _hydrateChefRatings(filtered));
     return sortFeedMeals(
@@ -1984,9 +2006,8 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
           title: Text('More kitchens', style: AppTheme.homeSectionLabelOf(context).copyWith(fontSize: 16)),
-          subtitle: const Text('Rescued plates, hampers, society nights, shelf'),
+          subtitle: const Text('Hampers, society nights, shelf'),
           children: [
-            const RescuedMealsBanner(),
             FestivalHampersBanner(
               excludedChefIds: _closedChefIds,
               destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
@@ -2185,25 +2206,52 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         final meal = meals[index];
         final offerSummary = PricingCalculator.calculateItemSummary(meal, 1);
         final price = offerSummary.effectiveUnitPrice;
+        final showOfferPrice = offerSummary.baseUnitPrice - price > 0.004;
         final chefName = chefDisplayName({...?_chefKitchenProfiles[meal['chef_id']?.toString()], ...meal});
         final image = meal['image_url']?.toString();
         final prep = kitchenPrepMinutes(_chefKitchenProfiles[meal['chef_id']?.toString()], meal);
+        final offerBadge = showOfferPrice ? PricingCalculator.offerBadgeLabel(meal) : '';
         return GestureDetector(
           onTap: () => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
           child: Container(
             padding: const EdgeInsets.all(10),
             decoration: AppTheme.cardDecoration(isDark: Theme.of(context).brightness == Brightness.dark),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: SizedBox(
-                    width: 72,
-                    height: 72,
-                    child: image == null || image.isEmpty
-                        ? ColoredBox(color: AppTheme.photoFallback, child: Icon(Icons.ramen_dining, color: AppTheme.textMuted))
-                        : CachedNetworkImage(imageUrl: image, fit: BoxFit.cover),
-                  ),
+                Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: SizedBox(
+                        width: 72,
+                        height: 72,
+                        child: image == null || image.isEmpty
+                            ? ColoredBox(color: AppTheme.photoFallback, child: Icon(Icons.ramen_dining, color: AppTheme.textMuted))
+                            : CachedNetworkImage(imageUrl: image, fit: BoxFit.cover),
+                      ),
+                    ),
+                    if (showOfferPrice && offerBadge.isNotEmpty)
+                      Positioned(
+                        left: 4,
+                        bottom: 4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade600,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            offerBadge,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -2227,15 +2275,42 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                         const SizedBox(height: 2),
                         Text('Prep: $prep mins', style: AppTheme.caption),
                       ],
+                      const SizedBox(height: 6),
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 2,
+                        children: [
+                          if (showOfferPrice)
+                            Text(
+                              '₹${offerSummary.baseUnitPrice.round()}',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: AppTheme.textMuted,
+                                decoration: TextDecoration.lineThrough,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          Text(
+                            '₹${price.round()}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                              color: AppTheme.primary,
+                            ),
+                          ),
+                          if (showOfferPrice && offerBadge.isNotEmpty)
+                            Text(
+                              offerBadge,
+                              style: TextStyle(
+                                color: Colors.red.shade700,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                        ],
+                      ),
                     ],
-                  ),
-                ),
-                Text(
-                  '₹${price.toStringAsFixed(0)}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
-                    color: AppTheme.primary,
                   ),
                 ),
               ],
@@ -2357,25 +2432,22 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                   width: double.infinity,
                                   color: AppTheme.photoFallback,
                                   child: meal['image_url'] != null
-                                      ? Hero(
-                                          tag: 'meal-image-${meal['id']}',
-                                          child: CachedNetworkImage(
-                                            imageUrl: meal['image_url'].toString(),
-                                            fit: BoxFit.cover,
-                                            width: double.infinity,
-                                            height: double.infinity,
-                                            placeholder: (_, _) => const AppShimmer(
-                                              child: ShimmerBox(
-                                                width: double.infinity,
-                                                height: 188,
-                                                borderRadius: BorderRadius.zero,
-                                              ),
+                                      ? CachedNetworkImage(
+                                          imageUrl: meal['image_url'].toString(),
+                                          fit: BoxFit.cover,
+                                          width: double.infinity,
+                                          height: double.infinity,
+                                          placeholder: (_, _) => const AppShimmer(
+                                            child: ShimmerBox(
+                                              width: double.infinity,
+                                              height: 188,
+                                              borderRadius: BorderRadius.zero,
                                             ),
-                                            errorWidget: (_, _, _) => const Icon(
-                                              Icons.soup_kitchen_outlined,
-                                              color: Color(0xFFC4A484),
-                                              size: 40,
-                                            ),
+                                          ),
+                                          errorWidget: (_, _, _) => const Icon(
+                                            Icons.soup_kitchen_outlined,
+                                            color: Color(0xFFC4A484),
+                                            size: 40,
                                           ),
                                         )
                                       : const Icon(

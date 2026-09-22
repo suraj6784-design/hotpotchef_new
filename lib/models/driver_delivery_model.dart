@@ -20,6 +20,9 @@ enum DeliveryStatus {
     if (s.contains('cancel')) return DeliveryStatus.cancelled;
     if (s.contains('out')) return DeliveryStatus.outForDelivery;
     if (s.contains('delivered') || s.contains('completed')) return DeliveryStatus.delivered;
+    if (s.contains('heading') || s.contains('en route to pickup') || s.contains('on the way to pickup')) {
+      return DeliveryStatus.pickedUp;
+    }
     if (s.contains('assigned') || s == 'accepted') return DeliveryStatus.accepted;
     if (s.contains('ready')) return DeliveryStatus.readyForPickup;
     if (s.contains('pickup') || s.contains('picked')) return DeliveryStatus.pickedUp;
@@ -38,7 +41,7 @@ enum DeliveryStatus {
       case DeliveryStatus.accepted:
         return 'Driver Assigned';
       case DeliveryStatus.pickedUp:
-        return 'Ready for Pickup';
+        return 'Heading to Kitchen';
       case DeliveryStatus.outForDelivery:
         return 'Out for Delivery';
       case DeliveryStatus.delivered:
@@ -129,7 +132,7 @@ class DriverDeliveryModel {
         if (selectedDate != null && selectedDate!.isNotEmpty) 'selected_date': selectedDate,
       };
 
-  /// After Start Delivery / Out for Delivery → navigate to customer; before that → kitchen.
+  /// After pickup / Out for Delivery → navigate to customer; before that → kitchen.
   bool get navigateToCustomer => driverRunIsOutForDelivery(statusLabel.isEmpty ? status.toDbValue() : statusLabel);
 
   String get navigateLeg => navigateToCustomer ? 'dropoff' : 'pickup';

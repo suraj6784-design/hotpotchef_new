@@ -1015,8 +1015,7 @@ void showMealDetailsDialog(
   WidgetRef ref, {
   VoidCallback? onGoToCart,
 }) {
-  Navigator.push(
-    context,
+  Navigator.of(context, rootNavigator: true).push(
     appMaterialRoute(
       Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -1280,19 +1279,16 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
               children: [
                 Stack(
                   children: [
-                    Hero(
-                      tag: 'meal-image-${meal['id']}',
-                      child: WatermarkedMealImage(
-                        imageUrl: meal['image_url'],
-                        height: 300,
-                        borderRadius: BorderRadius.zero,
-                      ),
+                    WatermarkedMealImage(
+                      imageUrl: meal['image_url'],
+                      height: 300,
+                      borderRadius: BorderRadius.zero,
                     ),
                     Positioned(
                       top: MediaQuery.of(context).padding.top + 8,
                       left: 16,
                       child: GestureDetector(
-                        onTap: () => Navigator.pop(context),
+                        onTap: () => Navigator.of(context, rootNavigator: true).maybePop(),
                         child: Container(
                           padding: const EdgeInsets.all(8),
                           decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),

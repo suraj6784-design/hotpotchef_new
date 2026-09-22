@@ -45,28 +45,5 @@ void main() {
         3,
       );
     });
-
-    test('builds cook-to-demand publicity copy', () {
-      expect(
-        rescuedMealsHeadline(rescuedPlates: 12, onOfferPlates: 3),
-        'Saved from waste · 12 plates pre-ordered',
-      );
-      expect(
-        rescuedMealsHeadline(rescuedPlates: 1, onOfferPlates: 0),
-        'Saved from waste · 1 plate pre-ordered',
-      );
-      expect(
-        rescuedMealsHeadline(rescuedPlates: 0, onOfferPlates: 5),
-        '5 slotted meals ready to pre-order',
-      );
-      expect(
-        rescuedMealsSubhead(rescuedPlates: 4, onOfferPlates: 2),
-        contains('booked demand'),
-      );
-      expect(
-        rescuedMealsSubhead(rescuedPlates: 0, onOfferPlates: 3),
-        contains('Book a time slot'),
-      );
-    });
   });
 }

@@ -301,9 +301,21 @@ class ChefSocialChips extends StatelessWidget {
   }
 }
 
-/// Diner dock is Home, Orders, Account, Alerts. Cart is not a dock tab, so it
-/// must not highlight Home — otherwise tapping Home is ignored as "already selected".
-int dinerHubDockIndex(int hubIndex) {
+/// Diner dock is Home, Orders, Account, Alerts when signed in. Guests only get
+/// Home and Account — Orders and Alerts are empty without a session.
+int dinerHubDockIndex(int hubIndex, {bool signedIn = true}) {
+  if (!signedIn) {
+    switch (hubIndex) {
+      case 1:
+      case 2:
+      case 4:
+        return -1;
+      case 3:
+        return 1;
+      default:
+        return 0;
+    }
+  }
   switch (hubIndex) {
     case 1:
       return -1;
@@ -316,4 +328,14 @@ int dinerHubDockIndex(int hubIndex) {
     default:
       return 0;
   }
+}
+
+int dinerHubIndexForDock(int dock, {bool signedIn = true}) {
+  if (!signedIn) {
+    if (dock <= 0) return 0;
+    return 3;
+  }
+  const tabs = [0, 2, 3, 4];
+  if (dock < 0 || dock >= tabs.length) return 0;
+  return tabs[dock];
 }

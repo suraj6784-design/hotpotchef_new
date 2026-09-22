@@ -5,12 +5,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../utils/helpers.dart';
 import '../utils/pricing_calculator.dart';
-import '../utils/delivery_fee.dart';
 import 'app_widgets.dart';
 
 class LiveOffersFlashBanner extends StatefulWidget {
   const LiveOffersFlashBanner({
     super.key,
+    this.meals = const [],
     this.excludedChefIds = const {},
     this.destinationLat,
     this.destinationLng,
@@ -18,6 +18,8 @@ class LiveOffersFlashBanner extends StatefulWidget {
     required this.onOfferTap,
   });
 
+  /// Home catalog rows. Avoids a Realtime `select *` that greys guest Home.
+  final List<Map<String, dynamic>> meals;
   final Set<String> excludedChefIds;
   final double? destinationLat;
   final double? destinationLng;
@@ -30,7 +32,6 @@ class LiveOffersFlashBanner extends StatefulWidget {
 
 class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
     with TickerProviderStateMixin {
-  late final Stream<List<Map<String, dynamic>>> _mealsStream;
   late final PageController _pageController;
   late final AnimationController _shimmer;
   late final AnimationController _pulse;
@@ -45,12 +46,6 @@ class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
   @override
   void initState() {
     super.initState();
-    _mealsStream = Supabase.instance.client
-        .from('meals')
-        .stream(primaryKey: ['id'])
-        .eq('status', 'Available')
-        .order('created_at', ascending: false)
-        .limit(kHomeMealStreamLimit);
     _pageController = PageController(viewportFraction: 0.92);
     _shimmer = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800))
       ..repeat();
@@ -121,39 +116,36 @@ class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: _mealsStream,
-      builder: (context, snapshot) {
-        final rows = snapshot.data ?? const <Map<String, dynamic>>[];
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _hydrateKitchenHours(rows);
-        });
-        final unresolvedChefs = <String>{};
-        for (final meal in rows) {
-          final chefId = meal['chef_id']?.toString() ?? '';
-          if (chefId.isNotEmpty && !_resolvedChefIds.contains(chefId)) {
-            unresolvedChefs.add(chefId);
-          }
-        }
-        final offers = flashableOfferMeals(
-          rows,
-          excludedChefIds: {
-            ...widget.excludedChefIds,
-            ..._closedChefIds,
-            ...unresolvedChefs,
-          },
-          destinationLat: widget.destinationLat,
-          destinationLng: widget.destinationLng,
-          chefKitchenPins: widget.chefKitchenPins,
-          excludeFestivalHampers: true,
-        );
-        if (offers.isEmpty) return const SizedBox.shrink();
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _syncRotation(offers.length);
-        });
-        final current = _page % offers.length;
+    final rows = widget.meals;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _hydrateKitchenHours(rows);
+    });
+    final unresolvedChefs = <String>{};
+    for (final meal in rows) {
+      final chefId = meal['chef_id']?.toString() ?? '';
+      if (chefId.isNotEmpty && !_resolvedChefIds.contains(chefId)) {
+        unresolvedChefs.add(chefId);
+      }
+    }
+    final offers = flashableOfferMeals(
+      rows,
+      excludedChefIds: {
+        ...widget.excludedChefIds,
+        ..._closedChefIds,
+        ...unresolvedChefs,
+      },
+      destinationLat: widget.destinationLat,
+      destinationLng: widget.destinationLng,
+      chefKitchenPins: widget.chefKitchenPins,
+      excludeFestivalHampers: true,
+    );
+    if (offers.isEmpty) return const SizedBox.shrink();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncRotation(offers.length);
+    });
+    final current = _page % offers.length;
 
-        return Padding(
+    return Padding(
           padding: const EdgeInsets.fromLTRB(0, 4, 0, 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -223,8 +215,6 @@ class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
             ],
           ),
         );
-      },
-    );
   }
 }
 

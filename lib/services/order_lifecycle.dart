@@ -37,9 +37,40 @@ class OrderLifecycle {
     return s.contains('ready') || s.contains('assigned') || s.contains('accept');
   }
 
+  /// After accept: partner is going to the chef kitchen.
+  static bool canDriverMarkHeadingToPickup(String? status) {
+    final s = normalize(status);
+    if (isHeadingToPickup(status) || canDriverCompleteRun(status)) return false;
+    return canDriverStartRun(status);
+  }
+
+  static bool isHeadingToPickup(String? status) {
+    final s = normalize(status);
+    return s.contains('heading') ||
+        s.contains('en route to pickup') ||
+        s.contains('on the way to pickup');
+  }
+
+  static bool canDriverConfirmPickup(String? status) => isHeadingToPickup(status);
+
   static bool canDriverCompleteRun(String? status) {
     final s = normalize(status);
     return s.contains('out') && !s.contains('timeout');
+  }
+
+  static String driverHubBadge(String? status) {
+    if (canDriverMarkHeadingToPickup(status) || isHeadingToPickup(status)) {
+      return 'On the way to pickup';
+    }
+    final raw = status?.trim() ?? '';
+    return raw.isEmpty ? 'Delivery' : raw;
+  }
+
+  static String driverHubActionLabel(String? status) {
+    if (canDriverCompleteRun(status)) return 'Mark Delivered';
+    if (canDriverConfirmPickup(status)) return 'Picked up';
+    if (canDriverMarkHeadingToPickup(status)) return 'On the way to pickup';
+    return '';
   }
 
   /// Orders the kitchen already accepted and still owes the customer.
@@ -57,6 +88,7 @@ class OrderLifecycle {
     final s = normalize(status);
     return s.contains('ready') ||
         s.contains('assigned') ||
+        s.contains('heading') ||
         s.contains('out for delivery') ||
         s.contains('out_for_delivery');
   }
@@ -68,12 +100,27 @@ class OrderLifecycle {
     return s.contains('delivered') || s.contains('completed');
   }
 
+  /// Live map after the kitchen marks Ready for Pickup (and while the partner is en route).
   static bool isTrackable(String? status) {
+    if (isFulfilled(status)) return false;
     final s = normalize(status);
-    if (s.contains('cancel') || s.contains('reject') || isFulfilled(status)) {
-      return false;
+    if (s.contains('cancel') || s.contains('reject')) return false;
+    return isDispatchQueue(status);
+  }
+
+  static String dinerOrderCardBadge(String? status) {
+    final s = normalize(status);
+    if (s.contains('cancel') || s.contains('reject')) return 'Cancelled';
+    if (isFulfilled(status)) return 'Delivered';
+    if (s.contains('out') || s.contains('assigned') || s.contains('heading')) {
+      return 'On the way';
     }
-    return s.isNotEmpty;
+    if (s.contains('ready') || s.contains('packed')) return 'Ready for pickup';
+    if (isPendingKitchen(status)) return 'Waiting for chef';
+    if (s.contains('prepar')) return 'Preparing';
+    if (s.contains('confirm')) return 'Confirmed';
+    final raw = status?.trim() ?? '';
+    return raw.isEmpty ? 'In the kitchen' : raw;
   }
 
   /// Diner timeline: 0 kitchen, 1 packed, 2 on the way, 3 delivered. `-1` cancelled.
@@ -81,7 +128,7 @@ class OrderLifecycle {
     final s = normalize(status);
     if (s.contains('cancel') || s.contains('reject')) return -1;
     if (isFulfilled(status)) return 3;
-    if (s.contains('out') || s.contains('assigned')) return 2;
+    if (s.contains('out') || s.contains('assigned') || s.contains('heading')) return 2;
     if (s.contains('ready') || s.contains('packed')) return 1;
     return 0;
   }
@@ -92,7 +139,11 @@ class OrderLifecycle {
     final s = normalize(status);
     if (s.contains('cancel') || s.contains('reject')) return false;
     if (s.contains('delivered') || s.contains('completed')) return false;
-    if (s.contains('prepar') || s.contains('ready') || s.contains('out') || s.contains('assigned')) {
+    if (s.contains('prepar') ||
+        s.contains('ready') ||
+        s.contains('out') ||
+        s.contains('assigned') ||
+        s.contains('heading')) {
       return false;
     }
     return true;
@@ -124,7 +175,7 @@ class OrderLifecycle {
       return service.usesDeliveryPartner ? null : OrderStatus.delivered;
     }
 
-    if (s == 'ready for pickup' || s == 'driver assigned') {
+    if (s == 'ready for pickup' || s == 'driver assigned' || s == 'heading to kitchen') {
       switch (service) {
         case ServiceType.deliveryPlatform:
           return null;
@@ -139,7 +190,8 @@ class OrderLifecycle {
   }
 
   static String? nextDriverStatus(String? current) {
-    if (canDriverStartRun(current)) return OrderStatus.outForDelivery;
+    if (canDriverMarkHeadingToPickup(current)) return OrderStatus.headingToKitchen;
+    if (canDriverConfirmPickup(current)) return OrderStatus.outForDelivery;
     if (canDriverCompleteRun(current)) return OrderStatus.delivered;
     return null;
   }

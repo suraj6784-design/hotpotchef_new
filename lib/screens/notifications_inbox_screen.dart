@@ -14,6 +14,7 @@ import '../utils/network.dart';
 import '../utils/notification_copy.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/diner_storefront.dart';
+import '../widgets/customer_ui_components.dart';
 
 class NotificationsInboxScreen extends StatefulWidget {
   const NotificationsInboxScreen({
@@ -257,8 +258,14 @@ class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
                           icon: Icons.notifications_off_outlined,
                           title: DinerLocaleController.instance.copy.notifications,
                           message: _error,
-                          actionLabel: 'Retry',
-                          onAction: _load,
+                          actionLabel: Supabase.instance.client.auth.currentUser == null
+                              ? 'Sign In'
+                              : 'Retry',
+                          onAction: Supabase.instance.client.auth.currentUser == null
+                              ? () => showAuthBottomSheet(context, () {
+                                    if (mounted) unawaited(_load());
+                                  })
+                              : _load,
                         ),
                       ),
                     ],

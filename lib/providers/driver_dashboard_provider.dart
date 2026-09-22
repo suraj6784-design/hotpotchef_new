@@ -262,7 +262,7 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
 
   Future<bool> updateDeliveryStatus(
     String orderId,
-    DeliveryStatus nextStatus, {
+    String currentStatus, {
     String? deliveryOtp,
     String? podPhotoUrl,
   }) async {
@@ -270,16 +270,13 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
     if (user == null) return false;
 
     try {
-      final current = nextStatus == DeliveryStatus.delivered
-          ? OrderStatus.outForDelivery
-          : OrderStatus.driverAssigned;
-      if (OrderLifecycle.nextDriverStatus(current) == null) {
+      if (OrderLifecycle.nextDriverStatus(currentStatus) == null) {
         state = state.copyWith(errorMessage: 'This run is not at a delivery step yet.');
         return false;
       }
       await _lifecycle.advanceDriver(
         orderId: orderId,
-        currentStatus: current,
+        currentStatus: currentStatus,
         deliveryOtp: deliveryOtp,
         podPhotoUrl: podPhotoUrl,
       );

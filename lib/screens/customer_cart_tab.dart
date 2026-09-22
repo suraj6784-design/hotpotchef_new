@@ -17,6 +17,7 @@ import '../providers/delivery_preference.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/group_order_modal.dart';
+import '../services/reorder_service.dart';
 import 'checkout_screen.dart';
 import 'customer_hub.dart';
 
@@ -102,6 +103,144 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
       return true;
     }
     return false;
+  }
+
+  List<CartItemAddOn> _catalogExtras(CartItemModel item) {
+    return ReorderService.parseMealAddOns(
+      item.rawMealDetails['add_ons'] ?? item.rawMealDetails['addons'],
+    );
+  }
+
+  Future<void> _editCartExtras(CartItemModel item) async {
+    var catalog = _catalogExtras(item);
+    if (catalog.isEmpty) {
+      try {
+        final row = await Supabase.instance.client
+            .from('meals')
+            .select('add_ons')
+            .eq('id', item.mealId)
+            .maybeSingle();
+        catalog = ReorderService.parseMealAddOns(row?['add_ons']);
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    if (catalog.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This plate has no extras from the kitchen yet.')),
+      );
+      return;
+    }
+
+    final selectedIds = catalog
+        .where((addon) => item.selectedAddOns.any((picked) => picked.id == addon.id || picked.title == addon.title))
+        .map((addon) => addon.id)
+        .toSet();
+
+    final picked = await showModalBottomSheet<List<CartItemAddOn>>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return Container(
+              decoration: AppTheme.bottomSheetDecoration(
+                isDark: Theme.of(ctx).brightness == Brightness.dark,
+              ),
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 28),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Add extra',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.onSurfaceOf(ctx),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Optional sides for ${item.title}',
+                    style: const TextStyle(fontSize: 13, color: AppTheme.textMuted),
+                  ),
+                  const SizedBox(height: 16),
+                  ...catalog.map((addon) {
+                    final selected = selectedIds.contains(addon.id);
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: InkWell(
+                        onTap: () => setSheetState(() {
+                          if (selected) {
+                            selectedIds.remove(addon.id);
+                          } else {
+                            selectedIds.add(addon.id);
+                          }
+                        }),
+                        borderRadius: AppTheme.radiusMd,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: selected
+                                ? AppTheme.primary.withValues(alpha: 0.1)
+                                : AppTheme.surfaceOf(ctx),
+                            borderRadius: AppTheme.radiusMd,
+                            border: Border.all(
+                              color: selected ? AppTheme.primary : AppTheme.hairlineOf(ctx),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                selected ? Icons.check_circle : Icons.circle_outlined,
+                                color: selected ? AppTheme.primary : AppTheme.textMuted,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  addon.title,
+                                  style: const TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                              Text(
+                                addon.price > 0 ? '+₹${addon.price.toInt()}' : 'Free',
+                                style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.link),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 8),
+                  FilledButton(
+                    onPressed: () {
+                      Navigator.pop(
+                        ctx,
+                        catalog.where((addon) => selectedIds.contains(addon.id)).toList(),
+                      );
+                    },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppTheme.primary,
+                      minimumSize: const Size.fromHeight(46),
+                    ),
+                    child: const Text('Save extras'),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+    if (picked == null || !mounted) return;
+    ref.read(cartProvider.notifier).updateItemAddOns(
+          item.id,
+          picked,
+          catalog: [for (final addon in catalog) addon.toJson()],
+        );
   }
 
   @override
@@ -355,8 +494,29 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                               ))
                           .toList(),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4),
                   ],
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: () => _editCartExtras(item),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppTheme.primary,
+                        padding: const EdgeInsets.symmetric(horizontal: 0),
+                        minimumSize: const Size(0, 36),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      icon: Icon(
+                        item.selectedAddOns.isEmpty ? Icons.add_circle_outline : Icons.tune,
+                        size: 18,
+                      ),
+                      label: Text(
+                        item.selectedAddOns.isEmpty ? 'Add extra' : 'Change extras',
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
 
                   Row(
                     children: [

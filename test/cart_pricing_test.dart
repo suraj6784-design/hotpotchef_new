@@ -2,6 +2,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hotpotchef_new/models/cart_state.dart';
 import 'package:hotpotchef_new/models/cart_enums.dart';
+import 'package:hotpotchef_new/models/pricing_models.dart';
 import 'package:hotpotchef_new/utils/helpers.dart';
 import 'package:hotpotchef_new/utils/pricing_calculator.dart';
 
@@ -57,6 +58,53 @@ void main() {
 
       final state = CartState(items: [item]);
       expect(state.getEffectiveItemTotal(item), 320.0);
+    });
+
+    test('applies a chef 10% off list price when the window is open or unset', () {
+      final meal = {
+        'price': 121,
+        'offer_type': 'percentage',
+        'discount_value': 10,
+        'max_discount_cap': 50,
+      };
+      expect(PricingCalculator.calculateItemSummary(meal, 1).effectiveUnitPrice, 108.9);
+      expect(
+        PricingCalculator.calculateItemSummary({
+          ...meal,
+          'offer_valid_until': DateTime.now().add(const Duration(days: 7)).toIso8601String(),
+        }, 1).isOfferApplied,
+        isTrue,
+      );
+      expect(
+        PricingCalculator.calculateItemSummary({
+          ...meal,
+          'offer_valid_until': DateTime.now().subtract(const Duration(hours: 1)).toIso8601String(),
+        }, 1).isOfferApplied,
+        isFalse,
+      );
+    });
+
+    test('chef Update Meal with yesterday as offer end keeps the 10% standing', () {
+      final now = DateTime(2026, 9, 22, 14, 33);
+      expect(
+        PricingCalculator.chefOfferExpiryIso(
+          offerType: OfferType.percentage,
+          endDate: DateTime(2026, 9, 21),
+          hour: 23,
+          minute: 59,
+          now: now,
+        ),
+        isNull,
+      );
+      final kept = PricingCalculator.chefOfferExpiryIso(
+        offerType: OfferType.percentage,
+        endDate: DateTime(2026, 9, 29),
+        hour: 23,
+        minute: 59,
+        now: now,
+      );
+      expect(kept, isNotNull);
+      expect(DateTime.parse(kept!).isAfter(now.toUtc()), isTrue);
     });
 
     test('Respects offer expiration correctly', () {

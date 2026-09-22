@@ -45,11 +45,17 @@ class CustomerHubScreen extends ConsumerStatefulWidget {
 class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
   int _selectedIndex = 0;
   int _ordersEpoch = 0;
+  StreamSubscription<AuthState>? _authSub;
+
+  bool get _signedIn => Supabase.instance.client.auth.currentUser != null;
 
   @override
   void initState() {
     super.initState();
     _selectedIndex = widget.initialTab;
+    if (!_signedIn && (_selectedIndex == 2 || _selectedIndex == 4)) {
+      _selectedIndex = 0;
+    }
     if (CustomerHubScreen.returnToCartAfterLogin && Supabase.instance.client.auth.currentUser != null) {
       _selectedIndex = 1;
       CustomerHubScreen.returnToCartAfterLogin = false;
@@ -58,6 +64,14 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
         Supabase.instance.client.auth.currentUser != null) {
       unawaited(AuthSession.ensureHubRole(context, AppRole.customer));
     }
+    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      if (!mounted) return;
+      if (data.session == null && (_selectedIndex == 2 || _selectedIndex == 4)) {
+        setState(() => _selectedIndex = 0);
+      } else {
+        setState(() {});
+      }
+    });
   }
 
   Future<void> _handleLogout() async {
@@ -69,6 +83,12 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
       ref.invalidate(mealPlansProvider);
     });
     if (signedOut && mounted) setState(() => _selectedIndex = 0);
+  }
+
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    super.dispose();
   }
 
   void _navigateToProfile() {
@@ -85,10 +105,10 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
     });
   }
 
-  int get _dockIndex => dinerHubDockIndex(_selectedIndex);
+  int get _dockIndex => dinerHubDockIndex(_selectedIndex, signedIn: _signedIn);
 
   void _onDockTapped(int dock) {
-    _onNavigationItemTapped(const [0, 2, 3, 4][dock]);
+    _onNavigationItemTapped(dinerHubIndexForDock(dock, signedIn: _signedIn));
   }
 
   @override
@@ -225,9 +245,11 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
                   onSelect: _onDockTapped,
                   destinations: [
                     HubDockDestination(icon: Icons.home_outlined, selectedIcon: Icons.home_rounded, label: copy.home),
-                    HubDockDestination(icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: copy.orders),
+                    if (_signedIn)
+                      HubDockDestination(icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: copy.orders),
                     HubDockDestination(icon: Icons.person_outline, selectedIcon: Icons.person, label: copy.account),
-                    HubDockDestination(icon: Icons.notifications_none, selectedIcon: Icons.notifications, label: copy.notifications),
+                    if (_signedIn)
+                      HubDockDestination(icon: Icons.notifications_none, selectedIcon: Icons.notifications, label: copy.notifications),
                   ],
                 );
               },

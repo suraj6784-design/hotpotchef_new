@@ -5,6 +5,7 @@
 // friendly empty states, and consistent entrance animations.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:shimmer/shimmer.dart';
 
@@ -698,6 +699,38 @@ class HubTabSwitcher extends StatelessWidget {
 /// Space so hub tab content clears the overlaid [HubBottomDock].
 double hubDockBodyGap(BuildContext context) {
   return 80 + MediaQuery.paddingOf(context).bottom;
+}
+
+/// Hardware back on a hub: nested tabs (Packaging, Orders, …) go Home first.
+bool hubHardwareBackReturnsHome(int selectedIndex) => selectedIndex != 0;
+
+Future<void> handleHubHardwareBack({
+  required BuildContext context,
+  required int selectedIndex,
+  required VoidCallback goHome,
+}) async {
+  if (hubHardwareBackReturnsHome(selectedIndex)) {
+    goHome();
+    return;
+  }
+  final shouldExit = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Exit App'),
+      content: const Text('Are you sure you want to exit?'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('Exit'),
+        ),
+      ],
+    ),
+  );
+  if (shouldExit == true) SystemNavigator.pop();
 }
 
 /// Full-width storefront bar used on diner, chef, and driver hubs.

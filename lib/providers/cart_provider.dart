@@ -551,6 +551,43 @@ class CartNotifier extends Notifier<CartState> {
     }
   }
 
+  void updateItemAddOns(
+    String cartItemId,
+    List<CartItemAddOn> addOns, {
+    dynamic catalog,
+  }) {
+    final index = state.items.indexWhere((i) => i.id == cartItemId);
+    if (index == -1) return;
+
+    final updated = List<CartItemModel>.from(state.items);
+    final item = updated[index];
+    final nextRaw = Map<String, dynamic>.from(item.rawMealDetails);
+    if (catalog != null) {
+      nextRaw['add_ons'] = catalog;
+    }
+    final priced = pricedAddOnsFromCatalog(
+      catalog: nextRaw['add_ons'] ?? nextRaw['addons'],
+      selected: addOns,
+    );
+    updated[index] = CartItemModel(
+      id: item.id,
+      mealId: item.mealId,
+      chefId: item.chefId,
+      title: item.title,
+      basePrice: item.basePrice,
+      discountedPrice: item.discountedPrice,
+      quantity: item.quantity,
+      scheduledDate: item.scheduledDate,
+      serviceType: item.serviceType,
+      timeSlot: item.timeSlot,
+      selectedAddOns: priced,
+      specialInstructions: item.specialInstructions,
+      rawMealDetails: Map.unmodifiable(nextRaw),
+    );
+    _commitItems(updated);
+    _scheduleRemoteSync();
+  }
+
   void updateItemServiceType(String cartItemId, String serviceTypeStr) {
     final index = state.items.indexWhere((i) => i.id == cartItemId);
     if (index == -1) return;
