@@ -1254,7 +1254,7 @@ bool mealHasPreOrderSlot(Map<String, dynamic> meal, {DateTime? now}) {
   return false;
 }
 
-/// Home quick chips: Live / Pre-order / Healthy. Default Live keeps the accepting catalog.
+/// Home quick chips: Live / Pre-order. Default Live keeps the accepting catalog.
 bool mealMatchesHomeMode(
   Map<String, dynamic> meal, {
   required String mode,

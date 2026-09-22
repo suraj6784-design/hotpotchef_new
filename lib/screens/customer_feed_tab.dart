@@ -1503,7 +1503,6 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
               children: [
                 _homeModeChip('Pre-order', 'preorder', Icons.calendar_month_outlined, AppTheme.primary),
                 _homeModeChip('Live Order', 'live', Icons.local_fire_department_outlined, AppTheme.live),
-                _homeModeChip('Healthy Options', 'heat', Icons.eco_outlined, AppTheme.primary),
               ],
             ),
           ),
