@@ -6,7 +6,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../providers/cart_provider.dart';
-import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
 import 'app_widgets.dart';
 

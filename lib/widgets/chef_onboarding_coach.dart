@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../utils/app_theme.dart';
 import '../utils/fssai_certificate_scan.dart';
 import '../utils/helpers.dart';
 import '../utils/kyc_checklist.dart';

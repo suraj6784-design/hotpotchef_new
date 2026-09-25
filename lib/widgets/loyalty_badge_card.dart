@@ -9,7 +9,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../screens/checkout_screen.dart';
-import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
 import '../utils/membership.dart';
 import '../utils/network.dart';

@@ -23,7 +23,6 @@ import 'diner_storefront.dart';
 import '../utils/meal_nutrition.dart';
 import '../utils/meal_publish_template.dart';
 import '../utils/app_page.dart';
-import '../utils/app_theme.dart';
 import '../utils/pricing_calculator.dart';
 import '../models/cart_enums.dart';
 import '../providers/cart_provider.dart';

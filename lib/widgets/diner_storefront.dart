@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
 
 class DinerSectionHeader extends StatelessWidget {

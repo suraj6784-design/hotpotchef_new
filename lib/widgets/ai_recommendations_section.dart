@@ -6,7 +6,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../services/meal_catalog_repository.dart';
-import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
 import '../widgets/customer_ui_components.dart';
 

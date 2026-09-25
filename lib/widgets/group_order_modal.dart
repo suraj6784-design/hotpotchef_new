@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
 import '../providers/cart_provider.dart';
 import '../services/shared_cart_service.dart';
