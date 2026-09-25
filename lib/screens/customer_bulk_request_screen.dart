@@ -2,29 +2,33 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
+import '../models/cart_enums.dart';
+import '../providers/cart_provider.dart';
+import '../utils/delivery_fee.dart';
 import '../utils/helpers.dart';
 import '../utils/network.dart';
 import '../widgets/app_widgets.dart';
 import 'map_picker_screen.dart';
 
-class CustomerBulkRequestScreen extends StatefulWidget {
+class CustomerBulkRequestScreen extends ConsumerStatefulWidget {
   const CustomerBulkRequestScreen({super.key});
 
   @override
-  State<CustomerBulkRequestScreen> createState() => _CustomerBulkRequestScreenState();
+  ConsumerState<CustomerBulkRequestScreen> createState() => _CustomerBulkRequestScreenState();
 }
 
-class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
+class _CustomerBulkRequestScreenState extends ConsumerState<CustomerBulkRequestScreen> {
   final _supabase = Supabase.instance.client;
   final _formKey = GlobalKey<FormState>();
 
   final _titleController = TextEditingController();
   final _descController = TextEditingController();
   final _qtyController = TextEditingController(text: '10');
-  final _budgetController = TextEditingController();
   final _addressController = TextEditingController();
   final _chefSearchController = TextEditingController();
 
@@ -32,8 +36,10 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
   DateTime _targetDate = DateTime.now().add(const Duration(days: 1));
   TimeOfDay _targetTime = const TimeOfDay(hour: 13, minute: 0);
   bool _isLoading = false;
-  bool _broadcastAll = true;
   bool _chefsLoading = false;
+  bool _mealsLoading = false;
+  String? _selectedMealId;
+  List<Map<String, dynamic>> _chefMeals = const [];
   String? _chefsError;
   List<_BulkChefOption> _chefs = const [];
   final Set<String> _selectedChefIds = <String>{};
@@ -52,7 +58,6 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
     _titleController.dispose();
     _descController.dispose();
     _qtyController.dispose();
-    _budgetController.dispose();
     _addressController.dispose();
     _chefSearchController.dispose();
     super.dispose();
@@ -154,7 +159,7 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
       if (!mounted) return;
       setState(() {
         _chefsLoading = false;
-        _chefsError = 'Could not load kitchens. Try again or broadcast to all nearby chefs.';
+        _chefsError = 'Could not load kitchens. Pull to try again.';
       });
     }
   }
@@ -169,188 +174,98 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
     }).toList();
   }
 
-  Future<void> _broadcastRequest() async {
+  Future<void> _loadChefMeals(String chefId) async {
+    setState(() {
+      _mealsLoading = true;
+      _chefMeals = const [];
+      _selectedMealId = null;
+    });
+    try {
+      final rows = await _supabase
+          .from('meals')
+          .select(kHomeMealCatalogSelect)
+          .eq('chef_id', chefId)
+          .limit(40)
+          .withTimeout(NetworkTimeouts.standard);
+      final meals = List<Map<String, dynamic>>.from(rows as List).where((meal) {
+        final status = meal['status']?.toString().toLowerCase() ?? '';
+        final qty = int.tryParse(meal['quantity']?.toString() ?? '') ?? 0;
+        return qty >= 5 && status != 'paused' && status != 'cancelled';
+      }).toList();
+      if (!mounted) return;
+      setState(() {
+        _chefMeals = meals;
+        _mealsLoading = false;
+        if (meals.length == 1) _selectedMealId = meals.first['id']?.toString();
+      });
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Bulk chef meals');
+      if (!mounted) return;
+      setState(() => _mealsLoading = false);
+      _showSnackBar('Could not load this kitchen\'s plates.', isError: true);
+    }
+  }
+
+  Future<void> _addBulkToCart() async {
     if (!_formKey.currentState!.validate()) return;
-
-    if (_latitude == null || _longitude == null) {
-      _showSnackBar('Please pin your delivery or event location on the map.', isError: true);
+    if (_selectedChefIds.length != 1) {
+      _showSnackBar('Choose one kitchen. A bulk plate pays through the cart.', isError: true);
       return;
     }
-
-    if (!_broadcastAll && _selectedChefIds.isEmpty) {
-      _showSnackBar('Select at least one kitchen, or switch to all nearby chefs.', isError: true);
+    Map<String, dynamic>? meal;
+    for (final row in _chefMeals) {
+      if (row['id']?.toString() == _selectedMealId) meal = row;
+    }
+    if (meal == null) {
+      _showSnackBar('Choose the plate to order.', isError: true);
       return;
     }
-
     final quantity = int.tryParse(_qtyController.text.trim()) ?? 0;
-    final budget = double.tryParse(_budgetController.text.trim()) ?? 0.0;
-
     if (quantity < 5) {
       _showSnackBar('Bulk pre-orders require a minimum of 5 portions.', isError: true);
       return;
     }
-
-    if (budget <= 0) {
-      _showSnackBar('Please enter a valid total budget for the order.', isError: true);
+    final stock = int.tryParse(meal['quantity']?.toString() ?? '') ?? 0;
+    if (quantity > stock) {
+      _showSnackBar('This plate has $stock portions listed.', isError: true);
+      return;
+    }
+    final now = DateTime.now();
+    final earliest = DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
+    final scheduled = DateTime(_targetDate.year, _targetDate.month, _targetDate.day);
+    if (scheduled.isBefore(earliest)) {
+      _showSnackBar('Bulk orders need at least one day of lead time.', isError: true);
+      return;
+    }
+    if (_latitude == null || _longitude == null) {
+      _showSnackBar('Please pin the drop on the map.', isError: true);
+      return;
+    }
+    if (_supabase.auth.currentUser == null) {
+      _showSnackBar('Sign in to pay for a bulk plate.', isError: true);
       return;
     }
 
-    setState(() => _isLoading = true);
+    final note = [
+      _titleController.text.trim(),
+      _descController.text.trim(),
+      'Drop: ${_addressController.text.trim()}',
+    ].where((part) => part.isNotEmpty).join('\n');
 
-    try {
-      final user = _supabase.auth.currentUser;
-      if (user == null) throw Exception('Authentication session expired. Please sign in.');
-
-      final userData = await _supabase
-          .from('users')
-          .select('phone, name, full_name')
-          .eq('id', user.id)
-          .maybeSingle();
-
-      final phone = userData?['phone']?.toString() ?? user.userMetadata?['phone']?.toString() ?? '';
-      final customerName = userData?['name']?.toString() ??
-          userData?['full_name']?.toString() ??
-          user.userMetadata?['name']?.toString() ??
-          user.email?.split('@')[0] ??
-          'Customer';
-
-      final targetDateTime = DateTime(
-        _targetDate.year,
-        _targetDate.month,
-        _targetDate.day,
-        _targetTime.hour,
-        _targetTime.minute,
-      );
-
-      if (targetDateTime.isBefore(DateTime.now())) {
-        throw Exception('The requested event time must be set in the future.');
-      }
-
-      final payload = <String, dynamic>{
-        'customer_id': user.id,
-        'customer_name': customerName,
-        'customer_email': user.email ?? '',
-        'customer_phone': phone,
-        'title': _titleController.text.trim(),
-        'description': _descController.text.trim(),
-        'quantity': quantity,
-        'target_date_time': targetDateTime.toUtc().toIso8601String(),
-        'budget': budget,
-        'service_type': _selectedServiceType,
-        'delivery_address': _addressController.text.trim(),
-        'status': 'Open',
-        'created_at': DateTime.now().toIso8601String(),
-      };
-      final extras = <String, dynamic>{
-        'remaining_quantity': quantity,
-        'latitude': _latitude,
-        'longitude': _longitude,
-      };
-      if (!_broadcastAll) {
-        extras['target_chef_ids'] = _selectedChefIds.toList();
-      }
-
-      await _insertCustomerRequest(
-        payload,
-        extras,
-        requireTargetChefs: !_broadcastAll,
-      );
-
-      if (mounted) {
-        final message = _broadcastAll
-            ? 'Bulk request broadcasted successfully! Local chefs have been notified. 🎉'
-            : 'Request sent to ${_selectedChefIds.length} kitchen${_selectedChefIds.length == 1 ? '' : 's'}. 🎉';
-        _showSnackBar(message);
-        Navigator.pop(context);
-      }
-    } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Bulk Request Broadcast Failure');
-      _showSnackBar(_broadcastError(e), isError: true);
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _insertCustomerRequest(
-    Map<String, dynamic> payload,
-    Map<String, dynamic> extras, {
-    bool requireTargetChefs = false,
-  }) async {
-    final inserted = await _insertKnownColumns(payload);
-    if (extras.isEmpty) return;
-
-    final requestId = inserted?['id']?.toString();
-    var body = Map<String, dynamic>.from(extras);
-    for (var attempt = 0; attempt < 6; attempt++) {
-      try {
-        final query = _supabase.from('customer_requests').update(body);
-        if (requestId != null && requestId.isNotEmpty) {
-          await query.eq('id', requestId);
-        } else {
-          await query
-              .eq('customer_id', payload['customer_id'])
-              .eq('title', payload['title'])
-              .eq('created_at', payload['created_at']);
-        }
-        return;
-      } on PostgrestException catch (e) {
-        if (e.code != 'PGRST204') return;
-        final missing = _missingSchemaColumn(e.message);
-        if (missing == null || !body.containsKey(missing)) return;
-        if (requireTargetChefs && missing == 'target_chef_ids') {
-          throw Exception(
-            'Selected kitchens could not be saved yet. Broadcast to all nearby chefs, or try again after the app update is applied.',
-          );
-        }
-        body.remove(missing);
-        if (body.isEmpty) return;
-      }
-    }
-  }
-
-  Future<Map<String, dynamic>?> _insertKnownColumns(Map<String, dynamic> payload) async {
-    final body = Map<String, dynamic>.from(payload);
-    Object? lastError;
-    for (var attempt = 0; attempt < 8; attempt++) {
-      try {
-        try {
-          return await _supabase.from('customer_requests').insert(body).select('id').maybeSingle();
-        } on PostgrestException catch (e) {
-          if (e.code == 'PGRST204') rethrow;
-          await _supabase.from('customer_requests').insert(body);
-          return null;
-        }
-      } on PostgrestException catch (e) {
-        lastError = e;
-        if (e.code != 'PGRST204') rethrow;
-        final missing = _missingSchemaColumn(e.message);
-        if (missing == null || !body.containsKey(missing)) rethrow;
-        body.remove(missing);
-      }
-    }
-    throw lastError ??
-        const PostgrestException(
-          message: 'Could not save this request',
-          code: 'PGRST204',
+    final added = ref.read(cartProvider.notifier).addToCart(
+          meal,
+          quantity,
+          clearIfVendorConflict: true,
+          scheduledDate: scheduled,
+          timeSlot: _targetTime.format(context),
+          specialInstructions: note,
+          serviceType: ServiceType.fromString(_selectedServiceType),
         );
-  }
-
-  String? _missingSchemaColumn(String? message) {
-    final match = RegExp(r"Could not find the '([^']+)' column").firstMatch(message ?? '');
-    return match?.group(1);
-  }
-
-  String _broadcastError(Object error) {
-    if (error is Exception) {
-      final text = error.toString().replaceFirst('Exception: ', '');
-      if (text.contains('future') ||
-          text.contains('sign in') ||
-          text.contains('Authentication') ||
-          text.contains('Selected kitchens')) {
-        return text;
-      }
+    if (!added || !mounted) {
+      _showSnackBar('Could not add this plate. Clear the cart and try again.', isError: true);
+      return;
     }
-    return 'Could not broadcast this request. Please try again.';
+    context.go('/customer-hub?tab=cart');
   }
 
   void _showSnackBar(String text, {bool isError = false}) {
@@ -366,11 +281,6 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final selectedCount = _selectedChefIds.length;
-    final submitLabel = _broadcastAll
-        ? 'Broadcast to Local Chefs'
-        : 'Send to $selectedCount kitchen${selectedCount == 1 ? '' : 's'}';
-
     return Scaffold(
       backgroundColor: AppTheme.canvasOf(context),
       appBar: AppBar(
@@ -378,7 +288,7 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
           children: [
             const AppLogo(size: 24),
             const SizedBox(width: 8),
-            Text('Broadcast Bulk Pre-Order', style: TextStyle(color: AppTheme.onSurfaceOf(context), fontWeight: FontWeight.bold)),
+            Text('Bulk pre-order', style: TextStyle(color: AppTheme.onSurfaceOf(context), fontWeight: FontWeight.bold)),
           ],
         ),
         backgroundColor: Colors.transparent,
@@ -391,15 +301,14 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
           padding: const EdgeInsets.all(20),
           children: [
             const Text(
-              'Organizing catering, family gatherings, or office tiffins? Send your requirement to all nearby home chefs, or pick the kitchens you already trust.',
+              'Pick one kitchen and a plate. Quantity and lead time go on the same cart, then you pay. The chef sees it with other orders.',
               style: TextStyle(color: AppTheme.textMuted, fontSize: 13, height: 1.4),
             ),
             const SizedBox(height: 24),
 
             TextFormField(
               controller: _titleController,
-              validator: (v) => v == null || v.trim().isEmpty ? 'Enter dish or event requirement' : null,
-              decoration: _inputStyle('Dish / Requirement (e.g. 15x Puran Poli Thali)'),
+              decoration: _inputStyle('Note for the kitchen (optional)'),
             ),
             const SizedBox(height: 14),
 
@@ -425,16 +334,6 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
                     decoration: _inputStyle('Total Portions *'),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextFormField(
-                    controller: _budgetController,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
-                    validator: (v) => v == null || v.trim().isEmpty ? 'Enter budget' : null,
-                    decoration: _inputStyle('Total Budget (₹) *'),
-                  ),
-                ),
               ],
             ),
             const SizedBox(height: 16),
@@ -453,7 +352,7 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
                       final picked = await showDatePicker(
                         context: context,
                         initialDate: _targetDate,
-                        firstDate: DateTime.now(),
+                        firstDate: DateTime.now().add(const Duration(days: 1)),
                         lastDate: DateTime.now().add(const Duration(days: 90)),
                       );
                       if (picked != null) setState(() => _targetDate = picked);
@@ -528,28 +427,11 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
             const SizedBox(height: 20),
 
             Text(
-              'Who should see this?',
+              'Kitchen',
               style: TextStyle(fontWeight: FontWeight.w800, color: AppTheme.onSurfaceOf(context)),
             ),
             const SizedBox(height: 8),
-            SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment(
-                  value: true,
-                  label: Text('All nearby'),
-                  icon: Icon(Icons.campaign_outlined, size: 16),
-                ),
-                ButtonSegment(
-                  value: false,
-                  label: Text('Choose kitchens'),
-                  icon: Icon(Icons.storefront_outlined, size: 16),
-                ),
-              ],
-              selected: {_broadcastAll},
-              onSelectionChanged: (s) => setState(() => _broadcastAll = s.first),
-            ),
-            if (!_broadcastAll) ...[
-              const SizedBox(height: 12),
+            const SizedBox(height: 4),
               TextField(
                 controller: _chefSearchController,
                 onChanged: (_) => setState(() {}),
@@ -594,44 +476,67 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
                     separatorBuilder: (_, __) => Divider(height: 1, color: AppTheme.hairlineOf(context)),
                     itemBuilder: (context, index) {
                       final chef = _filteredChefs[index];
-                      final selected = _selectedChefIds.contains(chef.id);
                       final subtitleParts = [
                         if (chef.kitchen.isNotEmpty && chef.kitchen != chef.name) chef.kitchen,
                         if (chef.city.isNotEmpty) chef.city,
                         if (chef.followed) 'Following',
                         if (!chef.isOpen) 'Currently offline',
                       ];
-                      return CheckboxListTile(
-                        value: selected,
+                      return RadioListTile<String>(
+                        value: chef.id,
+                        groupValue: _selectedChefIds.isEmpty ? null : _selectedChefIds.first,
                         dense: true,
-                        controlAffinity: ListTileControlAffinity.leading,
                         activeColor: AppTheme.primary,
                         title: Text(chef.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
                         subtitle: subtitleParts.isEmpty
                             ? null
                             : Text(subtitleParts.join(' · '), style: AppTheme.caption),
-                        onChanged: (on) {
+                        onChanged: (_) {
                           setState(() {
-                            if (on == true) {
-                              _selectedChefIds.add(chef.id);
-                            } else {
-                              _selectedChefIds.remove(chef.id);
-                            }
+                            _selectedChefIds
+                              ..clear()
+                              ..add(chef.id);
                           });
+                          _loadChefMeals(chef.id);
                         },
                       );
                     },
                   ),
                 ),
-              if (selectedCount > 0)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
+              if (_mealsLoading)
+                const Padding(
+                  padding: EdgeInsets.only(top: 12),
+                  child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                )
+              else if (_selectedChefIds.isNotEmpty && _chefMeals.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(top: 12),
                   child: Text(
-                    '$selectedCount kitchen${selectedCount == 1 ? '' : 's'} selected',
-                    style: AppTheme.caption,
+                    'This kitchen has no plate with at least 5 portions listed.',
+                    style: TextStyle(color: AppTheme.textMuted, fontSize: 13),
+                  ),
+                )
+              else if (_chefMeals.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: DropdownButtonFormField<String>(
+                    initialValue: _chefMeals.any((meal) => meal['id']?.toString() == _selectedMealId)
+                        ? _selectedMealId
+                        : null,
+                    decoration: _inputStyle('Plate'),
+                    items: [
+                      for (final meal in _chefMeals)
+                        DropdownMenuItem(
+                          value: meal['id']?.toString(),
+                          child: Text(
+                            '${meal['title'] ?? 'Plate'} · ₹${meal['price'] ?? ''} · ${meal['quantity']} left',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                    onChanged: (id) => setState(() => _selectedMealId = id),
                   ),
                 ),
-            ],
             const SizedBox(height: 32),
 
             ElevatedButton(
@@ -641,10 +546,10 @@ class _CustomerBulkRequestScreenState extends State<CustomerBulkRequestScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
               ),
-              onPressed: _isLoading ? null : _broadcastRequest,
+              onPressed: _isLoading ? null : _addBulkToCart,
               child: _isLoading
                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : Text(submitLabel, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  : const Text('Add to cart', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             ),
           ],
         ),

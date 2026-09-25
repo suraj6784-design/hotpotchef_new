@@ -270,6 +270,10 @@ class CartNotifier extends Notifier<CartState> {
     int quantity, {
     List<CartItemAddOn> addOns = const [],
     bool clearIfVendorConflict = false,
+    DateTime? scheduledDate,
+    String? timeSlot,
+    String? specialInstructions,
+    ServiceType? serviceType,
   }) {
     final mealId = meal['id'].toString();
     final chefId = meal['chef_id'].toString();
@@ -284,9 +288,10 @@ class CartNotifier extends Notifier<CartState> {
 
     final rawSlot = meal['time_slot']?.toString() ?? '';
     final smartSchedule = chefSlotDefaultSchedule(rawSlot);
-    final serviceType = ServiceType.fromString(
-      (meal['service_type']?.toString() ?? 'Delivery Partner').split(',').first.trim(),
-    );
+    final resolvedService = serviceType ??
+        ServiceType.fromString(
+          (meal['service_type']?.toString() ?? 'Delivery Partner').split(',').first.trim(),
+        );
     final int availableStock = int.tryParse(meal['quantity']?.toString() ?? '99') ?? 99;
     final pricedAddOns = pricedAddOnsFromCatalog(
       catalog: meal['add_ons'] ?? meal['addons'],
@@ -297,10 +302,13 @@ class CartNotifier extends Notifier<CartState> {
     final double? rawDiscount = double.tryParse(meal['discounted_price']?.toString() ?? '');
     final double? validDiscount = (rawDiscount != null && rawDiscount > 0) ? rawDiscount : null;
 
-    final resolvedSlot = (smartSchedule['time'] ?? '').trim().isNotEmpty
-        ? smartSchedule['time']!.trim()
-        : (preferredChefSlotClock(rawSlot) ?? rawSlot);
-    final resolvedDate = chefSlotDefaultDate(smartSchedule);
+    final resolvedSlot = (timeSlot ?? '').trim().isNotEmpty
+        ? timeSlot!.trim()
+        : ((smartSchedule['time'] ?? '').trim().isNotEmpty
+            ? smartSchedule['time']!.trim()
+            : (preferredChefSlotClock(rawSlot) ?? rawSlot));
+    final resolvedDate = scheduledDate ?? chefSlotDefaultDate(smartSchedule);
+    final note = specialInstructions?.trim();
 
     final existingIndex = state.items.indexWhere(
       (i) => i.mealId == mealId && listEquals(i.selectedAddOns, pricedAddOns),
@@ -311,7 +319,16 @@ class CartNotifier extends Notifier<CartState> {
     if (existingIndex >= 0) {
       final existing = updatedItems[existingIndex];
       final targetQty = (existing.quantity + quantity).clamp(1, availableStock);
-      updatedItems[existingIndex] = existing.copyWith(quantity: targetQty);
+      final raw = Map<String, dynamic>.from(existing.rawMealDetails);
+      raw['exact_time'] = resolvedSlot;
+      updatedItems[existingIndex] = existing.copyWith(
+        quantity: targetQty,
+        scheduledDate: resolvedDate,
+        timeSlot: resolvedSlot,
+        serviceType: resolvedService,
+        specialInstructions: (note == null || note.isEmpty) ? existing.specialInstructions : note,
+        rawMealDetails: raw,
+      );
     } else {
       final newItem = CartItemModel(
         id: '${mealId}_${DateTime.now().microsecondsSinceEpoch}',
@@ -323,8 +340,9 @@ class CartNotifier extends Notifier<CartState> {
         quantity: quantity.clamp(1, availableStock),
         scheduledDate: resolvedDate,
         timeSlot: resolvedSlot,
-        serviceType: serviceType,
+        serviceType: resolvedService,
         selectedAddOns: pricedAddOns,
+        specialInstructions: (note == null || note.isEmpty) ? null : note,
         rawMealDetails: {
           ...meal,
           'exact_time': resolvedSlot,
