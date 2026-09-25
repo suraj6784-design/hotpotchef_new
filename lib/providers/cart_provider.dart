@@ -199,6 +199,14 @@ class CartNotifier extends Notifier<CartState> {
       throw SharedCartException('Sign in to join this group.');
     }
     final room = await _sharedCartService.fetchSharedCartRoom(code);
+    if (state.sharedRoomCode == code) {
+      return SharedCartJoinResult(
+        roomCode: code,
+        placeKind: room.placeKind,
+        added: 0,
+        skipped: const [],
+      );
+    }
     var added = 0;
     final skipped = <String>[];
     var allowClear = true;
@@ -443,10 +451,10 @@ class CartNotifier extends Notifier<CartState> {
     _scheduleRemoteSync();
   }
 
-  Future<void> clearCart() async {
+  Future<void> clearCart({bool closeSharedRoom = false}) async {
     final room = state.sharedRoomCode;
     _stockChannel?.unsubscribe();
-    if (room != null && room.isNotEmpty) {
+    if (closeSharedRoom && room != null && room.isNotEmpty) {
       try {
         await _sharedCartService.markSharedCartOrdered(room);
       } catch (e, st) {

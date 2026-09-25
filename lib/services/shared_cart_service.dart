@@ -111,6 +111,10 @@ class SharedCartService {
         await _supabase.from('shared_carts').insert(payload);
       }
 
+      try {
+        await _supabase.rpc('join_shared_cart', params: {'p_room_code': roomCode});
+      } catch (_) {}
+
       return roomCode;
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to create shared cart room');
@@ -149,7 +153,11 @@ class SharedCartService {
 
       try {
         await _supabase.rpc('join_shared_cart', params: {'p_room_code': code});
-      } catch (_) {}
+      } on PostgrestException catch (e) {
+        if (e.code != 'PGRST202') {
+          throw SharedCartException('Could not join this group. Ask the host to send a new link.');
+        }
+      }
 
       final items = <CartItemModel>[];
       if (response['items'] is List) {

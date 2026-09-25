@@ -1156,7 +1156,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
           sharedDropoffNote: cartState.sharedDropoffNote,
           sharedTimeSlot: cartState.sharedTimeSlot,
           onOrderPlacedSuccess: () {
-            ref.read(cartProvider.notifier).clearCart();
+            ref.read(cartProvider.notifier).clearCart(closeSharedRoom: true);
             widget.onOrderPlacedSuccess();
           },
         ),
