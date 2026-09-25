@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
+import '../services/meal_catalog_repository.dart';
 import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
 import '../widgets/customer_ui_components.dart';
@@ -68,11 +69,7 @@ class _AiRecommendationsSectionState extends ConsumerState<AiRecommendationsSect
         _favoriteCategory = favorite;
       }
 
-      final mealsResponse = await _supabase
-          .from('meals')
-          .select()
-          .ilike('category', '%$_favoriteCategory%')
-          .limit(5);
+      final mealsResponse = await MealCatalogRepository(_supabase).mealsLikeCategory(_favoriteCategory);
 
       if (!mounted) return;
 

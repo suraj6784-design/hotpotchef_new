@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../providers/cart_provider.dart';
+import '../services/meal_catalog_repository.dart';
 import '../utils/app_theme.dart';
 import '../utils/network.dart';
 import '../widgets/app_widgets.dart';
@@ -61,7 +62,7 @@ class _CartImportScreenState extends ConsumerState<CartImportScreen> {
       String? importedChefId;
 
       for (final spec in specs) {
-        final row = await client.from('meals').select().eq('id', spec.id).maybeSingle();
+        final row = await MealCatalogRepository(client).mealById(spec.id);
         if (row == null) {
           skippedUnavailable++;
           continue;

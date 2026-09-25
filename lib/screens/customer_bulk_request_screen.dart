@@ -9,7 +9,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../models/cart_enums.dart';
 import '../providers/cart_provider.dart';
-import '../utils/delivery_fee.dart';
+import '../services/meal_catalog_repository.dart';
 import '../utils/helpers.dart';
 import '../utils/network.dart';
 import '../widgets/app_widgets.dart';
@@ -181,13 +181,8 @@ class _CustomerBulkRequestScreenState extends ConsumerState<CustomerBulkRequestS
       _selectedMealId = null;
     });
     try {
-      final rows = await _supabase
-          .from('meals')
-          .select(kHomeMealCatalogSelect)
-          .eq('chef_id', chefId)
-          .limit(40)
-          .withTimeout(NetworkTimeouts.standard);
-      final meals = List<Map<String, dynamic>>.from(rows as List).where((meal) {
+      final rows = await MealCatalogRepository(_supabase).availableMeals(chefId: chefId, limit: 40);
+      final meals = rows.where((meal) {
         final status = meal['status']?.toString().toLowerCase() ?? '';
         final qty = int.tryParse(meal['quantity']?.toString() ?? '') ?? 0;
         return qty >= 5 && status != 'paused' && status != 'cancelled';

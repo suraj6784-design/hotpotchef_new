@@ -24,6 +24,7 @@ import '../widgets/app_widgets.dart';
 import '../widgets/support_replied_banner.dart';
 import '../widgets/live_offers_flash_banner.dart';
 import '../services/delivery_estimator_service.dart';
+import '../services/meal_catalog_repository.dart';
 import '../utils/delivery_fee.dart';
 import '../utils/service_area.dart';
 import '../utils/diner_locale.dart';
@@ -147,32 +148,8 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     _mealsStream = Stream<List<Map<String, dynamic>>>.value(const []);
   }
 
-  Future<List<Map<String, dynamic>>> _fetchMealsCatalog({String? chefId}) async {
-    Future<List<Map<String, dynamic>>> run(String columns) async {
-      var query = Supabase.instance.client
-          .from('meals')
-          .select(columns)
-          .eq('status', 'Available');
-      if (chefId != null && chefId.isNotEmpty) {
-        query = query.eq('chef_id', chefId);
-      }
-      final rows = await query
-          .order('created_at', ascending: false)
-          .limit(kHomeMealStreamLimit)
-          .withTimeout(NetworkTimeouts.standard);
-      return List<Map<String, dynamic>>.from(rows as List);
-    }
-
-    try {
-      return await run(kHomeMealCatalogSelect);
-    } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(
-        e,
-        stack,
-        reason: chefId == null ? 'Home meals catalog select failed' : 'Chef kitchen catalog select failed',
-      );
-      return run(kHomeMealCatalogSelectMinimal);
-    }
+  Future<List<Map<String, dynamic>>> _fetchMealsCatalog({String? chefId}) {
+    return MealCatalogRepository().availableMeals(chefId: chefId);
   }
 
   Future<List<Map<String, dynamic>>> _fetchHomeMealCatalog() => _fetchMealsCatalog();
@@ -458,13 +435,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         }
       }
 
-      final localResponse = await client
-          .from('meals')
-          .select(kHomeMealCatalogSelect)
-          .eq('status', 'Available')
-          .limit(kHomeMealStreamLimit)
-          .withTimeout(NetworkTimeouts.standard);
-      final localMeals = List<Map<String, dynamic>>.from(localResponse);
+      final localMeals = await MealCatalogRepository(client).availableMeals();
       final qClean = trimmed.toLowerCase().replaceAll(' ', '');
       final qLower = trimmed.toLowerCase();
 
@@ -846,14 +817,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     try {
       final from = kHomeMealStreamLimit + _olderMeals.length;
       final to = from + kHomeMealPageSize - 1;
-      final rows = await Supabase.instance.client
-          .from('meals')
-          .select(kHomeMealCatalogSelect)
-          .eq('status', 'Available')
-          .order('created_at', ascending: false)
-          .range(from, to)
-          .withTimeout(NetworkTimeouts.standard);
-      final extra = List<Map<String, dynamic>>.from(rows as List);
+      final extra = await MealCatalogRepository().availableMealsPage(from: from, to: to);
       if (!mounted) return;
       setState(() {
         _olderMeals = [..._olderMeals, ...extra];

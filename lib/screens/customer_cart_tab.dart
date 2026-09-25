@@ -13,6 +13,7 @@ import '../utils/pricing_calculator.dart';
 import '../models/cart_state.dart';
 import '../models/cart_enums.dart';
 import '../providers/cart_provider.dart';
+import '../services/meal_catalog_repository.dart';
 import '../providers/delivery_preference.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
@@ -115,12 +116,8 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
     var catalog = _catalogExtras(item);
     if (catalog.isEmpty) {
       try {
-        final row = await Supabase.instance.client
-            .from('meals')
-            .select('add_ons')
-            .eq('id', item.mealId)
-            .maybeSingle();
-        catalog = ReorderService.parseMealAddOns(row?['add_ons']);
+        final row = await MealCatalogRepository().addOnsForMeal(item.mealId);
+        catalog = ReorderService.parseMealAddOns(row);
       } catch (_) {}
     }
     if (!mounted) return;

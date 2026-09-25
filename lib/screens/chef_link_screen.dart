@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../services/meal_catalog_repository.dart';
 import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
 import '../utils/network.dart';
@@ -77,14 +78,7 @@ class _ChefLinkScreenState extends ConsumerState<ChefLinkScreen> {
 
       List<Map<String, dynamic>> meals = const [];
       try {
-        final rows = await client
-            .from('meals')
-            .select()
-            .eq('chef_id', chefId)
-            .eq('status', 'Available')
-            .order('created_at', ascending: false)
-            .limit(48);
-        meals = rows.map((r) => Map<String, dynamic>.from(r as Map)).toList();
+        meals = await MealCatalogRepository(client).availableMeals(chefId: chefId, limit: 48);
       } catch (e, stack) {
         FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Chef link meals load failure');
       }

@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/cart_enums.dart';
 import '../providers/cart_provider.dart';
+import 'meal_catalog_repository.dart';
 import '../utils/helpers.dart';
 import 'order_lifecycle.dart';
 
@@ -180,11 +181,7 @@ class ReorderService {
 
       if (mealId != null) {
         try {
-          final live = await Supabase.instance.client
-              .from('meals')
-              .select()
-              .eq('id', mealId)
-              .maybeSingle();
+          final live = await MealCatalogRepository().mealById(mealId);
           if (live != null) liveMeal = Map<String, dynamic>.from(live);
         } catch (_) {}
       }
