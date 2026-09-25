@@ -176,7 +176,7 @@ class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
                 ),
               ),
               SizedBox(
-                height: 164,
+                height: 184,
                 child: PageView.builder(
                   controller: _pageController,
                   itemCount: offers.length,
@@ -381,6 +381,19 @@ class _OfferFlashCardState extends State<_OfferFlashCard> {
                                   letterSpacing: 0.2,
                                 ),
                               ),
+                              if (price.chefName.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  price.chefName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.92),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
                               const SizedBox(height: 4),
                               _OfferPriceBreakup(price: price),
                               if (price.plateCount > 1) ...[

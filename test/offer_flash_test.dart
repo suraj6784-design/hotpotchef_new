@@ -229,6 +229,7 @@ void main() {
         _live({
           'id': 'biryani',
           'title': 'Veg Biryani',
+          'chef_name': 'Newchef16',
           'price': 121,
           'offer_type': 'percentage',
           'discount_value': 10,
@@ -239,6 +240,7 @@ void main() {
       expect(offerFlashSubhead(card), '10% OFF · tap to open');
       final price = offerFlashPriceBreakup(card);
       expect(price.title, 'Veg Biryani');
+      expect(price.chefName, 'Newchef16');
       expect(price.listRupees, 121);
       expect(price.payRupees, 109);
       expect(price.badge, '10% OFF');

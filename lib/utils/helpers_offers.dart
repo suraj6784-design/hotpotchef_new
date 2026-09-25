@@ -259,6 +259,7 @@ String offerFlashHeadline(Map<String, dynamic> meal, {DateTime? now}) {
 class OfferFlashPriceBreakup {
   const OfferFlashPriceBreakup({
     required this.title,
+    required this.chefName,
     required this.listRupees,
     required this.payRupees,
     required this.badge,
@@ -266,6 +267,7 @@ class OfferFlashPriceBreakup {
   });
 
   final String title;
+  final String chefName;
   final int? listRupees;
   final int? payRupees;
   final String badge;
@@ -285,6 +287,7 @@ OfferFlashPriceBreakup offerFlashPriceBreakup(Map<String, dynamic> meal) {
   final badge = PricingCalculator.offerBadgeLabel(meal).trim();
   return OfferFlashPriceBreakup(
     title: title,
+    chefName: chefDisplayName(meal, fallback: ''),
     listRupees: summary.baseUnitPrice > 0 ? wholeRupees(summary.baseUnitPrice) : null,
     payRupees: summary.isOfferApplied ? wholeRupees(summary.effectiveUnitPrice) : null,
     badge: badge,
