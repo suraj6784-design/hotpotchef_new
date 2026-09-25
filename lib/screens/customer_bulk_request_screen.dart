@@ -1,5 +1,7 @@
 // lib/screens/customer_bulk_request_screen.dart
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +11,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../models/cart_enums.dart';
 import '../providers/cart_provider.dart';
+import '../services/app_analytics.dart';
 import '../services/meal_catalog_repository.dart';
 import '../utils/helpers.dart';
 import '../utils/network.dart';
@@ -260,6 +263,10 @@ class _CustomerBulkRequestScreenState extends ConsumerState<CustomerBulkRequestS
       _showSnackBar('Could not add this plate. Clear the cart and try again.', isError: true);
       return;
     }
+    unawaited(AppAnalytics.logBulkPreorder(
+      mealId: meal['id']?.toString() ?? '',
+      quantity: quantity,
+    ));
     context.go('/customer-hub?tab=cart');
   }
 

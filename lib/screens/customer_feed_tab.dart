@@ -23,6 +23,7 @@ import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/support_replied_banner.dart';
 import '../widgets/live_offers_flash_banner.dart';
+import '../services/app_analytics.dart';
 import '../services/delivery_estimator_service.dart';
 import '../services/meal_catalog_repository.dart';
 import '../utils/delivery_fee.dart';
@@ -178,8 +179,18 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         _mealsRestSnapshot = rows;
         _loadingMealsRest = false;
       });
+      unawaited(AppAnalytics.logCatalogLoad(
+        success: true,
+        count: rows.length,
+        signedIn: Supabase.instance.client.auth.currentUser != null,
+      ));
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Home meals REST fallback failed');
+      unawaited(AppAnalytics.logCatalogLoad(
+        success: false,
+        count: 0,
+        signedIn: Supabase.instance.client.auth.currentUser != null,
+      ));
       if (mounted) setState(() => _loadingMealsRest = false);
     }
   }

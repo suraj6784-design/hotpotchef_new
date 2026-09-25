@@ -62,6 +62,28 @@ class AppAnalytics {
     return _log('support_ticket', {'category': category});
   }
 
+  static Future<void> logCatalogLoad({
+    required bool success,
+    required int count,
+    required bool signedIn,
+  }) {
+    return _log('catalog_load', {
+      'success': success ? 1 : 0,
+      'count': count,
+      'signed_in': signedIn ? 1 : 0,
+    });
+  }
+
+  static Future<void> logBulkPreorder({
+    required String mealId,
+    required int quantity,
+  }) {
+    return _log('bulk_preorder', {
+      'item_id': mealId,
+      'quantity': quantity,
+    });
+  }
+
   static Future<void> _log(String name, Map<String, Object> params) async {
     try {
       await FirebaseAnalytics.instance.logEvent(name: name, parameters: params);
