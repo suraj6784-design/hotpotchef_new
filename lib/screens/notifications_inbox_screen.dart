@@ -279,7 +279,7 @@ class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
                           const SizedBox(width: 8),
                           _filterChip('Orders', 'orders'),
                           const SizedBox(width: 8),
-                          _filterChip(widget.partnerInbox ? 'System' : 'Promotions', widget.partnerInbox ? 'system' : 'promos'),
+                          _filterChip(widget.partnerInbox ? 'System' : 'Offers', widget.partnerInbox ? 'system' : 'promos'),
                         ],
                       ),
                       const SizedBox(height: 16),

@@ -171,6 +171,11 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     });
   }
 
+  Future<void> _pullToRefreshHome() async {
+    _loadingMealsRest = false;
+    await _refreshMealsRestSnapshot();
+  }
+
   Future<void> _refreshMealsRestSnapshot() async {
     if (_loadingMealsRest) return;
     _loadingMealsRest = true;
@@ -1183,8 +1188,12 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       followingOnly: _showFollowingOnly,
     );
 
-    return SingleChildScrollView(
+    return RefreshIndicator(
+      color: AppTheme.primary,
+      onRefresh: _pullToRefreshHome,
+      child: SingleChildScrollView(
       controller: _feedScrollController,
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.only(bottom: 120),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1710,6 +1719,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             ),
         ],
       ),
+    ),
     );
   }
 

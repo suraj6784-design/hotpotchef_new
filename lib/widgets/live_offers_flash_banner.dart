@@ -449,12 +449,12 @@ class _OfferFlashCardState extends State<_OfferFlashCard> {
                                           border: Border.all(color: Colors.white.withValues(alpha: 0.4)),
                                         ),
                                         child: const Text(
-                                          'PAID PROMO',
+                                          'Sponsored',
                                           style: TextStyle(
                                             color: Colors.white,
                                             fontSize: 11,
                                             fontWeight: FontWeight.w800,
-                                            letterSpacing: 0.8,
+                                            letterSpacing: 0.2,
                                           ),
                                         ),
                                       ),

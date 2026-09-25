@@ -118,7 +118,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
 
   // --- Data Loading ---
 
-  Future<void> _loadProfileData() async {
+  Future<void> _loadProfileData({bool showSpinner = true}) async {
     final seq = ++_loadSeq;
     try {
       final user = _supabase.auth.currentUser;
@@ -127,7 +127,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
         return;
       }
 
-      if (mounted && seq == _loadSeq) setState(() => _isLoading = true);
+      if (showSpinner && mounted && seq == _loadSeq) setState(() => _isLoading = true);
       _email = user.email ?? '';
 
       final futures = await Future.wait<dynamic>([
@@ -1129,7 +1129,11 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
         loading: _isLoading,
         onBack: widget.embedded ? null : _handleSafeBack,
         onLogout: null,
-        body: SingleChildScrollView(
+        body: RefreshIndicator(
+          color: AppTheme.primary,
+          onRefresh: () => _loadProfileData(showSpinner: false),
+          child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
             children: [
               PremiumProfileHero(
@@ -1295,6 +1299,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
               const PremiumProfileVersionFooter(),
             ],
           ),
+        ),
         ),
       ),
     );

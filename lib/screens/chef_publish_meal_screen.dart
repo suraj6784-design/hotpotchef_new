@@ -1596,7 +1596,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              'Orders from HotPotChef diners must stay on the app (Razorpay checkout). Off-app WhatsApp/UPI deals can pause boosts and Support.',
+              'Orders from HotPotChef diners must stay on the app (Razorpay checkout). Off-app WhatsApp/UPI deals can pause sponsored placements and Support.',
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 12, height: 1.35, color: AppTheme.textMuted, fontWeight: FontWeight.w600),
             ),

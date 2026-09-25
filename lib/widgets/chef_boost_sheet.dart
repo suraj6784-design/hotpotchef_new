@@ -75,7 +75,7 @@ class _ChefBoostSheetState extends State<ChefBoostSheet> {
         'key': key,
         'amount': data['amount'] ?? kChefBoostPaise,
         'name': 'HotPotChef',
-        'description': 'Boost ${widget.meal['title'] ?? 'this dish'} on Home',
+        'description': 'Sponsor ${widget.meal['title'] ?? 'this dish'} on Home',
         'order_id': data['order_id'],
         'retry': {'enabled': false, 'max_count': 0},
         'theme': {'color': '#F4511E'},
@@ -111,7 +111,7 @@ class _ChefBoostSheetState extends State<ChefBoostSheet> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '${widget.meal['title'] ?? 'Dish'} is now a paid Home placement (paid promotion) until midnight.',
+            '${widget.meal['title'] ?? 'Dish'} is now sponsored on Home until midnight.',
           ),
           backgroundColor: Colors.green,
         ),
@@ -133,7 +133,7 @@ class _ChefBoostSheetState extends State<ChefBoostSheet> {
       SnackBar(
         content: Text(response.message?.toString().trim().isNotEmpty == true
             ? response.message!
-            : 'Boost payment was cancelled. Nothing was charged.'),
+            : 'Sponsorship payment was cancelled. Nothing was charged.'),
         backgroundColor: Colors.orangeAccent,
       ),
     );
@@ -162,7 +162,7 @@ class _ChefBoostSheetState extends State<ChefBoostSheet> {
           ),
           const SizedBox(height: 16),
           Text(
-            'Boost this dish today',
+            'Sponsor this dish today',
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w900,
@@ -171,7 +171,7 @@ class _ChefBoostSheetState extends State<ChefBoostSheet> {
           ),
           const SizedBox(height: 8),
           Text(
-            '₹$kChefBoostRupees buys a paid Home placement (paid promotion) — this dish first on diner Home offers until $until. Charged to your kitchen — not taken from diner orders.',
+            '₹$kChefBoostRupees sponsors this dish on diner Home until $until. It shows first under Exclusive offers. Charged to your kitchen — not taken from diner orders.',
             style: TextStyle(fontSize: 14, height: 1.4, color: isDark ? AppTheme.textMuted : AppTheme.textMuted),
           ),
           const SizedBox(height: 20),
@@ -188,7 +188,7 @@ class _ChefBoostSheetState extends State<ChefBoostSheet> {
               ),
               onPressed: _paying ? null : _startPay,
               child: Text(
-                _paying ? 'Opening payment…' : 'Pay ₹$kChefBoostRupees to boost',
+                _paying ? 'Opening payment…' : 'Pay ₹$kChefBoostRupees to sponsor',
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
             ),

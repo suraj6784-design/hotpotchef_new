@@ -53,6 +53,12 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
     });
   }
 
+  Future<void> _pullToRefreshCart() async {
+    final cart = ref.read(cartProvider.notifier);
+    await cart.refreshDeliveryQuote();
+    await cart.fetchUserCoins();
+  }
+
   void _maybeShowStockNotice(CartState cartState) {
     final notice = cartState.stockNotice;
     if (notice == null || notice.isEmpty) return;
@@ -254,12 +260,22 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
           title: 'Your Cart',
           onProfile: isLoggedIn ? widget.onProfileTap : null,
         ),
-        body: EmptyState(
-          icon: Icons.shopping_basket_outlined,
-          title: 'Your plate is empty!',
-          message: 'Discover fresh, home-cooked meals from local chefs and add your favourites.',
-          actionLabel: 'Browse Menu',
-          onAction: widget.onAddMoreMeals,
+        body: RefreshIndicator(
+          color: AppTheme.primary,
+          onRefresh: _pullToRefreshCart,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
+              SizedBox(height: MediaQuery.sizeOf(context).height * 0.12),
+              EmptyState(
+                icon: Icons.shopping_basket_outlined,
+                title: 'Your plate is empty!',
+                message: 'Discover fresh, home-cooked meals from local chefs and add your favourites.',
+                actionLabel: 'Browse Menu',
+                onAction: widget.onAddMoreMeals,
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -270,7 +286,11 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
         title: 'Your Cart',
         onProfile: isLoggedIn ? widget.onProfileTap : null,
       ),
-      body: ListView(
+      body: RefreshIndicator(
+        color: AppTheme.primary,
+        onRefresh: _pullToRefreshCart,
+        child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(left: 20, right: 20, top: 20, bottom: 100),
         children: [
           Row(
@@ -894,6 +914,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
             ),
           ),
         ],
+      ),
       ),
     );
   }

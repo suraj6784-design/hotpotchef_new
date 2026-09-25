@@ -150,7 +150,7 @@ void main() {
       });
       final offers = _offers([promo, expiredBoost, boosted], now: now);
       expect(offers.map((meal) => meal['id']), ['promo', 'boosted']);
-      expect(offerFlashHeadline(boosted, now: now), 'Boosted today');
+      expect(offerFlashHeadline(boosted, now: now), 'Sponsored today');
       expect(isMealBoosted(expiredBoost, now: now), isFalse);
       expect(kChefBoostRupees, 99);
     });

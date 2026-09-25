@@ -638,14 +638,29 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
   }
 
   Widget _buildCompletedRuns(DriverDashboardState state) {
+    Future<void> reload() => ref.read(driverDashboardProvider.notifier).loadDashboardData();
     if (state.recentDeliveries.isEmpty) {
-      return const EmptyState(
-        icon: Icons.local_shipping_outlined,
-        title: 'No delivery history yet',
-        message: 'Completed runs will show up here with payouts in ₹.',
+      return RefreshIndicator(
+        onRefresh: reload,
+        color: AppTheme.primary,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: const [
+            SizedBox(height: 48),
+            EmptyState(
+              icon: Icons.local_shipping_outlined,
+              title: 'No delivery history yet',
+              message: 'Completed runs will show up here with payouts in ₹.',
+            ),
+          ],
+        ),
       );
     }
-    return ListView(
+    return RefreshIndicator(
+      onRefresh: reload,
+      color: AppTheme.primary,
+      child: ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
       children: [
         AppCard(
@@ -697,6 +712,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
           );
         }),
       ],
+    ),
     );
   }
 

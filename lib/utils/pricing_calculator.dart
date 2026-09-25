@@ -454,7 +454,7 @@ class PricingCalculator {
   }
 
   static String offerBadgeLabel(Map<String, dynamic> mealDetails, {int quantity = 1}) {
-    if (isOfferGated(mealDetails)) return 'PROMO';
+    if (isOfferGated(mealDetails)) return 'Code';
     final offerType = resolvedOfferType(mealDetails);
     final discountVal = resolvedOfferDiscount(mealDetails, offerType: offerType);
     switch (offerType) {

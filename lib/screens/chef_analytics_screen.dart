@@ -302,8 +302,8 @@ class _ChefAnalyticsScreenState extends State<ChefAnalyticsScreen> {
                         Expanded(
                           child: Text(
                             _liveBoostCount == 0
-                                ? 'No dishes boosted on Home right now. Boost is ₹99 until midnight.'
-                                : '$_liveBoostCount dish${_liveBoostCount == 1 ? '' : 'es'} boosted on Home until midnight.',
+                                ? 'No dishes sponsored on Home right now. Sponsorship is ₹99 until midnight.'
+                                : '$_liveBoostCount dish${_liveBoostCount == 1 ? '' : 'es'} sponsored on Home until midnight.',
                             style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
                         ),

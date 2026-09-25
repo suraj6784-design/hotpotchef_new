@@ -208,8 +208,8 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     }
   }
 
-  Future<void> _loadProfileAndReviews() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadProfileAndReviews({bool showSpinner = true}) async {
+    if (showSpinner) setState(() => _isLoading = true);
     final user = _supabase.auth.currentUser;
     if (user == null) {
       if (mounted) setState(() => _isLoading = false);
@@ -752,7 +752,14 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
       ],
       body: Form(
         key: _formKey,
-        child: ListView(
+        child: RefreshIndicator(
+          color: AppTheme.primary,
+          onRefresh: () {
+            if (_isEditing) return Future<void>.value();
+            return _loadProfileAndReviews(showSpinner: false);
+          },
+          child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: EdgeInsets.only(bottom: widget.embedded ? hubDockBodyGap(context) : 28),
           children: [
             PremiumProfileHero(
@@ -1362,6 +1369,7 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
               ),
             const PremiumProfileVersionFooter(),
           ],
+        ),
         ),
       ),
     );

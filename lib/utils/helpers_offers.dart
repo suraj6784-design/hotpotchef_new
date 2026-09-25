@@ -18,8 +18,8 @@ bool isMealBoosted(Map<String, dynamic>? meal, {DateTime? now}) {
 String mealBoostUntilLabel(Map<String, dynamic>? meal, {DateTime? now}) {
   if (!isMealBoosted(meal, now: now)) return '';
   final until = DateTime.tryParse(meal?['boosted_until']?.toString() ?? '');
-  if (until == null) return 'Boosted today';
-  return 'Boosted until ${formatAppTime(until)}';
+  if (until == null) return 'Sponsored today';
+  return 'Sponsored until ${formatAppTime(until)}';
 }
 
 bool mealHasFlashableOffer(Map<String, dynamic> meal, {DateTime? now}) {
@@ -243,7 +243,7 @@ String offerFlashHeadline(Map<String, dynamic> meal, {DateTime? now}) {
     }
   }
   if (isMealBoosted(meal, now: now) && PricingCalculator.mealPromoCode(meal) == null) {
-    return 'Boosted today';
+    return 'Sponsored today';
   }
   final code = PricingCalculator.mealPromoCode(meal);
   if (code != null && PricingCalculator.isOfferGated(meal)) {

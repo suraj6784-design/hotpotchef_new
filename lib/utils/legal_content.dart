@@ -36,7 +36,7 @@ LegalDocument legalDocumentFor(LegalDocumentType type) {
           ),
           LegalSection(
             'Marketplace integrity (chefs and diners)',
-            'Chefs must not solicit diners found on HotPotChef to pay outside the app (WhatsApp, UPI, cash deals for the same relationship) to avoid platform fees. Diners should complete payment in-app. We may warn, withhold promotions/boost, or suspend accounts that repeatedly bypass checkout. Phone calls are for active order coordination only — not for taking future orders offline.',
+            'Chefs must not solicit diners found on HotPotChef to pay outside the app (WhatsApp, UPI, cash deals for the same relationship) to avoid platform fees. Diners should complete payment in-app. We may warn, withhold offers or sponsored placements, or suspend accounts that repeatedly bypass checkout. Phone calls are for active order coordination only — not for taking future orders offline.',
           ),
           LegalSection(
             'Invoices',

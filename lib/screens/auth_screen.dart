@@ -116,7 +116,17 @@ class _AuthScreenState extends State<AuthScreen> {
     FocusManager.instance.primaryFocus?.unfocus();
     final router = GoRouter.of(context);
     final openedAsSheet = widget.asSheet;
-    final next = dinerGroupReturnPath(GoRouterState.of(context).uri.queryParameters['next']);
+    // The guest sheet is a modal, not a GoRoute. GoRouterState.of throws there
+    // and used to skip the pop, so the sheet stayed after a successful sign-in.
+    final next = openedAsSheet
+        ? null
+        : dinerGroupReturnPath(GoRouterState.of(context).uri.queryParameters['next']);
+
+    if (openedAsSheet) {
+      final nav = Navigator.of(context);
+      if (nav.canPop()) nav.pop(true);
+    }
+
     var role = AuthSession.roleFromSession();
     try {
       role = await AuthSession.resolveRole();
@@ -130,13 +140,14 @@ class _AuthScreenState extends State<AuthScreen> {
         router.go(next);
         return;
       }
+      // A diner sheet closes back onto the screen that opened it.
       if (!openedAsSheet || role != AppRole.customer) {
         router.go(role.hubPath);
       }
     }
 
     if (!kAppStorefront.allowsRole(role)) {
-      if (openedAsSheet || Navigator.of(context).canPop()) {
+      if (!openedAsSheet && mounted && Navigator.of(context).canPop()) {
         Navigator.of(context).pop(false);
       }
       WidgetsBinding.instance.addPostFrameCallback((_) => router.go('/wrong-app'));
@@ -147,9 +158,6 @@ class _AuthScreenState extends State<AuthScreen> {
       if (await AuthSession.isPlatformOps()) {
         // Pop only a guest sheet. Popping a pushed Auth route then go()-ing
         // to the desk stacks two pages (duplicate cards) and lands on Dashboard.
-        if (openedAsSheet && Navigator.of(context).canPop()) {
-          Navigator.of(context).pop(true);
-        }
         WidgetsBinding.instance.addPostFrameCallback((_) {
           router.go('/platform-ops');
         });
@@ -157,11 +165,7 @@ class _AuthScreenState extends State<AuthScreen> {
       }
     } catch (_) {}
 
-    if (!mounted) {
-      goHub();
-      return;
-    }
-    if (openedAsSheet || Navigator.of(context).canPop()) {
+    if (!openedAsSheet && mounted && Navigator.of(context).canPop()) {
       Navigator.of(context).pop(true);
     }
     WidgetsBinding.instance.addPostFrameCallback((_) => goHub());
@@ -234,7 +238,7 @@ class _AuthScreenState extends State<AuthScreen> {
       await _ensurePublicUserProfile(recordLegalConsent: !_isLogin && _acceptedTerms);
       unawaited(PushNotificationService.syncTokenForCurrentUser());
       unawaited(enqueueWelcomeDrip());
-      _leaveAuthAfterSuccess();
+      await _leaveAuthAfterSuccess();
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Phone OTP authentication failure');
       _showAuthError(_friendlyAuthError(e));
@@ -295,7 +299,7 @@ class _AuthScreenState extends State<AuthScreen> {
           await _ensurePublicUserProfile(recordLegalConsent: _acceptedTerms);
           unawaited(PushNotificationService.syncTokenForCurrentUser());
           unawaited(enqueueWelcomeDrip());
-          _leaveAuthAfterSuccess();
+          await _leaveAuthAfterSuccess();
         } else {
           _showAuthError('Wrong email or password. Please try again.');
         }
@@ -362,7 +366,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
           unawaited(PushNotificationService.syncTokenForCurrentUser());
           unawaited(enqueueWelcomeDrip());
-          _leaveAuthAfterSuccess();
+          await _leaveAuthAfterSuccess();
         }
         }
       }
