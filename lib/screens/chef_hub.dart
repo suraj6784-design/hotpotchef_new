@@ -54,6 +54,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   String _historyFilter = 'Delivered';
   String _menuFilter = 'Active'; // Active | History
   late int _ordersStage = widget.initialTab == 5 ? 2 : 0; // 0 new, 1 in progress, 2 dispatch, 3 completed
+  late final PageController _ordersPages = PageController(initialPage: _ordersStage);
   final Set<String> _autoArchivedMealIds = {};
   bool _isPlatformOps = false;
 
@@ -95,6 +96,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
 
   @override
   void dispose() {
+    _ordersPages.dispose();
     _kitchenChannel?.unsubscribe();
     super.dispose();
   }
@@ -185,15 +187,23 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     });
   }
 
-  Future<void> _callCustomer(String customerId) async {
-    if (customerId.isEmpty) {
+  String _assignedDriverId(Map<String, dynamic> order) {
+    for (final key in const ['driver_id', 'delivery_partner_id']) {
+      final id = order[key]?.toString().trim() ?? '';
+      if (id.isNotEmpty) return id;
+    }
+    return '';
+  }
+
+  Future<void> _callParty(String userId, {required String missingContact}) async {
+    if (userId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No customer contact on this order.'), backgroundColor: Colors.orange),
+        SnackBar(content: Text(missingContact), backgroundColor: Colors.orange),
       );
       return;
     }
     try {
-      final userDoc = await _supabase.from('users').select('phone').eq('id', customerId).maybeSingle();
+      final userDoc = await _supabase.from('users').select('phone').eq('id', userId).maybeSingle();
       final phoneStr = userDoc?['phone']?.toString() ?? '';
       if (phoneStr.isEmpty) {
         if (mounted) {
@@ -216,6 +226,10 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
       }
     }
+  }
+
+  Future<void> _callCustomer(String customerId) {
+    return _callParty(customerId, missingContact: 'No customer contact on this order.');
   }
 
   void _openOrderChat(Map<String, dynamic> order) {
@@ -246,8 +260,18 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     ));
   }
 
+  void _phoneClosedSnack() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Phone is for active prep/delivery. Prefer Chat for coordination.'),
+        backgroundColor: Colors.orange,
+      ),
+    );
+  }
+
   Widget _orderContactActions(Map<String, dynamic> order) {
     final customerId = order['customer_id']?.toString() ?? '';
+    final driverId = _assignedDriverId(order);
     final status = order['status']?.toString();
     final chatOpen = orderAllowsPartyChat(status);
     final callOpen = orderAllowsPhoneCall(status);
@@ -261,18 +285,19 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         const SizedBox(width: 8),
         AppIconAction(
           icon: Icons.phone_outlined,
-          tooltip: callOpen ? 'Call' : 'Chat preferred',
-          onPressed: callOpen
-              ? () => _callCustomer(customerId)
-              : () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Phone is for active prep/delivery. Prefer Chat for coordination.'),
-                      backgroundColor: Colors.orange,
-                    ),
-                  );
-                },
+          tooltip: callOpen ? 'Call diner' : 'Chat preferred',
+          onPressed: callOpen ? () => _callCustomer(customerId) : _phoneClosedSnack,
         ),
+        if (driverId.isNotEmpty) ...[
+          const SizedBox(width: 8),
+          AppIconAction(
+            icon: Icons.two_wheeler_outlined,
+            tooltip: 'Call driver',
+            onPressed: callOpen
+                ? () => _callParty(driverId, missingContact: 'No driver contact on this order.')
+                : _phoneClosedSnack,
+          ),
+        ],
       ],
     );
   }
@@ -1128,6 +1153,25 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     );
   }
 
+  Widget _ordersStageList(
+    List<Map<String, dynamic>> orders, {
+    required String emptyTitle,
+    required String emptyMessage,
+  }) {
+    if (orders.isEmpty) {
+      return EmptyState(
+        icon: Icons.receipt_long_outlined,
+        title: emptyTitle,
+        message: emptyMessage,
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+      itemCount: orders.length,
+      itemBuilder: (context, index) => _buildOrderCard(orders[index]).entrance(index: index),
+    );
+  }
+
   Widget _buildOrdersWorkspace(List<Map<String, dynamic>> allOrders) {
     final newOrders = allOrders.where((o) => OrderLifecycle.isPendingKitchen(o['status']?.toString())).toList()
       ..sort(compareKitchenOrdersBySlot);
@@ -1151,30 +1195,41 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               'Completed',
             ],
             index: _ordersStage,
-            onChanged: (index) => setState(() => _ordersStage = index),
+            onChanged: (index) {
+              if (index == _ordersStage) return;
+              setState(() => _ordersStage = index);
+              if (_ordersPages.hasClients) {
+                _ordersPages.animateToPage(
+                  index,
+                  duration: AppTheme.tabDuration,
+                  curve: Curves.easeOutCubic,
+                );
+              }
+            },
           ),
         ),
         Expanded(
-          child: switch (_ordersStage) {
-            2 => _buildDispatchTab(allOrders),
-            3 => _buildHistoryTab(allOrders),
-            _ => ( _ordersStage == 0 ? newOrders : inProgress).isEmpty
-                ? EmptyState(
-                    icon: Icons.receipt_long_outlined,
-                    title: _ordersStage == 0 ? 'No new orders' : 'Nothing in progress',
-                    message: _ordersStage == 0
-                        ? 'New diner plates will land here for Accept or Decline.'
-                        : 'Accepted plates you are cooking show here.',
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
-                    itemCount: (_ordersStage == 0 ? newOrders : inProgress).length,
-                    itemBuilder: (context, index) {
-                      final order = (_ordersStage == 0 ? newOrders : inProgress)[index];
-                      return _buildOrderCard(order).entrance(index: index);
-                    },
-                  ),
-          },
+          child: PageView(
+            controller: _ordersPages,
+            onPageChanged: (index) {
+              if (index == _ordersStage) return;
+              setState(() => _ordersStage = index);
+            },
+            children: [
+              _ordersStageList(
+                newOrders,
+                emptyTitle: 'No new orders',
+                emptyMessage: 'New diner plates will land here for Accept or Decline.',
+              ),
+              _ordersStageList(
+                inProgress,
+                emptyTitle: 'Nothing in progress',
+                emptyMessage: 'Accepted plates you are cooking show here.',
+              ),
+              _buildDispatchTab(allOrders),
+              _buildHistoryTab(allOrders),
+            ],
+          ),
         ),
       ],
     );
@@ -1493,17 +1548,33 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   ],
                 )
               else if (svc.usesDeliveryPartner)
-                Text(
-                  isOut
-                      ? 'A delivery partner is on the way. They mark this order delivered.'
-                      : OrderLifecycle.isHeadingToPickup(status)
-                          ? 'A delivery partner is on the way to your kitchen for pickup.'
-                          : driverAssigned
-                          ? 'A delivery partner has this order. They will start and complete the run.'
-                          : ((order['order_type']?.toString() ?? '').trim().isEmpty)
-                              ? 'Drivers only see Delivery Partner jobs. Confirm the service type is Delivery Partner, then mark Ready for Pickup.'
-                              : 'Waiting for a delivery partner. Drivers see this job after you mark it Ready for Pickup.',
-                  style: const TextStyle(fontSize: 13, color: AppTheme.textMuted, height: 1.35),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isOut
+                          ? 'A delivery partner is on the way. They mark this order delivered.'
+                          : OrderLifecycle.isHeadingToPickup(status)
+                              ? 'A delivery partner is on the way to your kitchen for pickup.'
+                              : driverAssigned
+                              ? 'A delivery partner has this order. They will start and complete the run.'
+                              : ((order['order_type']?.toString() ?? '').trim().isEmpty)
+                                  ? 'Drivers only see Delivery Partner jobs. Confirm the service type is Delivery Partner, then mark Ready for Pickup.'
+                                  : 'Waiting for a delivery partner. Drivers see this job after you mark it Ready for Pickup.',
+                      style: const TextStyle(fontSize: 13, color: AppTheme.textMuted, height: 1.35),
+                    ),
+                    if (_assignedDriverId(order).isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.phone_outlined, size: 18),
+                        label: const Text('Call driver'),
+                        onPressed: () => _callParty(
+                          _assignedDriverId(order),
+                          missingContact: 'No driver contact on this order.',
+                        ),
+                      ),
+                    ],
+                  ],
                 )
               else
                 GradientButton(

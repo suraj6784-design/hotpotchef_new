@@ -581,6 +581,18 @@ DateTime? parseSlotStartTime(String timeSlot, {DateTime? baseDate}) {
   return parseClockOnDate(timeSlot, baseDate ?? DateTime.now());
 }
 
+int mealPortionsLeft(Map<String, dynamic> meal) {
+  return int.tryParse(meal['quantity']?.toString() ?? '') ?? 0;
+}
+
+String mealPortionsLeftLabel(Map<String, dynamic> meal) {
+  final left = mealPortionsLeft(meal);
+  final status = meal['status']?.toString().toLowerCase().trim() ?? '';
+  if (left <= 0 || status == 'sold out') return 'Sold out';
+  if (left == 1) return '1 left';
+  return '$left left';
+}
+
 bool mealHasSellableStock(Map<String, dynamic> meal) {
   final qty = int.tryParse(meal['quantity']?.toString() ?? '0') ?? 0;
   final status = meal['status']?.toString().toLowerCase().trim() ?? '';

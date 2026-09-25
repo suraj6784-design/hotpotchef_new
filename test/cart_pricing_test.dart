@@ -84,17 +84,28 @@ void main() {
       );
     });
 
-    test('chef Update Meal with yesterday as offer end keeps the 10% standing', () {
+    test('chef Update Meal stores a past offer end so the discount stops', () {
       final now = DateTime(2026, 9, 22, 14, 33);
+      final past = PricingCalculator.chefOfferExpiryIso(
+        offerType: OfferType.percentage,
+        endDate: DateTime(2026, 9, 21),
+        hour: 23,
+        minute: 59,
+        now: now,
+      );
+      expect(past, isNotNull);
+      expect(DateTime.parse(past!).isBefore(now.toUtc()), isTrue);
       expect(
-        PricingCalculator.chefOfferExpiryIso(
-          offerType: OfferType.percentage,
-          endDate: DateTime(2026, 9, 21),
-          hour: 23,
-          minute: 59,
-          now: now,
+        PricingCalculator.isOfferActive(
+          {
+            'price': 121,
+            'offer_type': 'percentage',
+            'discount_value': 10,
+            'offer_valid_until': past,
+          },
+          referenceTime: now,
         ),
-        isNull,
+        isFalse,
       );
       final kept = PricingCalculator.chefOfferExpiryIso(
         offerType: OfferType.percentage,

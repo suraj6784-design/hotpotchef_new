@@ -16,6 +16,8 @@ void main() {
       expect(orderAllowsPhoneCall('Confirmed'), isTrue);
       expect(orderAllowsPhoneCall('Preparing'), isTrue);
       expect(orderAllowsPhoneCall('Ready for Pickup'), isTrue);
+      expect(orderAllowsPhoneCall('Driver Assigned'), isTrue);
+      expect(orderAllowsPhoneCall('Heading to Kitchen'), isTrue);
       expect(orderAllowsPhoneCall('Out for Delivery'), isTrue);
       expect(orderAllowsPhoneCall('Pending Chef Approval'), isFalse);
       expect(orderAllowsPhoneCall('Pending Payment'), isFalse);

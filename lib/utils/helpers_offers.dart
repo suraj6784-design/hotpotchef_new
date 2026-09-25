@@ -162,6 +162,15 @@ Map<String, dynamic> buildOfferFlashGroupCard(String groupKey, List<Map<String, 
   }
   rep['_offer_group'] = groupKey;
   rep['_offer_group_count'] = meals.length;
+  DateTime? soonestEnd;
+  for (final meal in meals) {
+    final end = PricingCalculator.parseOfferDate(meal['offer_valid_until']);
+    if (end == null) continue;
+    if (soonestEnd == null || end.isBefore(soonestEnd)) soonestEnd = end;
+  }
+  if (soonestEnd != null) {
+    rep['offer_valid_until'] = soonestEnd.toUtc().toIso8601String();
+  }
   // Back-compat for older BOGO-only callers.
   if (groupKey == 'bogo') {
     rep['_bogo_group'] = true;
@@ -263,4 +272,22 @@ String offerFlashSubhead(Map<String, dynamic> meal) {
   }
   final title = meal['title']?.toString().trim() ?? meal['name']?.toString().trim() ?? '';
   return title.isEmpty ? 'Tap to see this kitchen special' : title;
+}
+
+/// Remaining time until the chef's published offer end. Empty when there is no end.
+String offerExpiryCountdownLabel(DateTime? until, {DateTime? now}) {
+  if (until == null) return '';
+  final remaining = until.difference(now ?? DateTime.now());
+  if (remaining.inSeconds <= 0) return '';
+  final days = remaining.inDays;
+  final hours = remaining.inHours.remainder(24);
+  final minutes = remaining.inMinutes.remainder(60);
+  final seconds = remaining.inSeconds.remainder(60);
+  if (days > 0) {
+    return 'Ends in ${days}d ${hours.toString().padLeft(2, '0')}h ${minutes.toString().padLeft(2, '0')}m';
+  }
+  final hh = remaining.inHours.toString().padLeft(2, '0');
+  final mm = minutes.toString().padLeft(2, '0');
+  final ss = seconds.toString().padLeft(2, '0');
+  return 'Ends in $hh:$mm:$ss';
 }

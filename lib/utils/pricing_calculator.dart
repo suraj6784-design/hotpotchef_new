@@ -115,8 +115,8 @@ class PricingCalculator {
     return true;
   }
 
-  /// Chef Edit Meal: a past end date must not block Update or hide the %.
-  /// Returns UTC ISO when the local end is still ahead; otherwise null (keep until off).
+  /// Stores the chef's published offer end, including a time that has already passed.
+  /// A null end means the offer has no expiry. Diner prices honor [isWithinOfferWindow].
   static String? chefOfferExpiryIso({
     required OfferType offerType,
     DateTime? endDate,
@@ -125,6 +125,8 @@ class PricingCalculator {
     DateTime? now,
   }) {
     if (offerType == OfferType.none || endDate == null) return null;
+    // Callers may pass `now` to pin a test clock. The stored instant is the chef's end.
+    final _ = now;
     final localExpiry = DateTime(
       endDate.year,
       endDate.month,
@@ -132,7 +134,6 @@ class PricingCalculator {
       hour.clamp(0, 23),
       minute.clamp(0, 59),
     );
-    if (!localExpiry.isAfter(now ?? DateTime.now())) return null;
     return localExpiry.toUtc().toIso8601String();
   }
 

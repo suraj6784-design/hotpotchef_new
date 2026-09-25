@@ -1193,6 +1193,7 @@ class MealDetailsBody extends StatefulWidget {
 class _MealDetailsBodyState extends State<MealDetailsBody> {
   int _quantity = 1;
   bool _notifyBusy = false;
+  int? _liveStock;
   final Set<String> _selectedAddOnIds = {};
 
   List<CartItemAddOn> get _availableAddOns => ReorderService.parseMealAddOns(
@@ -1212,11 +1213,32 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
   @override
   void initState() {
     super.initState();
+    unawaited(_refreshLiveStock());
     unawaited(AppAnalytics.logViewMeal(
       mealId: widget.meal['id']?.toString() ?? '',
       chefId: widget.meal['chef_id']?.toString(),
       title: widget.meal['title']?.toString(),
     ));
+  }
+
+  Future<void> _refreshLiveStock() async {
+    final mealId = widget.meal['id']?.toString() ?? '';
+    if (mealId.isEmpty) return;
+    try {
+      final row = await Supabase.instance.client
+          .from('meals')
+          .select('quantity, status')
+          .eq('id', mealId)
+          .maybeSingle();
+      if (!mounted || row == null) return;
+      final qty = int.tryParse(row['quantity']?.toString() ?? '');
+      setState(() {
+        _liveStock = qty;
+        if (qty != null && qty > 0 && _quantity > qty) _quantity = qty;
+      });
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Meal stock refresh failed');
+    }
   }
 
   Future<void> _requestAvailabilityNotify() async {
@@ -1267,11 +1289,16 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
   Widget build(BuildContext context) {
     final meal = widget.meal;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final maxStock = int.tryParse(meal['quantity']?.toString() ?? '10') ?? 10;
-    final canAddToCart = isMealAvailableForCart(meal);
-    final cartCta = !mealHasSellableStock(meal)
+    final listedStock = int.tryParse(meal['quantity']?.toString() ?? '');
+    final maxStock = _liveStock ?? listedStock ?? 0;
+    final stockMeal = <String, dynamic>{
+      ...meal,
+      'quantity': maxStock,
+    };
+    final canAddToCart = isMealAvailableForCart(stockMeal);
+    final cartCta = !mealHasSellableStock(stockMeal)
         ? 'Sold out'
-        : (isMealExpired(meal['time_slot']?.toString()) ? 'Slot passed' : 'Add to Cart • ₹${_lineFoodTotal.toInt()}');
+        : (isMealExpired(meal['time_slot']?.toString()) ? 'Slot passed' : 'Add to Cart • ₹${wholeRupees(_lineFoodTotal)}');
     final offerSummary = PricingCalculator.calculateItemSummary(meal, _quantity);
     final price = offerSummary.effectiveUnitPrice;
     final chefName = chefDisplayName(meal);
@@ -1355,7 +1382,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                             children: [
                               if (offerSummary.isOfferApplied) ...[
                                 Text(
-                                  '₹${offerSummary.baseUnitPrice.toInt()}',
+                                  '₹${wholeRupees(offerSummary.baseUnitPrice)}',
                                   style: const TextStyle(
                                     fontSize: 14,
                                     color: AppTheme.textMuted,
@@ -1365,8 +1392,16 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                                 ),
                                 const SizedBox(height: 2),
                               ],
-                              Text('₹${price.toInt()}',
+                              Text('₹${wholeRupees(price)}',
                                   style: AppTheme.priceOf(context).copyWith(fontSize: 22)),
+                              const SizedBox(height: 2),
+                              Text(
+                                mealPortionsLeftLabel(stockMeal),
+                                style: AppTheme.caption.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: maxStock <= 0 ? AppTheme.error : AppTheme.textMuted,
+                                ),
+                              ),
                               if (offerSummary.isOfferApplied &&
                                   (offerSummary.offerDescription ?? '').isNotEmpty)
                                 Text(

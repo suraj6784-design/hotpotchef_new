@@ -161,13 +161,13 @@ void main() {
       );
     });
 
-    test('live tracking only after the kitchen is ready for pickup', () {
+    test('live tracking only once the order is out for delivery', () {
       expect(OrderLifecycle.isTrackable('Pending Chef Approval'), isFalse);
       expect(OrderLifecycle.isTrackable('Confirmed'), isFalse);
       expect(OrderLifecycle.isTrackable('Preparing'), isFalse);
-      expect(OrderLifecycle.isTrackable('Ready for Pickup'), isTrue);
-      expect(OrderLifecycle.isTrackable('Driver Assigned'), isTrue);
-      expect(OrderLifecycle.isTrackable('Heading to Kitchen'), isTrue);
+      expect(OrderLifecycle.isTrackable('Ready for Pickup'), isFalse);
+      expect(OrderLifecycle.isTrackable('Driver Assigned'), isFalse);
+      expect(OrderLifecycle.isTrackable('Heading to Kitchen'), isFalse);
       expect(OrderLifecycle.isTrackable('Out for Delivery'), isTrue);
       expect(OrderLifecycle.isTrackable('Delivered'), isFalse);
       expect(OrderLifecycle.isTrackable('Cancelled'), isFalse);
@@ -193,7 +193,8 @@ void main() {
       expect(OrderStatus.canonical('completed'), OrderStatus.delivered);
       expect(OrderStatus.canonical('out_for_delivery'), OrderStatus.outForDelivery);
       expect(OrderStatus.canonical('Pending Chef Approval'), OrderStatus.pendingChefApproval);
-      expect(OrderLifecycle.isTrackable('packed'), isTrue);
+      expect(OrderLifecycle.isTrackable('packed'), isFalse);
+      expect(OrderLifecycle.isTrackable('out_for_delivery'), isTrue);
       expect(OrderLifecycle.isTrackable('completed'), isFalse);
       expect(OrderLifecycle.nextKitchenStatus('placed'), OrderStatus.confirmed);
     });

@@ -753,6 +753,7 @@ bool orderAllowsPhoneCall(String? status) {
       s.contains('ready') ||
       s.contains('assign') ||
       s.contains('accept') ||
+      s.contains('heading') ||
       s.contains('pickup') ||
       s.contains('picked') ||
       s.contains('out for') ||
@@ -2037,6 +2038,9 @@ String formatRupees(num amount, {int fractionDigits = 2}) {
   return '₹${roundMoney(amount.toDouble()).toStringAsFixed(fractionDigits)}';
 }
 
+/// Whole rupees shown on a dish card, the dish page, and the Pay button.
+int wholeRupees(num amount) => int.parse(amount.toStringAsFixed(0));
+
 String packagingFeeLineLabel({required double fee, String? loyaltyTier}) {
   if (fee <= 0) return 'Packaging';
   if (fee <= kPackagingFeeBelowFreeDelivery) return 'Packaging (under ₹199)';
@@ -2998,6 +3002,25 @@ OrderBillBreakdown orderBillBreakdown({
   final computed = (itemsTotal + packaging + delivery + tip + membershipFee - coins).clamp(0, double.infinity);
   final grand = (paidTotal > 0 && !paidLooksLikeItemsOnly) ? paidTotal : computed;
 
+  var shownPromo = promoDiscount;
+  var shownLabel = promoLabel;
+  final feesAreStored = storedPackaging != null && (storedDelivery != null || !deliveryExpected);
+  final linesCarryOffer = items.any((item) {
+    final type = (item['offer_type'] ?? '').toString().toLowerCase();
+    return type.contains('percent') ||
+        type.contains('flat') ||
+        type.contains('flash') ||
+        type.contains('bogo') ||
+        type.contains('buy');
+  });
+  if (feesAreStored && shownPromo <= 0.5 && linesCarryOffer) {
+    final unexplained = PricingCalculator.roundCurrency((computed - grand).toDouble());
+    if (unexplained > 0.5) {
+      shownPromo = unexplained.roundToDouble();
+      shownLabel ??= 'Offer';
+    }
+  }
+
   return OrderBillBreakdown(
     itemsTotal: itemsTotal,
     packagingFee: packaging,
@@ -3006,8 +3029,8 @@ OrderBillBreakdown orderBillBreakdown({
     coinsApplied: coins,
     grandTotal: grand.toDouble(),
     itemsGross: itemsGross,
-    promoDiscount: promoDiscount,
-    promoLabel: promoLabel,
+    promoDiscount: shownPromo,
+    promoLabel: shownLabel,
     membershipFee: membershipFee,
   );
 }

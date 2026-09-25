@@ -44,6 +44,7 @@ class CustomerHubScreen extends ConsumerStatefulWidget {
 
 class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
   int _selectedIndex = 0;
+  int _feedReset = 0;
   int _ordersEpoch = 0;
   StreamSubscription<AuthState>? _authSub;
 
@@ -101,6 +102,7 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
     }
     setState(() {
       _selectedIndex = index;
+      if (index == 0) _feedReset++;
       if (index == 2) _ordersEpoch++;
     });
   }
@@ -116,6 +118,10 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
       });
       return;
     }
+    if (index == 0 && _selectedIndex == 0) {
+      setState(() => _feedReset++);
+      return;
+    }
     _onNavigationItemTapped(index);
   }
 
@@ -129,6 +135,7 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
     final List<Widget> pages = [
       CustomerFeedTab(
         key: ValueKey('home-$sessionKey'),
+        homeResetToken: _feedReset,
         favoriteMeals: favoritesList,
         onToggleFavorite: (id) => ref.read(favoritesProvider.notifier).toggleFavorite(id),
         onProfileTap: _navigateToProfile,
@@ -138,7 +145,10 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
       ),
       CustomerCartTab(
         onAddMoreMeals: () => _onNavigationItemTapped(0),
-        onOrderPlacedSuccess: () => _onNavigationItemTapped(2),
+        onOrderPlacedSuccess: () {
+          setState(() => _feedReset++);
+          _onNavigationItemTapped(2);
+        },
         onProfileTap: _navigateToProfile,
         onLogout: _handleLogout,
       ),

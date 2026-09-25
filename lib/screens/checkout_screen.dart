@@ -62,7 +62,7 @@ class CheckoutScreen extends StatefulWidget {
   State<CheckoutScreen> createState() => _CheckoutScreenState();
 }
 
-class _CheckoutScreenState extends State<CheckoutScreen> {
+class _CheckoutScreenState extends State<CheckoutScreen> with WidgetsBindingObserver {
   final _supabase = Supabase.instance.client;
 
   bool _isLoading = true;
@@ -86,6 +86,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   String? _heldRazorpayOrderId;
   bool _orderRecorded = false;
   bool _placingOrder = false;
+  bool _leftCheckout = false;
+  int _paymentWatch = 0;
 
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _instructionsController = TextEditingController();
@@ -126,6 +128,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initRazorpay();
     _loadUserCheckoutData();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -152,7 +155,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_leaveIfOrderAlreadyRecorded());
+    }
+  }
+
+  @override
   void dispose() {
+    _paymentWatch++;
+    WidgetsBinding.instance.removeObserver(this);
     _releaseInventoryHold();
     _razorpay.clear();
     _phoneController.dispose();
@@ -168,6 +180,83 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _supabase.rpc('release_checkout_inventory', params: {
       'p_razorpay_order_id': orderId,
     }).withTimeout(NetworkTimeouts.short);
+  }
+
+  /// UPI often returns to this screen without the Razorpay success callback,
+  /// while the webhook has already saved the order. Leave as soon as that row exists.
+  Future<void> _leaveIfOrderAlreadyRecorded() async {
+    final watch = ++_paymentWatch;
+    for (var attempt = 0; attempt < 8; attempt++) {
+      if (!mounted || watch != _paymentWatch || _leftCheckout) return;
+      if (_placingOrder) {
+        await Future<void>.delayed(const Duration(seconds: 1));
+        continue;
+      }
+      final razorpayOrderId = _heldRazorpayOrderId;
+      if (razorpayOrderId == null || razorpayOrderId.isEmpty) return;
+      try {
+        final rows = await _supabase
+            .from('orders')
+            .select('id, total_price')
+            .eq('razorpay_order_id', razorpayOrderId)
+            .limit(1);
+        if (!mounted || watch != _paymentWatch || _leftCheckout || _placingOrder) return;
+        if (rows.isNotEmpty) {
+          final row = Map<String, dynamic>.from(rows.first as Map);
+          final orderId = row['id']?.toString();
+          final paid = parseMoney(row['total_price']);
+          _exitCheckoutAfterPlacement(
+            orderId: orderId,
+            paidTotal: paid > 0 ? paid : _grandTotal,
+          );
+          return;
+        }
+      } catch (e, stack) {
+        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Checkout resume lookup failed');
+      }
+      await Future<void>.delayed(const Duration(seconds: 2));
+    }
+  }
+
+  void _exitCheckoutAfterPlacement({
+    required String? orderId,
+    required double paidTotal,
+    String? paymentId,
+    String? message,
+  }) {
+    if (_leftCheckout) return;
+    _leftCheckout = true;
+    _orderRecorded = true;
+    _heldRazorpayOrderId = null;
+    _paymentWatch++;
+    unawaited(clearCheckoutRetryJob());
+    unawaited(_persistOrderDropoff(orderId));
+    unawaited(_markSourceRequestOrdered(orderId));
+    unawaited(AppAnalytics.logPurchase(
+      orderId: orderId,
+      value: paidTotal,
+      paymentId: paymentId,
+    ));
+    if (!mounted) return;
+    final label = (orderId == null || orderId.isEmpty) ? '' : formatOrderId(orderId, orderId);
+    final total = formatRupees(paidTotal);
+    final placedCopy = message ??
+        (_membershipOnThisOrder
+            ? 'You are now a Family member. Unlimited free delivery is on.'
+            : label.isEmpty
+                ? 'Order placed. Total $total. It is in Orders, with the receipt.'
+                : 'Order $label placed. Total $total. It is in Orders, with the receipt.');
+    widget.onOrderPlacedSuccess();
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    Navigator.of(context).pop();
+    messenger?.showSnackBar(
+      SnackBar(
+        content: Text(placedCopy),
+        backgroundColor: AppTheme.success,
+        duration: const Duration(seconds: 4),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   // --- Initial Data Load ---
@@ -633,6 +722,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       };
 
       _razorpay.open(options);
+      unawaited(_leaveIfOrderAlreadyRecorded());
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Payment initialization failed');
       _releaseInventoryHold();
@@ -813,21 +903,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         }
         throw Exception(placed?['error'] ?? 'Could not record the coin-paid order.');
       }
-      _orderRecorded = true;
       final orderId = placed['order_id']?.toString();
-      await _persistOrderDropoff(orderId);
-      await _markSourceRequestOrdered(orderId);
-      unawaited(AppAnalytics.logPurchase(orderId: orderId, value: 0));
-      if (mounted) {
-        widget.onOrderPlacedSuccess();
-        Navigator.pop(context);
-        _showSnackBar(
-          _membershipOnThisOrder
-              ? 'Order placed. You are now a Family member.'
-              : 'Order placed with HotPot Coins.',
-          isError: false,
-        );
-      }
+      _exitCheckoutAfterPlacement(
+        orderId: orderId,
+        paidTotal: 0,
+        message: _membershipOnThisOrder
+            ? 'Order placed. You are now a Family member.'
+            : 'Order placed with HotPot Coins.',
+      );
     } finally {
       _placingOrder = false;
       if (mounted) setState(() => _isCheckingOut = false);
@@ -1023,51 +1106,29 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         signature: response.signature,
       );
 
+      if (_leftCheckout) return;
       if (placed == null || placed['success'] != true) {
         throw Exception(placed?['error'] ?? 'Server failed to record verified order.');
       }
 
-      _orderRecorded = true;
-      _heldRazorpayOrderId = null;
-      await clearCheckoutRetryJob();
       if (placed['membership_only'] == true) {
-        unawaited(AppAnalytics.logPurchase(
+        _exitCheckoutAfterPlacement(
           orderId: 'membership',
-          value: _grandTotal,
+          paidTotal: _grandTotal,
           paymentId: response.paymentId,
-        ));
-        if (mounted) {
-          widget.onOrderPlacedSuccess();
-          Navigator.pop(context);
-          _showSnackBar(
-            'You are now a Family member. Unlimited free delivery is on.',
-            isError: false,
-          );
-        }
+          message: 'You are now a Family member. Unlimited free delivery is on.',
+        );
         return;
       }
       final orderId = placed['order_id']?.toString();
-      await _persistOrderDropoff(orderId);
-      await _markSourceRequestOrdered(orderId);
-      unawaited(AppAnalytics.logPurchase(
+      final recorded = parseMoney(placed['total']);
+      _exitCheckoutAfterPlacement(
         orderId: orderId,
-        value: _grandTotal,
+        paidTotal: recorded > 0 ? recorded : _grandTotal,
         paymentId: response.paymentId,
-      ));
-
-      if (mounted) {
-        final label = (orderId == null || orderId.isEmpty) ? '' : formatOrderId(orderId, orderId);
-        final total = formatRupees(_grandTotal);
-        final placedCopy = _membershipOnThisOrder
-            ? 'You are now a Family member. Unlimited free delivery is on.'
-            : label.isEmpty
-                ? 'Order placed. Total $total. It is in Orders, with the receipt.'
-                : 'Order $label placed. Total $total. It is in Orders, with the receipt.';
-        widget.onOrderPlacedSuccess();
-        Navigator.pop(context);
-        _showSnackBar(placedCopy, isError: false);
-      }
+      );
     } catch (e, stack) {
+      if (_leftCheckout) return;
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Order recording failed post-payment');
       if (mounted) {
         final soldOut = isSoldOutCheckoutError(e);

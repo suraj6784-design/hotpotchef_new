@@ -167,7 +167,7 @@ class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      "Tonight's kitchen offers",
+                      'Exclusive offers',
                       style: AppTheme.homeSectionLabelOf(context),
                     ),
                     const SizedBox(width: 8),
@@ -176,7 +176,7 @@ class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
                 ),
               ),
               SizedBox(
-                height: 118,
+                height: 136,
                 child: PageView.builder(
                   controller: _pageController,
                   itemCount: offers.length,
@@ -187,6 +187,10 @@ class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
                       meal: meal,
                       shimmer: _shimmer,
                       pulse: _pulse,
+                      blink: _blink,
+                      onExpired: () {
+                        if (mounted) setState(() {});
+                      },
                       onTap: () => widget.onOfferTap(meal),
                     ).entrance(index: index.clamp(0, 4));
                   },
@@ -218,31 +222,87 @@ class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
   }
 }
 
-class _OfferFlashCard extends StatelessWidget {
+class _OfferFlashCard extends StatefulWidget {
   const _OfferFlashCard({
     required this.meal,
     required this.shimmer,
     required this.pulse,
+    required this.blink,
     required this.onTap,
+    required this.onExpired,
   });
 
   final Map<String, dynamic> meal;
   final Animation<double> shimmer;
   final Animation<double> pulse;
+  final Animation<double> blink;
   final VoidCallback onTap;
+  final VoidCallback onExpired;
+
+  @override
+  State<_OfferFlashCard> createState() => _OfferFlashCardState();
+}
+
+class _OfferFlashCardState extends State<_OfferFlashCard> {
+  Timer? _clock;
+  bool _expired = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _armClock();
+  }
+
+  @override
+  void didUpdateWidget(covariant _OfferFlashCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.meal['offer_valid_until'] != widget.meal['offer_valid_until']) {
+      _expired = false;
+      _armClock();
+    }
+  }
+
+  void _armClock() {
+    _clock?.cancel();
+    _clock = null;
+    final until = PricingCalculator.parseOfferDate(widget.meal['offer_valid_until']);
+    if (until == null || !until.isAfter(DateTime.now())) return;
+    _clock = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
+  }
+
+  @override
+  void dispose() {
+    _clock?.cancel();
+    super.dispose();
+  }
+
+  void _tick() {
+    if (!mounted) return;
+    final until = PricingCalculator.parseOfferDate(widget.meal['offer_valid_until']);
+    final label = offerExpiryCountdownLabel(until);
+    if (until != null && label.isEmpty && !_expired) {
+      _expired = true;
+      widget.onExpired();
+    }
+    setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
+    final meal = widget.meal;
     final image = meal['image_url']?.toString() ?? '';
     final headline = offerFlashHeadline(meal);
     final subhead = offerFlashSubhead(meal);
     final code = PricingCalculator.mealPromoCode(meal);
     final boosted = isMealBoosted(meal);
+    final countdown = offerExpiryCountdownLabel(
+      PricingCalculator.parseOfferDate(meal['offer_valid_until']),
+    );
 
     return AnimatedBuilder(
-      animation: Listenable.merge([shimmer, pulse]),
+      animation: Listenable.merge([widget.shimmer, widget.pulse]),
       builder: (context, child) {
-        final glow = 0.18 + (pulse.value * 0.22);
+        final glow = 0.18 + (widget.pulse.value * 0.22);
         return Container(
           margin: const EdgeInsets.symmetric(horizontal: 6),
           decoration: BoxDecoration(
@@ -250,7 +310,7 @@ class _OfferFlashCard extends StatelessWidget {
             boxShadow: [
               BoxShadow(
                 color: AppTheme.primary.withValues(alpha: glow),
-                blurRadius: 18 + (pulse.value * 10),
+                blurRadius: 18 + (widget.pulse.value * 10),
                 offset: const Offset(0, 6),
               ),
             ],
@@ -261,7 +321,7 @@ class _OfferFlashCard extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTap,
+          onTap: widget.onTap,
           borderRadius: BorderRadius.circular(20),
           child: Ink(
             decoration: BoxDecoration(
@@ -277,10 +337,10 @@ class _OfferFlashCard extends StatelessWidget {
               child: Stack(
                 children: [
                   Positioned.fill(
-                    child: AnimatedBuilder(
-                      animation: shimmer,
+                      child: AnimatedBuilder(
+                      animation: widget.shimmer,
                       builder: (context, _) {
-                        final t = shimmer.value;
+                        final t = widget.shimmer.value;
                         return IgnorePointer(
                           child: DecoratedBox(
                             decoration: BoxDecoration(
@@ -332,6 +392,22 @@ class _OfferFlashCard extends StatelessWidget {
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
+                              if (countdown.isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                FadeTransition(
+                                  opacity: Tween(begin: 0.25, end: 1.0).animate(widget.blink),
+                                  child: Text(
+                                    countdown,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                              ],
                               if (boosted || code != null) ...[
                                 const SizedBox(height: 8),
                                 Wrap(
@@ -400,6 +476,67 @@ class _OfferFlashCard extends StatelessWidget {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Blinking remaining time for a chef-published offer end.
+class FlashingOfferCountdown extends StatefulWidget {
+  const FlashingOfferCountdown({
+    super.key,
+    required this.until,
+    this.onDark = false,
+  });
+
+  final DateTime? until;
+  final bool onDark;
+
+  @override
+  State<FlashingOfferCountdown> createState() => _FlashingOfferCountdownState();
+}
+
+class _FlashingOfferCountdownState extends State<FlashingOfferCountdown>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _blink;
+  Timer? _clock;
+
+  @override
+  void initState() {
+    super.initState();
+    _blink = AnimationController(vsync: this, duration: const Duration(milliseconds: 700))
+      ..repeat(reverse: true);
+    final until = widget.until;
+    if (until != null && until.isAfter(DateTime.now())) {
+      _clock = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) setState(() {});
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _clock?.cancel();
+    _blink.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final label = offerExpiryCountdownLabel(widget.until);
+    if (label.isEmpty) return const SizedBox.shrink();
+    final color = widget.onDark ? Colors.white : Colors.red.shade700;
+    return FadeTransition(
+      opacity: Tween(begin: 0.25, end: 1.0).animate(_blink),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
         ),
       ),
     );

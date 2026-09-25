@@ -272,6 +272,23 @@ void main() {
     expect(mealHasPlaceholderOrMissingSlot({'time_slot': 'Daily (6:30 PM to 9:30 PM)'}), isFalse);
   });
 
+  test('offer countdown uses the chef published end', () {
+    final now = DateTime(2026, 9, 25, 17, 0);
+    expect(offerExpiryCountdownLabel(null, now: now), isEmpty);
+    expect(
+      offerExpiryCountdownLabel(now.subtract(const Duration(minutes: 1)), now: now),
+      isEmpty,
+    );
+    expect(
+      offerExpiryCountdownLabel(now.add(const Duration(hours: 2, minutes: 5, seconds: 9)), now: now),
+      'Ends in 02:05:09',
+    );
+    expect(
+      offerExpiryCountdownLabel(now.add(const Duration(days: 1, hours: 3)), now: now),
+      'Ends in 1d 03h 00m',
+    );
+  });
+
   test('offer strip stays empty until the diner drops a delivery pin', () {
     final now = DateTime(2026, 9, 12, 19, 0);
     expect(

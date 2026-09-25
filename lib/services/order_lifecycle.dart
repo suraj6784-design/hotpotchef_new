@@ -91,8 +91,8 @@ class OrderLifecycle {
   /// Handed to the diner — not "out for delivery".
   static bool isFulfilled(String? status) => _is(status, OrderStatus.delivered);
 
-  /// Live map after the kitchen marks Ready for Pickup (and while the partner is en route).
-  static bool isTrackable(String? status) => isDispatchQueue(status);
+  /// Diner live map once the partner has the box and is out for delivery.
+  static bool isTrackable(String? status) => canDriverCompleteRun(status);
 
   static String dinerOrderCardBadge(String? status) {
     switch (known(status)) {

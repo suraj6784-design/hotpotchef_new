@@ -41,6 +41,7 @@ class CustomerFeedTab extends ConsumerStatefulWidget {
   final VoidCallback onLogout;
   final VoidCallback? onGoToCart;
   final VoidCallback? onReorderToOrders;
+  final int homeResetToken;
 
   const CustomerFeedTab({
     super.key,
@@ -50,6 +51,7 @@ class CustomerFeedTab extends ConsumerStatefulWidget {
     required this.onLogout,
     this.onGoToCart,
     this.onReorderToOrders,
+    this.homeResetToken = 0,
   });
 
   @override
@@ -58,7 +60,6 @@ class CustomerFeedTab extends ConsumerStatefulWidget {
 
 class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
-  late Stream<List<Map<String, dynamic>>> _mealsStream;
   List<Map<String, dynamic>>? _mealsRestSnapshot;
   bool _loadingMealsRest = false;
   String _selectedCategory = 'All';
@@ -120,7 +121,6 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _bindMealsStream();
     unawaited(_refreshMealsRestSnapshot());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future<void>.delayed(const Duration(milliseconds: 500), () {
@@ -130,7 +130,6 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     _fetchDietaryPrefs();
     _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       if (!mounted) return;
-      _bindMealsStream();
       unawaited(_refreshMealsRestSnapshot());
       if (data.session == null) {
         setState(_resetGuestFeedState);
@@ -143,10 +142,13 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     });
   }
 
-  void _bindMealsStream() {
-    // Realtime always `select *`, which rejects guest column grants and can
-    // fail JSON on meals.embedding (vector). Home uses the REST catalog select.
-    _mealsStream = Stream<List<Map<String, dynamic>>>.value(const []);
+  @override
+  void didUpdateWidget(covariant CustomerFeedTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.homeResetToken != oldWidget.homeResetToken) {
+      _clearHomeSearch();
+      unawaited(_refreshMealsRestSnapshot());
+    }
   }
 
   Future<List<Map<String, dynamic>>> _fetchMealsCatalog({String? chefId}) {
@@ -160,10 +162,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       if (!mounted) return;
       final controller = _feedScrollController;
       if (!controller.hasClients) return;
-      final position = controller.position;
-      if (!position.hasPixels || !position.hasContentDimensions) return;
-      if (position.pixels <= position.minScrollExtent) return;
       try {
+        final position = controller.position;
+        if (!position.hasPixels || !position.hasContentDimensions) return;
+        if (position.pixels <= position.minScrollExtent) return;
         controller.jumpTo(position.minScrollExtent);
       } catch (_) {}
     });
@@ -197,7 +199,6 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
 
   void _retryMealsFeed() {
     _loadingMealsRest = false;
-    _bindMealsStream();
     unawaited(_refreshMealsRestSnapshot());
     setState(() {});
   }
@@ -1537,9 +1538,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                     Text(
                       _hasActiveSearch
                           ? (_filteredChefId != null
@@ -1549,6 +1551,8 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                   : 'Search results'))
                           : (showFollowing ? 'Kitchens you follow' : 'Your favorites'),
                       style: AppTheme.homeSectionLabelOf(context).copyWith(fontSize: 16),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -1564,8 +1568,11 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                               ? 'Live dishes from kitchens you follow'
                               : 'Meals you loved'),
                       style: AppTheme.metaOf(context),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
+                  ),
                 ),
                 if (_hasActiveSearch)
                   IconButton(
@@ -1616,15 +1623,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             ),
           ]
           else
-            StreamBuilder<List<Map<String, dynamic>>>(
-              stream: _mealsStream,
-              builder: (context, snapshot) {
-                final streamed = snapshot.data;
-                final mealsSource = (streamed != null && streamed.isNotEmpty && !snapshot.hasError)
-                    ? streamed
-                    : _mealsRestSnapshot;
-                if ((snapshot.connectionState == ConnectionState.waiting && mealsSource == null) ||
-                    (_loadingMealsRest && mealsSource == null)) {
+            Builder(
+              builder: (context) {
+                final mealsSource = _mealsRestSnapshot;
+                if (_loadingMealsRest && mealsSource == null) {
                   return const MealListSkeleton(count: 4);
                 }
                 if (mealsSource == null) {
@@ -2200,6 +2202,14 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                         const SizedBox(height: 2),
                         Text('Prep: $prep mins', style: AppTheme.caption),
                       ],
+                      const SizedBox(height: 2),
+                      Text(
+                        mealPortionsLeftLabel(meal),
+                        style: AppTheme.caption.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: mealPortionsLeft(meal) <= 0 ? AppTheme.error : AppTheme.textMuted,
+                        ),
+                      ),
                       const SizedBox(height: 6),
                       Wrap(
                         crossAxisAlignment: WrapCrossAlignment.center,
@@ -2208,7 +2218,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                         children: [
                           if (showOfferPrice)
                             Text(
-                              '₹${offerSummary.baseUnitPrice.round()}',
+                              '₹${wholeRupees(offerSummary.baseUnitPrice)}',
                               style: const TextStyle(
                                 fontSize: 13,
                                 color: AppTheme.textMuted,
@@ -2217,7 +2227,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                               ),
                             ),
                           Text(
-                            '₹${price.round()}',
+                            '₹${wholeRupees(price)}',
                             style: const TextStyle(
                               fontWeight: FontWeight.w700,
                               fontSize: 16,
@@ -2232,6 +2242,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                 fontSize: 12,
                                 fontWeight: FontWeight.w700,
                               ),
+                            ),
+                          if (showOfferPrice)
+                            FlashingOfferCountdown(
+                              until: PricingCalculator.parseOfferDate(meal['offer_valid_until']),
                             ),
                         ],
                       ),
@@ -2606,7 +2620,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                         children: [
                                           if (showOfferPrice)
                                             Text(
-                                              '₹${offerSummary.baseUnitPrice.toInt()}',
+                                              '₹${wholeRupees(offerSummary.baseUnitPrice)}',
                                               style: const TextStyle(
                                                 color: AppTheme.textMuted,
                                                 fontSize: 12,
@@ -2615,11 +2629,15 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                               ),
                                             ),
                                           Text(
-                                            '₹${offerSummary.effectiveUnitPrice.toInt()}',
+                                            '₹${wholeRupees(offerSummary.effectiveUnitPrice)}',
                                             style: AppTheme.priceOf(context),
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                           ),
+                                          if (showOfferPrice)
+                                            FlashingOfferCountdown(
+                                              until: PricingCalculator.parseOfferDate(meal['offer_valid_until']),
+                                            ),
                                           if (isAvailable)
                                             Text(
                                               '$availableQty left',
