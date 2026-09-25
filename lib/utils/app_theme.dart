@@ -172,13 +172,7 @@ class AppTheme {
       borderRadius: radiusLg,
       boxShadow: isDark ? const [] : softShadow,
       border: Border.all(color: hairlineOf(context), width: 0.8),
-      gradient: isDark
-          ? null
-          : const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0xFFFFFEFB), Color(0xFFFFF8F2)],
-            ),
+      gradient: null,
     );
   }
 
@@ -214,7 +208,7 @@ class AppTheme {
   // ---------------------------------------------------------------------------
   static TextStyle sectionTitleOf(BuildContext context) => GoogleFonts.figtree(
         fontSize: 22,
-        fontWeight: FontWeight.w800,
+        fontWeight: FontWeight.w700,
         color: onSurfaceOf(context),
         height: 1.15,
         letterSpacing: -0.4,
@@ -222,7 +216,7 @@ class AppTheme {
 
   static TextStyle cardTitleOf(BuildContext context) => GoogleFonts.figtree(
         fontSize: 16,
-        fontWeight: FontWeight.w800,
+        fontWeight: FontWeight.w700,
         color: onSurfaceOf(context),
         height: 1.22,
         letterSpacing: -0.2,
@@ -247,16 +241,16 @@ class AppTheme {
   /// Shared Home section label (offers, shelf, diet, meal grid).
   static TextStyle homeSectionLabelOf(BuildContext context) => GoogleFonts.figtree(
         fontSize: 18,
-        fontWeight: FontWeight.w800,
+        fontWeight: FontWeight.w700,
         color: onSurfaceOf(context),
         height: 1.2,
         letterSpacing: -0.2,
       );
 
   static TextStyle homeKickerOf(BuildContext context) => GoogleFonts.figtree(
-        fontSize: 11,
+        fontSize: 12,
         fontWeight: FontWeight.w700,
-        letterSpacing: 0.8,
+        letterSpacing: 0.4,
         color: linkOf(context),
         height: 1.2,
       );
@@ -289,15 +283,23 @@ class AppTheme {
       );
 
   static TextStyle get micro => GoogleFonts.figtree(
-        fontSize: 11,
+        fontSize: 12,
         fontWeight: FontWeight.w600,
         color: textMuted,
         height: 1.35,
         letterSpacing: 0.2,
       );
 
+  /// Sentence case for labels. Order ids and codes stay uppercase at the call site.
+  static String sentenceLabel(String raw) {
+    final text = raw.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (text.isEmpty) return text;
+    final lower = text.toLowerCase();
+    return '${lower[0].toUpperCase()}${lower.substring(1)}';
+  }
+
   static TextStyle microOf(BuildContext context) => GoogleFonts.figtree(
-        fontSize: 11,
+        fontSize: 12,
         fontWeight: FontWeight.w600,
         color: textMutedOf(context),
         height: 1.35,
@@ -384,9 +386,9 @@ class AppTheme {
     final baseTypography =
         isDark ? Typography.material2021().white : Typography.material2021().black;
     final textTheme = GoogleFonts.figtreeTextTheme(baseTypography).copyWith(
-      displaySmall: GoogleFonts.figtree(fontWeight: FontWeight.w800, color: onSurface, fontSize: 28, height: 1.12, letterSpacing: -0.7),
-      headlineMedium: GoogleFonts.figtree(fontWeight: FontWeight.w800, color: onSurface, fontSize: 24, height: 1.14, letterSpacing: -0.5),
-      headlineSmall: GoogleFonts.figtree(fontWeight: FontWeight.w800, color: onSurface, fontSize: 20, height: 1.2, letterSpacing: -0.3),
+      displaySmall: GoogleFonts.figtree(fontWeight: FontWeight.w700, color: onSurface, fontSize: 22, height: 1.15, letterSpacing: -0.4),
+      headlineMedium: GoogleFonts.figtree(fontWeight: FontWeight.w700, color: onSurface, fontSize: 22, height: 1.15, letterSpacing: -0.4),
+      headlineSmall: GoogleFonts.figtree(fontWeight: FontWeight.w700, color: onSurface, fontSize: 18, height: 1.2, letterSpacing: -0.2),
       titleLarge: GoogleFonts.figtree(fontWeight: FontWeight.w700, color: onSurface, fontSize: 18, height: 1.25, letterSpacing: -0.2),
       titleMedium: GoogleFonts.figtree(fontWeight: FontWeight.w700, color: onSurface, fontSize: 15, height: 1.3, letterSpacing: -0.1),
       titleSmall: GoogleFonts.figtree(fontWeight: FontWeight.w600, color: onSurface, fontSize: 14, height: 1.3),
@@ -395,7 +397,7 @@ class AppTheme {
       bodySmall: GoogleFonts.figtree(fontWeight: FontWeight.w600, color: muted, fontSize: 12, height: 1.4, letterSpacing: 0.15),
       labelLarge: GoogleFonts.figtree(fontWeight: FontWeight.w700, color: onSurface, fontSize: 14, letterSpacing: 0.15),
       labelMedium: GoogleFonts.figtree(fontWeight: FontWeight.w600, color: muted, fontSize: 13, height: 1.35, letterSpacing: 0.15),
-      labelSmall: GoogleFonts.figtree(fontWeight: FontWeight.w700, color: link, fontSize: 11, letterSpacing: 0.8, height: 1.2),
+      labelSmall: GoogleFonts.figtree(fontWeight: FontWeight.w700, color: link, fontSize: 12, letterSpacing: 0.4, height: 1.2),
     ).apply(
       bodyColor: onSurface,
       displayColor: onSurface,
@@ -503,7 +505,7 @@ class AppTheme {
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         labelTextStyle: WidgetStateProperty.resolveWith(
           (states) => GoogleFonts.figtree(
-            fontSize: 11,
+            fontSize: 12,
             letterSpacing: 0.2,
             fontWeight: states.contains(WidgetState.selected) ? FontWeight.w700 : FontWeight.w500,
             color: states.contains(WidgetState.selected) ? link : muted,
@@ -532,7 +534,7 @@ class AppTheme {
         backgroundColor: surface,
         elevation: 12,
         shape: RoundedRectangleBorder(borderRadius: radiusLg),
-        titleTextStyle: GoogleFonts.figtree(fontSize: 18, fontWeight: FontWeight.w800, color: onSurface, height: 1.2),
+        titleTextStyle: GoogleFonts.figtree(fontSize: 18, fontWeight: FontWeight.w700, color: onSurface, height: 1.2),
         contentTextStyle: GoogleFonts.figtree(fontSize: 14, fontWeight: FontWeight.w500, color: isDark ? Colors.white70 : textMain, height: 1.4),
       ),
       bottomSheetTheme: BottomSheetThemeData(
@@ -554,7 +556,7 @@ class AppTheme {
       ),
       listTileTheme: ListTileThemeData(
         iconColor: primary,
-        titleTextStyle: GoogleFonts.figtree(fontSize: 15, fontWeight: FontWeight.w800, color: onSurface, height: 1.25),
+        titleTextStyle: GoogleFonts.figtree(fontSize: 15, fontWeight: FontWeight.w700, color: onSurface, height: 1.25),
         subtitleTextStyle: GoogleFonts.figtree(fontSize: 12, fontWeight: FontWeight.w600, color: muted, height: 1.35),
       ),
       inputDecorationTheme: InputDecorationTheme(

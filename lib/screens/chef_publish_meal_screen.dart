@@ -743,7 +743,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                           '${i + 1}',
                           style: TextStyle(
                             fontSize: 12,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w700,
                             color: i <= _publishStep ? Colors.white : AppTheme.textMuted,
                           ),
                         ),
@@ -780,7 +780,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                 width: double.infinity,
                 decoration: BoxDecoration(
                   color: surface,
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(22),
                   border: Border.all(color: hairline),
                   image: _selectedImageFile != null
                       ? DecorationImage(
@@ -803,7 +803,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                           SizedBox(height: 8),
                           Text('Dish photo (mandatory)',
                               style: TextStyle(color: AppTheme.textMuted, fontWeight: FontWeight.w600)),
-                          Text('High-quality JPEG or PNG', style: TextStyle(color: AppTheme.textMuted, fontSize: 11)),
+                          Text('High-quality JPEG or PNG', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
                         ],
                       )
                     : null,
@@ -848,7 +848,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                   children: [
                     const Text(
                       'Editing published dish',
-                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: AppTheme.link),
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppTheme.link),
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -1218,7 +1218,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                     child: OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
                         side: BorderSide(color: AppTheme.primary.withValues(alpha: 0.5)),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                       icon: const Icon(Icons.schedule, size: 16, color: AppTheme.primary),
                       label: Text(
@@ -1280,7 +1280,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
               contentPadding: EdgeInsets.zero,
               value: _isSeasonal,
               activeThumbColor: AppTheme.primary,
-              title: Text('Seasonal / limited plate', style: TextStyle(fontWeight: FontWeight.w800, color: titleColor, fontSize: 14)),
+              title: Text('Seasonal / limited plate', style: TextStyle(fontWeight: FontWeight.w700, color: titleColor, fontSize: 14)),
               subtitle: Text('Shows a limited-availability tag on the diner card.', style: AppTheme.caption),
               onChanged: (v) => setState(() => _isSeasonal = v),
             ),
@@ -1288,7 +1288,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
               contentPadding: EdgeInsets.zero,
               value: _allowNotifyWhenAvailable,
               activeThumbColor: AppTheme.primary,
-              title: Text('Notify me when available', style: TextStyle(fontWeight: FontWeight.w800, color: titleColor, fontSize: 14)),
+              title: Text('Notify me when available', style: TextStyle(fontWeight: FontWeight.w700, color: titleColor, fontSize: 14)),
               subtitle: Text('Let diners ping this plate when it is sold out or not live.', style: AppTheme.caption),
               onChanged: (v) => setState(() => _allowNotifyWhenAvailable = v),
             ),
@@ -1327,7 +1327,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
               children: [
                 Text(
                   'Add-ons (optional)',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: AppTheme.onSurfaceOf(context)),
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppTheme.onSurfaceOf(context)),
                 ),
                 const Spacer(),
                 TextButton.icon(
@@ -1541,7 +1541,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                   const SizedBox(height: 6),
                   const Text(
                     'Code with no extra discount unlocks the offer above at checkout. Extra % or ₹ is a second cut — not a replacement.',
-                    style: TextStyle(fontSize: 11, color: AppTheme.textMuted, height: 1.35),
+                    style: TextStyle(fontSize: 12, color: AppTheme.textMuted, height: 1.35),
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<OfferType>(
@@ -1621,7 +1621,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                           backgroundColor: AppTheme.primary,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         ),
                         onPressed: _isLoading ? null : _goPublishNext,
                         child: _isLoading

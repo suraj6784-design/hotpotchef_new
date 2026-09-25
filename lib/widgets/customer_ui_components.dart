@@ -136,7 +136,7 @@ Future<void> showMealShareSheet(BuildContext context, Map<String, dynamic> meal)
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Share this dish', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.onSurfaceOf(ctx))),
+              Text('Share this dish', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: AppTheme.onSurfaceOf(ctx))),
               const SizedBox(height: 8),
               shareCardPreview(ctx, text),
               const SizedBox(height: 16),
@@ -181,7 +181,7 @@ Future<void> showPlateShareSheet(
             children: [
               Text(
                 'Share your plate',
-                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.onSurfaceOf(ctx)),
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: AppTheme.onSurfaceOf(ctx)),
               ),
               const SizedBox(height: 4),
               Text(
@@ -239,7 +239,7 @@ class DispatchPackedPhoto extends StatelessWidget {
               ),
               child: Text(
                 caption,
-                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
+                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700),
               ),
             ),
           ),
@@ -310,14 +310,14 @@ class WatermarkedMealImage extends StatelessWidget {
 
 // 2. Status Badge Helper
 Widget buildStatusBadge(String status) {
-  Color color = Colors.orange;
+  Color color = AppTheme.warning;
   final s = status.toLowerCase();
   if (s.contains('out for delivery') || s.contains('ready') || s.contains('assigned')) {
-    color = Colors.teal;
+    color = AppTheme.primary;
   } else if (s.contains('delivered') || s.contains('completed') || s.contains('confirm')) {
-    color = Colors.green;
+    color = AppTheme.success;
   } else if (s.contains('cancel') || s.contains('reject')) {
-    color = Colors.redAccent;
+    color = AppTheme.error;
   }
   return Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -326,8 +326,8 @@ Widget buildStatusBadge(String status) {
       borderRadius: AppTheme.radiusSm,
     ),
     child: Text(
-      status.toUpperCase(),
-      style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold),
+      AppTheme.sentenceLabel(status),
+      style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w700),
     ),
   );
 }
@@ -410,7 +410,7 @@ class _DeliveryCountdownStickerState extends State<DeliveryCountdownSticker> {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(
@@ -421,7 +421,7 @@ class _DeliveryCountdownStickerState extends State<DeliveryCountdownSticker> {
           Flexible(
             child: Text(
               label,
-              style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold),
+              style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -659,7 +659,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
                         ),
                         child: Text(
                           chefCardLocaleLabel(_cardLocale),
-                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.link),
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.link),
                         ),
                       ),
                     ],
@@ -740,7 +740,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
                   Expanded(
                     child: Text(
                       _rating.label,
-                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: ink),
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: ink),
                     ),
                   ),
                 ],
@@ -775,7 +775,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
                         ),
                         child: Text(
                           _liveLabel.isEmpty ? 'Live from the kitchen' : _liveLabel,
-                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
+                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700),
                         ),
                       ),
                     ),
@@ -810,7 +810,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
             ],
             if (_social.hasAny) ...[
               const SizedBox(height: 10),
-              Text('Also on', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: muted)),
+              Text('Also on', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: muted)),
               const SizedBox(height: 6),
               ChefSocialChips(links: _social, compact: true),
             ],
@@ -836,7 +836,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
             ],
             if (_recentReviews.isNotEmpty) ...[
               const SizedBox(height: 14),
-              Text(_copy.recentReviews, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: ink)),
+              Text(_copy.recentReviews, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: ink)),
               const SizedBox(height: 8),
               ..._recentReviews.map((review) {
                 final stars = int.tryParse(review['rating']?.toString() ?? '') ?? 0;
@@ -858,7 +858,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
                             ),
                           ),
                           const SizedBox(width: 6),
-                          Text(when, style: TextStyle(fontSize: 10, color: muted)),
+                          Text(when, style: TextStyle(fontSize: 12, color: muted)),
                         ],
                       ),
                       const SizedBox(height: 2),
@@ -1085,7 +1085,7 @@ class MealNutritionStrip extends StatelessWidget {
             padding: EdgeInsets.symmetric(horizontal: compact ? 7 : 10, vertical: compact ? 4 : 8),
             decoration: BoxDecoration(
               color: AppTheme.canvasOf(context),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(12),
               border: Border.all(color: AppTheme.hairlineOf(context)),
             ),
             child: Text.rich(
@@ -1095,7 +1095,7 @@ class MealNutritionStrip extends StatelessWidget {
                     text: '${tile.$1}  ',
                     style: TextStyle(
                       fontSize: compact ? 10 : 11,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                       color: AppTheme.linkOf(context),
                     ),
                   ),
@@ -1309,7 +1309,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                           Expanded(
                             child: Text(
                               meal['title']?.toString() ?? 'Home Meal',
-                              style: AppTheme.sectionTitleOf(context).copyWith(fontSize: 26),
+                              style: AppTheme.sectionTitleOf(context).copyWith(fontSize: 22),
                             ),
                           ),
                           AppIconAction(
@@ -1321,11 +1321,11 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                           Container(
                             padding: const EdgeInsets.all(4),
                             decoration: BoxDecoration(
-                              border: Border.all(color: mealIsVegetarian(meal) ? Colors.green : Colors.redAccent),
+                              border: Border.all(color: mealIsVegetarian(meal) ? AppTheme.veg : AppTheme.nonVeg),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Icon(Icons.circle,
-                                color: mealIsVegetarian(meal) ? Colors.green : Colors.redAccent, size: 10),
+                                color: mealIsVegetarian(meal) ? AppTheme.veg : AppTheme.nonVeg, size: 12),
                           ),
                         ],
                       ),
@@ -1349,7 +1349,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                                 const SizedBox(height: 2),
                               ],
                               Text('₹${price.toInt()}',
-                                  style: AppTheme.priceOf(context).copyWith(fontSize: 24)),
+                                  style: AppTheme.priceOf(context).copyWith(fontSize: 22)),
                               if (offerSummary.isOfferApplied &&
                                   (offerSummary.offerDescription ?? '').isNotEmpty)
                                 Text(
@@ -1475,8 +1475,8 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                                               Text(
                                                 chefCardLocaleLabel(locale),
                                                 style: const TextStyle(
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.w800,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w700,
                                                   color: AppTheme.link,
                                                 ),
                                               ),
@@ -1521,7 +1521,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                           child: Text(
                             '${inferMealCuisine(meal)} · ${inferMealCourse(meal)}'
                             '${mealIsSeasonal(meal) ? ' · Seasonal / limited' : ''}',
-                            style: AppTheme.caption.copyWith(fontWeight: FontWeight.w800),
+                            style: AppTheme.caption.copyWith(fontWeight: FontWeight.w700),
                           ),
                         ),
                       if (mealIngredientsLine(meal).isNotEmpty) ...[
@@ -1791,7 +1791,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                     quantity: _quantity,
                   ),
                   icon: const Icon(Icons.event_repeat, size: 18),
-                  label: const Text('Weekly plan', style: TextStyle(fontWeight: FontWeight.w800)),
+                  label: const Text('Weekly plan', style: TextStyle(fontWeight: FontWeight.w700)),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppTheme.linkOf(context),
                     side: const BorderSide(color: AppTheme.primary),
@@ -1807,7 +1807,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                   child: TextButton.icon(
                     onPressed: _notifyBusy ? null : _requestAvailabilityNotify,
                     icon: const Icon(Icons.notifications_active_outlined, size: 18),
-                    label: const Text('Notify me when available', style: TextStyle(fontWeight: FontWeight.w800)),
+                    label: const Text('Notify me when available', style: TextStyle(fontWeight: FontWeight.w700)),
                   ),
                 ),
               ],

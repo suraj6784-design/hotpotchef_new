@@ -44,12 +44,12 @@ extension AppMotion on Widget {
     return Builder(
       builder: (context) {
         if (_reduce(context)) return this;
-        return animate().fadeIn(duration: 300.ms, delay: delay).scaleXY(
-              begin: 0.92,
+        return animate().fadeIn(duration: 240.ms, delay: delay).scaleXY(
+              begin: 0.98,
               end: 1,
-              duration: 380.ms,
+              duration: 240.ms,
               delay: delay,
-              curve: Curves.easeOutBack,
+              curve: Curves.easeOutCubic,
             );
       },
     );
@@ -62,7 +62,7 @@ extension AppMotion on Widget {
         if (_reduce(context)) return this;
         return animate(delay: delay)
             .fadeIn(duration: 240.ms)
-            .scaleXY(begin: 0.96, end: 1, duration: 320.ms, curve: Curves.easeOutBack);
+            .scaleXY(begin: 0.98, end: 1, duration: 240.ms, curve: Curves.easeOutCubic);
       },
     );
   }
@@ -492,7 +492,7 @@ class PillTag extends StatelessWidget {
             label,
             style: TextStyle(
               color: filled ? Colors.white : color,
-              fontSize: 11.5,
+              fontSize: 12,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -804,7 +804,7 @@ class _HubDockButton extends StatelessWidget {
           child: AnimatedContainer(
             duration: MediaQuery.disableAnimationsOf(context)
                 ? Duration.zero
-                : const Duration(milliseconds: 280),
+                : AppTheme.tabDuration,
             curve: Curves.easeOutCubic,
             padding: const EdgeInsets.symmetric(vertical: 6),
             decoration: const BoxDecoration(),
@@ -826,10 +826,9 @@ class _HubDockButton extends StatelessWidget {
                   destination.label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: AppTheme.microOf(context).copyWith(
+                  style: AppTheme.captionOf(context).copyWith(
                     color: selected ? AppTheme.primary : AppTheme.textMutedOf(context),
-                    fontWeight: FontWeight.w800,
-                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],

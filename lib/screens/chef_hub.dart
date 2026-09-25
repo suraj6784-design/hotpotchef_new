@@ -991,7 +991,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 ),
                 Text(
                   _isKitchenOpen ? 'Go Offline' : 'Go Online',
-                  style: AppTheme.microOf(context).copyWith(fontWeight: FontWeight.w800),
+                  style: AppTheme.microOf(context).copyWith(fontWeight: FontWeight.w700),
                 ),
               ],
             ),
@@ -1088,19 +1088,19 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   Widget _chefToolCard({required IconData icon, required String label, required VoidCallback onTap}) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
         decoration: BoxDecoration(
           color: AppTheme.surfaceOf(context),
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppTheme.hairlineOf(context)),
         ),
         child: Column(
           children: [
             Icon(icon, color: AppTheme.primary, size: 28),
             const SizedBox(height: 8),
-            Text(label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+            Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
           ],
         ),
       ),
@@ -1110,12 +1110,12 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   Widget _chefStatCard(String label, String value, {VoidCallback? onTap}) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: AppTheme.surfaceOf(context),
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppTheme.hairlineOf(context)),
         ),
         child: Column(
@@ -1179,51 +1179,6 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
           },
         ),
       ],
-    );
-  }
-
-  Widget _buildReadyPickupCard(Map<String, dynamic> order) {
-    final customer = _customerName(order);
-    return AppCard(
-      margin: const EdgeInsets.only(bottom: 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                formatOrderId(order['order_id']?.toString(), order['id'].toString()),
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: AppTheme.textMuted),
-              ),
-              const Spacer(),
-              Text(
-                formatRupees(_orderTotal(order)),
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppTheme.primary),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(customer, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: AppTheme.onSurfaceOf(context))),
-          const SizedBox(height: 4),
-          Text(
-            '${_orderQuantity(order)} × ${_orderTitle(order)}',
-            style: const TextStyle(color: AppTheme.textMuted, fontSize: 13),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: () => _dispatchOrder(order),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppTheme.live,
-                minimumSize: const Size.fromHeight(46),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              ),
-              child: const Text('Ready for Pickup', style: TextStyle(fontWeight: FontWeight.w800)),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -1319,7 +1274,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               const Spacer(),
               Text(
                 formatRupees(_orderTotal(order)),
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppTheme.primary),
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: AppTheme.primary),
               ),
             ],
           ),
@@ -1329,7 +1284,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               CircleAvatar(
                 radius: 22,
                 backgroundColor: AppTheme.primary.withValues(alpha: 0.12),
-                child: Text(initial, style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.w800)),
+                child: Text(initial, style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.w700)),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1337,7 +1292,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(customer,
-                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppTheme.onSurfaceOf(context))),
+                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: AppTheme.onSurfaceOf(context))),
                     const SizedBox(height: 2),
                     Text('$quantity × $title', style: const TextStyle(fontSize: 13, color: AppTheme.textMuted)),
                   ],
@@ -1474,7 +1429,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               ),
               const SizedBox(height: 12),
               Text('${_orderTitle(order)} (x${_orderQuantity(order)})',
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
               const SizedBox(height: 4),
               Text(
                 '${_customerName(order)} • diner paid ${formatRupees(_orderTotal(order))} · payout ${formatRupees(chefPayoutForOrder(order).chefPayout)}',
@@ -1793,7 +1748,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                       ),
                       child: Text(
                         'Keep HotPotChef diners on the app — in-app pay unlocks refunds, coins, and Support. Moving orders to WhatsApp/UPI can pause boosts.',
-                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, height: 1.35, color: AppTheme.onSurfaceOf(context)),
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, height: 1.35, color: AppTheme.onSurfaceOf(context)),
                       ),
                     ),
                     if (!_isKitchenOpen) ...[
@@ -1926,13 +1881,13 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                       const SizedBox(height: 4),
                       Text(
                         mealNutritionFacts(meal).compactLine,
-                        style: const TextStyle(fontSize: 11, color: AppTheme.link, fontWeight: FontWeight.w600),
+                        style: const TextStyle(fontSize: 12, color: AppTheme.link, fontWeight: FontWeight.w600),
                       ),
                     ],
                     if (!historyMode && lowStock) ...[
                       const SizedBox(height: 4),
                       const Text('Low stock — restock soon',
-                          style: TextStyle(fontSize: 11, color: AppTheme.warning, fontWeight: FontWeight.w600)),
+                          style: TextStyle(fontSize: 12, color: AppTheme.warning, fontWeight: FontWeight.w600)),
                     ],
                     if (slot.isNotEmpty) ...[
                       const SizedBox(height: 6),
@@ -2033,7 +1988,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             if (isMealBoosted(meal))
               Text(
                 mealBoostUntilLabel(meal),
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppTheme.link),
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.link),
               )
             else ...[
               if (canBoost && !isAvailable)
@@ -2114,7 +2069,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               Text('Payout & Analytics', style: AppTheme.metaOf(context).copyWith(fontSize: 13)),
               const SizedBox(height: 6),
               Text(formatRupees(revenue),
-                  style: AppTheme.sectionTitleOf(context).copyWith(color: AppTheme.success, fontSize: 28)),
+                  style: AppTheme.sectionTitleOf(context).copyWith(color: AppTheme.success, fontSize: 22)),
               Text(
                   '${delivered.length} completed • Diner GMV ${formatRupees(dinerGmv)} · $platformPct% platform fee on food + pack',
                   textAlign: TextAlign.center,
@@ -2123,7 +2078,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               Text(
                 'Food + packaging after platform fee · delivery fee stays with HotPotChef',
                 textAlign: TextAlign.center,
-                style: AppTheme.metaOf(context).copyWith(fontSize: 11),
+                style: AppTheme.metaOf(context).copyWith(fontSize: 12),
               ),
               const SizedBox(height: 4),
               Text(
@@ -2184,7 +2139,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                       isCancelled
                           ? formatRupees(_orderTotal(h))
                           : formatRupees(chefPayoutForOrder(h).chefPayout),
-                      style: const TextStyle(fontWeight: FontWeight.w800),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                   ),
                   if (!isCancelled)
@@ -2323,7 +2278,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 children: [
                   Expanded(
                     child: Text(req['title'] ?? 'Bulk Catering Lead',
-                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
                   ),
                   Text(
                     hasMyQuote && isOpen
@@ -2331,7 +2286,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                         : (cateringPayableTotal(req) > 0
                             ? '₹${cateringPayableTotal(req).toStringAsFixed(0)}'
                             : '₹${req['budget'] ?? '0'}'),
-                    style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.w800),
+                    style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.w700),
                   ),
                 ],
               ),

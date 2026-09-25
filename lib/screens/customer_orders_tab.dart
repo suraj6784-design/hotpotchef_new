@@ -676,7 +676,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                       'Delivery PIN: $pin — share with driver at the door',
                                       style: TextStyle(
                                         fontSize: 13,
-                                        fontWeight: FontWeight.w800,
+                                        fontWeight: FontWeight.w700,
                                         color: AppTheme.onSurfaceOf(context),
                                         height: 1.35,
                                       ),
@@ -885,7 +885,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                     margin: const EdgeInsets.only(top: 2, right: 8),
                                     width: 12,
                                     height: 12,
-                                    decoration: BoxDecoration(border: Border.all(color: Colors.green), borderRadius: BorderRadius.circular(2)),
+                                    decoration: BoxDecoration(border: Border.all(color: Colors.green), borderRadius: BorderRadius.circular(12)),
                                     child: Center(
                                       child: Container(
                                         width: 6,
@@ -958,7 +958,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Delivery fee', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)), Text('₹${deliveryFee.toInt()}', style: TextStyle(color: AppTheme.onSurfaceOf(context), fontSize: 13, fontWeight: FontWeight.w500))]),
                           ...orderBillAdjustmentRows(context, bill),
                           Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: AppTheme.hairlineOf(context))),
-                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Grand total', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.onSurfaceOf(context))), Text('₹${finalGrandTotal.toInt()}', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.onSurfaceOf(context)))]),
+                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Grand total', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: AppTheme.onSurfaceOf(context))), Text('₹${finalGrandTotal.toInt()}', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: AppTheme.onSurfaceOf(context)))]),
                           if (isCancelled) ...[
                             const SizedBox(height: 10),
                             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Refund amount', style: TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold)), Text('₹${finalGrandTotal.toInt()}', style: const TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold))]),
@@ -1187,10 +1187,10 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(color: AppTheme.primary.withValues(alpha: 0.12), borderRadius: AppTheme.radiusSm),
-                    child: const Text('Bulk broadcast', style: TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 11)),
+                    child: const Text('Bulk broadcast', style: TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 12)),
                   ),
                   const SizedBox(width: 8),
-                  Text(displayRequestId, style: const TextStyle(color: AppTheme.textMuted, fontWeight: FontWeight.bold, fontSize: 11)),
+                  Text(displayRequestId, style: const TextStyle(color: AppTheme.textMuted, fontWeight: FontWeight.bold, fontSize: 12)),
                 ],
               ),
               Text(status.toUpperCase(),
@@ -1256,7 +1256,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                               const SizedBox(height: 2),
                               Text(
                                 '₹${amount.toStringAsFixed(0)}',
-                                style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.w800),
+                                style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.w700),
                               ),
                             ],
                           ),
@@ -1460,7 +1460,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                 onAddedToCart: widget.onReorderToCart,
               ),
             if (!_showPast && _activeRequests.isNotEmpty) ...[
-              Text('My broadcasts & catering', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppTheme.onSurfaceOf(context))),
+              Text('My broadcasts & catering', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: AppTheme.onSurfaceOf(context))),
               const SizedBox(height: 12),
               ..._activeRequests.map((req) => _buildBulkRequestCard(req)),
               const SizedBox(height: 24),
@@ -1483,7 +1483,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
               if (_showPast) ...[
                 const Padding(
                   padding: EdgeInsets.only(bottom: 12),
-                  child: Text('Past Orders', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+                  child: Text('Past Orders', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
                 ),
               ],
               ...sortedKeys.map((key) {
@@ -1573,7 +1573,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                       style: TextStyle(
                                         color: AppTheme.textMuted,
                                         fontWeight: FontWeight.w700,
-                                        fontSize: 11,
+                                        fontSize: 12,
                                         letterSpacing: 0.6,
                                       ),
                                     ),
@@ -1584,7 +1584,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
                                         fontSize: 18,
-                                        fontWeight: FontWeight.w800,
+                                        fontWeight: FontWeight.w700,
                                         color: AppTheme.onSurfaceOf(context),
                                       ),
                                     ),
@@ -1605,8 +1605,8 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                           : OrderLifecycle.dinerOrderCardBadge(groupStatus),
                                   style: TextStyle(
                                     color: isDelivered ? AppTheme.live : AppTheme.primary,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 12,
                                   ),
                                 ),
                               ),
@@ -1713,7 +1713,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                       'Delivery PIN: $pin — share with driver at the door',
                                       style: TextStyle(
                                         fontSize: 13,
-                                        fontWeight: FontWeight.w800,
+                                        fontWeight: FontWeight.w700,
                                         color: AppTheme.onSurfaceOf(context),
                                         height: 1.35,
                                       ),
@@ -1749,7 +1749,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                   minimumSize: const Size.fromHeight(46),
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                                 ),
-                                child: const Text('Reorder', style: TextStyle(fontWeight: FontWeight.w800)),
+                                child: const Text('Reorder', style: TextStyle(fontWeight: FontWeight.w700)),
                               ),
                             ),
                           ],

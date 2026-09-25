@@ -301,21 +301,21 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
           Text(
             'GATE / DELIVERY NOTES',
             style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
               letterSpacing: 0.6,
               color: AppTheme.onSurfaceOf(context),
             ),
           ),
           if (gate.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text('Gate instructions', style: TextStyle(fontSize: 11, color: AppTheme.textMuted, fontWeight: FontWeight.w600)),
+            Text('Gate instructions', style: TextStyle(fontSize: 12, color: AppTheme.textMuted, fontWeight: FontWeight.w600)),
             const SizedBox(height: 2),
             Text(gate, style: TextStyle(fontSize: 13, height: 1.35, color: AppTheme.onSurfaceOf(context), fontWeight: FontWeight.w600)),
           ],
           if (notes.isNotEmpty) ...[
             const SizedBox(height: 10),
-            Text('Special instructions', style: TextStyle(fontSize: 11, color: AppTheme.textMuted, fontWeight: FontWeight.w600)),
+            Text('Special instructions', style: TextStyle(fontSize: 12, color: AppTheme.textMuted, fontWeight: FontWeight.w600)),
             const SizedBox(height: 2),
             Text(notes, style: TextStyle(fontSize: 13, height: 1.35, color: AppTheme.onSurfaceOf(context))),
           ],
@@ -504,7 +504,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                   ),
                   Text(
                     _isOnline ? 'Go Offline' : 'Go Online',
-                    style: AppTheme.microOf(context).copyWith(fontWeight: FontWeight.w800),
+                    style: AppTheme.microOf(context).copyWith(fontWeight: FontWeight.w700),
                   ),
                 ],
               ),
@@ -569,12 +569,12 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
   Widget _driverStatCard(String label, String value, {VoidCallback? onTap}) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: AppTheme.surfaceOf(context),
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppTheme.hairlineOf(context)),
         ),
         child: Column(
@@ -592,19 +592,19 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
   Widget _driverToolCard({required IconData icon, required String label, required VoidCallback onTap}) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
         decoration: BoxDecoration(
           color: AppTheme.surfaceOf(context),
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppTheme.hairlineOf(context)),
         ),
         child: Column(
           children: [
             Icon(icon, color: AppTheme.primary, size: 28),
             const SizedBox(height: 8),
-            Text(label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+            Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
           ],
         ),
       ),
@@ -655,7 +655,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               const SizedBox(height: 6),
               Text(
                 '₹${state.totalEarnings.toStringAsFixed(0)}',
-                style: AppTheme.sectionTitleOf(context).copyWith(color: AppTheme.success, fontSize: 28),
+                style: AppTheme.sectionTitleOf(context).copyWith(color: AppTheme.success, fontSize: 22),
               ),
               Text(
                 '${state.completedCount} completed · delivery fee + tip. Bank payout is arranged by ops after KYC.',
@@ -687,7 +687,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                   children: [
                     Text(
                       '+₹${delivery.payout.toStringAsFixed(0)}',
-                      style: const TextStyle(fontWeight: FontWeight.w800, color: AppTheme.live),
+                      style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.live),
                     ),
                     Text(formatOrderDate(delivery.createdAt.toIso8601String()), style: AppTheme.microOf(context)),
                   ],
@@ -732,7 +732,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                     style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 Text('₹${state.totalEarnings.toStringAsFixed(0)}',
-                    style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w900)),
+                    style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 12),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -745,7 +745,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 const SizedBox(height: 8),
                 const Text(
                   'Wallet = delivery fee + tip on completed runs. Bank payout is arranged by ops after KYC — not an automatic weekly transfer.',
-                  style: TextStyle(color: Colors.white70, fontSize: 11, height: 1.35),
+                  style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.35),
                 ),
               ],
             ),
@@ -905,7 +905,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                   Text('Order #${formatOrderId(null, delivery.orderId)}',
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textMuted)),
                   Text('+₹${delivery.payout.toStringAsFixed(0)} Payout',
-                      style: const TextStyle(fontWeight: FontWeight.w900, color: Colors.green, fontSize: 14)),
+                      style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.green, fontSize: 14)),
                 ],
               ),
               const SizedBox(height: 8),

@@ -52,22 +52,22 @@ class AppStatusBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: bgColor,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: AppTheme.radiusSm,
         border: Border.all(color: baseColor.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(iconData, size: 14, color: textColor),
+          Icon(iconData, size: 16, color: textColor),
           const SizedBox(width: 6),
           Flexible(
             child: Text(
-              status,
+              AppTheme.sentenceLabel(status),
               style: TextStyle(
                 color: textColor,
                 fontWeight: FontWeight.w700,
-                fontSize: 11.5,
-                letterSpacing: 0.2,
+                fontSize: 12,
+                letterSpacing: 0.1,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,

@@ -118,14 +118,14 @@ class _DriverDashboardTabState extends ConsumerState<DriverDashboardTab>
                         const SizedBox(height: 8),
                         Text(
                           '₹${filteredEarnings.toStringAsFixed(0)}',
-                          style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w900),
+                          style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w700),
                         ),
                         const SizedBox(height: 12),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
                             color: Colors.white.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(20),
+                            borderRadius: BorderRadius.circular(22),
                           ),
                           child: Text(
                             '${filteredDeliveries.length} Successful Deliveries in $_selectedTimeRange',
@@ -230,7 +230,7 @@ class _DriverDashboardTabState extends ConsumerState<DriverDashboardTab>
                               ),
                               Text(
                                 '+₹${delivery.payout.toStringAsFixed(0)}',
-                                style: const TextStyle(color: AppTheme.success, fontWeight: FontWeight.w900, fontSize: 15),
+                                style: const TextStyle(color: AppTheme.success, fontWeight: FontWeight.w700, fontSize: 15),
                               ),
                             ],
                           ),

@@ -619,8 +619,8 @@ class _AuthScreenState extends State<AuthScreen> {
                           key: ValueKey(_isLogin),
                           textAlign: TextAlign.center,
                           style: const TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w800,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
                             color: Colors.white,
                             height: 1.2,
                           ),
@@ -708,7 +708,7 @@ class _AuthScreenState extends State<AuthScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(title, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: titleColor)),
+                              Text(title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: titleColor)),
                               const SizedBox(height: 4),
                               Text(subtitle, style: TextStyle(fontSize: 13, height: 1.35, color: muted)),
                             ],
@@ -1001,7 +1001,7 @@ class _AuthScreenState extends State<AuthScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
                 color: Colors.redAccent.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.redAccent.withValues(alpha: 0.4)),
               ),
               child: Text(

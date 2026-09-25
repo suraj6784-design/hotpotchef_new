@@ -108,7 +108,15 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
   int get _dockIndex => dinerHubDockIndex(_selectedIndex, signedIn: _signedIn);
 
   void _onDockTapped(int dock) {
-    _onNavigationItemTapped(dinerHubIndexForDock(dock, signedIn: _signedIn));
+    final index = dinerHubIndexForDock(dock);
+    if (!_signedIn && (index == 2 || index == 4)) {
+      showAuthBottomSheet(context, () {
+        if (!mounted || Supabase.instance.client.auth.currentUser == null) return;
+        _onNavigationItemTapped(index);
+      });
+      return;
+    }
+    _onNavigationItemTapped(index);
   }
 
   @override
@@ -189,8 +197,8 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
                 child: Container(
                   padding: const EdgeInsets.fromLTRB(12, 10, 16, 10),
                   decoration: BoxDecoration(
-                    gradient: AppTheme.primaryGradient,
-                    borderRadius: BorderRadius.circular(22),
+                    color: AppTheme.primary,
+                    borderRadius: AppTheme.radiusLg,
                     boxShadow: AppTheme.brandGlow(opacity: 0.16),
                   ),
                   child: Row(
@@ -223,12 +231,15 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
                           ],
                         ),
                       ),
-                      Text(DinerLocaleController.instance.copy.viewCart, style: AppTheme.listTitleOf(context).copyWith(color: Colors.white, fontSize: 14)),
+                      Text(
+                        DinerLocaleController.instance.copy.viewCart,
+                        style: AppTheme.cardTitleOf(context).copyWith(color: Colors.white),
+                      ),
                       const SizedBox(width: 4),
-                      const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 18),
+                      const Icon(Icons.arrow_forward, color: Colors.white, size: 22),
                     ],
                   ),
-                ).popIn(),
+                ),
               ),
             ),
 
@@ -244,12 +255,10 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
                   selectedIndex: _dockIndex,
                   onSelect: _onDockTapped,
                   destinations: [
-                    HubDockDestination(icon: Icons.home_outlined, selectedIcon: Icons.home_rounded, label: copy.home),
-                    if (_signedIn)
-                      HubDockDestination(icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: copy.orders),
+                    HubDockDestination(icon: Icons.home_outlined, selectedIcon: Icons.home, label: copy.home),
+                    HubDockDestination(icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: copy.orders),
                     HubDockDestination(icon: Icons.person_outline, selectedIcon: Icons.person, label: copy.account),
-                    if (_signedIn)
-                      HubDockDestination(icon: Icons.notifications_none, selectedIcon: Icons.notifications, label: copy.notifications),
+                    HubDockDestination(icon: Icons.notifications_outlined, selectedIcon: Icons.notifications, label: copy.notifications),
                   ],
                 );
               },

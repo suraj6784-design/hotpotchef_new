@@ -153,7 +153,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                     'Add extra',
                     style: TextStyle(
                       fontSize: 18,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                       color: AppTheme.onSurfaceOf(ctx),
                     ),
                   ),
@@ -277,7 +277,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('Items in cart (${cartState.itemCount})',
-                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppTheme.onSurfaceOf(context))),
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: AppTheme.onSurfaceOf(context))),
               IconButton(
                 tooltip: 'Clear cart',
                 color: Colors.red,
@@ -303,7 +303,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                   Text(
                     '${groupPlaceKindLabel(cartState.sharedPlaceKind)} · ${cartState.sharedRoomCode}',
                     style: TextStyle(
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                       fontSize: 13,
                       color: AppTheme.onSurfaceOf(context),
                     ),
@@ -455,14 +455,14 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
                                   color: Colors.red.shade50,
-                                  borderRadius: BorderRadius.circular(4),
+                                  borderRadius: BorderRadius.circular(12),
                                   border: Border.all(color: Colors.red.shade200),
                                 ),
                                 child: Text(
                                   PricingCalculator.calculateItemSummary(item.rawMealDetails, qty)
                                           .offerDescription ??
                                       'Special Offer Applied',
-                                  style: const TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold),
+                                  style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
                                 ),
                               ),
                           ],
@@ -484,7 +484,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                       children: item.selectedAddOns
                           .map((addon) => Chip(
                                 label: Text('${addon.title} (+₹${addon.price.toStringAsFixed(0)})',
-                                    style: const TextStyle(fontSize: 10)),
+                                    style: const TextStyle(fontSize: 12)),
                                 backgroundColor: AppTheme.primary.withValues(alpha: 0.08),
                                 padding: EdgeInsets.zero,
                                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -509,7 +509,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                       ),
                       label: Text(
                         item.selectedAddOns.isEmpty ? 'Add extra' : 'Change extras',
-                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
                       ),
                     ),
                   ),
@@ -851,7 +851,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                           style: TextStyle(
                             color: Theme.of(context).colorScheme.onSurface,
                             fontSize: 22,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ],
@@ -913,7 +913,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                   Text(
                     promo.validityLabel(),
                     style: TextStyle(
-                      fontSize: 10,
+                      fontSize: 12,
                       fontWeight: FontWeight.w600,
                       color: promo.isActive ? AppTheme.success : Colors.redAccent,
                     ),
@@ -996,7 +996,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                   style: TextStyle(
                     color: color ?? ink,
                     fontSize: 13,
-                    fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
+                    fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
                   ),
                 ),
               ],
@@ -1013,7 +1013,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Bill breakup', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: ink)),
+              Text('Bill breakup', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: ink)),
               const SizedBox(height: 16),
               row('Items', formatRupees(foodGross)),
               if (promoSavings > 0)

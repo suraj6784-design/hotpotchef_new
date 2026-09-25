@@ -1375,7 +1375,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         Text(
                           promo.validityLabel(),
                           style: TextStyle(
-                            fontSize: 10,
+                            fontSize: 12,
                             fontWeight: FontWeight.w600,
                             color: selected
                                 ? Colors.white70
@@ -1469,8 +1469,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 Text(
                   'Your kitchen slot',
                   style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
                     color: AppTheme.onSurfaceOf(context),
                   ),
                 ),
@@ -1514,7 +1514,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(12),
                           child: image.isNotEmpty
                               ? Image.network(
                                   image,
@@ -1553,7 +1553,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                 scheduleLabel,
                                 style: const TextStyle(
                                   fontSize: 15,
-                                  fontWeight: FontWeight.w800,
+                                  fontWeight: FontWeight.w700,
                                   height: 1.25,
                                   color: AppTheme.link,
                                 ),
@@ -1659,7 +1659,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 tilePadding: EdgeInsets.zero,
                 title: Text(
                   DinerLocaleController.instance.copy.adjustBill,
-                  style: const TextStyle(fontWeight: FontWeight.w800),
+                  style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
                 subtitle: const Text('Tip, promo, and Family member'),
                 children: [
@@ -1836,11 +1836,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Grand Total', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                      const Text('Grand Total', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                       Text(
                         '₹${_grandTotal.toStringAsFixed(2)}',
                         style: const TextStyle(
-                          fontWeight: FontWeight.w900,
+                          fontWeight: FontWeight.w700,
                           fontSize: 22,
                           color: AppTheme.link,
                         ),
@@ -1894,7 +1894,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       style: TextStyle(
                           color: Theme.of(context).colorScheme.onSurface,
                           fontSize: 22,
-                          fontWeight: FontWeight.w800)),
+                          fontWeight: FontWeight.w700)),
                 ],
               ),
               const SizedBox(width: 16),
@@ -2004,7 +2004,7 @@ class _CheckoutMembershipOfferCard extends StatelessWidget {
             flashing && (label != null && label.isNotEmpty)
                 ? label
                 : 'Become a Family member',
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
           ),
           const SizedBox(height: 6),
           Text(

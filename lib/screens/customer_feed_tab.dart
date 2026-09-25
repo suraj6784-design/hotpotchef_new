@@ -1206,7 +1206,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                           'HotPotChef',
                           style: AppTheme.sectionTitleOf(context).copyWith(
                             color: AppTheme.primary,
-                            fontSize: 20,
+                            fontSize: 18,
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -1270,7 +1270,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                               fontWeight: _isUsingDevicePin ? FontWeight.bold : FontWeight.normal,
                                             ),
                                           ),
-                                          subtitle: const Text('Current location', style: TextStyle(fontSize: 11)),
+                                          subtitle: const Text('Current location', style: TextStyle(fontSize: 12)),
                                           onTap: () {
                                             final label = _deviceLocationPin!['address']?.toString() ?? 'Near you';
                                             setState(() => _currentAddress = label);
@@ -1874,7 +1874,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                   name,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
                                 ),
                               ),
                               IconButton(
@@ -1894,7 +1894,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontSize: 11,
+                              fontSize: 12,
                               color: selected ? AppTheme.linkOf(context) : AppTheme.textMuted,
                               height: 1.3,
                               fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
@@ -1950,7 +1950,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       ),
       icon: Badge(
         isLabelVisible: cartCount > 0,
-        label: Text('$cartCount', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800)),
+        label: Text('$cartCount', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
         child: const Icon(Icons.shopping_bag_outlined, size: 18),
       ),
     );
@@ -2083,7 +2083,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                     child: (photo == null || photo.isEmpty)
                         ? Text(
                             name.isEmpty ? 'C' : name[0].toUpperCase(),
-                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
                           )
                         : null,
                   ),
@@ -2103,7 +2103,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                           meta,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: AppTheme.caption.copyWith(fontSize: 11, height: 1.1),
+                          style: AppTheme.caption.copyWith(fontSize: 12, height: 1.1),
                         ),
                       ],
                     ),
@@ -2164,14 +2164,14 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
                             color: Colors.red.shade600,
-                            borderRadius: BorderRadius.circular(6),
+                            borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
                             offerBadge,
                             style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 9,
-                              fontWeight: FontWeight.w800,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                         ),
@@ -2219,7 +2219,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                           Text(
                             '₹${price.round()}',
                             style: const TextStyle(
-                              fontWeight: FontWeight.w800,
+                              fontWeight: FontWeight.w700,
                               fontSize: 16,
                               color: AppTheme.primary,
                             ),
@@ -2230,7 +2230,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                               style: TextStyle(
                                 color: Colors.red.shade700,
                                 fontSize: 12,
-                                fontWeight: FontWeight.w800,
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
                         ],
@@ -2420,10 +2420,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                     decoration: BoxDecoration(
-                                        color: Colors.red.shade600, borderRadius: BorderRadius.circular(6)),
+                                        color: Colors.red.shade600, borderRadius: BorderRadius.circular(12)),
                                     child: Text(
                                       PricingCalculator.offerBadgeLabel(meal),
-                                      style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
                                     ),
                                   ),
                                 ),
@@ -2463,7 +2463,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                   padding: const EdgeInsets.all(4),
                                   decoration: BoxDecoration(
                                       color: AppTheme.surfaceOf(context).withValues(alpha: 0.9),
-                                      borderRadius: BorderRadius.circular(4)),
+                                      borderRadius: BorderRadius.circular(12)),
                                   child: Icon(
                                     Icons.circle,
                                     color: mealIsVegetarian(meal) ? AppTheme.veg : AppTheme.nonVeg,
@@ -2528,13 +2528,13 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                           decoration: BoxDecoration(
                                             color: AppTheme.primary.withValues(alpha: 0.12),
-                                            borderRadius: BorderRadius.circular(8),
+                                            borderRadius: BorderRadius.circular(12),
                                           ),
                                           child: Text(
                                             DinerLocaleController.instance.copy.verified,
                                             style: const TextStyle(
-                                              fontSize: 9,
-                                              fontWeight: FontWeight.w800,
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w700,
                                               color: AppTheme.primary,
                                             ),
                                           ),
@@ -2556,7 +2556,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                                         decoration: BoxDecoration(
                                           color: AppTheme.canvasOf(context),
-                                          borderRadius: BorderRadius.circular(8),
+                                          borderRadius: BorderRadius.circular(12),
                                           border: Border.all(color: AppTheme.hairlineOf(context)),
                                         ),
                                         child: Row(
@@ -2572,7 +2572,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                                 feedKitchenSlotLabel(meal['time_slot']?.toString()),
                                                 style: TextStyle(
                                                   color: isExpired ? Colors.red : AppTheme.onSurfaceOf(context),
-                                                  fontSize: 11,
+                                                  fontSize: 12,
                                                   fontWeight: FontWeight.w700,
                                                 ),
                                                 maxLines: 1,
@@ -2589,7 +2589,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                         etaLabel,
                                         style: const TextStyle(
                                           color: AppTheme.link,
-                                          fontSize: 11,
+                                          fontSize: 12,
                                           fontWeight: FontWeight.w700,
                                         ),
                                       ),
@@ -2624,7 +2624,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                             Text(
                                               '$availableQty left',
                                               style: const TextStyle(
-                                                  color: brandPrimary, fontSize: 11, fontWeight: FontWeight.bold),
+                                                  color: brandPrimary, fontSize: 12, fontWeight: FontWeight.bold),
                                             ),
                                         ],
                                       ),
@@ -2690,7 +2690,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                               ),
                                               child: Text(
                                                 DinerLocaleController.instance.copy.pay,
-                                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+                                                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
                                               ),
                                             ),
                                           ),

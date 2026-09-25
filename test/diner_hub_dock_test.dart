@@ -15,14 +15,15 @@ void main() {
     expect(dinerHubIndexForDock(3), 4);
   });
 
-  test('guest diner dock is only Home and Account', () {
+  test('guest diner dock keeps Home, Orders, Account, and Alerts', () {
     expect(dinerHubDockIndex(0, signedIn: false), 0);
     expect(dinerHubDockIndex(1, signedIn: false), -1);
-    expect(dinerHubDockIndex(2, signedIn: false), -1);
-    expect(dinerHubDockIndex(3, signedIn: false), 1);
-    expect(dinerHubDockIndex(4, signedIn: false), -1);
+    expect(dinerHubDockIndex(2, signedIn: false), 1);
+    expect(dinerHubDockIndex(3, signedIn: false), 2);
+    expect(dinerHubDockIndex(4, signedIn: false), 3);
     expect(dinerHubIndexForDock(0, signedIn: false), 0);
-    expect(dinerHubIndexForDock(1, signedIn: false), 3);
+    expect(dinerHubIndexForDock(1, signedIn: false), 2);
+    expect(dinerHubIndexForDock(3, signedIn: false), 4);
   });
 
   test('home meal catalog select never asks for embedding or order PII', () {
