@@ -57,18 +57,25 @@ String normalizeServicePincode(String? raw) {
   return digits.length >= 6 ? digits.substring(0, 6) : digits;
 }
 
-ServiceCity? serviceCityForPin(String? raw) {
+ServiceCity? serviceCityForPin(
+  String? raw, {
+  List<ServiceCity> cities = kLaunchCities,
+}) {
   final digits = normalizeServicePincode(raw);
   if (digits.isEmpty) return null;
-  for (final city in kLaunchCities) {
+  for (final city in cities) {
     if (city.pinMatches(digits)) return city;
   }
   return null;
 }
 
-ServiceCity? serviceCityForCoord(double? lat, double? lng) {
+ServiceCity? serviceCityForCoord(
+  double? lat,
+  double? lng, {
+  List<ServiceCity> cities = kLaunchCities,
+}) {
   if (lat == null || lng == null || lat == 0 || lng == 0) return null;
-  for (final city in kLaunchCities) {
+  for (final city in cities) {
     if (city.coordMatches(lat, lng)) return city;
   }
   return null;
@@ -79,9 +86,10 @@ bool isInLaunchServiceArea({
   String? pincode,
   double? lat,
   double? lng,
+  List<ServiceCity> cities = kLaunchCities,
 }) {
-  if (serviceCityForPin(pincode) != null) return true;
-  if (serviceCityForCoord(lat, lng) != null) return true;
+  if (serviceCityForPin(pincode, cities: cities) != null) return true;
+  if (serviceCityForCoord(lat, lng, cities: cities) != null) return true;
   final digits = normalizeServicePincode(pincode);
   if (digits.length >= 6) return false;
   if (lat != null && lng != null && lat != 0 && lng != 0) return false;
@@ -136,10 +144,12 @@ bool kitchenServesDinerPin({
   double? dinerLng,
   String? dinerPincode,
   String? kitchenPincode,
+  List<ServiceCity> cities = kLaunchCities,
 }) {
-  final dinerCity = serviceCityForPin(dinerPincode) ?? serviceCityForCoord(dinerLat, dinerLng);
-  final kitchenCity =
-      serviceCityForPin(kitchenPincode) ?? serviceCityForCoord(kitchenLat, kitchenLng);
+  final dinerCity = serviceCityForPin(dinerPincode, cities: cities) ??
+      serviceCityForCoord(dinerLat, dinerLng, cities: cities);
+  final kitchenCity = serviceCityForPin(kitchenPincode, cities: cities) ??
+      serviceCityForCoord(kitchenLat, kitchenLng, cities: cities);
   if (dinerCity != null && kitchenCity != null && dinerCity.id == kitchenCity.id) {
     return true;
   }
