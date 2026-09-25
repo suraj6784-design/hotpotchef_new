@@ -4,6 +4,8 @@
     { "source": "/chef/:id", "destination": "/chef.html" },
     { "source": "/cart", "destination": "/cart.html" },
     { "source": "/cart/", "destination": "/cart.html" },
+    { "source": "/group/:code", "destination": "/group.html" },
+    { "source": "/group/:code/", "destination": "/group.html" },
     { "source": "/auth", "destination": "/auth.html" },
     { "source": "/auth/", "destination": "/auth.html" },
     { "source": "/checkout", "destination": "/checkout.html" },

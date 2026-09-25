@@ -255,6 +255,43 @@ String offerFlashHeadline(Map<String, dynamic> meal, {DateTime? now}) {
   return badge.isEmpty ? "Today's offer" : badge;
 }
 
+/// Plate name and list vs offer price for the Exclusive offers card.
+class OfferFlashPriceBreakup {
+  const OfferFlashPriceBreakup({
+    required this.title,
+    required this.listRupees,
+    required this.payRupees,
+    required this.badge,
+    required this.plateCount,
+  });
+
+  final String title;
+  final int? listRupees;
+  final int? payRupees;
+  final String badge;
+  final int plateCount;
+
+  bool get showsSplit =>
+      listRupees != null && payRupees != null && listRupees != payRupees;
+}
+
+OfferFlashPriceBreakup offerFlashPriceBreakup(Map<String, dynamic> meal) {
+  final summary = PricingCalculator.calculateItemSummary(meal, 1);
+  final title = meal['title']?.toString().trim() ?? meal['name']?.toString().trim() ?? '';
+  final count = int.tryParse(
+        meal['_offer_group_count']?.toString() ?? meal['_bogo_count']?.toString() ?? '',
+      ) ??
+      1;
+  final badge = PricingCalculator.offerBadgeLabel(meal).trim();
+  return OfferFlashPriceBreakup(
+    title: title,
+    listRupees: summary.baseUnitPrice > 0 ? wholeRupees(summary.baseUnitPrice) : null,
+    payRupees: summary.isOfferApplied ? wholeRupees(summary.effectiveUnitPrice) : null,
+    badge: badge,
+    plateCount: count < 1 ? 1 : count,
+  );
+}
+
 String offerFlashSubhead(Map<String, dynamic> meal) {
   final group = offerFlashGroupKey(meal);
   if (group != null) {

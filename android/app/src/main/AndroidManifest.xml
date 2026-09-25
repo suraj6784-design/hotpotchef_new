@@ -63,6 +63,10 @@
                 <data
                     android:scheme="https"
                     android:host="hotpotchef.com"
+                    android:pathPrefix="/group"/>
+                <data
+                    android:scheme="https"
+                    android:host="hotpotchef.com"
                     android:pathPrefix="/auth"/>
             </intent-filter>
             <intent-filter android:autoVerify="true">
@@ -81,6 +85,10 @@
                     android:scheme="https"
                     android:host="www.hotpotchef.com"
                     android:pathPrefix="/cart"/>
+                <data
+                    android:scheme="https"
+                    android:host="www.hotpotchef.com"
+                    android:pathPrefix="/group"/>
                 <data
                     android:scheme="https"
                     android:host="www.hotpotchef.com"

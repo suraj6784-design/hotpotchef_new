@@ -7,6 +7,38 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../models/cart_state.dart';
 import '../utils/helpers.dart';
 
+class SharedCartException implements Exception {
+  SharedCartException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+class SharedCartJoinResult {
+  const SharedCartJoinResult({
+    required this.roomCode,
+    required this.placeKind,
+    required this.added,
+    required this.skipped,
+  });
+
+  final String roomCode;
+  final String placeKind;
+  final int added;
+  final List<String> skipped;
+
+  String get joinedMessage {
+    final kind = groupPlaceKindLabel(placeKind);
+    final extra = skipped.isEmpty ? '' : ' Skipped: ${skipped.join(', ')}.';
+    if (added <= 0 && skipped.isNotEmpty) {
+      return 'Joined $kind · $roomCode, but those plates could not be added.$extra';
+    }
+    return 'Joined $kind · $roomCode. Later adds stay in sync.$extra';
+  }
+}
+
 class SharedCartRoom {
   const SharedCartRoom({
     required this.roomCode,
@@ -108,11 +140,11 @@ class SharedCartService {
 
       final status = response?['status']?.toString().toLowerCase().trim();
       if (status == 'ordered' || status == 'closed') {
-        throw Exception('This group cart already checked out.');
+        throw SharedCartException('This group already checked out. Ask the host for a new link.');
       }
 
       if (response == null) {
-        throw Exception('Group ordering room not found.');
+        throw SharedCartException('No open group lunch for that code.');
       }
 
       try {

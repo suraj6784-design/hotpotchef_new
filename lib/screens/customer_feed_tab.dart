@@ -394,7 +394,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && mounted) {
-      setState(() {});
+      unawaited(_refreshMealsRestSnapshot());
     }
   }
 

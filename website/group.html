@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Group lunch · HotPotChef</title>
+    <meta name="description" content="Join a HotPotChef society or office lunch. The host pays once at checkout." />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="HotPotChef" />
+    <meta property="og:title" content="Join a HotPotChef group lunch" />
+    <meta property="og:description" content="Open this link in the HotPotChef app to add your plate. The host pays once." />
+    <meta name="theme-color" content="#1a1410" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Figtree:wght@500;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/css/site.css?v=20260909g" />
+  </head>
+  <body>
+    <div class="wrap site-top">
+      <a href="/">HotPot<strong>Chef</strong></a>
+      <a class="cart-link" href="/cart">Cart <span data-cart-count hidden></span></a>
+    </div>
+
+    <main class="meal-page">
+      <div class="wrap">
+        <article class="meal-card">
+          <p class="meal-kicker">Society / office lunch</p>
+          <h1 class="meal-title" id="title">Join this group lunch</h1>
+          <p class="meal-meta" id="meta">
+            Open the link in the HotPotChef app. Add your plate — the host pays once at checkout.
+          </p>
+          <p class="meal-price" id="code" hidden></p>
+          <div class="cta-row">
+            <a class="btn btn-primary" id="open-app" href="hotpotchef://app/group">Open in the app</a>
+            <a class="btn btn-ghost" id="get-app" href="https://play.google.com/store/apps/details?id=com.hotpotchef.app" target="_blank" rel="noopener">Get the app</a>
+          </div>
+        </article>
+      </div>
+    </main>
+
+    <nav class="site-footer-links" aria-label="Policies">
+      <a href="/terms">Terms</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/faq">FAQs</a>
+      <a href="/cancellation">Cancellation</a>
+    </nav>
+
+    <script>
+      (function () {
+        var parts = location.pathname.split("/").filter(Boolean);
+        var raw = "";
+        for (var i = 0; i < parts.length - 1; i++) {
+          if (parts[i].toLowerCase() === "group") raw = parts[i + 1];
+        }
+        var code = decodeURIComponent(raw).toUpperCase();
+        if (!/^GRP-[A-Z0-9]{6}$/.test(code)) return;
+        var title = document.getElementById("title");
+        var codeEl = document.getElementById("code");
+        var openApp = document.getElementById("open-app");
+        title.textContent = "Join " + code;
+        codeEl.hidden = false;
+        codeEl.textContent = code;
+        openApp.href = "hotpotchef://app/group/" + encodeURIComponent(code);
+        document.title = code + " · HotPotChef group lunch";
+      })();
+    </script>
+  </body>
+</html>

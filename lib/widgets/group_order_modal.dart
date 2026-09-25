@@ -26,6 +26,7 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
   final _slotController = TextEditingController();
   String _placeKind = 'society';
   bool _isLoading = false;
+  String? _joinError;
 
   @override
   void dispose() {
@@ -71,57 +72,32 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
   }
 
   Future<void> _joinGroupOrder() async {
-    final code = _roomCodeController.text.trim().toUpperCase();
-    if (code.isEmpty) return;
+    final code = parseGroupRoomCode(_roomCodeController.text);
+    if (code == null) {
+      setState(() => _joinError = 'Enter a room code like GRP-AB12CD, or paste the group link.');
+      return;
+    }
 
-    setState(() => _isLoading = true);
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    setState(() {
+      _isLoading = true;
+      _joinError = null;
+    });
     try {
-      final room = await _sharedCartService.fetchSharedCartRoom(code);
-      final items = room.items;
-
-      if (!mounted) return;
-
-      final cart = ref.read(cartProvider.notifier);
-      var added = 0;
-      final skipped = <String>[];
-      var allowClear = true;
-      for (final item in items) {
-        final ok = cart.addToCart(
-          item.toMealMap(),
-          item.quantity,
-          addOns: item.selectedAddOns,
-          clearIfVendorConflict: allowClear,
-        );
-        if (ok) {
-          added += 1;
-          allowClear = false;
-        } else {
-          skipped.add(item.title.isEmpty ? 'a dish' : item.title);
-        }
-      }
-
+      final result = await ref.read(cartProvider.notifier).joinSharedRoom(code);
       if (!mounted) return;
       Navigator.pop(context);
-      if (added <= 0 && items.isNotEmpty) {
-        final names = skipped.isEmpty ? 'those meals' : skipped.join(', ');
-        _showSnackBar('$names could not be added to your cart.', isError: true);
-        return;
-      }
-      await ref.read(cartProvider.notifier).attachSharedRoom(
-            code,
-            placeKind: room.placeKind,
-            placeLabel: room.placeLabel,
-            dropoffNote: room.dropoffNote,
-            timeSlot: room.timeSlot,
-            hostId: room.hostId,
-          );
-      final kind = groupPlaceKindLabel(room.placeKind);
-      final extra = skipped.isEmpty ? '' : ' Skipped: ${skipped.join(', ')}.';
-      _showSnackBar('Joined $kind · $code. Later adds stay in sync.$extra', isError: false);
+      messenger?.showSnackBar(
+        SnackBar(
+          content: Text(result.joinedMessage),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to join group order');
       if (!mounted) return;
-      _showSnackBar('Invalid Room Code: $e', isError: true);
+      setState(() => _joinError = e.toString());
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -228,6 +204,8 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
               ),
             ),
             const SizedBox(height: 12),
+            _shareLinkBox(roomCode, isDark),
+            const SizedBox(height: 12),
             Text(invite, style: TextStyle(fontSize: 12, height: 1.35, color: isDark ? AppTheme.textMuted : AppTheme.textMuted)),
           ],
         ),
@@ -249,6 +227,41 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
             },
             icon: const Icon(Icons.chat, size: 18),
             label: const Text('WhatsApp', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _shareLinkBox(String roomCode, bool isDark) {
+    final link = groupCartShareUri(roomCode);
+    if (link.isEmpty) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isDark ? Colors.white12 : Colors.grey.shade300),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: SelectableText(
+              link,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: isDark ? Colors.orange.shade200 : AppTheme.linkOf(context),
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Copy link',
+            icon: Icon(Icons.link, size: 20, color: isDark ? Colors.orange.shade200 : AppTheme.primary),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: link));
+              _showSnackBar('Group link copied', isError: false);
+            },
           ),
         ],
       ),
@@ -364,15 +377,24 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
             ),
             const SizedBox(height: 8),
             Text(
-              _invitePreview.replaceFirst('GRP-XXXXXX', 'your code'),
+              _invitePreview.replaceAll('GRP-XXXXXX', 'your code'),
+              style: TextStyle(fontSize: 11, height: 1.35, color: isDark ? Colors.grey.shade500 : AppTheme.textMuted),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Team members open https://hotpotchef.com/group/… — that link joins this lunch.',
               style: TextStyle(fontSize: 11, height: 1.35, color: isDark ? Colors.grey.shade500 : AppTheme.textMuted),
             ),
             Divider(height: 32, color: isDark ? Colors.white12 : Colors.grey.shade300),
             TextField(
               controller: _roomCodeController,
+              textCapitalization: TextCapitalization.characters,
+              onChanged: (_) {
+                if (_joinError != null) setState(() => _joinError = null);
+              },
               style: TextStyle(color: isDark ? AppTheme.textMainDark : AppTheme.textMain),
               decoration: InputDecoration(
-                labelText: 'Enter room code (e.g. GRP-XYZ)',
+                labelText: 'Room code or group link',
                 filled: true,
                 fillColor: isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade100,
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
@@ -387,6 +409,13 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
                 labelStyle: TextStyle(color: isDark ? AppTheme.textMuted : AppTheme.textMuted, fontSize: 13),
               ),
             ),
+            if (_joinError != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _joinError!,
+                style: const TextStyle(color: Color(0xFFC2410C), fontSize: 13, height: 1.35, fontWeight: FontWeight.w600),
+              ),
+            ],
             const SizedBox(height: 12),
             OutlinedButton(
               style: OutlinedButton.styleFrom(
@@ -395,9 +424,9 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
               onPressed: _isLoading ? null : _joinGroupOrder,
-              child: const Text(
-                'Join with code',
-                style: TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold),
+              child: Text(
+                _isLoading ? 'Joining…' : 'Join with code',
+                style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold),
               ),
             ),
           ],

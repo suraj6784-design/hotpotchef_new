@@ -189,6 +189,55 @@ class CartNotifier extends Notifier<CartState> {
     });
   }
 
+  /// Copies the room's plates into this cart and keeps later adds in sync.
+  Future<SharedCartJoinResult> joinSharedRoom(String rawCode) async {
+    final code = parseGroupRoomCode(rawCode);
+    if (code == null) {
+      throw SharedCartException('Enter a room code like GRP-AB12CD, or paste the group link.');
+    }
+    if (_supabase.auth.currentUser == null) {
+      throw SharedCartException('Sign in to join this group.');
+    }
+    final room = await _sharedCartService.fetchSharedCartRoom(code);
+    var added = 0;
+    final skipped = <String>[];
+    var allowClear = true;
+    for (final item in room.items) {
+      final meal = item.toMealMap();
+      if ((meal['id']?.toString() ?? '').isEmpty) {
+        skipped.add(item.title.isEmpty ? 'a dish' : item.title);
+        continue;
+      }
+      final ok = addToCart(
+        meal,
+        item.quantity,
+        addOns: item.selectedAddOns,
+        clearIfVendorConflict: allowClear,
+        timeSlot: (room.timeSlot ?? '').trim().isEmpty ? null : room.timeSlot,
+      );
+      if (ok) {
+        added += 1;
+        allowClear = false;
+      } else {
+        skipped.add(item.title.isEmpty ? 'a dish' : item.title);
+      }
+    }
+    await attachSharedRoom(
+      code,
+      placeKind: room.placeKind,
+      placeLabel: room.placeLabel,
+      dropoffNote: room.dropoffNote,
+      timeSlot: room.timeSlot,
+      hostId: room.hostId,
+    );
+    return SharedCartJoinResult(
+      roomCode: code,
+      placeKind: room.placeKind,
+      added: added,
+      skipped: skipped,
+    );
+  }
+
   void detachSharedRoom() {
     _sharedCartSub?.cancel();
     _sharedCartSub = null;

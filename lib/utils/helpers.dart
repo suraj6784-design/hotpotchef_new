@@ -701,6 +701,44 @@ String groupPlaceKindHint(String? kind) {
   }
 }
 
+final _groupRoomCodePattern = RegExp(r'GRP-[A-Z0-9]{6}\b', caseSensitive: false);
+
+/// Pulls `GRP-XXXXXX` out of a typed code, a pasted invite, or a group link.
+String? parseGroupRoomCode(String? raw) {
+  final text = (raw ?? '').trim();
+  if (text.isEmpty) return null;
+  final uri = Uri.tryParse(text);
+  if (uri != null && uri.pathSegments.length > 1) {
+    final segments = uri.pathSegments;
+    for (var i = 0; i < segments.length - 1; i++) {
+      if (segments[i].toLowerCase() != 'group') continue;
+      final fromPath = _groupRoomCodePattern.firstMatch(segments[i + 1].toUpperCase());
+      if (fromPath != null) return fromPath.group(0)!.toUpperCase();
+    }
+  }
+  final match = _groupRoomCodePattern.firstMatch(text.toUpperCase());
+  return match?.group(0)?.toUpperCase();
+}
+
+/// HTTPS link teammates tap to land in this group cart.
+String groupCartShareUri(String? roomCode) {
+  final code = parseGroupRoomCode(roomCode);
+  if (code == null || code == 'GRP-XXXXXX') return '';
+  return '$kMealShareWebBase/group/$code';
+}
+
+/// Only a diner group-join path may be used as a post-sign-in return.
+String? dinerGroupReturnPath(String? raw) {
+  final text = (raw ?? '').trim();
+  if (text.isEmpty) return null;
+  final uri = Uri.tryParse(text);
+  if (uri == null || uri.hasScheme || uri.host.isNotEmpty) return null;
+  if (uri.pathSegments.length != 2 || uri.pathSegments.first != 'group') return null;
+  final code = parseGroupRoomCode(uri.pathSegments[1]);
+  if (code == null) return null;
+  return '/group/$code';
+}
+
 /// WhatsApp invite for one-host society/office carts.
 String societyGroupInviteText({
   required String roomCode,
@@ -716,9 +754,11 @@ String societyGroupInviteText({
   final drop = (dropoffNote ?? '').trim();
   final slot = (timeSlot ?? '').trim();
   final headline = place.isEmpty ? title : '$title at $place';
+  final link = groupCartShareUri(code);
   return [
     headline,
     'Join my HotPotChef group cart: $code',
+    if (link.isNotEmpty) link,
     if (slot.isNotEmpty) 'Slot: $slot',
     if (drop.isNotEmpty) 'Drop: $drop',
     'Add your plates — I pay once at checkout.',
@@ -1074,6 +1114,7 @@ bool isStackAlertPath(String path) {
   return route.startsWith('/chat/') ||
       route.startsWith('/meal/') ||
       route.startsWith('/chef/') ||
+      route.startsWith('/group/') ||
       route == '/chef-profile' ||
       route == '/driver-profile' ||
       route == '/cart' ||

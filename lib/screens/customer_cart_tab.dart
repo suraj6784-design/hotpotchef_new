@@ -318,6 +318,17 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                     ].join(' · '),
                     style: const TextStyle(fontSize: 12, color: AppTheme.textMuted, height: 1.35),
                   ),
+                  if (groupCartShareUri(cartState.sharedRoomCode).isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    SelectableText(
+                      groupCartShareUri(cartState.sharedRoomCode),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.linkOf(context),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   Row(
                     children: [
@@ -348,6 +359,19 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                         ),
                       ),
                       const SizedBox(width: 8),
+                      IconButton(
+                        tooltip: 'Copy group link',
+                        onPressed: () async {
+                          final link = groupCartShareUri(cartState.sharedRoomCode);
+                          if (link.isEmpty) return;
+                          await Clipboard.setData(ClipboardData(text: link));
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Group link copied')),
+                          );
+                        },
+                        icon: const Icon(Icons.link, size: 20),
+                      ),
                       TextButton(
                         onPressed: () => ref.read(cartProvider.notifier).detachSharedRoom(),
                         child: const Text('Leave'),

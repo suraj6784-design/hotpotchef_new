@@ -175,11 +175,12 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
         : OfferType.none;
     _promoAdvanced = _promoController.text.trim().isNotEmpty || _promoExtraType != OfferType.none;
 
-    // Offer validity timestamp. A past end date was hiding the % on diner Home.
+    // Keep a past end on the form. Dropping it made the next save clear
+    // offer_valid_until, so an expired discount stayed on diner Home.
     final validUntilStr = meal['offer_valid_until']?.toString();
     if (validUntilStr != null && validUntilStr.isNotEmpty) {
       final dt = DateTime.tryParse(validUntilStr)?.toLocal();
-      if (dt != null && !dt.isBefore(DateTime.now())) {
+      if (dt != null) {
         _offerEndDate = dt;
         _offerEndTime = TimeOfDay(hour: dt.hour, minute: dt.minute);
       }

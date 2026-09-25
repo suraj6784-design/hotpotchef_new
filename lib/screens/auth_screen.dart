@@ -116,14 +116,18 @@ class _AuthScreenState extends State<AuthScreen> {
     FocusManager.instance.primaryFocus?.unfocus();
     final router = GoRouter.of(context);
     final openedAsSheet = widget.asSheet;
+    final next = dinerGroupReturnPath(GoRouterState.of(context).uri.queryParameters['next']);
     var role = AuthSession.roleFromSession();
     try {
       role = await AuthSession.resolveRole();
     } catch (_) {}
-
     void goHub() {
       if (!kAppStorefront.allowsRole(role)) {
         router.go('/wrong-app');
+        return;
+      }
+      if (next != null && role == AppRole.customer && !kAppStorefront.isPartner) {
+        router.go(next);
         return;
       }
       if (!openedAsSheet || role != AppRole.customer) {

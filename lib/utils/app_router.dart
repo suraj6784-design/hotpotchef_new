@@ -15,6 +15,7 @@ import '../screens/chat_inbox_screen.dart';
 import '../screens/meal_link_screen.dart';
 import '../screens/chef_link_screen.dart';
 import '../screens/cart_import_screen.dart';
+import '../screens/group_join_screen.dart';
 import '../screens/live_tracking_screen.dart';
 import '../screens/chef_profile_screen.dart';
 import '../screens/driver_profile_screen.dart';
@@ -115,6 +116,10 @@ class AppRouter {
 
       if (isAuthenticated) {
         if (path == '/auth') {
+          final next = dinerGroupReturnPath(state.uri.queryParameters['next']);
+          if (next != null && role == AppRole.customer && !kAppStorefront.isPartner) {
+            return next;
+          }
           return role.hubPath;
         }
         if (adminShouldSkipCustomerHome(
@@ -196,6 +201,10 @@ class AppRouter {
           key: state.pageKey,
           child: CartImportScreen(itemsParam: state.uri.queryParameters['items'] ?? ''),
         ),
+      ),
+      _fadeRoute(
+        '/group/:code',
+        (context, state) => GroupJoinScreen(roomCode: state.pathParameters['code'] ?? ''),
       ),
       _fadeRoute('/chats', (context, state) => const ChatInboxScreen()),
       _fadeRoute('/chat/:mealId', (context, state) {

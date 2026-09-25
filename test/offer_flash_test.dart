@@ -237,6 +237,13 @@ void main() {
       ]);
       expect(offerFlashHeadline(card), '10% OFF');
       expect(offerFlashSubhead(card), '10% OFF · tap to open');
+      final price = offerFlashPriceBreakup(card);
+      expect(price.title, 'Veg Biryani');
+      expect(price.listRupees, 121);
+      expect(price.payRupees, 109);
+      expect(price.badge, '10% OFF');
+      expect(price.showsSplit, isTrue);
+      expect(price.plateCount, 1);
     });
   });
 

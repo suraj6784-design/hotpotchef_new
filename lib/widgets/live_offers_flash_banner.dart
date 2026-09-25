@@ -176,7 +176,7 @@ class _LiveOffersFlashBannerState extends State<LiveOffersFlashBanner>
                 ),
               ),
               SizedBox(
-                height: 136,
+                height: 164,
                 child: PageView.builder(
                   controller: _pageController,
                   itemCount: offers.length,
@@ -291,8 +291,8 @@ class _OfferFlashCardState extends State<_OfferFlashCard> {
   Widget build(BuildContext context) {
     final meal = widget.meal;
     final image = meal['image_url']?.toString() ?? '';
-    final headline = offerFlashHeadline(meal);
-    final subhead = offerFlashSubhead(meal);
+    final price = offerFlashPriceBreakup(meal);
+    final title = price.title.isEmpty ? offerFlashHeadline(meal) : price.title;
     final code = PricingCalculator.mealPromoCode(meal);
     final boosted = isMealBoosted(meal);
     final countdown = offerExpiryCountdownLabel(
@@ -371,40 +371,53 @@ class _OfferFlashCardState extends State<_OfferFlashCard> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Text(
-                                headline,
+                                title,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w900,
-                                  fontSize: 18,
+                                  fontSize: 16,
                                   letterSpacing: 0.2,
                                 ),
                               ),
                               const SizedBox(height: 4),
-                              Text(
-                                subhead,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.9),
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
+                              _OfferPriceBreakup(price: price),
+                              if (price.plateCount > 1) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${price.plateCount} plates · tap to see all',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.9),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
-                              ),
+                              ],
                               if (countdown.isNotEmpty) ...[
                                 const SizedBox(height: 4),
                                 FadeTransition(
-                                  opacity: Tween(begin: 0.25, end: 1.0).animate(widget.blink),
-                                  child: Text(
-                                    countdown,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w800,
-                                    ),
+                                  opacity: Tween(begin: 0.35, end: 1.0).animate(widget.blink),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.timer_outlined, color: Colors.white, size: 14),
+                                      const SizedBox(width: 4),
+                                      Flexible(
+                                        child: Text(
+                                          countdown,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w800,
+                                            fontFeatures: [FontFeature.tabularFigures()],
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
@@ -478,6 +491,56 @@ class _OfferFlashCardState extends State<_OfferFlashCard> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _OfferPriceBreakup extends StatelessWidget {
+  const _OfferPriceBreakup({required this.price});
+
+  final OfferFlashPriceBreakup price;
+
+  @override
+  Widget build(BuildContext context) {
+    const payStyle = TextStyle(
+      color: Colors.white,
+      fontSize: 16,
+      fontWeight: FontWeight.w800,
+      fontFeatures: [FontFeature.tabularFigures()],
+    );
+    if (!price.showsSplit) {
+      if (price.listRupees == null) return const SizedBox.shrink();
+      return Text('₹${price.listRupees}', style: payStyle);
+    }
+    final struck = TextStyle(
+      color: Colors.white.withValues(alpha: 0.75),
+      fontSize: 13,
+      fontWeight: FontWeight.w700,
+      decoration: TextDecoration.lineThrough,
+      decorationColor: Colors.white.withValues(alpha: 0.75),
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    return Row(
+      children: [
+        Text('₹${price.listRupees}', style: struck),
+        const SizedBox(width: 6),
+        Text('₹${price.payRupees}', style: payStyle),
+        if (price.badge.isNotEmpty) ...[
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              price.badge,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
