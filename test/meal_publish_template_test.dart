@@ -2,14 +2,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hotpotchef_new/utils/meal_publish_template.dart';
 
 void main() {
-  test('catalog category keeps hamper and dessert buckets', () {
+  test('catalog category follows cuisine and course', () {
     expect(
       mealCatalogCategory(
         cuisine: 'Italian',
         dishCourse: 'Main Course',
-        hamper: false,
-        society: false,
-        shelf: false,
       ),
       'Italian',
     );
@@ -17,9 +14,6 @@ void main() {
       mealCatalogCategory(
         cuisine: 'Indian',
         dishCourse: 'Dessert',
-        hamper: false,
-        society: false,
-        shelf: false,
       ),
       'Desserts',
     );
@@ -27,11 +21,8 @@ void main() {
       mealCatalogCategory(
         cuisine: 'Indian',
         dishCourse: 'Snack',
-        hamper: true,
-        society: false,
-        shelf: false,
       ),
-      'Festival Hamper',
+      'Snacks',
     );
   });
 

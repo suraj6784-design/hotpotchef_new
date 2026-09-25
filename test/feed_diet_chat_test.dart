@@ -102,36 +102,21 @@ void main() {
         favoritesOnly: false,
         hasFavorites: false,
         hasSearch: false,
-        homeMode: 'heat',
-      ).title,
-      'No healthy plates nearby',
-    );
-    expect(
-      feedEmptyCopy(
-        signedIn: true,
-        favoritesOnly: false,
-        hasFavorites: false,
-        hasSearch: false,
         homeMode: 'preorder',
       ).title,
       'No pre-order slots nearby',
     );
   });
 
-  test('home Live / Pre-order / Healthy chips filter the catalog', () {
+  test('home Live and Pre-order chips filter the catalog', () {
     final evening = DateTime(2026, 9, 21, 19, 39);
     final noon = DateTime(2026, 9, 21, 12);
-    final quinoa = {'title': 'Quinoa bowl', 'category': 'Healthy & Salads'};
-    final ragi = {'title': 'Ragi dosa', 'is_veg': true};
     final dal = {'title': 'Dal tadka', 'time_slot': 'ASAP'};
     final dinner = {'title': 'Biryani', 'time_slot': 'Daily (6:30 PM to 9:30 PM)'};
     final breakfast = {'title': 'Breakfast', 'time_slot': 'Daily (8:00 AM to 11:00 AM)'};
     final booked = {'title': 'Hourly thali', 'time_slot': '7:00 PM to 8:00 PM'};
     final futureOneOff = {'title': 'Weekend thali', 'time_slot': '22 Sep, 1:00 PM to 2:00 PM'};
 
-    expect(mealMatchesHomeMode(quinoa, mode: 'heat'), isTrue);
-    expect(mealMatchesHomeMode(ragi, mode: 'healthy'), isTrue);
-    expect(mealMatchesHomeMode(dal, mode: 'heat'), isFalse);
     expect(mealMatchesHomeMode(dal, mode: 'preorder', now: evening), isFalse);
     expect(mealMatchesHomeMode(dal, mode: 'live', now: evening), isTrue);
 

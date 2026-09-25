@@ -18,6 +18,7 @@ import 'pricing_calculator.dart';
 import 'meal_nutrition.dart';
 import 'service_area.dart';
 import '../models/app_role.dart';
+import '../models/order_status.dart';
 import '../models/cart_enums.dart';
 import '../models/pricing_models.dart';
 
@@ -1042,17 +1043,15 @@ String? alertOpenPath(Map<String, String?> data, {String? role}) {
 }
 
 bool isLiveTrackingStatus(String? status) {
-  final current = (status ?? '').trim().toLowerCase();
-  if (current.contains('cancel') ||
-      current.contains('reject') ||
-      current.contains('delivered') ||
-      current.contains('complet')) {
-    return false;
+  switch (OrderStatus.canonical(status)) {
+    case OrderStatus.readyForPickup:
+    case OrderStatus.driverAssigned:
+    case OrderStatus.headingToKitchen:
+    case OrderStatus.outForDelivery:
+      return true;
+    default:
+      return false;
   }
-  return current.contains('ready') ||
-      current.contains('assigned') ||
-      current.contains('heading') ||
-      current.contains('out');
 }
 
 String mealDietHaystack(Map<String, dynamic> meal) {
@@ -1265,12 +1264,6 @@ bool mealMatchesHomeMode(
     case 'preorder':
     case 'pre-order':
       return mealHasPreOrderSlot(meal, now: now);
-    case 'heat':
-    case 'healthy':
-      if (mealMatchesCuisine(meal, 'Healthy')) return true;
-      final tags = meal['health_tags'];
-      if (tags is List && tags.isNotEmpty) return true;
-      return mealMatchesFeedDiet(meal, 'High-protein') || mealMatchesFeedDiet(meal, 'Millet');
     case 'live':
       return mealSlotIsAcceptingNow(meal, now: now, chefProfile: chefProfile);
     default:
@@ -1501,13 +1494,6 @@ FeedEmptyCopy feedEmptyCopy({
     );
   }
   final mode = homeMode.trim().toLowerCase();
-  if ((mode == 'heat' || mode == 'healthy') && !hasSearch && !favorites && !following) {
-    return const FeedEmptyCopy(
-      title: 'No healthy plates nearby',
-      message: 'Healthy & Salads, millet, and high-protein tags show here. Try Pre-order for the full menu.',
-      clearCategory: true,
-    );
-  }
   if ((mode == 'preorder' || mode == 'pre-order') && !hasSearch && !favorites && !following) {
     return const FeedEmptyCopy(
       title: 'No pre-order slots nearby',

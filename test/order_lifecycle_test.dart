@@ -183,6 +183,17 @@ void main() {
       expect(OrderLifecycle.driverHubActionLabel('Out for Delivery'), 'Mark Delivered');
     });
 
+    test('older status labels map onto the statuses we write', () {
+      expect(OrderStatus.canonical('placed'), OrderStatus.pendingChefApproval);
+      expect(OrderStatus.canonical('packed'), OrderStatus.readyForPickup);
+      expect(OrderStatus.canonical('completed'), OrderStatus.delivered);
+      expect(OrderStatus.canonical('out_for_delivery'), OrderStatus.outForDelivery);
+      expect(OrderStatus.canonical('Pending Chef Approval'), OrderStatus.pendingChefApproval);
+      expect(OrderLifecycle.isTrackable('packed'), isTrue);
+      expect(OrderLifecycle.isTrackable('completed'), isFalse);
+      expect(OrderLifecycle.nextKitchenStatus('placed'), OrderStatus.confirmed);
+    });
+
     test('diner progress is Kitchen → Packed → On the way → Delivered', () {
       expect(OrderLifecycle.dinerProgressStep('Confirmed'), 0);
       expect(OrderLifecycle.dinerProgressStep('Preparing'), 0);

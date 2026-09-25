@@ -23,7 +23,6 @@ import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/support_replied_banner.dart';
 import '../widgets/live_offers_flash_banner.dart';
-import '../widgets/membership_flash_banner.dart';
 import '../services/delivery_estimator_service.dart';
 import '../utils/delivery_fee.dart';
 import '../utils/service_area.dart';
@@ -1556,8 +1555,6 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             const SizedBox(height: 8),
           ],
 
-          if (!_hasActiveSearch) ..._homeTopHighlights(isLoggedIn: isLoggedIn),
-
           if (_hasActiveSearch || showFollowing || showFavorites)
             Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -1982,13 +1979,6 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         child: const Icon(Icons.shopping_bag_outlined, size: 18),
       ),
     );
-  }
-
-  List<Widget> _homeTopHighlights({required bool isLoggedIn}) {
-    return [
-      const MembershipFlashBanner(),
-      const SizedBox(height: 4),
-    ];
   }
 
   Widget _filterChipRow({

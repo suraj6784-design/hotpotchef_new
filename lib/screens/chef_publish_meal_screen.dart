@@ -62,8 +62,6 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
   final _fiberController = TextEditingController();
   final _fssaiController = TextEditingController();
   final _hostingAddressController = TextEditingController();
-  final _societyLabelController = TextEditingController();
-  final _shelfKindController = TextEditingController();
   final _ingredientsController = TextEditingController();
   final _servingSizeController = TextEditingController();
   final _prepMinutesController = TextEditingController();
@@ -96,12 +94,8 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
   // Meal Specifications
   bool _isLoading = false;
   bool _isVeg = true;
-  bool _isHamper = false;
-  bool _isSocietyNight = false;
-  bool _isShelfItem = false;
   final Set<String> _dietTags = {};
   final Set<String> _allergens = {};
-  String _selectedCategory = 'Maharashtrian';
   String _cuisine = 'Maharashtrian';
   String _dishCourse = 'Main Course';
   String _availabilityMode = 'live';
@@ -112,19 +106,6 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
 
   double? _pickupLat;
   double? _pickupLng;
-
-  final List<String> _categories = const [
-    'Maharashtrian',
-    'Punjabi',
-    'South Indian',
-    'North Indian',
-    'Festival Hamper',
-    'Society Night',
-    'Shelf',
-    'Snacks',
-    'Desserts',
-    'Healthy & Salads'
-  ];
 
   final Set<ServiceType> _selectedServices = {ServiceType.deliveryPlatform};
   final List<_AddOnDraft> _addOns = [];
@@ -156,11 +137,6 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     _hostingAddressController.text = meal['hosting_address']?.toString() ?? '';
 
     _isVeg = meal['is_veg'] ?? true;
-    _isHamper = isFestivalHamper(meal);
-    _isSocietyNight = isSocietyNight(meal);
-    _isShelfItem = isShelfItem(meal);
-    _societyLabelController.text = meal['society_label']?.toString() ?? '';
-    _shelfKindController.text = meal['shelf_kind']?.toString() ?? '';
     _dietTags
       ..clear()
       ..addAll(_dietTagsFromMeal(meal));
@@ -180,19 +156,6 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     _deliveryEstimateController.text = meal['delivery_estimate_minutes']?.toString() ?? '';
     _chefTipController.text = mealChefTipLine(meal);
     _existingVideoUrl = meal['video_url']?.toString();
-    _selectedCategory = meal['category']?.toString() ?? 'Maharashtrian';
-    if (_isHamper && !_categories.contains(_selectedCategory)) {
-      _selectedCategory = 'Festival Hamper';
-    }
-    if (_isSocietyNight && !_categories.contains(_selectedCategory)) {
-      _selectedCategory = 'Society Night';
-    }
-    if (_isShelfItem && !_categories.contains(_selectedCategory)) {
-      _selectedCategory = 'Shelf';
-    }
-    if (!_categories.contains(_selectedCategory)) {
-      _selectedCategory = _categories.first;
-    }
     _activeTimeSlot = meal['time_slot']?.toString() ?? '';
     _existingImageUrl = meal['image_url']?.toString();
     _acceptsHotpotCoins = meal['accepts_hotpot_coins'] ?? true;
@@ -257,8 +220,6 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     _fiberController.dispose();
     _fssaiController.dispose();
     _hostingAddressController.dispose();
-    _societyLabelController.dispose();
-    _shelfKindController.dispose();
     _ingredientsController.dispose();
     _servingSizeController.dispose();
     _prepMinutesController.dispose();
@@ -569,18 +530,12 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
       final maxCapVal = double.tryParse(_maxDiscountCapController.text.trim()) ?? 0.0;
       final promoExtraVal = double.tryParse(_promoDiscountController.text.trim()) ?? 0.0;
       final hasPromoExtra = _promoExtraType != OfferType.none && promoExtraVal > 0;
-      final hamperOn = _isHamper || _selectedCategory == 'Festival Hamper';
-      final societyOn = _isSocietyNight || _selectedCategory == 'Society Night';
-      final shelfOn = _isShelfItem || _selectedCategory == 'Shelf';
       if (_availabilityMode == 'live' && _activeTimeSlot.isEmpty) {
         _activeTimeSlot = 'ASAP';
       }
       final catalogCategory = mealCatalogCategory(
         cuisine: _cuisine,
         dishCourse: _dishCourse,
-        hamper: hamperOn,
-        society: societyOn,
-        shelf: shelfOn,
       );
 
       final mealPayload = {
@@ -605,11 +560,11 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
         'is_seasonal': _isSeasonal,
         'allow_notify_when_available': _allowNotifyWhenAvailable,
         'is_veg': _isVeg,
-        'is_hamper': hamperOn,
-        'is_society_night': societyOn,
-        'society_label': societyOn ? _societyLabelController.text.trim() : '',
-        'is_shelf_item': shelfOn,
-        'shelf_kind': shelfOn ? _shelfKindController.text.trim() : '',
+        'is_hamper': false,
+        'is_society_night': false,
+        'society_label': '',
+        'is_shelf_item': false,
+        'shelf_kind': '',
         'time_slot': _activeTimeSlot,
         'service_type': _selectedServices.map((s) => s.toDisplayString()).join(', '),
         'fssai_number': _fssaiController.text.trim(),
@@ -1047,83 +1002,6 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              value: _isHamper,
-              activeThumbColor: AppTheme.primary,
-              title: Text('Festival hamper', style: TextStyle(fontWeight: FontWeight.w800, color: titleColor, fontSize: 14)),
-              subtitle: Text(
-                'Gift box for Diwali / festivals — shows on diner Home under Festival Hampers.',
-                style: AppTheme.caption,
-              ),
-              onChanged: (v) => setState(() {
-                _isHamper = v;
-                if (!v && _selectedCategory == 'Festival Hamper') {
-                  _selectedCategory = 'Maharashtrian';
-                }
-              }),
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              value: _isSocietyNight,
-              activeThumbColor: AppTheme.primary,
-              title: Text('Society / RWA night', style: TextStyle(fontWeight: FontWeight.w800, color: titleColor, fontSize: 14)),
-              subtitle: Text(
-                'One building, one drop — shows on diner Home under Society Nights.',
-                style: AppTheme.caption,
-              ),
-              onChanged: (v) => setState(() {
-                _isSocietyNight = v;
-                if (!v && _selectedCategory == 'Society Night') {
-                  _selectedCategory = 'Maharashtrian';
-                }
-              }),
-            ),
-            if (_isSocietyNight || _selectedCategory == 'Society Night') ...[
-              const SizedBox(height: 4),
-              TextFormField(
-                controller: _societyLabelController,
-                decoration: InputDecoration(
-                  labelText: 'Society / building name',
-                  hintText: 'e.g. Green Valley A-wing',
-                  filled: true,
-                  fillColor: surface,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                textCapitalization: TextCapitalization.words,
-              ),
-            ],
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              value: _isShelfItem,
-              activeThumbColor: AppTheme.primary,
-              title: Text('Shelf / pantry item', style: TextStyle(fontWeight: FontWeight.w800, color: titleColor, fontSize: 14)),
-              subtitle: Text(
-                'Pickle, masala, papad — shows on diner Home under Shelf from Home.',
-                style: AppTheme.caption,
-              ),
-              onChanged: (v) => setState(() {
-                _isShelfItem = v;
-                if (!v) {
-                  if (_selectedCategory == 'Shelf') _selectedCategory = 'Maharashtrian';
-                }
-              }),
-            ),
-            if (_isShelfItem || _selectedCategory == 'Shelf') ...[
-              const SizedBox(height: 4),
-              TextFormField(
-                controller: _shelfKindController,
-                decoration: InputDecoration(
-                  labelText: 'Shelf kind',
-                  hintText: 'e.g. Pickle, Masala, Papad',
-                  filled: true,
-                  fillColor: surface,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                textCapitalization: TextCapitalization.words,
-              ),
-            ],
             const SizedBox(height: 16),
             Text('Tags', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor)),
             const SizedBox(height: 4),

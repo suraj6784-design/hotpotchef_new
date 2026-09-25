@@ -41,13 +41,7 @@ const List<String> kMealDietLabels = [
 String mealCatalogCategory({
   required String cuisine,
   required String dishCourse,
-  required bool hamper,
-  required bool society,
-  required bool shelf,
 }) {
-  if (hamper) return 'Festival Hamper';
-  if (society) return 'Society Night';
-  if (shelf) return 'Shelf';
   switch (dishCourse) {
     case 'Dessert':
       return 'Desserts';

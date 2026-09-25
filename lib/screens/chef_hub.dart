@@ -1444,7 +1444,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         final order = dispatches[index];
         final status = order['status']?.toString() ?? '';
         final isOut = OrderLifecycle.canDriverCompleteRun(status);
-        final driverAssigned = OrderLifecycle.normalize(status).contains('assigned') ||
+        final driverAssigned = OrderLifecycle.known(status) == OrderStatus.driverAssigned ||
             OrderLifecycle.isHeadingToPickup(status);
         final svc = _orderService(order);
         final dispatchLabel = () {
