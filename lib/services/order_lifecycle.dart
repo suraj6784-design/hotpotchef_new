@@ -101,17 +101,19 @@ class OrderLifecycle {
       case OrderStatus.delivered:
         return 'Delivered';
       case OrderStatus.outForDelivery:
-      case OrderStatus.driverAssigned:
+        return 'Out for delivery';
       case OrderStatus.headingToKitchen:
-        return 'On the way';
+        return 'Partner is heading to the kitchen';
+      case OrderStatus.driverAssigned:
+        return 'Partner assigned';
       case OrderStatus.readyForPickup:
-        return 'Ready for pickup';
+        return 'Packed';
       case OrderStatus.pendingChefApproval:
-        return 'Waiting for chef';
+        return 'Waiting for the kitchen';
       case OrderStatus.preparing:
         return 'Preparing';
       case OrderStatus.confirmed:
-        return 'Confirmed';
+        return 'Kitchen confirmed';
       default:
         final raw = status?.trim() ?? '';
         return raw.isEmpty ? 'In the kitchen' : raw;

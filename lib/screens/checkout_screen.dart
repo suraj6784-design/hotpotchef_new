@@ -501,18 +501,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         lng: addressCoordinate(_selectedAddressData, latitude: false),
       );
       if (warning != null) {
-        final proceed = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Outside launch cities'),
-            content: Text(warning),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Change address')),
-              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Continue anyway')),
-            ],
-          ),
-        );
-        if (proceed != true || !mounted) return;
+        _showSnackBar(warning, isError: true);
+        return;
       }
     }
     unawaited(AppAnalytics.logBeginCheckout(itemCount: widget.cartItems.length, value: _grandTotal));
@@ -639,7 +629,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         'config': {
           'display': {'hide': methodOpts['displayHide']},
         },
-        'theme': {'color': '#F4511E'}
+        'theme': {'color': '#E85A24'}
       };
 
       _razorpay.open(options);
@@ -1066,14 +1056,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       ));
 
       if (mounted) {
+        final label = (orderId == null || orderId.isEmpty) ? '' : formatOrderId(orderId, orderId);
+        final total = formatRupees(_grandTotal);
+        final placedCopy = _membershipOnThisOrder
+            ? 'You are now a Family member. Unlimited free delivery is on.'
+            : label.isEmpty
+                ? 'Order placed. Total $total. It is in Orders, with the receipt.'
+                : 'Order $label placed. Total $total. It is in Orders, with the receipt.';
         widget.onOrderPlacedSuccess();
         Navigator.pop(context);
-        _showSnackBar(
-          _membershipOnThisOrder
-              ? 'You are now a Family member. Unlimited free delivery is on.'
-              : 'Payment Verified! Order placed successfully.',
-          isError: false,
-        );
+        _showSnackBar(placedCopy, isError: false);
       }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Order recording failed post-payment');
@@ -1098,7 +1090,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(text),
-        backgroundColor: isError ? Colors.redAccent : Colors.green,
+        backgroundColor: isError ? AppTheme.error : AppTheme.success,
         duration: duration,
         behavior: SnackBarBehavior.floating,
       ),

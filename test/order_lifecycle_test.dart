@@ -171,8 +171,12 @@ void main() {
       expect(OrderLifecycle.isTrackable('Out for Delivery'), isTrue);
       expect(OrderLifecycle.isTrackable('Delivered'), isFalse);
       expect(OrderLifecycle.isTrackable('Cancelled'), isFalse);
-      expect(OrderLifecycle.dinerOrderCardBadge('Pending Chef Approval'), 'Waiting for chef');
-      expect(OrderLifecycle.dinerOrderCardBadge('Ready for Pickup'), 'Ready for pickup');
+      expect(OrderLifecycle.dinerOrderCardBadge('Pending Chef Approval'), 'Waiting for the kitchen');
+      expect(OrderLifecycle.dinerOrderCardBadge('Confirmed'), 'Kitchen confirmed');
+      expect(OrderLifecycle.dinerOrderCardBadge('Ready for Pickup'), 'Packed');
+      expect(OrderLifecycle.dinerOrderCardBadge('Driver Assigned'), 'Partner assigned');
+      expect(OrderLifecycle.dinerOrderCardBadge('Heading to Kitchen'), 'Partner is heading to the kitchen');
+      expect(OrderLifecycle.dinerOrderCardBadge('Out for Delivery'), 'Out for delivery');
     });
 
     test('driver hub shows pickup-run badge and actions', () {

@@ -601,7 +601,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Status updated to: $next'), backgroundColor: Colors.green),
+          SnackBar(content: Text('Updated to ${AppTheme.sentenceLabel(next ?? 'the next step')}.')),
         );
       }
     } catch (e) {
@@ -647,8 +647,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Delivery partners mark partner orders delivered.'),
-              backgroundColor: Colors.teal,
+              content: Text('Waiting for a partner. They pick this up and mark it delivered.'),
             ),
           );
         }
@@ -664,13 +663,12 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       if (next == null && svc.usesDeliveryPartner) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Ready for a delivery partner. Drivers can accept this order now.'),
-            backgroundColor: Colors.teal,
+            content: Text('Waiting for a partner. Drivers can accept this order now.'),
           ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Status updated to: $next'), backgroundColor: Colors.green),
+          SnackBar(content: Text('Updated to ${AppTheme.sentenceLabel(next ?? 'the next step')}.')),
         );
       }
     } catch (e) {

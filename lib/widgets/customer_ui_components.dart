@@ -899,7 +899,18 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
 }
 
 // 6. Fully Upgraded Decision-Making Meal Details Modal
-Future<bool> confirmReplaceKitchenCart(BuildContext context) async {
+Future<bool> confirmReplaceKitchenCart(
+  BuildContext context, {
+  String? currentKitchen,
+  String? nextKitchen,
+}) async {
+  final current = (currentKitchen ?? '').trim();
+  final next = (nextKitchen ?? '').trim();
+  final message = current.isEmpty
+      ? 'Your cart already has another kitchen. Clear it and add this dish?'
+      : next.isEmpty
+          ? 'Your cart is from $current. Clear it and add this dish?'
+          : 'Your cart is from $current. Clear it and add this dish from $next?';
   final replace = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
@@ -910,7 +921,7 @@ Future<bool> confirmReplaceKitchenCart(BuildContext context) async {
         style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(ctx)),
       ),
       content: Text(
-        'Your cart has dishes from another kitchen. Clear the cart and add this dish instead?',
+        message,
         style: TextStyle(color: AppTheme.onSurfaceOf(ctx).withValues(alpha: 0.75)),
       ),
       actions: [
@@ -921,7 +932,7 @@ Future<bool> confirmReplaceKitchenCart(BuildContext context) async {
         ElevatedButton(
           style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary, foregroundColor: Colors.white),
           onPressed: () => Navigator.pop(ctx, true),
-          child: const Text('Clear & add'),
+          child: const Text('Replace cart'),
         ),
       ],
     ),
@@ -996,7 +1007,8 @@ Future<bool> addMealToCartWithConflict({
   } catch (_) {}
 
   final cart = ref.read(cartProvider.notifier);
-  final existingChef = ref.read(cartProvider).primaryChefId;
+  final cartState = ref.read(cartProvider);
+  final existingChef = cartState.primaryChefId;
   final chefId = meal['chef_id']?.toString() ?? '';
   final added = cart.addToCart(meal, quantity, addOns: addOns, clearIfVendorConflict: false);
   if (added) return true;
@@ -1004,7 +1016,12 @@ Future<bool> addMealToCartWithConflict({
   final isConflict = existingChef != null && existingChef.isNotEmpty && chefId.isNotEmpty && existingChef != chefId;
   if (!isConflict || !context.mounted) return false;
 
-  final replace = await confirmReplaceKitchenCart(context);
+  final currentKitchen = cartState.items.isEmpty ? null : chefDisplayName(cartState.items.first.rawMealDetails);
+  final replace = await confirmReplaceKitchenCart(
+    context,
+    currentKitchen: currentKitchen,
+    nextKitchen: chefDisplayName(meal),
+  );
   if (!replace || !context.mounted) return false;
   return cart.addToCart(meal, quantity, addOns: addOns, clearIfVendorConflict: true);
 }
