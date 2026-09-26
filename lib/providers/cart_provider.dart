@@ -133,7 +133,11 @@ class CartNotifier extends Notifier<CartState> {
       }
       if (inSharedRoom && !_applyingSharedCart) {
         try {
-          await _sharedCartService.updateSharedCart(room, state.items);
+          await _sharedCartService.updateSharedCart(
+            room,
+            state.items,
+            hostId: state.sharedHostId,
+          );
         } catch (e, st) {
           _logCartError(e, st, 'Debounced shared cart sync failed');
         }
@@ -207,29 +211,10 @@ class CartNotifier extends Notifier<CartState> {
         skipped: const [],
       );
     }
-    var added = 0;
-    final skipped = <String>[];
-    var allowClear = true;
-    for (final item in room.items) {
-      final meal = item.toMealMap();
-      if ((meal['id']?.toString() ?? '').isEmpty) {
-        skipped.add(item.title.isEmpty ? 'a dish' : item.title);
-        continue;
-      }
-      final ok = addToCart(
-        meal,
-        item.quantity,
-        addOns: item.selectedAddOns,
-        clearIfVendorConflict: allowClear,
-        timeSlot: (room.timeSlot ?? '').trim().isEmpty ? null : room.timeSlot,
-      );
-      if (ok) {
-        added += 1;
-        allowClear = false;
-      } else {
-        skipped.add(item.title.isEmpty ? 'a dish' : item.title);
-      }
-    }
+    state = state.copyWith(
+      items: room.items,
+      packagingFee: _packagingFor(room.items),
+    );
     await attachSharedRoom(
       code,
       placeKind: room.placeKind,
@@ -241,8 +226,8 @@ class CartNotifier extends Notifier<CartState> {
     return SharedCartJoinResult(
       roomCode: code,
       placeKind: room.placeKind,
-      added: added,
-      skipped: skipped,
+      added: room.items.length,
+      skipped: const [],
     );
   }
 
@@ -400,6 +385,8 @@ class CartNotifier extends Notifier<CartState> {
         serviceType: resolvedService,
         selectedAddOns: pricedAddOns,
         specialInstructions: (note == null || note.isEmpty) ? null : note,
+        addedByUserId: _supabase.auth.currentUser?.id,
+        addedByName: _currentDinerName(),
         rawMealDetails: {
           ...meal,
           'exact_time': resolvedSlot,
@@ -419,9 +406,28 @@ class CartNotifier extends Notifier<CartState> {
     return true;
   }
 
+  String? _currentDinerName() {
+    final user = _supabase.auth.currentUser;
+    return dinerDisplayNameFromUser(
+      name: user?.userMetadata?['name']?.toString() ?? user?.userMetadata?['full_name']?.toString(),
+      email: user?.email,
+    );
+  }
+
+  bool _canEditSharedLine(CartItemModel item) {
+    final room = state.sharedRoomCode;
+    if (room == null || room.isEmpty) return true;
+    return sharedCartLineEditable(
+      item,
+      userId: _supabase.auth.currentUser?.id,
+      hostId: state.sharedHostId,
+    );
+  }
+
   void updateQuantity(String cartItemId, int delta) {
     final index = state.items.indexWhere((i) => i.id == cartItemId);
     if (index == -1) return;
+    if (!_canEditSharedLine(state.items[index])) return;
 
     List<CartItemModel> updated = List.from(state.items);
     final item = updated[index];
@@ -443,6 +449,9 @@ class CartNotifier extends Notifier<CartState> {
   }
 
   void removeItem(String cartItemId) {
+    final index = state.items.indexWhere((i) => i.id == cartItemId);
+    if (index == -1) return;
+    if (!_canEditSharedLine(state.items[index])) return;
     final updated = state.items.where((i) => i.id != cartItemId).toList();
     _commitItems(updated);
     if (updated.isEmpty) {
@@ -633,6 +642,7 @@ class CartNotifier extends Notifier<CartState> {
   }) {
     final index = state.items.indexWhere((i) => i.id == cartItemId);
     if (index == -1) return;
+    if (!_canEditSharedLine(state.items[index])) return;
 
     final updated = List<CartItemModel>.from(state.items);
     final item = updated[index];
@@ -644,19 +654,8 @@ class CartNotifier extends Notifier<CartState> {
       catalog: nextRaw['add_ons'] ?? nextRaw['addons'],
       selected: addOns,
     );
-    updated[index] = CartItemModel(
-      id: item.id,
-      mealId: item.mealId,
-      chefId: item.chefId,
-      title: item.title,
-      basePrice: item.basePrice,
-      discountedPrice: item.discountedPrice,
-      quantity: item.quantity,
-      scheduledDate: item.scheduledDate,
-      serviceType: item.serviceType,
-      timeSlot: item.timeSlot,
+    updated[index] = item.copyWith(
       selectedAddOns: priced,
-      specialInstructions: item.specialInstructions,
       rawMealDetails: Map.unmodifiable(nextRaw),
     );
     _commitItems(updated);
@@ -666,6 +665,7 @@ class CartNotifier extends Notifier<CartState> {
   void updateItemServiceType(String cartItemId, String serviceTypeStr) {
     final index = state.items.indexWhere((i) => i.id == cartItemId);
     if (index == -1) return;
+    if (!_canEditSharedLine(state.items[index])) return;
 
     final updated = List<CartItemModel>.from(state.items);
     final item = updated[index];
@@ -679,6 +679,7 @@ class CartNotifier extends Notifier<CartState> {
   void updateItemDate(String cartItemId, DateTime date) {
     final index = state.items.indexWhere((i) => i.id == cartItemId);
     if (index == -1) return;
+    if (!_canEditSharedLine(state.items[index])) return;
 
     final updated = List<CartItemModel>.from(state.items);
     final item = updated[index];
@@ -692,6 +693,7 @@ class CartNotifier extends Notifier<CartState> {
   void updateItemTimeSlot(String cartItemId, String timeSlot) {
     final index = state.items.indexWhere((i) => i.id == cartItemId);
     if (index == -1) return;
+    if (!_canEditSharedLine(state.items[index])) return;
 
     final updated = List<CartItemModel>.from(state.items);
     final item = updated[index];

@@ -13,6 +13,7 @@ import '../utils/pricing_calculator.dart';
 import '../models/cart_state.dart';
 import '../models/cart_enums.dart';
 import '../providers/cart_provider.dart';
+import '../services/shared_cart_service.dart';
 import '../services/meal_catalog_repository.dart';
 import '../providers/delivery_preference.dart';
 import '../widgets/customer_ui_components.dart';
@@ -467,6 +468,19 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
               scheduledDate: item.scheduledDate,
               chefSchedule: rawSchedule,
             );
+            final inGroup = (cartState.sharedRoomCode ?? '').isNotEmpty;
+            final viewerId = Supabase.instance.client.auth.currentUser?.id;
+            final canEdit = !inGroup ||
+                sharedCartLineEditable(
+                  item,
+                  userId: viewerId,
+                  hostId: cartState.sharedHostId,
+                );
+            final ownerLabel = groupPlateOwnerLabel(
+              item,
+              userId: viewerId,
+              hostId: cartState.sharedHostId,
+            );
 
             return AppCard(
               margin: const EdgeInsets.only(bottom: 16),
@@ -493,6 +507,13 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                               item.title.isNotEmpty ? item.title : 'Meal Item',
                               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.onSurfaceOf(context)),
                             ),
+                            if (inGroup) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                'Added by $ownerLabel',
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.textMuted),
+                              ),
+                            ],
                             if (isOfferActive)
                               Container(
                                 margin: const EdgeInsets.only(top: 4),
@@ -512,10 +533,11 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                           ],
                         ),
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.close, color: AppTheme.textMuted),
-                        onPressed: () => ref.read(cartProvider.notifier).removeItem(cartItemId),
-                      ),
+                      if (canEdit)
+                        IconButton(
+                          icon: const Icon(Icons.close, color: AppTheme.textMuted),
+                          onPressed: () => ref.read(cartProvider.notifier).removeItem(cartItemId),
+                        ),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -537,26 +559,27 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                     ),
                     const SizedBox(height: 4),
                   ],
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton.icon(
-                      onPressed: () => _editCartExtras(item),
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppTheme.primary,
-                        padding: const EdgeInsets.symmetric(horizontal: 0),
-                        minimumSize: const Size(0, 36),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      icon: Icon(
-                        item.selectedAddOns.isEmpty ? Icons.add_circle_outline : Icons.tune,
-                        size: 18,
-                      ),
-                      label: Text(
-                        item.selectedAddOns.isEmpty ? 'Add extra' : 'Change extras',
-                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                  if (canEdit)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () => _editCartExtras(item),
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppTheme.primary,
+                          padding: const EdgeInsets.symmetric(horizontal: 0),
+                          minimumSize: const Size(0, 36),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        icon: Icon(
+                          item.selectedAddOns.isEmpty ? Icons.add_circle_outline : Icons.tune,
+                          size: 18,
+                        ),
+                        label: Text(
+                          item.selectedAddOns.isEmpty ? 'Add extra' : 'Change extras',
+                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                        ),
                       ),
                     ),
-                  ),
                   const SizedBox(height: 8),
 
                   Row(
@@ -592,7 +615,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<ServiceType>(
                         isExpanded: true,
-                        icon: const Icon(Icons.arrow_drop_down, color: AppTheme.primary),
+                        icon: canEdit ? const Icon(Icons.arrow_drop_down, color: AppTheme.primary) : const SizedBox.shrink(),
                         value: currentService,
                         style: const TextStyle(color: AppTheme.link, fontSize: 13, fontWeight: FontWeight.w600),
                         items: availableServices.map((svc) {
@@ -611,14 +634,16 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                             ),
                           );
                         }).toList(),
-                        onChanged: (val) {
-                          if (val != null) {
-                            ref.read(cartProvider.notifier).updateItemServiceType(
-                                  cartItemId,
-                                  val.toDisplayString(),
-                                );
-                          }
-                        },
+                        onChanged: canEdit
+                            ? (val) {
+                                if (val != null) {
+                                  ref.read(cartProvider.notifier).updateItemServiceType(
+                                        cartItemId,
+                                        val.toDisplayString(),
+                                      );
+                                }
+                              }
+                            : null,
                       ),
                     ),
                   ),
@@ -629,7 +654,9 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                     children: [
                       Expanded(
                         child: GestureDetector(
-                          onTap: () async {
+                          onTap: !canEdit
+                              ? null
+                              : () async {
                             final first = chefSlotPickerFirstDate(rawSchedule);
                             final last = chefSlotPickerLastDate(rawSchedule);
                             final initial = chefSlotPickerInitialDate(rawSchedule, item.scheduledDate);
@@ -686,7 +713,9 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                       const SizedBox(width: 12),
                       Expanded(
                         child: GestureDetector(
-                          onTap: () async {
+                          onTap: !canEdit
+                              ? null
+                              : () async {
                             final subSlots =
                                 _futureSlotsForDate(_generateSubSlots(rawSchedule), item.scheduledDate);
                             final pickedSlot = await showDialog<String>(
@@ -781,27 +810,35 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                           borderRadius: AppTheme.radiusXl,
                           border: Border.all(color: AppTheme.hairlineOf(context)),
                         ),
-                        child: Row(
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.remove, color: AppTheme.primary, size: 16),
-                              onPressed: () => ref.read(cartProvider.notifier).updateQuantity(cartItemId, -1),
-                              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                              padding: EdgeInsets.zero,
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 8),
-                              child: Text('${item.quantity}',
-                                  style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.add, color: AppTheme.primary, size: 16),
-                              onPressed: () => ref.read(cartProvider.notifier).updateQuantity(cartItemId, 1),
-                              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                              padding: EdgeInsets.zero,
-                            ),
-                          ],
-                        ),
+                        child: canEdit
+                            ? Row(
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.remove, color: AppTheme.primary, size: 16),
+                                    onPressed: () => ref.read(cartProvider.notifier).updateQuantity(cartItemId, -1),
+                                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                                    padding: EdgeInsets.zero,
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                                    child: Text('${item.quantity}',
+                                        style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.add, color: AppTheme.primary, size: 16),
+                                    onPressed: () => ref.read(cartProvider.notifier).updateQuantity(cartItemId, 1),
+                                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                                    padding: EdgeInsets.zero,
+                                  ),
+                                ],
+                              )
+                            : Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                child: Text(
+                                  'Qty ${item.quantity}',
+                                  style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context)),
+                                ),
+                              ),
                       ),
                     ],
                   ),

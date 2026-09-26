@@ -1613,17 +1613,6 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                                   : 'Waiting for a delivery partner. Drivers see this job after you mark it Ready for Pickup.',
                       style: const TextStyle(fontSize: 13, color: AppTheme.textMuted, height: 1.35),
                     ),
-                    if (_assignedDriverId(order).isNotEmpty) ...[
-                      const SizedBox(height: 10),
-                      OutlinedButton.icon(
-                        icon: const Icon(Icons.phone_outlined, size: 18),
-                        label: const Text('Call driver'),
-                        onPressed: () => _callParty(
-                          _assignedDriverId(order),
-                          missingContact: 'No driver contact on this order.',
-                        ),
-                      ),
-                    ],
                   ],
                 )
               else
@@ -2541,17 +2530,26 @@ class _CallDriverIconButton extends StatelessWidget {
         maximumSize: const Size(48, 48),
       ),
       icon: SizedBox(
-        width: 24,
+        width: 22,
         height: 22,
         child: Stack(
-          clipBehavior: Clip.none,
           alignment: Alignment.center,
           children: [
-            const Icon(Icons.two_wheeler_outlined, size: 18),
+            const Icon(Icons.two_wheeler, size: 20),
             Positioned(
-              right: -2,
-              bottom: -2,
-              child: Icon(Icons.phone, size: 11, color: fg),
+              right: 0,
+              bottom: 0,
+              child: Container(
+                width: 11,
+                height: 11,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: fg,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 1),
+                ),
+                child: const Icon(Icons.call, size: 7, color: Colors.white),
+              ),
             ),
           ],
         ),

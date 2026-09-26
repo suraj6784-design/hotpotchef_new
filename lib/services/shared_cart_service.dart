@@ -7,6 +7,86 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../models/cart_state.dart';
 import '../utils/helpers.dart';
 
+String? dinerDisplayNameFromUser({
+  String? name,
+  String? email,
+}) {
+  final trimmed = name?.trim() ?? '';
+  if (trimmed.isNotEmpty) return trimmed;
+  final local = email?.split('@').first.trim() ?? '';
+  if (local.isNotEmpty) return local;
+  return null;
+}
+
+/// A group plate can be changed only by the diner who added it.
+/// Older plates with no owner stay with the host.
+bool sharedCartLineEditable(
+  CartItemModel item, {
+  required String? userId,
+  required String? hostId,
+}) {
+  final uid = userId?.trim() ?? '';
+  if (uid.isEmpty) return false;
+  final owner = item.addedByUserId?.trim() ?? '';
+  if (owner.isNotEmpty) return owner == uid;
+  final host = hostId?.trim() ?? '';
+  return host.isNotEmpty && host == uid;
+}
+
+String groupPlateOwnerLabel(
+  CartItemModel item, {
+  required String? userId,
+  String? hostId,
+}) {
+  final uid = userId?.trim() ?? '';
+  final owner = item.addedByUserId?.trim() ?? '';
+  final host = hostId?.trim() ?? '';
+  if (uid.isNotEmpty && (owner == uid || (owner.isEmpty && host == uid))) return 'You';
+  final name = item.addedByName?.trim() ?? '';
+  if (name.isNotEmpty) return name;
+  if (owner.isEmpty) return 'Host';
+  return 'Teammate';
+}
+
+/// Keeps teammates' plates from the server and applies only this diner's edits.
+List<CartItemModel> mergeSharedCartItems({
+  required List<CartItemModel> remote,
+  required List<CartItemModel> local,
+  required String? userId,
+  required String? hostId,
+}) {
+  bool owns(CartItemModel item) => sharedCartLineEditable(
+        item,
+        userId: userId,
+        hostId: hostId,
+      );
+
+  final localOwn = local.where(owns).toList();
+  final seen = <String>{};
+  final merged = <CartItemModel>[];
+  for (final item in remote) {
+    if (owns(item)) {
+      CartItemModel? replacement;
+      for (final localItem in localOwn) {
+        if (localItem.id == item.id) {
+          replacement = localItem;
+          break;
+        }
+      }
+      if (replacement != null) {
+        merged.add(replacement);
+        seen.add(replacement.id);
+      }
+    } else {
+      merged.add(item);
+    }
+  }
+  for (final item in localOwn) {
+    if (!seen.contains(item.id)) merged.add(item);
+  }
+  return merged;
+}
+
 class SharedCartException implements Exception {
   SharedCartException(this.message);
 
@@ -81,7 +161,20 @@ class SharedCartService {
       final rnd = Random();
       final roomCode = 'GRP-${List.generate(6, (index) => chars[rnd.nextInt(chars.length)]).join()}';
 
-      final jsonList = initialItems.map((i) => i.toJson()).toList();
+      final jsonList = initialItems
+          .map((item) {
+            final owner = item.addedByUserId?.trim() ?? '';
+            if (owner.isNotEmpty) return item;
+            return item.copyWith(
+              addedByUserId: user.id,
+              addedByName: dinerDisplayNameFromUser(
+                name: user.userMetadata?['name']?.toString() ?? user.userMetadata?['full_name']?.toString(),
+                email: user.email,
+              ),
+            );
+          })
+          .map((i) => i.toJson())
+          .toList();
       final kind = normalizeGroupPlaceKind(placeKind);
 
       final payload = <String, dynamic>{
@@ -222,15 +315,49 @@ class SharedCartService {
         });
   }
 
-  /// Updates items in the shared room, broadcasting changes to all participants
-  Future<void> updateSharedCart(String roomCode, List<CartItemModel> items) async {
+  /// Updates items in the shared room, broadcasting changes to all participants.
+  /// Only this diner's plates are replaced. Teammates' plates stay as stored.
+  Future<void> updateSharedCart(
+    String roomCode,
+    List<CartItemModel> items, {
+    String? hostId,
+  }) async {
     try {
-      final jsonList = items.map((i) => i.toJson()).toList();
+      final code = roomCode.toUpperCase().trim();
+      final userId = _supabase.auth.currentUser?.id;
+      var remote = items;
+      var resolvedHost = hostId;
+      try {
+        final row = await _supabase
+            .from('shared_carts')
+            .select('items, host_id')
+            .eq('room_code', code)
+            .maybeSingle();
+        resolvedHost ??= row?['host_id']?.toString();
+        final raw = row?['items'];
+        if (raw is List) {
+          remote = raw
+              .whereType<Map>()
+              .map((e) => CartItemModel.fromJson(Map<String, dynamic>.from(e)))
+              .toList();
+        }
+      } catch (e, stack) {
+        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to read shared cart before update');
+        return;
+      }
+
+      final merged = mergeSharedCartItems(
+        remote: remote,
+        local: items,
+        userId: userId,
+        hostId: resolvedHost,
+      );
+      final jsonList = merged.map((i) => i.toJson()).toList();
 
       await _supabase.from('shared_carts').update({
         'items': jsonList,
         'updated_at': DateTime.now().toUtc().toIso8601String(),
-      }).eq('room_code', roomCode.toUpperCase().trim());
+      }).eq('room_code', code);
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to update shared cart');
       if (kDebugMode) debugPrint('Update shared cart error: $e');

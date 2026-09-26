@@ -19,6 +19,9 @@ class CartItemModel {
   final String? timeSlot; // Added timeSlot field
   final List<CartItemAddOn> selectedAddOns;
   final String? specialInstructions;
+  /// Diner who added this plate to a group lunch. Null on a personal cart.
+  final String? addedByUserId;
+  final String? addedByName;
   
   /// Retained as unmodifiable map for backward compatibility with PricingCalculator legacy logic
   final Map<String, dynamic> rawMealDetails;
@@ -36,6 +39,8 @@ class CartItemModel {
     this.timeSlot,
     this.selectedAddOns = const [],
     this.specialInstructions,
+    this.addedByUserId,
+    this.addedByName,
     this.rawMealDetails = const {},
   }) : assert(quantity > 0, 'Quantity must be at least 1');
 
@@ -75,6 +80,8 @@ class CartItemModel {
       timeSlot: json['timeSlot']?.toString() ?? json['time_slot']?.toString() ?? rawDetails['exact_time']?.toString(),
       selectedAddOns: parsedAddOns,
       specialInstructions: json['specialInstructions']?.toString(),
+      addedByUserId: json['addedByUserId']?.toString() ?? json['added_by_user_id']?.toString(),
+      addedByName: json['addedByName']?.toString() ?? json['added_by_name']?.toString(),
       rawMealDetails: Map.unmodifiable(rawDetails),
     );
   }
@@ -115,6 +122,8 @@ class CartItemModel {
         'timeSlot': timeSlot,
         'selectedAddOns': selectedAddOns.map((a) => a.toJson()).toList(growable: false),
         'specialInstructions': specialInstructions,
+        if (addedByUserId != null && addedByUserId!.isNotEmpty) 'addedByUserId': addedByUserId,
+        if (addedByName != null && addedByName!.trim().isNotEmpty) 'addedByName': addedByName,
         'mealDetails': rawMealDetails,
       };
 
@@ -171,6 +180,8 @@ class CartItemModel {
     String? timeSlot,
     List<CartItemAddOn>? selectedAddOns,
     String? specialInstructions,
+    String? addedByUserId,
+    String? addedByName,
     Map<String, dynamic>? rawMealDetails,
   }) {
     return CartItemModel(
@@ -186,6 +197,8 @@ class CartItemModel {
       timeSlot: timeSlot ?? this.timeSlot,
       selectedAddOns: selectedAddOns ?? this.selectedAddOns,
       specialInstructions: specialInstructions ?? this.specialInstructions,
+      addedByUserId: addedByUserId ?? this.addedByUserId,
+      addedByName: addedByName ?? this.addedByName,
       rawMealDetails: rawMealDetails ?? this.rawMealDetails,
     );
   }
