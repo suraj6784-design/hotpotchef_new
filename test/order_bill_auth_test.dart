@@ -225,6 +225,35 @@ void main() {
       expect(bill.grandTotal, 1000.10);
     });
 
+    test('prints 238 when 10% off two plates leaves 80 paise', () {
+      final bill = orderBillBreakdown(
+        items: [
+          {
+            'title': 'Veg Biryani',
+            'price': 121,
+            'base_price': 121,
+            'discounted_price': 108.9,
+            'quantity': 2,
+            'offer_type': 'percentage',
+            'discount_value': 10,
+          },
+        ],
+        order: {
+          'total_price': 237.80,
+          'packaging_fee': 20,
+          'delivery_fee': 0,
+          'order_type': 'Delivery Partner',
+        },
+        hasDelivery: true,
+      );
+      expect(bill.displayItemsTotal, 242);
+      expect(wholeRupees(bill.promoDiscount), 24);
+      expect(bill.packagingFee, 20);
+      expect(bill.deliveryFee, 0);
+      expect(bill.grandTotal, 237.80);
+      expect(bill.displayGrandRupees, 238);
+    });
+
     test('treats leftover after a stored delivery fee as packaging, not a hardcoded ₹20', () {
       final bill = orderBillBreakdown(
         items: [

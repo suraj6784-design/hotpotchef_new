@@ -2982,6 +2982,18 @@ class OrderBillBreakdown {
 
   double get displayItemsTotal =>
       itemsGross > itemsTotal + 0.5 ? itemsGross : (itemsGross > 0 ? itemsGross : itemsTotal);
+
+  /// Whole rupees a diner can add on the bill. Each printed line is rounded, then summed.
+  int get displayGrandRupees {
+    var total = wholeRupees(displayItemsTotal);
+    if (promoDiscount > 0.5) total -= wholeRupees(promoDiscount);
+    total += wholeRupees(packagingFee);
+    total += wholeRupees(deliveryFee);
+    if (membershipFee > 0) total += wholeRupees(membershipFee);
+    if (tipAmount > 0) total += wholeRupees(tipAmount);
+    if (coinsApplied > 0) total -= wholeRupees(coinsApplied);
+    return total < 0 ? 0 : total;
+  }
 }
 
 /// Builds the bill from the stored paid total when present, instead of a hardcoded delivery fee.
@@ -3084,7 +3096,7 @@ List<Widget> orderBillItemRows(BuildContext context, OrderBillBreakdown bill) {
       children: [
         const Text('Item total', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
         Text(
-          '₹${bill.displayItemsTotal.toInt()}',
+          '₹${wholeRupees(bill.displayItemsTotal)}',
           style: TextStyle(color: ink, fontSize: 13, fontWeight: FontWeight.w500),
         ),
       ],
@@ -3099,7 +3111,7 @@ List<Widget> orderBillItemRows(BuildContext context, OrderBillBreakdown bill) {
             style: const TextStyle(color: AppTheme.success, fontSize: 13, fontWeight: FontWeight.w600),
           ),
           Text(
-            '-₹${bill.promoDiscount.toInt()}',
+            '-₹${wholeRupees(bill.promoDiscount)}',
             style: const TextStyle(color: AppTheme.success, fontSize: 13, fontWeight: FontWeight.w600),
           ),
         ],
@@ -3118,7 +3130,7 @@ List<Widget> orderBillAdjustmentRows(BuildContext context, OrderBillBreakdown bi
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           const Text('Family member', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
-          Text('₹${bill.membershipFee.toInt()}', style: TextStyle(color: ink, fontSize: 13, fontWeight: FontWeight.w500)),
+          Text('₹${wholeRupees(bill.membershipFee)}', style: TextStyle(color: ink, fontSize: 13, fontWeight: FontWeight.w500)),
         ],
       ),
       Text(membershipGstLineLabel(bill.membershipFee), style: AppTheme.micro),
@@ -3131,7 +3143,7 @@ List<Widget> orderBillAdjustmentRows(BuildContext context, OrderBillBreakdown bi
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           const Text('Tip', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
-          Text('₹${bill.tipAmount.toInt()}', style: TextStyle(color: ink, fontSize: 13, fontWeight: FontWeight.w500)),
+          Text('₹${wholeRupees(bill.tipAmount)}', style: TextStyle(color: ink, fontSize: 13, fontWeight: FontWeight.w500)),
         ],
       ),
     ]);
@@ -3144,7 +3156,7 @@ List<Widget> orderBillAdjustmentRows(BuildContext context, OrderBillBreakdown bi
         children: [
           const Text('HotPot Coins', style: TextStyle(color: AppTheme.success, fontSize: 13, fontWeight: FontWeight.w600)),
           Text(
-            '-₹${bill.coinsApplied.toInt()}',
+            '-₹${wholeRupees(bill.coinsApplied)}',
             style: const TextStyle(color: AppTheme.success, fontSize: 13, fontWeight: FontWeight.w600),
           ),
         ],
