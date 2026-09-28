@@ -53,8 +53,8 @@ String orderGroupAlertTitle(String? roomId) {
   return 'Order $label';
 }
 
-/// One push stage per kitchen/delivery milestone so Confirmed and Preparing
-/// do not both fire "Order confirmed".
+/// One push stage per kitchen/delivery milestone. Confirmed and Preparing
+/// each get their own message.
 String orderAlertStage(String? status) {
   final current = status?.trim().toLowerCase() ?? '';
   if (current.contains('cancel') || current.contains('reject')) return 'cancelled';
@@ -64,7 +64,8 @@ String orderAlertStage(String? status) {
     return 'out';
   }
   if (current.contains('deliver') || current.contains('complet')) return 'delivered';
-  if (current.contains('assign') || current.contains('heading')) return 'assigned';
+  if (current.contains('heading')) return 'heading';
+  if (current.contains('assign')) return 'assigned';
   if (current.contains('ready') || current.contains('pack')) return 'ready';
   if (current.contains('prepar')) return 'preparing';
   if (current.contains('confirm')) return 'confirmed';
@@ -116,10 +117,26 @@ OrderAlertCopy? orderAlertCopy({
       notifyCustomer: true,
     );
   }
+  if (stage == 'heading') {
+    return OrderAlertCopy(
+      title: 'Partner is heading to the kitchen',
+      body: 'They will pick up $mealTitle next.',
+      notifyChef: false,
+      notifyCustomer: true,
+    );
+  }
   if (stage == 'assigned') {
     return const OrderAlertCopy(
       title: 'Delivery partner assigned',
       body: 'A delivery partner is on the way to the kitchen.',
+      notifyChef: false,
+      notifyCustomer: true,
+    );
+  }
+  if (stage == 'preparing') {
+    return OrderAlertCopy(
+      title: 'Chef started cooking',
+      body: '$mealTitle is on the stove.',
       notifyChef: false,
       notifyCustomer: true,
     );

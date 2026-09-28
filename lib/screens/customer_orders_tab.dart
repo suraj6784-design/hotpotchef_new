@@ -506,6 +506,10 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
       statusIcon = Icons.cancel;
       statusColor = Colors.red;
       statusText = 'Order Cancelled';
+    } else if (status.toLowerCase().contains('heading')) {
+      statusIcon = Icons.delivery_dining;
+      statusColor = AppTheme.primary;
+      statusText = 'Partner is heading to the kitchen';
     } else if (status.toLowerCase().contains('out') || status.toLowerCase().contains('assigned')) {
       statusIcon = Icons.delivery_dining;
       statusColor = AppTheme.primary;

@@ -93,15 +93,25 @@ void main() {
       ),
       isNull,
     );
-    expect(
-      orderAlertCopy(
-        status: 'Preparing',
-        isInsert: false,
-        previousStatus: 'Confirmed',
-        mealTitle: 'Rice',
-      ),
-      isNull,
+    final cooking = orderAlertCopy(
+      status: 'Preparing',
+      isInsert: false,
+      previousStatus: 'Confirmed',
+      mealTitle: 'Rice',
     );
+    expect(cooking!.title, 'Chef started cooking');
+    expect(cooking.notifyCustomer, isTrue);
+    expect(cooking.body, contains('Rice'));
+
+    final heading = orderAlertCopy(
+      status: 'Heading to Kitchen',
+      isInsert: false,
+      previousStatus: 'Driver Assigned',
+      mealTitle: 'Veg Biryani',
+    );
+    expect(heading!.title, 'Partner is heading to the kitchen');
+    expect(heading.notifyCustomer, isTrue);
+    expect(heading.body, contains('Veg Biryani'));
   });
 
   test('unchanged status is silent', () {

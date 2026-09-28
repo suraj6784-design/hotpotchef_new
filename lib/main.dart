@@ -182,6 +182,7 @@ class _HotPotChefAppState extends State<HotPotChefApp> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       PushNotificationService.openPendingAlert();
+      unawaited(PushNotificationService.requestPermissionAndSync());
     });
     unawaited(DinerLocaleController.instance.load());
     _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
