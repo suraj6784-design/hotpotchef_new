@@ -304,6 +304,8 @@ class DriverDashboardState {
   final List<DriverDeliveryModel> availableDeliveries;
   final List<DriverDeliveryModel> activeDeliveries;
   final String? errorMessage;
+  final double? driverLat;
+  final double? driverLng;
 
   const DriverDashboardState({
     this.isLoading = true,
@@ -313,6 +315,8 @@ class DriverDashboardState {
     this.availableDeliveries = const [],
     this.activeDeliveries = const [],
     this.errorMessage,
+    this.driverLat,
+    this.driverLng,
   });
 
   DriverDashboardState copyWith({
@@ -323,6 +327,8 @@ class DriverDashboardState {
     List<DriverDeliveryModel>? availableDeliveries,
     List<DriverDeliveryModel>? activeDeliveries,
     String? errorMessage,
+    double? driverLat,
+    double? driverLng,
   }) {
     return DriverDashboardState(
       isLoading: isLoading ?? this.isLoading,
@@ -332,6 +338,8 @@ class DriverDashboardState {
       availableDeliveries: availableDeliveries ?? this.availableDeliveries,
       activeDeliveries: activeDeliveries ?? this.activeDeliveries,
       errorMessage: errorMessage,
+      driverLat: driverLat ?? this.driverLat,
+      driverLng: driverLng ?? this.driverLng,
     );
   }
 }

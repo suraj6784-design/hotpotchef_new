@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../models/order_status.dart';
+import '../utils/delivery_pin.dart';
 import '../utils/network.dart';
 
 Map<String, dynamic>? _functionData(dynamic data) {
@@ -29,6 +30,8 @@ class OrderRepository {
     String? dispatchPhotoUrl,
     String? deliveryOtp,
     String? podPhotoUrl,
+    double? driverLat,
+    double? driverLng,
   }) async {
     try {
       final Map<String, dynamic> updateData = {
@@ -59,6 +62,10 @@ class OrderRepository {
           if (podPhotoUrl != null && podPhotoUrl.trim().isNotEmpty) {
             params['p_pod_url'] = podPhotoUrl.trim();
           }
+          if (driverLat != null && driverLng != null) {
+            params['p_lat'] = driverLat;
+            params['p_lng'] = driverLng;
+          }
           final done = await _supabase.rpc('complete_delivery_order', params: params);
           if (done == true) {
             unawaited(_releaseChefPayout(orderId));
@@ -66,6 +73,9 @@ class OrderRepository {
           }
           throw Exception('Could not complete delivery. Check PIN and door photo.');
         } catch (e) {
+          if (e.toString().contains('DROPOFF_TOO_FAR')) {
+            throw Exception(markDeliveredTooFarMessage());
+          }
           if (e.toString().contains('DELIVERY_PIN_REQUIRED') ||
               e.toString().contains('POD_PHOTO_REQUIRED')) {
             rethrow;
@@ -104,6 +114,9 @@ class OrderRepository {
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to update order status to $newStatus');
       if (kDebugMode) debugPrint('Order update error: $e');
+      if (e.toString().contains('near the dropoff')) {
+        throw Exception(markDeliveredTooFarMessage());
+      }
       throw Exception('Failed to update order status to $newStatus: $e');
     }
   }

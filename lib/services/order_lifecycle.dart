@@ -253,6 +253,8 @@ class OrderLifecycle {
     required String currentStatus,
     String? deliveryOtp,
     String? podPhotoUrl,
+    double? driverLat,
+    double? driverLng,
   }) async {
     final next = nextDriverStatus(currentStatus);
     if (next == null) {
@@ -263,6 +265,8 @@ class OrderLifecycle {
       newStatus: next,
       deliveryOtp: deliveryOtp,
       podPhotoUrl: podPhotoUrl,
+      driverLat: driverLat,
+      driverLng: driverLng,
     );
     if (next == OrderStatus.delivered) {
       unawaited(AppAnalytics.logOrderDelivered(orderId: orderId));
