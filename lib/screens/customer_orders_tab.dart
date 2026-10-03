@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../utils/app_page.dart';
+import '../utils/diner_orders_feed.dart';
 import '../utils/helpers.dart';
 import '../utils/network.dart';
 import '../utils/support.dart';
@@ -95,24 +96,12 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
     super.dispose();
   }
 
-  bool _isActiveStatus(String? status) {
-    final value = status?.toString().toLowerCase() ?? '';
-    return !value.contains('delivered') &&
-        !value.contains('completed') &&
-        !value.contains('cancelled') &&
-        !value.contains('rejected');
-  }
-
   List<Map<String, dynamic>> _activeRows(Iterable<dynamic> rows) {
-    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).where((row) {
-      return _isActiveStatus(row['status']?.toString());
-    }).toList();
+    return dinerActiveOrders(rows);
   }
 
   List<Map<String, dynamic>> _pastRows(Iterable<dynamic> rows) {
-    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).where((row) {
-      return !_isActiveStatus(row['status']?.toString());
-    }).take(24).toList();
+    return dinerPastOrders(rows);
   }
 
   List<Map<String, dynamic>> _cateringRows(Iterable<dynamic> rows) {
@@ -236,17 +225,16 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
     _ordersSub = supabase
         .from('orders')
         .stream(primaryKey: ['id'])
+        .eq('customer_id', user.id)
         .order('created_at', ascending: false)
         .listen(
       (data) {
         if (!mounted) return;
-        final mine = data.where((order) {
-          final owner = order['customer_id']?.toString() ?? order['user_id']?.toString() ?? '';
-          return owner == user.id;
-        });
+        final mine = data.where((order) => dinerOrderOwnedBy(order, user.id));
+        final merged = mergeDinerOrderSnapshot([..._activeOrders, ..._pastOrders], mine);
         setState(() {
-          _activeOrders = _activeRows(mine);
-          _pastOrders = _pastRows(mine);
+          _activeOrders = _activeRows(merged);
+          _pastOrders = _pastRows(merged);
           _isLoading = false;
         });
       },
@@ -1348,6 +1336,25 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
     );
   }
 
+  List<Widget> _broadcastSection({required bool leadingDivider}) {
+    if (_showPast || _activeRequests.isEmpty) return const [];
+    return [
+      if (leadingDivider) ...[
+        const SizedBox(height: 8),
+        Divider(color: AppTheme.hairlineOf(context), thickness: 1.5),
+        const SizedBox(height: 24),
+      ],
+      Text('My broadcasts & catering', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppTheme.onSurfaceOf(context))),
+      const SizedBox(height: 12),
+      ..._activeRequests.map((req) => _buildBulkRequestCard(req)),
+      if (!leadingDivider) ...[
+        const SizedBox(height: 24),
+        Divider(color: AppTheme.hairlineOf(context), thickness: 1.5),
+        const SizedBox(height: 24),
+      ],
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -1456,32 +1463,31 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
               onChanged: (past) => setState(() => _showPast = past),
             ),
             const SizedBox(height: 16),
-            if (!_showPast)
-              LastOrderReorderBanner(
-                compact: true,
-                onAddedToCart: widget.onReorderToCart,
-              ),
-            if (!_showPast && _activeRequests.isNotEmpty) ...[
-              Text('My broadcasts & catering', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppTheme.onSurfaceOf(context))),
-              const SizedBox(height: 12),
-              ..._activeRequests.map((req) => _buildBulkRequestCard(req)),
-              const SizedBox(height: 24),
-              Divider(color: AppTheme.hairlineOf(context), thickness: 1.5),
-              const SizedBox(height: 24),
-            ],
-            if (sortedKeys.isEmpty)
-              EmptyState(
-                icon: Icons.soup_kitchen_outlined,
-                title: _showPast ? 'No past orders yet' : 'No active orders',
-                message: _showPast
-                    ? 'Delivered and cancelled plates will show here.'
-                    : 'Placed meals show up here with live kitchen and delivery status.',
-                actionLabel: _showPast ? 'Refresh' : 'View past orders',
-                onAction: _showPast
-                    ? () => unawaited(_fetchActiveOrders())
-                    : () => setState(() => _showPast = true),
-              )
-            else ...[
+            for (final section in dinerOrdersSections(
+              showPast: _showPast,
+              hasMealOrders: sortedKeys.isNotEmpty,
+              hasBroadcasts: !_showPast && _activeRequests.isNotEmpty,
+            ))
+              if (section == DinerOrdersSection.reorder)
+                LastOrderReorderBanner(
+                  compact: true,
+                  onAddedToCart: widget.onReorderToCart,
+                )
+              else if (section == DinerOrdersSection.empty)
+                EmptyState(
+                  icon: Icons.soup_kitchen_outlined,
+                  title: _showPast ? 'No past orders yet' : 'No active orders',
+                  message: _showPast
+                      ? 'Delivered and cancelled plates will show here.'
+                      : 'Placed meals show up here with live kitchen and delivery status.',
+                  actionLabel: _showPast ? 'Refresh' : 'View past orders',
+                  onAction: _showPast
+                      ? () => unawaited(_fetchActiveOrders())
+                      : () => setState(() => _showPast = true),
+                )
+              else if (section == DinerOrdersSection.broadcasts) ...[
+                ..._broadcastSection(leadingDivider: sortedKeys.isNotEmpty),
+              ] else ...[
               if (_showPast) ...[
                 const Padding(
                   padding: EdgeInsets.only(bottom: 12),
@@ -1621,7 +1627,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text('${items.first['quantity']}x ${items.first['title']}',
+                                    Text(dinerOrderLineLabel({'items': items}),
                                         style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                                     if (items.length > 1) ...[
                                       const SizedBox(height: 4),
