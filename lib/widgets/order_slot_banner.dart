@@ -4,6 +4,26 @@ import 'package:flutter/material.dart';
 
 import '../utils/helpers.dart';
 
+/// Slot row for a kitchen order card.
+///
+/// Confirmed orders that are still inside the prepare window already explain
+/// that on this banner. Callers must not print [chefPrepGateHint] again under
+/// Start Preparing.
+List<Widget> chefKitchenOrderTiming({
+  required Map<String, dynamic> order,
+  required bool isPending,
+  required bool isPreparing,
+  DateTime? now,
+}) {
+  final hint = isPending || isPreparing ? '' : chefPrepGateHint(order, now: now);
+  return [
+    OrderSlotBanner(
+      order: order,
+      hint: hint.isEmpty ? null : hint,
+    ),
+  ];
+}
+
 /// Requested delivery date/time plus a live countdown.
 class OrderSlotBanner extends StatefulWidget {
   const OrderSlotBanner({super.key, required this.order, this.hint, this.diner = false});
