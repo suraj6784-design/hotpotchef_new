@@ -74,6 +74,7 @@ class DriverDeliveryModel {
   final double? deliveryLng;
   final String? gateInstructions;
   final String? deliveryOtp;
+  final String? driverArrivedAt;
   final String? specialInstructions;
 
   const DriverDeliveryModel({
@@ -100,6 +101,7 @@ class DriverDeliveryModel {
     this.deliveryLng,
     this.gateInstructions,
     this.deliveryOtp,
+    this.driverArrivedAt,
     this.specialInstructions,
   });
 
@@ -161,6 +163,7 @@ class DriverDeliveryModel {
         if (pickupLng != null) 'chef_lng': pickupLng,
         if (deliveryLat != null) 'delivery_lat': deliveryLat,
         if (deliveryLng != null) 'delivery_lng': deliveryLng,
+        if ((driverArrivedAt ?? '').trim().isNotEmpty) 'driver_arrived_at': driverArrivedAt,
       };
 
   factory DriverDeliveryModel.fromJson(Map<String, dynamic> json) {
@@ -250,6 +253,7 @@ class DriverDeliveryModel {
       deliveryLng: dropLng,
       gateInstructions: gate,
       deliveryOtp: otp,
+      driverArrivedAt: json['driver_arrived_at']?.toString(),
       specialInstructions: kitchenFacingOrderNotes(special),
     );
   }
