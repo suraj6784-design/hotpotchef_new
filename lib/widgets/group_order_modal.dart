@@ -18,7 +18,6 @@ class GroupOrderModal extends ConsumerStatefulWidget {
 }
 
 class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
-  final _sharedCartService = SharedCartService();
   final _roomCodeController = TextEditingController();
   final _placeLabelController = TextEditingController();
   final _dropoffController = TextEditingController();
@@ -43,7 +42,7 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
       final placeLabel = _placeLabelController.text.trim();
       final dropoff = _dropoffController.text.trim();
       final slot = _slotController.text.trim();
-      final roomCode = await _sharedCartService.createSharedCart(
+      final roomCode = await SharedCartService().createSharedCart(
         cartState.items,
         placeKind: _placeKind,
         placeLabel: placeLabel,
@@ -300,7 +299,7 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'Society / office lunch',
+              kSocietyOfficeHotpotLabel,
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,

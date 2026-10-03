@@ -3,6 +3,10 @@ import 'package:hotpotchef_new/utils/helpers.dart';
 
 void main() {
   group('society group plan helpers', () {
+    test('names the diner cart action and sheet Society/Office HotPOT', () {
+      expect(kSocietyOfficeHotpotLabel, 'Society/Office HotPOT');
+    });
+
     test('normalizes place kinds and builds WhatsApp invite copy', () {
       expect(normalizeGroupPlaceKind('Society'), 'society');
       expect(normalizeGroupPlaceKind('desk'), 'friends');

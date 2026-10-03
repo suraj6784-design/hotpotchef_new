@@ -18,7 +18,7 @@ import '../services/meal_catalog_repository.dart';
 import '../providers/delivery_preference.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
-import '../widgets/group_order_modal.dart';
+import '../widgets/diner_cart_meal_actions.dart';
 import '../services/reorder_service.dart';
 import 'checkout_screen.dart';
 import 'customer_hub.dart';
@@ -848,38 +848,9 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
           }),
 
           const SizedBox(height: 4),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.add_circle_outline),
-                  label: const Text('Add more meals'),
-                  onPressed: widget.onAddMoreMeals,
-                ),
-              ),
-              if (isLoggedIn) ...[
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.apartment_outlined),
-                    label: const Text('Society / office'),
-                    onPressed: () {
-                      showModalBottomSheet(
-                        context: context,
-                        isScrollControlled: true,
-                        backgroundColor: Colors.transparent,
-                        builder: (_) => Container(
-                          decoration: AppTheme.bottomSheetDecoration(
-                            isDark: Theme.of(context).brightness == Brightness.dark,
-                          ),
-                          child: const GroupOrderModal(),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ],
+          DinerCartMealActions(
+            onAddMoreMeals: widget.onAddMoreMeals,
+            showGroupOrder: isLoggedIn,
           ),
           const SizedBox(height: 20),
           if (PricingCalculator.applicablePromosFromCart(

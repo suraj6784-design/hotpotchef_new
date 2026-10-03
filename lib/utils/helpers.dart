@@ -676,6 +676,9 @@ String plateShareText({
   return lines.join('\n');
 }
 
+/// Diner cart action and the group-order sheet title.
+const String kSocietyOfficeHotpotLabel = 'Society/Office HotPOT';
+
 /// Society / office / friends group-cart place kinds.
 const kGroupPlaceKinds = ['society', 'office', 'friends'];
 
