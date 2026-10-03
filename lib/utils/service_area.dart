@@ -116,7 +116,8 @@ List<T> pageCatalog<T>(List<T> items, {required int page, int pageSize = 80}) {
   return items.sublist(start, end);
 }
 
-/// Guest / first-open pin when GPS is unavailable. No permission prompt.
+/// Launch-city center marker for service-area checks. Not a diner delivery pin.
+/// Guests follow the device fix; a denied or unreadable position stays unset.
 Map<String, dynamic> launchCityDefaultPin() {
   final city = kLaunchCities.first;
   return {

@@ -137,7 +137,9 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       unawaited(_refreshMealsRestSnapshot());
       if (data.session == null) {
         setState(_resetGuestFeedState);
-        _captureDeviceLocation();
+        _captureDeviceLocation(
+          requestPermission: guestColdStartShouldRequestLocation(signedIn: false),
+        );
       } else {
         // Keep the active GPS pin so kitchens stay in the same radius after Sign In.
         _fetchUserAddresses(preserveActivePin: true);
@@ -218,13 +220,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       await _fetchUserAddresses(preserveActivePin: false);
       if (_hasDeliveryPin && _deviceLocationPin?['is_launch_city'] != true) return;
     }
-    await _captureDeviceLocation();
-    if (!_hasDeliveryPin || _deviceLocationPin?['is_launch_city'] == true) {
-      if (_deviceLocationPin?['is_device_location'] == true) return;
-      if (!_hasDeliveryPin) {
-        _applyDeliveryPin(launchCityDefaultPin(), preferOverSaved: false);
-      }
-    }
+    // Guests ask for the phone fix. A saved signed-in pin (Thergaon) returns above.
+    await _captureDeviceLocation(
+      requestPermission: guestColdStartShouldRequestLocation(signedIn: user != null),
+    );
   }
 
   void _resetGuestFeedState() {
@@ -245,7 +244,16 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     return _currentAddress == (pin['address']?.toString() ?? '');
   }
 
-  Future<void> _captureDeviceLocation({bool notifyOnFailure = false}) async {
+  String _guestDeviceChipLabel() {
+    final pin = _deviceLocationPin;
+    if (pin?['is_device_location'] != true) return kGuestLocationUnsetLabel;
+    return guestDeliveryChipLabel(pin);
+  }
+
+  Future<void> _captureDeviceLocation({
+    bool notifyOnFailure = false,
+    bool requestPermission = false,
+  }) async {
     if (_resolvingDeviceLocation) return;
     _resolvingDeviceLocation = true;
     try {
@@ -259,17 +267,20 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       }
 
       var permission = await Geolocator.checkPermission();
-      // Do not auto-prompt on Home boot — the permission sheet can leave Android
-      // with a zero-size Flutter surface (white screen) on diner.
-      if (permission == LocationPermission.denied) {
-        if (!notifyOnFailure) {
+      // Guest cold start asks when access is not already granted. The prompt
+      // stays on the post-frame bootstrap, not the first frame.
+      final shouldAsk = requestPermission || notifyOnFailure;
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.unableToDetermine) {
+        if (!shouldAsk) {
           _applyDeviceLocationFallback(silent: true);
           return;
         }
         permission = await Geolocator.requestPermission();
       }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
+      final granted = permission == LocationPermission.always ||
+          permission == LocationPermission.whileInUse;
+      if (!granted) {
         _applyDeviceLocationFallback(
           message: notifyOnFailure
               ? 'Allow location access so guest browsing matches kitchens after Sign In.'
@@ -307,50 +318,39 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         position = last;
       }
 
-      String label = 'Near you';
       String city = '';
       String state = '';
       String pincode = '';
       String street = '';
+      String formatted = '';
       try {
         final parts = await reverseGeocodeLatLng(position.latitude, position.longitude);
         city = parts.city;
         state = parts.state;
         pincode = parts.pincode;
         street = parts.street;
-        final localityLabel = formatLocalityPinLabel(
-          street: parts.street,
-          city: parts.city,
-          pincode: parts.pincode,
-          formatted: parts.formatted,
-        );
-        if (localityLabel.isNotEmpty) {
-          label = localityLabel;
-        } else if (city.isNotEmpty && pincode.isNotEmpty) {
-          label = '$city - $pincode';
-        } else if (city.isNotEmpty) {
-          label = city;
-        }
+        formatted = parts.formatted;
       } catch (_) {
-        // Keep "Near you" if reverse geocode fails; coords still filter meals.
+        // Coords still filter meals when reverse geocode fails.
       }
 
-      final pin = <String, dynamic>{
-        'id': 'device-location',
-        'title': 'Current location',
-        'landmark': 'Current location',
-        'address': label,
-        'street': street,
-        'city': city,
-        'state': state,
-        'pincode': pincode,
-        'postal_code': pincode,
-        'latitude': position.latitude,
-        'longitude': position.longitude,
-        'lat': position.latitude,
-        'lng': position.longitude,
-        'is_device_location': true,
-      };
+      final pin = guestDeviceDeliveryPin(
+        permissionGranted: true,
+        latitude: position.latitude,
+        longitude: position.longitude,
+        street: street,
+        city: city,
+        state: state,
+        pincode: pincode,
+        formatted: formatted,
+      );
+      if (pin == null) {
+        _applyDeviceLocationFallback(
+          message: notifyOnFailure ? 'Could not read your location. Try again.' : null,
+          silent: !notifyOnFailure,
+        );
+        return;
+      }
 
       if (!mounted) return;
       _applyDeliveryPin(pin, preferOverSaved: false);
@@ -367,25 +367,34 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
 
   void _applyDeliveryPin(Map<String, dynamic> pin, {required bool preferOverSaved}) {
     if (!mounted) return;
+    if (pin['is_launch_city'] == true || pin['is_device_location'] != true) return;
     setState(() {
       _deviceLocationPin = pin;
       final keepSavedSelection = !preferOverSaved &&
           _savedAddresses.any((addr) => addr['address']?.toString() == _currentAddress);
       if (!keepSavedSelection) {
-        _currentAddress = pin['address']?.toString() ?? 'Near you';
+        _currentAddress = guestDeliveryChipLabel(pin);
         ref.read(selectedDeliveryAddressProvider.notifier).setAddress(pin);
       }
     });
   }
 
   void _applyDeviceLocationFallback({String? message, bool silent = false}) {
-    if (_deviceLocationPin?['is_device_location'] == true) {
+    final keepDevice = _deviceLocationPin?['is_device_location'] == true;
+    if (keepDevice) {
       if (silent) return;
-    } else {
-      _applyDeliveryPin(launchCityDefaultPin(), preferOverSaved: false);
+    } else if (mounted) {
+      final keepSaved = _savedAddresses.any((addr) => addr['address']?.toString() == _currentAddress);
+      if (!keepSaved) {
+        setState(() {
+          _deviceLocationPin = null;
+          _currentAddress = kGuestLocationUnsetLabel;
+        });
+        ref.read(selectedDeliveryAddressProvider.notifier).setAddress(null);
+      }
     }
     if (silent) return;
-    final text = message ?? 'Showing ${kLaunchCities.first.label} kitchens. Tap the pin to use current location.';
+    final text = message ?? 'Turn on location to see kitchens near you.';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(text), backgroundColor: Colors.orange),
     );
@@ -817,6 +826,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
 
   bool get _hasDeliveryPin {
     final dest = _selectedAddressMap;
+    if (dest?['is_launch_city'] == true) return false;
     final lat = addressCoordinate(dest, latitude: true);
     final lng = addressCoordinate(dest, latitude: false);
     return lat != null && lng != null && lat != 0 && lng != 0;
@@ -1127,18 +1137,16 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                 color: brandPrimary,
               ),
               title: Text(
-                _hasDeliveryPin
-                    ? (_deviceLocationPin?['is_launch_city'] == true
-                        ? 'Select location'
-                        : (_deviceLocationPin?['address']?.toString() ?? _currentAddress))
-                    : 'Location not set',
+                _guestDeviceChipLabel() == kGuestLocationUnsetLabel
+                    ? 'Location not set'
+                    : _guestDeviceChipLabel(),
                 style: TextStyle(fontWeight: FontWeight.w700, color: AppTheme.onSurfaceOf(context)),
               ),
               subtitle: Text(
                 _resolvingDeviceLocation
                     ? 'Updating…'
-                    : (_deviceLocationPin?['is_launch_city'] == true
-                        ? 'Tap to use pin and locality'
+                    : (_guestDeviceChipLabel() == kGuestLocationUnsetLabel
+                        ? 'Allow location to see kitchens near you'
                         : 'Current location'),
                 style: const TextStyle(fontSize: 12),
               ),
@@ -1394,7 +1402,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                               const SizedBox(width: 2),
                               Expanded(
                                 child: Text(
-                                  _currentAddress,
+                                  _isUsingDevicePin ? guestDeliveryChipLabel(_deviceLocationPin) : _currentAddress,
                                   style: AppTheme.captionOf(context).copyWith(fontWeight: FontWeight.w700),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
