@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../utils/app_theme.dart';
-import '../utils/delivery_fee.dart';
+import '../utils/diner_meal_catalog.dart';
 import '../utils/helpers.dart';
 import '../utils/pricing_calculator.dart';
 
@@ -34,12 +34,7 @@ class _ShelfItemsBannerState extends State<ShelfItemsBanner> {
   @override
   void initState() {
     super.initState();
-    _mealsStream = Supabase.instance.client
-        .from('meals')
-        .stream(primaryKey: ['id'])
-        .eq('status', 'Available')
-        .order('created_at', ascending: false)
-        .limit(kHomeMealStreamLimit);
+    _mealsStream = watchDinerMealCatalog(Supabase.instance.client);
   }
 
   @override
