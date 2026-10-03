@@ -94,6 +94,40 @@ bool _sameMealAndAddOns(CartItemModel item, CartItemModel plate) {
   return item.mealId == plate.mealId && listEquals(item.selectedAddOns, plate.selectedAddOns);
 }
 
+String? _clockOn(CartItemModel item) {
+  final slot = item.timeSlot?.trim() ?? '';
+  return slot.isEmpty ? null : slot;
+}
+
+/// Room clock already stored on a plate. The host's plate wins; otherwise the first set slot.
+String? _clockAlreadyOnPlates(List<CartItemModel> items, String? hostId) {
+  final host = hostId?.trim() ?? '';
+  if (host.isNotEmpty) {
+    for (final item in items) {
+      if ((item.addedByUserId?.trim() ?? '') != host) continue;
+      final slot = _clockOn(item);
+      if (slot != null) return slot;
+    }
+  }
+  for (final item in items) {
+    final slot = _clockOn(item);
+    if (slot != null) return slot;
+  }
+  return null;
+}
+
+/// Room date already stored on a plate. The host's plate wins.
+DateTime? _dateAlreadyOnPlates(List<CartItemModel> items, String? hostId) {
+  final host = hostId?.trim() ?? '';
+  if (host.isNotEmpty) {
+    for (final item in items) {
+      if ((item.addedByUserId?.trim() ?? '') == host) return item.scheduledDate;
+    }
+  }
+  if (items.isEmpty) return null;
+  return items.first.scheduledDate;
+}
+
 String _freshLineId(List<CartItemModel> items, String mealId, String userId) {
   final base = '${mealId}_${userId}_${DateTime.now().microsecondsSinceEpoch}';
   if (items.every((item) => item.id != base)) return base;
@@ -103,7 +137,10 @@ String _freshLineId(List<CartItemModel> items, String mealId, String userId) {
 /// Adds [plate] for [userId]. A matching meal is incremented only when this diner owns that line.
 ///
 /// The host's plate is never reused, even when the meal id and add-ons match.
-/// A room slot or date, when set, replaces any slot carried in from the meal.
+/// The new or updated line keeps the room clock. An explicit [roomTimeSlot] or [roomDate]
+/// wins. When those are blank, the slot and date already on the host's plate are used
+/// (or any plate, if the host line has no clock). A meal's own next-hour slot is not
+/// stored while the room already has a time. Other diners' plates are left as they are.
 List<CartItemModel> addOwnedGroupPlate({
   required List<CartItemModel> items,
   required CartItemModel plate,
@@ -114,13 +151,16 @@ List<CartItemModel> addOwnedGroupPlate({
   DateTime? roomDate,
 }) {
   final uid = userId.trim();
+  final requestedSlot = roomTimeSlot?.trim() ?? '';
+  final effectiveSlot = requestedSlot.isNotEmpty ? requestedSlot : _clockAlreadyOnPlates(items, hostId);
+  final effectiveDate = roomDate ?? _dateAlreadyOnPlates(items, hostId);
   final owned = stampSharedSchedule(
     plate.copyWith(
       addedByUserId: uid,
       addedByName: (userName ?? plate.addedByName)?.trim(),
     ),
-    timeSlot: roomTimeSlot,
-    selectedDate: roomDate,
+    timeSlot: effectiveSlot,
+    selectedDate: effectiveDate,
   );
   final index = items.indexWhere(
     (item) =>
@@ -132,8 +172,8 @@ List<CartItemModel> addOwnedGroupPlate({
     final existing = next[index];
     next[index] = stampSharedSchedule(
       existing.copyWith(quantity: existing.quantity + owned.quantity),
-      timeSlot: roomTimeSlot,
-      selectedDate: roomDate,
+      timeSlot: effectiveSlot,
+      selectedDate: effectiveDate,
     );
     return next;
   }
