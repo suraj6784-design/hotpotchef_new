@@ -345,12 +345,89 @@ class FeedEmptyCopy {
     required this.message,
     this.promptSignIn = false,
     this.clearCategory = false,
+    this.offerPreorder = false,
   });
 
   final String title;
   final String message;
   final bool promptSignIn;
   final bool clearCategory;
+
+  /// Live Order is empty because nobody is cooking, and Pre-order can be opened.
+  final bool offerPreorder;
+}
+
+String normalizeDinerHomeMode(String mode) {
+  final value = mode.trim().toLowerCase();
+  if (value == 'preorder' || value == 'pre-order') return 'preorder';
+  return 'live';
+}
+
+/// Plates that match the home chips for [mode]. Address and stock are already applied.
+List<Map<String, dynamic>> dinerHomeMealsForMode(
+  Iterable<Map<String, dynamic>> meals, {
+  required String mode,
+  String diet = 'All',
+  String category = 'All',
+  Map<String, Map<String, dynamic>> chefProfiles = const {},
+  DateTime? now,
+  bool ignoreHomeMode = false,
+}) {
+  final selected = normalizeDinerHomeMode(mode);
+  return [
+    for (final meal in meals)
+      if (mealMatchesFeedDiet(meal, diet) &&
+          mealMatchesCuisine(meal, category) &&
+          (ignoreHomeMode ||
+              mealMatchesHomeMode(
+                meal,
+                mode: selected,
+                chefProfile: chefProfiles[meal['chef_id']?.toString()],
+                now: now,
+              )))
+        meal,
+  ];
+}
+
+bool dinerPinHasAcceptingMeal(
+  Iterable<Map<String, dynamic>> meals, {
+  Map<String, Map<String, dynamic>> chefProfiles = const {},
+  DateTime? now,
+}) {
+  return meals.any(
+    (meal) => mealMatchesHomeMode(
+      meal,
+      mode: 'live',
+      chefProfile: chefProfiles[meal['chef_id']?.toString()],
+      now: now,
+    ),
+  );
+}
+
+/// Cold open stays on Live Order only when a kitchen is actually accepting a plate.
+/// Otherwise Pre-order opens when bookable meals match the current chips.
+String dinerColdStartHomeMode({
+  required Iterable<Map<String, dynamic>> meals,
+  required bool dinerChoseMode,
+  String requestedMode = 'live',
+  String diet = 'All',
+  String category = 'All',
+  Map<String, Map<String, dynamic>> chefProfiles = const {},
+  DateTime? now,
+}) {
+  final requested = normalizeDinerHomeMode(requestedMode);
+  if (dinerChoseMode) return requested;
+  if (dinerPinHasAcceptingMeal(meals, chefProfiles: chefProfiles, now: now)) return 'live';
+  final anyPreorder = dinerHomeMealsForMode(
+    meals,
+    mode: 'preorder',
+    diet: diet,
+    category: category,
+    chefProfiles: chefProfiles,
+    now: now,
+  ).isNotEmpty;
+  if (anyPreorder) return 'preorder';
+  return 'live';
 }
 
 FeedEmptyCopy feedEmptyCopy({
@@ -367,6 +444,8 @@ FeedEmptyCopy feedEmptyCopy({
   String? offerBrowseGroupKey,
   bool outOfServiceArea = false,
   String homeMode = 'live',
+  bool nothingLive = false,
+  bool hasPreorderMeals = false,
 }) {
   if (outOfServiceArea) {
     return FeedEmptyCopy(
@@ -443,8 +522,22 @@ FeedEmptyCopy feedEmptyCopy({
           : 'Nothing matched "$q". Try another dish name or home chef.',
     );
   }
-  final mode = homeMode.trim().toLowerCase();
-  if ((mode == 'preorder' || mode == 'pre-order') && !hasSearch && !favorites && !following) {
+  final mode = normalizeDinerHomeMode(homeMode);
+  // A closed live window is not an empty pin. Name the mode and point at Pre-order.
+  if (mode == 'live' && nothingLive && !hasSearch && !favorites && !following) {
+    if (hasPreorderMeals) {
+      return const FeedEmptyCopy(
+        title: 'Nobody is cooking right now',
+        message: 'Live Order is selected. Nobody is taking plates right now. Open Pre-order to book for later.',
+        offerPreorder: true,
+      );
+    }
+    return const FeedEmptyCopy(
+      title: 'Nobody is cooking right now',
+      message: 'Live Order is selected, and nobody is taking plates at this hour.',
+    );
+  }
+  if (mode == 'preorder' && !hasSearch && !favorites && !following) {
     return const FeedEmptyCopy(
       title: 'No pre-order slots nearby',
       message: 'Kitchens with a booked clock slot show here. Try Live Order for ASAP plates.',

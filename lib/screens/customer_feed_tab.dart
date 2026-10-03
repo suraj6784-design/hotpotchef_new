@@ -66,6 +66,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   String _selectedDiet = 'All';
   String _selectedSort = kFeedSortEta;
   String _homeMode = 'live';
+  bool _dinerChoseHomeMode = false;
+  String _renderedHomeMode = 'live';
+  bool _renderedNothingLive = false;
+  bool _renderedHasPreorderMeals = false;
   String _currentAddress = 'Locating...';
   List<Map<String, dynamic>> _savedAddresses = [];
   /// GPS pin used for guests (and signed-in users without a saved map pin).
@@ -1187,6 +1191,34 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       signedIn: isLoggedIn,
       followingOnly: _showFollowingOnly,
     );
+    final inventory = _sellableInventoryMeals();
+    final scopedHomeMeals = _scopedHomeMeals(
+      inventory: inventory,
+      showFavorites: showFavorites,
+      showFollowing: showFollowing,
+      followedKitchens: followedKitchens,
+    );
+    _renderedHomeMode = scopedHomeMeals == null
+        ? normalizeDinerHomeMode(_homeMode)
+        : dinerColdStartHomeMode(
+            meals: scopedHomeMeals,
+            dinerChoseMode: _dinerChoseHomeMode,
+            requestedMode: _homeMode,
+            diet: _selectedDiet,
+            category: _selectedCategory,
+            chefProfiles: _chefKitchenProfiles,
+          );
+    _renderedNothingLive = scopedHomeMeals != null &&
+        scopedHomeMeals.isNotEmpty &&
+        !dinerPinHasAcceptingMeal(scopedHomeMeals, chefProfiles: _chefKitchenProfiles);
+    _renderedHasPreorderMeals = scopedHomeMeals != null &&
+        dinerHomeMealsForMode(
+          scopedHomeMeals,
+          mode: 'preorder',
+          diet: _selectedDiet,
+          category: _selectedCategory,
+          chefProfiles: _chefKitchenProfiles,
+        ).isNotEmpty;
 
     return RefreshIndicator(
       color: AppTheme.primary,
@@ -1655,23 +1687,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                   );
                 }
 
-                var meals = mealsSource.where((m) {
-                  final status = m['status']?.toString().toLowerCase() ?? '';
-                  final isInventory = (m['customer_name'] == null || m['customer_name'].toString().isEmpty);
-                  if (!isInventory || status == 'paused' || status == 'cancelled') return false;
-                  return isMealAvailableForCart(m);
-                }).toList();
-                if (_olderMeals.isNotEmpty) {
-                  final seen = meals.map((m) => m['id']?.toString()).toSet();
-                  for (final extra in _olderMeals) {
-                    final id = extra['id']?.toString();
-                    if (id == null || seen.contains(id)) continue;
-                    seen.add(id);
-                    meals.add(extra);
-                  }
-                }
-
-                if (meals.isEmpty) {
+                if (inventory == null || inventory.isEmpty) {
                   return const EmptyState(
                     icon: Icons.restaurant_menu_rounded,
                     title: 'No plates on your slot right now',
@@ -1679,12 +1695,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                   );
                 }
 
-                if (showFavorites) {
-                  meals = meals.where((m) => widget.favoriteMeals.contains(m['id'].toString())).toList();
-                }
-                meals = _filterFollowedMeals(meals, followedKitchens, showFollowing);
-
-                meals = _applyFeedChips(_mealsForSelectedAddress(meals));
+                final meals = _applyFeedChips(scopedHomeMeals ?? const []);
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -1723,6 +1734,42 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     );
   }
 
+  List<Map<String, dynamic>>? _sellableInventoryMeals() {
+    final mealsSource = _mealsRestSnapshot;
+    if (mealsSource == null) return null;
+    final meals = mealsSource.where((m) {
+      final status = m['status']?.toString().toLowerCase() ?? '';
+      final isInventory = (m['customer_name'] == null || m['customer_name'].toString().isEmpty);
+      if (!isInventory || status == 'paused' || status == 'cancelled') return false;
+      return isMealAvailableForCart(m);
+    }).toList();
+    if (_olderMeals.isNotEmpty) {
+      final seen = meals.map((m) => m['id']?.toString()).toSet();
+      for (final extra in _olderMeals) {
+        final id = extra['id']?.toString();
+        if (id == null || seen.contains(id)) continue;
+        seen.add(id);
+        meals.add(extra);
+      }
+    }
+    return meals;
+  }
+
+  List<Map<String, dynamic>>? _scopedHomeMeals({
+    required List<Map<String, dynamic>>? inventory,
+    required bool showFavorites,
+    required bool showFollowing,
+    required Set<String> followedKitchens,
+  }) {
+    if (inventory == null) return null;
+    var meals = inventory;
+    if (showFavorites) {
+      meals = meals.where((m) => widget.favoriteMeals.contains(m['id'].toString())).toList();
+    }
+    meals = _filterFollowedMeals(meals, followedKitchens, showFollowing);
+    return _mealsForSelectedAddress(meals);
+  }
+
   List<Map<String, dynamic>> _filterFollowedMeals(
     List<Map<String, dynamic>> meals,
     Set<String> followedKitchens,
@@ -1734,21 +1781,20 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
 
   List<Map<String, dynamic>> _applyFeedChips(List<Map<String, dynamic>> meals) {
     final kitchenBrowse = _filteredChefId != null && _filteredChefId!.isNotEmpty;
-    final filtered = meals
-        .where((meal) =>
-            mealMatchesFeedDiet(meal, _selectedDiet) &&
-            mealMatchesCuisine(meal, _selectedCategory) &&
-            (kitchenBrowse ||
-                mealMatchesHomeMode(
-                  meal,
-                  mode: _homeMode,
-                  chefProfile: _chefKitchenProfiles[meal['chef_id']?.toString()],
-                )))
-        .toList();
+    final mode = _renderedHomeMode;
+    final filtered = dinerHomeMealsForMode(
+      meals,
+      mode: mode,
+      diet: _selectedDiet,
+      category: _selectedCategory,
+      chefProfiles: _chefKitchenProfiles,
+      ignoreHomeMode: kitchenBrowse,
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) => _hydrateChefRatings(filtered));
+    final sort = !_dinerChoseHomeMode && mode == 'preorder' ? kFeedSortNearby : _selectedSort;
     return sortFeedMeals(
       filtered,
-      sort: _selectedSort,
+      sort: sort,
       distanceKm: _distanceKmForMeal,
       rating: (meal) {
         final chefId = meal['chef_id']?.toString() ?? '';
@@ -2015,10 +2061,11 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     return DinerCircleModeChip(
       icon: icon,
       label: label,
-      selected: _homeMode == mode,
+      selected: _renderedHomeMode == mode,
       accent: accent,
       onTap: () {
         setState(() {
+          _dinerChoseHomeMode = true;
           _homeMode = mode;
           if (mode == 'live') _selectedSort = kFeedSortEta;
           if (mode == 'preorder') _selectedSort = kFeedSortNearby;
@@ -2291,29 +2338,41 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         hasFollows: hasFollows,
         offerBrowseGroupKey: _offerBrowseGroupKey,
         outOfServiceArea: _outOfServiceArea,
-        homeMode: _homeMode,
+        homeMode: _renderedHomeMode,
+        nothingLive: _renderedNothingLive,
+        hasPreorderMeals: _renderedHasPreorderMeals,
       );
       return EmptyState(
-        icon: copy.promptSignIn || showFollowing
-            ? Icons.storefront_outlined
-            : showFavorites
-                ? Icons.favorite_border
-                : Icons.search_off_rounded,
+        icon: copy.offerPreorder
+            ? Icons.local_fire_department_outlined
+            : copy.promptSignIn || showFollowing
+                ? Icons.storefront_outlined
+                : showFavorites
+                    ? Icons.favorite_border
+                    : Icons.search_off_rounded,
         title: copy.title,
         message: copy.message,
-        actionLabel: copy.promptSignIn
-            ? 'Sign In'
-            : copy.clearCategory
-                ? 'Show all meals'
-                : null,
-        onAction: copy.promptSignIn
-            ? () => showAuthBottomSheet(context, () => setState(() {}))
-            : copy.clearCategory
-                ? () => setState(() {
-                      _selectedCategory = 'All';
-                      _selectedDiet = 'All';
-                    })
-                : null,
+        actionLabel: copy.offerPreorder
+            ? 'Pre-order'
+            : copy.promptSignIn
+                ? 'Sign In'
+                : copy.clearCategory
+                    ? 'Show all meals'
+                    : null,
+        onAction: copy.offerPreorder
+            ? () => setState(() {
+                  _dinerChoseHomeMode = true;
+                  _homeMode = 'preorder';
+                  _selectedSort = kFeedSortNearby;
+                })
+            : copy.promptSignIn
+                ? () => showAuthBottomSheet(context, () => setState(() {}))
+                : copy.clearCategory
+                    ? () => setState(() {
+                          _selectedCategory = 'All';
+                          _selectedDiet = 'All';
+                        })
+                    : null,
       );
     }
 
