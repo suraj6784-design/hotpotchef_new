@@ -89,6 +89,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   bool _placingOrder = false;
 
   final TextEditingController _phoneController = TextEditingController();
+  String? _phoneError;
   final TextEditingController _instructionsController = TextEditingController();
   final TextEditingController _promoController = TextEditingController();
   String? _appliedPromoCode;
@@ -481,14 +482,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   // --- Razorpay Payment Pipeline ---
 
   Future<void> _startRazorpayPayment() async {
+    if (!mounted) return;
+    // An alert with an action persists and would queue every Pay message behind it.
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    messenger?.clearSnackBars();
+    messenger?.removeCurrentSnackBar();
     if (!await AuthSession.ensureCanPlaceOrders(context)) return;
     if (!mounted) return;
-    final phone = usableCustomerPhone(_phoneController.text);
-
-    if (phone.length != 10) {
-      _showSnackBar('Enter the mobile number we can reach you on', isError: true);
+    final phoneError = checkoutContactPhoneError(_phoneController.text);
+    if (phoneError != null) {
+      setState(() => _phoneError = phoneError);
+      _showSnackBar(phoneError, isError: true);
       return;
     }
+    final phone = usableCustomerPhone(_phoneController.text);
+    if (_phoneError != null) setState(() => _phoneError = null);
     _phoneController.text = phone;
     if (_hasDelivery && _selectedAddressData == null) {
       _showSnackBar('Please select a delivery address', isError: true);
@@ -1102,14 +1110,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   void _showSnackBar(String text, {bool isError = false, Duration duration = const Duration(seconds: 4)}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(text),
-        backgroundColor: isError ? Colors.redAccent : Colors.green,
-        duration: duration,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    showCheckoutSnackBar(context, text, isError: isError, duration: duration);
   }
 
   // --- Modals & Widgets ---
@@ -1640,10 +1641,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 TextField(
                   controller: _phoneController,
                   keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(
+                  onChanged: (_) {
+                    if (_phoneError != null) setState(() => _phoneError = null);
+                  },
+                  decoration: InputDecoration(
                     labelText: 'Mobile number',
                     hintText: '10-digit number we can call',
-                    prefixIcon: Icon(Icons.phone, size: 18),
+                    prefixIcon: const Icon(Icons.phone, size: 18),
+                    errorText: _phoneError,
+                    errorMaxLines: 3,
                   ),
                 ),
                 const SizedBox(height: 12),

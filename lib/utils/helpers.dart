@@ -2128,6 +2128,12 @@ String e164IndiaPhone(String? raw) {
   return '+91$digits';
 }
 
+/// Why Pay cannot use [raw] as the diner contact, or null when it can.
+String? checkoutContactPhoneError(String? raw) {
+  if (usableCustomerPhone(raw).length == 10) return null;
+  return 'Enter the mobile number we can reach you on';
+}
+
 /// True when the selected slot's start is now or earlier on that calendar day.
 bool isCartSlotPassed(
   String selectedSlot,

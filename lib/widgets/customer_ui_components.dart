@@ -1066,6 +1066,39 @@ void dismissAppSnackBars(BuildContext context) {
   ScaffoldMessenger.maybeOf(context)?.clearSnackBars();
 }
 
+/// Checkout copy that must be seen even when an alert snackbar is already up.
+///
+/// Alert snacks with an action persist (`SnackBar.persist` defaults to true)
+/// and [ScaffoldMessenger.showSnackBar] only queues behind them, so a Pay
+/// failure never appears until that alert is dismissed.
+void showCheckoutSnackBar(
+  BuildContext context,
+  String text, {
+  bool isError = false,
+  Duration duration = const Duration(seconds: 4),
+}) {
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  if (messenger == null) return;
+  messenger.clearSnackBars();
+  messenger.removeCurrentSnackBar();
+  final view = View.maybeOf(context);
+  if (view != null) {
+    SemanticsService.sendAnnouncement(view, text, Directionality.of(context));
+  }
+  messenger.showSnackBar(
+    SnackBar(
+      content: Semantics(
+        liveRegion: true,
+        child: Text(text),
+      ),
+      backgroundColor: isError ? Colors.redAccent : Colors.green,
+      duration: duration,
+      behavior: SnackBarBehavior.floating,
+      persist: false,
+    ),
+  );
+}
+
 class MealNutritionStrip extends StatelessWidget {
   const MealNutritionStrip({super.key, required this.meal, this.compact = false});
 
