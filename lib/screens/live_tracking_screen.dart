@@ -13,7 +13,9 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../utils/app_env.dart';
 import 'package:go_router/go_router.dart';
 
+import '../services/dropoff_arrival.dart';
 import '../services/order_lifecycle.dart';
+import '../utils/delivery_pin.dart';
 import '../utils/helpers.dart';
 import '../utils/support.dart';
 import '../utils/diner_locale.dart';
@@ -48,6 +50,8 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
 
   StreamSubscription<Position>? _positionStream;
   RealtimeChannel? _locationChannel;
+  RealtimeChannel? _orderUpdates;
+  bool _dropoffArrivalMarked = false;
 
   String _etaText = 'Calculating ETA...';
   bool _isLoading = true;
@@ -191,6 +195,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   void dispose() {
     _positionStream?.cancel();
     _locationChannel?.unsubscribe();
+    _orderUpdates?.unsubscribe();
     _mapController?.dispose();
     super.dispose();
   }
@@ -256,6 +261,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
         _startDriverLocationBroadcasting();
       } else {
         _listenToDriverTelemetry();
+        _listenForDropoffArrival();
       }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Live tracking initialization error');
@@ -452,7 +458,59 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
         event: 'location_update',
         payload: {'lat': position.latitude, 'lng': position.longitude},
       );
+      unawaited(_maybeMarkDropoffArrival(position));
     });
+  }
+
+  Future<void> _maybeMarkDropoffArrival(Position position) async {
+    if (!widget.isDriver || _driverGoingToKitchen || _dropoffArrivalMarked) return;
+    final orderId = resolvedOrderId(_order);
+    if (orderId == null || orderId.isEmpty) return;
+    final marked = await DropoffArrival.markIfReached(
+      orderId: orderId,
+      driverLat: position.latitude,
+      driverLng: position.longitude,
+      dropoffLat: _asDouble(_order['delivery_lat'] ?? _order['customer_lat']),
+      dropoffLng: _asDouble(_order['delivery_lng'] ?? _order['customer_lng']),
+      status: _order['status']?.toString(),
+      arrivedAt: _order['driver_arrived_at']?.toString(),
+    );
+    if (!marked || !mounted) return;
+    setState(() {
+      _dropoffArrivalMarked = true;
+      _order['driver_arrived_at'] ??= DateTime.now().toUtc().toIso8601String();
+    });
+  }
+
+  void _listenForDropoffArrival() {
+    if (widget.isDriver) return;
+    final orderId = resolvedOrderId(_order) ?? '';
+    if (orderId.isEmpty) return;
+    _orderUpdates?.unsubscribe();
+    _orderUpdates = _supabase
+        .channel('order-arrival-$orderId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'orders',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: orderId,
+          ),
+          callback: (payload) {
+            if (!mounted) return;
+            final next = payload.newRecord;
+            setState(() {
+              if (next['driver_arrived_at'] != null) {
+                _order['driver_arrived_at'] = next['driver_arrived_at'];
+              }
+              if (next['status'] != null) _order['status'] = next['status'];
+              if (next['delivery_otp'] != null) _order['delivery_otp'] = next['delivery_otp'];
+            });
+          },
+        )
+        .subscribe();
   }
 
   void _listenToDriverTelemetry() {
@@ -552,11 +610,11 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
             _buildDetailTile(icon: Icons.person_outline, title: customerName, subtitle: customerPhone),
             const SizedBox(height: 10),
             _buildDetailTile(icon: Icons.location_on_outlined, title: deliveryAddress, subtitle: 'Paid checkout address'),
-            if (!widget.isDriver && (_order['delivery_otp']?.toString().trim().length ?? 0) >= 4) ...[
+            if (!widget.isDriver && dinerVisibleDeliveryPin(_order).isNotEmpty) ...[
               const SizedBox(height: 10),
               _buildDetailTile(
                 icon: Icons.pin_outlined,
-                title: _order['delivery_otp'].toString(),
+                title: dinerVisibleDeliveryPin(_order),
                 subtitle: 'Share this PIN with the driver at the door',
               ),
             ],
@@ -743,9 +801,9 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                                   Text(dinerPromisedSlotCopy(_order), style: AppTheme.micro)
                                 else
                                   Text('Live route tracking active', style: AppTheme.micro),
-                                if (!widget.isDriver && (_order['delivery_otp']?.toString().trim().length ?? 0) >= 4)
+                                if (!widget.isDriver && dinerVisibleDeliveryPin(_order).isNotEmpty)
                                   Text(
-                                    'Delivery PIN: ${_order['delivery_otp']} — share at the door',
+                                    'Delivery PIN: ${dinerVisibleDeliveryPin(_order)} — share at the door',
                                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppTheme.primary),
                                   ),
                               ],

@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../utils/app_page.dart';
+import '../utils/delivery_pin.dart';
 import '../utils/diner_orders_feed.dart';
 import '../utils/helpers.dart';
 import '../utils/network.dart';
@@ -651,7 +652,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                           if (!isDelivered) ...[
                             Builder(
                               builder: (_) {
-                                final pin = items.first['delivery_otp']?.toString().trim() ?? '';
+                                final pin = dinerVisibleDeliveryPin(items.first);
                                 if (pin.isEmpty) return const SizedBox.shrink();
                                 return Padding(
                                   padding: const EdgeInsets.only(top: 12),
@@ -1408,6 +1409,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
           'delivery_address': resolvedDropoff.isEmpty ? order['delivery_address'] : resolvedDropoff,
           'driver_id': order['driver_id'] ?? order['delivery_partner_id'],
           'delivery_otp': order['delivery_otp'],
+          'driver_arrived_at': order['driver_arrived_at'],
           'created_at': order['created_at'] ?? DateTime.now().toIso8601String(),
           'updated_at': order['updated_at'],
           'delivered_at': order['delivered_at'],
@@ -1429,6 +1431,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
           'delivery_address': resolvedDropoff.isEmpty ? order['delivery_address'] : resolvedDropoff,
           'driver_id': order['driver_id'] ?? order['delivery_partner_id'],
           'delivery_otp': order['delivery_otp'],
+          'driver_arrived_at': order['driver_arrived_at'],
           'created_at': order['created_at'] ?? DateTime.now().toIso8601String(),
           'updated_at': order['updated_at'],
           'delivered_at': order['delivered_at'],
@@ -1556,7 +1559,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                 final statusLine = hasDispatchPhoto(items.first)
                     ? dispatchPackedLabel(takenAt: orderDispatchPhotoAt(items.first))
                     : 'Status: $groupStatus';
-                final pin = isDelivered ? '' : (items.first['delivery_otp']?.toString().trim() ?? '');
+                final pin = dinerVisibleDeliveryPin(items.first);
                 return DinerOrderListCard(
                   key: ValueKey(rawOrderIdStr),
                   orderIdLabel: displayOrderIdStr,
