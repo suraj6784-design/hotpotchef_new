@@ -7,7 +7,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -19,6 +18,7 @@ import 'utils/app_theme.dart';
 import 'utils/app_router.dart';
 import 'utils/diner_locale.dart';
 import 'utils/google_maps_js_loader.dart';
+import 'services/auth_session.dart';
 import 'services/push_notification_service.dart';
 import 'services/deep_link_coordinator.dart';
 import 'widgets/offline_banner.dart';
@@ -27,43 +27,109 @@ import 'widgets/offline_banner.dart';
 final GlobalKey<ScaffoldMessengerState> globalMessengerKey =
     GlobalKey<ScaffoldMessengerState>();
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  runApp(const _HotPotBootApp());
+}
 
-  try {
-    await loadAppEnv();
-    await loadGoogleMapsJsIfNeeded(appEnv('GOOGLE_MAPS_API_KEY'));
+/// Paints a cream splash immediately so Firebase/Supabase/FCM cannot leave a
+/// white native window. Heavy init runs after the first frame.
+class _HotPotBootApp extends StatefulWidget {
+  const _HotPotBootApp();
 
-    final firebaseReady = await FirebaseBootstrap.initializeApp();
-    _attachCrashlyticsIfSupported(firebaseReady);
-    GoogleFonts.config.allowRuntimeFetching = false;
+  @override
+  State<_HotPotBootApp> createState() => _HotPotBootAppState();
+}
 
-    final supabaseUrl = appEnv('SUPABASE_URL');
-    final supabaseAnonKey = appEnv('SUPABASE_ANON_KEY');
+class _HotPotBootAppState extends State<_HotPotBootApp> {
+  Widget? _app;
+  String? _error;
 
-    if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
-      throw StateError(
-        'Missing backend config. Rebuild with --dart-define-from-file=.env',
-      );
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_bootstrap());
+    });
+  }
+
+  Future<void> _bootstrap() async {
+    try {
+      await loadAppEnv();
+      await loadGoogleMapsJsIfNeeded(appEnv('GOOGLE_MAPS_API_KEY'));
+
+      final firebaseReady = await FirebaseBootstrap.initializeApp().timeout(const Duration(seconds: 10));
+      _attachCrashlyticsIfSupported(firebaseReady);
+      GoogleFonts.config.allowRuntimeFetching = false;
+
+      final supabaseUrl = appEnv('SUPABASE_URL');
+      final supabaseAnonKey = appEnv('SUPABASE_ANON_KEY');
+
+      if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
+        throw StateError(
+          'Missing backend config. Rebuild with --dart-define-from-file=.env',
+        );
+      }
+
+      await Supabase.initialize(
+        url: supabaseUrl,
+        anonKey: supabaseAnonKey,
+      ).timeout(const Duration(seconds: 10));
+      if (firebaseReady) {
+        unawaited(PushNotificationService.initialize());
+      } else {
+        debugPrint('⚠️ Skipping push notifications because Firebase is not initialized.');
+      }
+      unawaited(AuthSession.discardStaleSession());
+
+      if (!mounted) return;
+      setState(() {
+        _app = const ProviderScope(child: HotPotChefApp());
+      });
+    } catch (error, stack) {
+      debugPrint('HotPotChef failed to start: $error\n$stack');
+      if (!mounted) return;
+      setState(() => _error = error.toString());
     }
+  }
 
-    await Supabase.initialize(
-      url: supabaseUrl,
-      anonKey: supabaseAnonKey,
+  @override
+  Widget build(BuildContext context) {
+    if (_error != null) {
+      return _StartupFailedApp(message: _error!);
+    }
+    return _app ?? const _LaunchPlaceholder();
+  }
+}
+
+class _LaunchPlaceholder extends StatelessWidget {
+  const _LaunchPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return const MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        backgroundColor: Color(0xFFF6EEE6),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: Color(0xFFE85A24)),
+              SizedBox(height: 20),
+              Text(
+                'HotPotChef',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF241F1C),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
-
-    if (firebaseReady) {
-      await PushNotificationService.initialize();
-    } else {
-      debugPrint(
-        '⚠️ Skipping push notifications because Firebase is not initialized.',
-      );
-    }
-
-    runApp(const ProviderScope(child: HotPotChefApp()));
-  } catch (error, stack) {
-    debugPrint('HotPotChef failed to start: $error\n$stack');
-    runApp(_StartupFailedApp(message: error.toString()));
   }
 }
 
@@ -143,6 +209,7 @@ class _HotPotChefAppState extends State<HotPotChefApp> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       PushNotificationService.openPendingAlert();
+      unawaited(PushNotificationService.requestPermissionAndSync());
     });
     unawaited(DinerLocaleController.instance.load());
     final appLinks = AppLinks();
@@ -166,23 +233,16 @@ class _HotPotChefAppState extends State<HotPotChefApp> {
 
   @override
   Widget build(BuildContext context) {
-    return ScreenUtilInit(
-      designSize: const Size(375, 812),
-      minTextAdapt: true,
-      splitScreenMode: true,
+    return MaterialApp.router(
+      title: kAppStorefront.appName,
+      scaffoldMessengerKey: globalMessengerKey,
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: ThemeMode.system,
+      routerConfig: AppRouter.router,
       builder: (context, child) {
-        return MaterialApp.router(
-          title: kAppStorefront.appName,
-          scaffoldMessengerKey: globalMessengerKey,
-          debugShowCheckedModeBanner: false,
-          theme: AppTheme.lightTheme,
-          darkTheme: AppTheme.darkTheme,
-          themeMode: ThemeMode.system, // Respect system light/dark mode settings
-          routerConfig: AppRouter.router,
-          builder: (context, child) {
-            return OfflineBannerHost(child: child ?? const SizedBox.shrink());
-          },
-        );
+        return OfflineBannerHost(child: child ?? const SizedBox.shrink());
       },
     );
   }

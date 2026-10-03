@@ -25,6 +25,76 @@ void main() {
       expect(serviceAreaCheckoutWarning(), isNull);
     });
 
+    test('Thergaon and FC Pune kitchens serve the same diner pin', () {
+      expect(
+        kitchenServesDinerPin(
+          kitchenLat: 18.5204,
+          kitchenLng: 73.8567,
+          dinerLat: 18.61,
+          dinerLng: 73.77,
+        ),
+        isTrue,
+      );
+      expect(
+        kitchenServesDinerPin(
+          dinerLat: 18.61,
+          dinerLng: 73.77,
+        ),
+        isTrue,
+      );
+      expect(
+        kitchenServesDinerPin(
+          kitchenLat: 19.07,
+          kitchenLng: 72.87,
+          dinerLat: 18.52,
+          dinerLng: 73.85,
+        ),
+        isFalse,
+      );
+      expect(launchCityDefaultPin()['city'], 'Pune');
+      expect(launchCityDefaultPin()['address'], 'Select location');
+      expect(launchCityDefaultPin()['is_launch_city'], isTrue);
+    });
+
+    test('a second city is another list entry', () {
+      const cityTwo = ServiceCity(
+        id: 'city-two',
+        label: 'City Two',
+        pinPrefixes: ['422'],
+        centerLat: 19.99,
+        centerLng: 73.78,
+        bboxSouth: 19.9,
+        bboxNorth: 20.1,
+        bboxWest: 73.7,
+        bboxEast: 73.9,
+      );
+      expect(kLaunchCities.map((city) => city.id), ['pune']);
+      expect(serviceCityForPin('422001'), isNull);
+      expect(serviceCityForPin('422001', cities: const [cityTwo])?.id, 'city-two');
+      expect(serviceCityForCoord(19.99, 73.78, cities: const [cityTwo])?.id, 'city-two');
+      expect(isInLaunchServiceArea(pincode: '422001', cities: const [cityTwo]), isTrue);
+      expect(
+        kitchenServesDinerPin(
+          dinerPincode: '422001',
+          kitchenPincode: '422010',
+          cities: const [cityTwo],
+        ),
+        isTrue,
+      );
+      expect(
+        kitchenServesDinerPin(
+          dinerPincode: '422001',
+          dinerLat: 19.99,
+          dinerLng: 73.78,
+          kitchenPincode: '411001',
+          kitchenLat: 18.52,
+          kitchenLng: 73.85,
+          cities: const [cityTwo, ...kLaunchCities],
+        ),
+        isFalse,
+      );
+    });
+
     test('pageCatalog slices later plates for Home load-more', () {
       final items = List.generate(200, (i) => i);
       expect(pageCatalog(items, page: 0, pageSize: 80), hasLength(80));

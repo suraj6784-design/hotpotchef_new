@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 /// Launch-city serviceability. City 2 adds another [ServiceCity] — do not clone schema.
 class ServiceCity {
   const ServiceCity({
@@ -55,18 +57,25 @@ String normalizeServicePincode(String? raw) {
   return digits.length >= 6 ? digits.substring(0, 6) : digits;
 }
 
-ServiceCity? serviceCityForPin(String? raw) {
+ServiceCity? serviceCityForPin(
+  String? raw, {
+  List<ServiceCity> cities = kLaunchCities,
+}) {
   final digits = normalizeServicePincode(raw);
   if (digits.isEmpty) return null;
-  for (final city in kLaunchCities) {
+  for (final city in cities) {
     if (city.pinMatches(digits)) return city;
   }
   return null;
 }
 
-ServiceCity? serviceCityForCoord(double? lat, double? lng) {
+ServiceCity? serviceCityForCoord(
+  double? lat,
+  double? lng, {
+  List<ServiceCity> cities = kLaunchCities,
+}) {
   if (lat == null || lng == null || lat == 0 || lng == 0) return null;
-  for (final city in kLaunchCities) {
+  for (final city in cities) {
     if (city.coordMatches(lat, lng)) return city;
   }
   return null;
@@ -77,9 +86,10 @@ bool isInLaunchServiceArea({
   String? pincode,
   double? lat,
   double? lng,
+  List<ServiceCity> cities = kLaunchCities,
 }) {
-  if (serviceCityForPin(pincode) != null) return true;
-  if (serviceCityForCoord(lat, lng) != null) return true;
+  if (serviceCityForPin(pincode, cities: cities) != null) return true;
+  if (serviceCityForCoord(lat, lng, cities: cities) != null) return true;
   final digits = normalizeServicePincode(pincode);
   if (digits.length >= 6) return false;
   if (lat != null && lng != null && lat != 0 && lng != 0) return false;
@@ -104,4 +114,57 @@ List<T> pageCatalog<T>(List<T> items, {required int page, int pageSize = 80}) {
   if (start >= items.length) return <T>[];
   final end = (start + pageSize).clamp(0, items.length);
   return items.sublist(start, end);
+}
+
+/// Guest / first-open pin when GPS is unavailable. No permission prompt.
+Map<String, dynamic> launchCityDefaultPin() {
+  final city = kLaunchCities.first;
+  return {
+    'id': 'launch-city-${city.id}',
+    'title': city.label,
+    'landmark': city.label,
+    'address': 'Select location',
+    'city': city.label,
+    'pincode': '411001',
+    'postal_code': '411001',
+    'latitude': city.centerLat,
+    'longitude': city.centerLng,
+    'lat': city.centerLat,
+    'lng': city.centerLng,
+    'is_launch_city': true,
+  };
+}
+
+/// Home radius: same launch city is always in range (Thergaon vs FC Pune
+/// exceeds 15 km × 1.3 road). Missing kitchen coords still list while hydrating.
+bool kitchenServesDinerPin({
+  double? kitchenLat,
+  double? kitchenLng,
+  double? dinerLat,
+  double? dinerLng,
+  String? dinerPincode,
+  String? kitchenPincode,
+  List<ServiceCity> cities = kLaunchCities,
+}) {
+  final dinerCity = serviceCityForPin(dinerPincode, cities: cities) ??
+      serviceCityForCoord(dinerLat, dinerLng, cities: cities);
+  final kitchenCity = serviceCityForPin(kitchenPincode, cities: cities) ??
+      serviceCityForCoord(kitchenLat, kitchenLng, cities: cities);
+  if (dinerCity != null && kitchenCity != null && dinerCity.id == kitchenCity.id) {
+    return true;
+  }
+  if (kitchenLat == null || kitchenLng == null || dinerLat == null || dinerLng == null) {
+    return dinerCity != null;
+  }
+  const maxKm = 15.0;
+  const earthKm = 6371.0;
+  final dLat = (dinerLat - kitchenLat) * math.pi / 180;
+  final dLng = (dinerLng - kitchenLng) * math.pi / 180;
+  final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+      math.cos(kitchenLat * math.pi / 180) *
+          math.cos(dinerLat * math.pi / 180) *
+          math.sin(dLng / 2) *
+          math.sin(dLng / 2);
+  final km = earthKm * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+  return km > 0 && km <= maxKm;
 }

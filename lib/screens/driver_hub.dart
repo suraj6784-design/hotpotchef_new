@@ -10,7 +10,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../utils/helpers.dart';
-import '../utils/app_flavor.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/app_status_badge.dart';
@@ -29,9 +28,10 @@ import 'driver_profile_screen.dart';
 import 'notifications_inbox_screen.dart';
 
 class DriverHubScreen extends ConsumerStatefulWidget {
-  const DriverHubScreen({super.key, this.initialTab = 0});
+  const DriverHubScreen({super.key, this.initialTab = 0, this.initialOrdersStage = 0});
 
   final int initialTab;
+  final int initialOrdersStage;
 
   @override
   ConsumerState<DriverHubScreen> createState() => _DriverHubScreenState();
@@ -39,10 +39,17 @@ class DriverHubScreen extends ConsumerStatefulWidget {
 
 class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
   late int _selectedIndex = widget.initialTab;
-  int _ordersStage = 0;
+  late int _ordersStage = widget.initialOrdersStage;
   bool _isOnline = true;
+  String? _acceptingOrderId;
   String? _busyOrderId;
   String _welcomeName = 'Partner';
+  String _driverFullName = '';
+  String _driverPhone = '';
+  String? _driverAvatarUrl;
+  String _driverIdNo = '';
+  String _driverBloodGroup = '';
+  String _driverEmergencyPhone = '';
 
   @override
   void initState() {
@@ -62,17 +69,44 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
           .maybeSingle();
       final userRow = await Supabase.instance.client
           .from('users')
-          .select('name, full_name')
+          .select('name, full_name, phone, avatar_url, driver_id_no, blood_group, emergency_phone')
           .eq('id', user.id)
           .maybeSingle();
       if (mounted) {
         setState(() {
           if (row != null) _isOnline = row['is_available'] != false;
           final raw = userRow?['name']?.toString() ?? userRow?['full_name']?.toString() ?? '';
-          if (raw.trim().isNotEmpty) _welcomeName = raw.trim().split(' ').first;
+          if (raw.trim().isNotEmpty) {
+            _driverFullName = raw.trim();
+            _welcomeName = raw.trim().split(' ').first;
+          }
+          final phone = userRow?['phone']?.toString() ??
+              user.userMetadata?['phone']?.toString() ??
+              user.phone ??
+              '';
+          if (phone.trim().isNotEmpty) _driverPhone = phone.trim();
+          final avatar = userRow?['avatar_url']?.toString();
+          if (avatar != null && avatar.trim().isNotEmpty) _driverAvatarUrl = avatar.trim();
+          final idNo = userRow?['driver_id_no']?.toString().trim() ?? '';
+          if (idNo.isNotEmpty) _driverIdNo = idNo;
+          final blood = userRow?['blood_group']?.toString().trim() ?? '';
+          if (blood.isNotEmpty) _driverBloodGroup = blood;
+          final emergency = userRow?['emergency_phone']?.toString().trim() ?? '';
+          if (emergency.isNotEmpty) _driverEmergencyPhone = emergency;
         });
       }
     } catch (_) {}
+  }
+
+  void _openDigitalId() {
+    context.push('/driver-id-card', extra: {
+      'name': _driverFullName.isEmpty ? 'Delivery Partner' : _driverFullName,
+      'phone': _driverPhone,
+      if (_driverAvatarUrl != null) 'avatarUrl': _driverAvatarUrl,
+      'idCardNo': _driverIdNo,
+      'bloodGroup': _driverBloodGroup,
+      'emergencyPhone': _driverEmergencyPhone,
+    });
   }
 
   Future<void> _toggleOnline() async {
@@ -267,21 +301,21 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
           Text(
             'GATE / DELIVERY NOTES',
             style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
               letterSpacing: 0.6,
               color: AppTheme.onSurfaceOf(context),
             ),
           ),
           if (gate.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text('Gate instructions', style: TextStyle(fontSize: 11, color: AppTheme.textMuted, fontWeight: FontWeight.w600)),
+            Text('Gate instructions', style: TextStyle(fontSize: 12, color: AppTheme.textMuted, fontWeight: FontWeight.w600)),
             const SizedBox(height: 2),
             Text(gate, style: TextStyle(fontSize: 13, height: 1.35, color: AppTheme.onSurfaceOf(context), fontWeight: FontWeight.w600)),
           ],
           if (notes.isNotEmpty) ...[
             const SizedBox(height: 10),
-            Text('Special instructions', style: TextStyle(fontSize: 11, color: AppTheme.textMuted, fontWeight: FontWeight.w600)),
+            Text('Special instructions', style: TextStyle(fontSize: 12, color: AppTheme.textMuted, fontWeight: FontWeight.w600)),
             const SizedBox(height: 2),
             Text(notes, style: TextStyle(fontSize: 13, height: 1.35, color: AppTheme.onSurfaceOf(context))),
           ],
@@ -298,36 +332,29 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
     final List<Widget> pages = [
       _buildHomeTab(dashboardState),
       _buildOrdersWorkspace(dashboardState, notifier),
-      const DriverProfileScreen(embedded: true),
-      const NotificationsInboxScreen(embedded: true, partnerInbox: true),
+      DriverProfileScreen(
+        embedded: true,
+        onOpenWallet: () => setState(() {
+          _selectedIndex = 1;
+          _ordersStage = 2;
+        }),
+      ),
+      NotificationsInboxScreen(
+        key: ValueKey('driver-alerts-${Supabase.instance.client.auth.currentUser?.id ?? 'guest'}'),
+        embedded: true,
+        partnerInbox: true,
+      ),
     ];
 
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        
-        final shouldExit = await showDialog<bool>(
+        await handleHubHardwareBack(
           context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Exit App'),
-            content: const Text('Are you sure you want to exit?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Exit'),
-              ),
-            ],
-          ),
+          selectedIndex: _selectedIndex,
+          goHome: () => setState(() => _selectedIndex = 0),
         );
-
-        if (shouldExit == true) {
-          SystemNavigator.pop();
-        }
       },
       child: Scaffold(
         backgroundColor: AppTheme.canvasOf(context),
@@ -343,9 +370,12 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                     onOpenProfile: () => setState(() => _selectedIndex = 2),
                   ),
                 Expanded(
-                  child: HubTabSwitcher(
-                    index: _selectedIndex,
-                    children: pages,
+                  child: Padding(
+                    padding: EdgeInsets.only(bottom: hubDockBodyGap(context)),
+                    child: HubTabSwitcher(
+                      index: _selectedIndex,
+                      children: pages,
+                    ),
                   ),
                 ),
               ],
@@ -386,27 +416,25 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 style: AppTheme.sectionTitleOf(context).copyWith(color: AppTheme.primary, fontSize: 18),
               ),
             ),
-          ] else
+          ] else ...[
+            IconButton(
+              tooltip: 'Back to home',
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => setState(() => _selectedIndex = 0),
+            ),
             Expanded(
               child: Text('Delivery Orders', style: AppTheme.sectionTitleOf(context)),
             ),
-          PopupMenuButton<String>(
-            tooltip: 'More',
-            onSelected: (value) {
-              switch (value) {
-                case 'chef':
-                  AuthSession.switchPartnerPortal(context, AppRole.chef);
-                case 'chats':
-                  context.push('/chats');
-                case 'logout':
-                  AuthSession.confirmSignOut(context);
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'chef', child: Text('Chef portal')),
-              const PopupMenuItem(value: 'chats', child: Text('Order chats')),
-              const PopupMenuItem(value: 'logout', child: Text('Log out')),
-            ],
+          ],
+          IconButton(
+            tooltip: 'Order chats',
+            onPressed: () => context.push('/chats'),
+            icon: const Icon(Icons.forum_outlined),
+          ),
+          IconButton(
+            tooltip: 'Log out',
+            onPressed: () => AuthSession.confirmSignOut(context),
+            icon: const Icon(Icons.logout_rounded),
           ),
         ],
       ),
@@ -436,48 +464,6 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
             ),
             const SizedBox(height: 16),
           ],
-          if (kAppStorefront.isPartner) ...[
-            Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: AppTheme.surfaceOf(context),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: AppTheme.hairlineOf(context)),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => AuthSession.switchPartnerPortal(context, AppRole.chef),
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 10),
-                        child: Text(
-                          'Chef Portal',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      decoration: BoxDecoration(
-                        color: AppTheme.primary,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: const Text(
-                        'Delivery Partner',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
           Row(
             children: [
               Expanded(
@@ -502,7 +488,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                   ),
                   Text(
                     _isOnline ? 'Go Offline' : 'Go Online',
-                    style: AppTheme.microOf(context).copyWith(fontWeight: FontWeight.w800),
+                    style: AppTheme.microOf(context).copyWith(fontWeight: FontWeight.w700),
                   ),
                 ],
               ),
@@ -554,7 +540,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 child: _driverToolCard(
                   icon: Icons.badge_outlined,
                   label: 'Digital ID',
-                  onTap: () => context.push('/driver-id-card'),
+                  onTap: _openDigitalId,
                 ),
               ),
             ],
@@ -567,12 +553,12 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
   Widget _driverStatCard(String label, String value, {VoidCallback? onTap}) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: AppTheme.surfaceOf(context),
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppTheme.hairlineOf(context)),
         ),
         child: Column(
@@ -590,19 +576,19 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
   Widget _driverToolCard({required IconData icon, required String label, required VoidCallback onTap}) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
         decoration: BoxDecoration(
           color: AppTheme.surfaceOf(context),
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppTheme.hairlineOf(context)),
         ),
         child: Column(
           children: [
             Icon(icon, color: AppTheme.primary, size: 28),
             const SizedBox(height: 8),
-            Text(label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+            Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
           ],
         ),
       ),
@@ -636,14 +622,29 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
   }
 
   Widget _buildCompletedRuns(DriverDashboardState state) {
+    Future<void> reload() => ref.read(driverDashboardProvider.notifier).loadDashboardData();
     if (state.recentDeliveries.isEmpty) {
-      return const EmptyState(
-        icon: Icons.local_shipping_outlined,
-        title: 'No delivery history yet',
-        message: 'Completed runs will show up here with payouts in ₹.',
+      return RefreshIndicator(
+        onRefresh: reload,
+        color: AppTheme.primary,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: const [
+            SizedBox(height: 48),
+            EmptyState(
+              icon: Icons.local_shipping_outlined,
+              title: 'No delivery history yet',
+              message: 'Completed runs will show up here with payouts in ₹.',
+            ),
+          ],
+        ),
       );
     }
-    return ListView(
+    return RefreshIndicator(
+      onRefresh: reload,
+      color: AppTheme.primary,
+      child: ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
       children: [
         AppCard(
@@ -653,7 +654,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               const SizedBox(height: 6),
               Text(
                 '₹${state.totalEarnings.toStringAsFixed(0)}',
-                style: AppTheme.sectionTitleOf(context).copyWith(color: AppTheme.success, fontSize: 28),
+                style: AppTheme.sectionTitleOf(context).copyWith(color: AppTheme.success, fontSize: 22),
               ),
               Text(
                 '${state.completedCount} completed · delivery fee + tip. Bank payout is arranged by ops after KYC.',
@@ -685,7 +686,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                   children: [
                     Text(
                       '+₹${delivery.payout.toStringAsFixed(0)}',
-                      style: const TextStyle(fontWeight: FontWeight.w800, color: AppTheme.live),
+                      style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.live),
                     ),
                     Text(formatOrderDate(delivery.createdAt.toIso8601String()), style: AppTheme.microOf(context)),
                   ],
@@ -695,6 +696,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
           );
         }),
       ],
+    ),
     );
   }
 
@@ -730,7 +732,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                     style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 Text('₹${state.totalEarnings.toStringAsFixed(0)}',
-                    style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w900)),
+                    style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 12),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -743,7 +745,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 const SizedBox(height: 8),
                 const Text(
                   'Wallet = delivery fee + tip on completed runs. Bank payout is arranged by ops after KYC — not an automatic weekly transfer.',
-                  style: TextStyle(color: Colors.white70, fontSize: 11, height: 1.35),
+                  style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.35),
                 ),
               ],
             ),
@@ -903,7 +905,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                   Text('Order #${formatOrderId(null, delivery.orderId)}',
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textMuted)),
                   Text('+₹${delivery.payout.toStringAsFixed(0)} Payout',
-                      style: const TextStyle(fontWeight: FontWeight.w900, color: Colors.green, fontSize: 14)),
+                      style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.green, fontSize: 14)),
                 ],
               ),
               const SizedBox(height: 8),
@@ -944,15 +946,30 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               GradientButton(
                 label: 'Accept Delivery',
                 icon: Icons.check_rounded,
-                onPressed: () async {
-                    final success = await notifier.acceptOrder(delivery.orderId);
-                    if (success && mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Order accepted. Open Active to navigate.'), backgroundColor: Colors.green),
-                      );
-                      setState(() => _ordersStage = 1);
-                    }
-                  },
+                loading: _acceptingOrderId == delivery.orderId,
+                onPressed: _acceptingOrderId != null
+                    ? null
+                    : () async {
+                        setState(() => _acceptingOrderId = delivery.orderId);
+                        final success = await notifier.acceptOrder(delivery.orderId);
+                        if (!mounted) return;
+                        setState(() => _acceptingOrderId = null);
+                        if (success) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Order accepted. Open Active to navigate.'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                          setState(() => _ordersStage = 1);
+                          return;
+                        }
+                        final reason = ref.read(driverDashboardProvider).errorMessage ??
+                            'Could not accept this run. Try again.';
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(reason), backgroundColor: Colors.redAccent),
+                        );
+                      },
               ),
             ],
           ),
@@ -1062,7 +1079,9 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
         final delivery = active[index];
         final rawStatus = delivery.statusLabel.isEmpty ? delivery.status.toDbValue() : delivery.statusLabel;
         final isOut = OrderLifecycle.canDriverCompleteRun(rawStatus);
-        final canStart = OrderLifecycle.canDriverStartRun(rawStatus);
+        final canConfirmPickup = OrderLifecycle.canDriverConfirmPickup(rawStatus);
+        final actionLabel = OrderLifecycle.driverHubActionLabel(rawStatus);
+        final badgeLabel = OrderLifecycle.driverHubBadge(rawStatus);
 
         return AppCard(
           margin: const EdgeInsets.only(bottom: 16),
@@ -1074,7 +1093,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 children: [
                   Text('Run #${formatOrderId(null, delivery.orderId)}',
                       style: AppTheme.micro),
-                  AppStatusBadge(status: rawStatus),
+                  AppStatusBadge(status: badgeLabel),
                 ],
               ),
               const SizedBox(height: 12),
@@ -1156,13 +1175,17 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 ],
               ),
               const SizedBox(height: 10),
-              if (isOut || canStart)
+              if (actionLabel.isNotEmpty)
                 Semantics(
                   button: true,
-                  label: isOut ? 'Mark Delivered' : 'Start Delivery',
+                  label: actionLabel,
                   child: GradientButton(
-                    label: isOut ? 'Mark Delivered' : 'Start Delivery',
-                    icon: isOut ? Icons.check_rounded : Icons.delivery_dining_rounded,
+                    label: actionLabel,
+                    icon: isOut
+                        ? Icons.check_rounded
+                        : (canConfirmPickup
+                            ? Icons.inventory_2_outlined
+                            : Icons.two_wheeler_rounded),
                     height: 48,
                     loading: _busyOrderId == delivery.orderId,
                     gradient: isOut
@@ -1196,23 +1219,24 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                                 return;
                               }
                             }
-                            final nextStatus = isOut ? DeliveryStatus.delivered : DeliveryStatus.outForDelivery;
                             final ok = await notifier.updateDeliveryStatus(
                               delivery.orderId,
-                              nextStatus,
-                              currentStatus: delivery.statusLabel,
+                              rawStatus,
                               deliveryOtp: isOut ? delivery.deliveryOtp : null,
                               podPhotoUrl: podUrl,
                             );
                             if (!mounted) return;
                             setState(() => _busyOrderId = null);
+                            final successMessage = isOut
+                                ? 'Marked as delivered.'
+                                : (canConfirmPickup
+                                    ? 'Picked up — navigate to the customer.'
+                                    : 'On the way to pickup — navigate to the kitchen.');
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: Text(
                                   ok
-                                      ? (isOut
-                                          ? 'Marked as delivered.'
-                                          : 'Out for delivery — navigate to the customer.')
+                                      ? successMessage
                                       : (ref.read(driverDashboardProvider).errorMessage ??
                                           'Could not update this run. Try again.'),
                                 ),
@@ -1224,7 +1248,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 )
               else
                 const Text(
-                  'The kitchen is still preparing this order. Start Delivery unlocks after Ready for Pickup.',
+                  'The kitchen is still preparing this order. Pickup unlocks after Ready for Pickup.',
                   style: TextStyle(fontSize: 13, color: AppTheme.textMuted, height: 1.35),
                 ),
             ],

@@ -115,6 +115,28 @@ class PricingCalculator {
     return true;
   }
 
+  /// Stores the chef's published offer end, including a time that has already passed.
+  /// A null end means the offer has no expiry. Diner prices honor [isWithinOfferWindow].
+  static String? chefOfferExpiryIso({
+    required OfferType offerType,
+    DateTime? endDate,
+    int hour = 23,
+    int minute = 59,
+    DateTime? now,
+  }) {
+    if (offerType == OfferType.none || endDate == null) return null;
+    // Callers may pass `now` to pin a test clock. The stored instant is the chef's end.
+    final _ = now;
+    final localExpiry = DateTime(
+      endDate.year,
+      endDate.month,
+      endDate.day,
+      hour.clamp(0, 23),
+      minute.clamp(0, 59),
+    );
+    return localExpiry.toUtc().toIso8601String();
+  }
+
   /// Checks if an offer is currently live.
   static bool isOfferActive(
     Map<String, dynamic> mealDetails, {
@@ -432,7 +454,7 @@ class PricingCalculator {
   }
 
   static String offerBadgeLabel(Map<String, dynamic> mealDetails, {int quantity = 1}) {
-    if (isOfferGated(mealDetails)) return 'PROMO';
+    if (isOfferGated(mealDetails)) return 'Code';
     final offerType = resolvedOfferType(mealDetails);
     final discountVal = resolvedOfferDiscount(mealDetails, offerType: offerType);
     switch (offerType) {

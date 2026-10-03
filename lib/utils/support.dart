@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'app_env.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../services/app_analytics.dart';
 import 'helpers.dart';
 import 'legal_content.dart';
 
@@ -492,6 +495,7 @@ Future<Map<String, dynamic>?> createSupportTicket({
     },
   );
   if (response == null) return null;
+  unawaited(AppAnalytics.logSupportTicket(category: category));
   if (response is Map<String, dynamic>) return response;
   if (response is Map) return Map<String, dynamic>.from(response);
   return null;

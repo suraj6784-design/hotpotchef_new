@@ -10,6 +10,29 @@ const double kPackagingFeeBelowFreeDelivery = 10;
 const double kPackagingFeeAtFreeDelivery = 20;
 const int kHomeMealStreamLimit = 150;
 const int kHomeMealPageSize = 80;
+
+/// Anon `SELECT *` on meals fails (column grants). Guest Home must list these only.
+const String kHomeMealCatalogSelect =
+    'id, chef_id, chef_name, title, description, status, quantity, price, image_url, '
+    'time_slot, service_type, category, is_veg, health_tags, add_ons, '
+    'latitude, longitude, pickup_lat, pickup_lng, '
+    'average_rating, review_count, created_at, updated_at, '
+    'offer_type, discount_value, max_discount_cap, offer_valid_until, '
+    'promo_code, promo_discount_type, promo_discount_value, accepts_hotpot_coins, '
+    'boosted_until, calories_kcal, carbs_g, fat_g, fiber_g, protein_g, portion_weight_g, '
+    'is_hamper, is_hosting, is_shelf_item, is_society_night, '
+    'shelf_kind, society_label, source_meal_id, '
+    'hosting_address, cuisine, prep_minutes, allergens, ingredients, video_url, '
+    'availability_mode, dish_course, cook_minutes, serving_size, storage_hours, '
+    'delivery_estimate_minutes, chef_tip, is_seasonal, allow_notify_when_available';
+
+/// Narrower Home select if a catalog column grant is missing.
+const String kHomeMealCatalogSelectMinimal =
+    'id, chef_id, chef_name, title, description, status, quantity, price, image_url, '
+    'time_slot, service_type, category, is_veg, '
+    'latitude, longitude, pickup_lat, pickup_lng, created_at, '
+    'offer_type, discount_value, max_discount_cap, offer_valid_until, '
+    'promo_code, promo_discount_type, promo_discount_value';
 const double kMaxCheckoutTip = 500;
 
 double clampCheckoutTip(num? raw) {

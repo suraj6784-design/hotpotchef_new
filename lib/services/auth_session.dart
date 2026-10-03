@@ -41,6 +41,30 @@ class AuthSession {
     _tableRoleCache = null;
   }
 
+  static bool isStaleRefreshAuthError(Object error) {
+    if (error is AuthException) {
+      final code = (error.code ?? '').toLowerCase();
+      final message = error.message.toLowerCase();
+      return code.contains('refresh_token') || message.contains('refresh token');
+    }
+    return error.toString().toLowerCase().contains('refresh token');
+  }
+
+  /// Drop a persisted session that GoTrue can no longer refresh (emulator/device leftovers).
+  static Future<void> discardStaleSession() async {
+    if (_client.auth.currentSession == null) return;
+    try {
+      await _client.auth.refreshSession().timeout(const Duration(seconds: 4));
+    } on TimeoutException {
+      return;
+    } catch (e) {
+      if (!isStaleRefreshAuthError(e)) return;
+      try {
+        await _client.auth.signOut();
+      } catch (_) {}
+    }
+  }
+
   /// Router and hubs prefer `public.users.role` over a stale JWT claim.
   static AppRole resolveRoleFromSources({
     String? email,
@@ -301,41 +325,6 @@ class AuthSession {
     if (ok != true || !context.mounted) return false;
     await logout(context, beforeNavigate: beforeNavigate);
     return true;
-  }
-
-  /// Partner APK has Chef + Delivery Partner. Switching portals requires the
-  /// matching `users.role` — bounce to signup instead of a dead hub redirect.
-  static Future<void> switchPartnerPortal(BuildContext context, AppRole target) async {
-    final current = roleFromSession();
-    if (current == target) {
-      if (context.mounted) context.go(target.hubPath);
-      return;
-    }
-    final label = target.signupLabel;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Join as $label?'),
-        content: Text(
-          'This login is a ${current.signupLabel} account. Sign out, then register or sign in as $label to open that portal.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Stay here'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Continue'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true || !context.mounted) return;
-    await logout(
-      context,
-      thenLocation: '/auth?role=${Uri.encodeQueryComponent(target.storageValue)}&signup=1',
-    );
   }
 
   /// FCM token clear + Supabase signOut + return to the public guest feed

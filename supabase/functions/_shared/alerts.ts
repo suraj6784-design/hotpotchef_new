@@ -33,6 +33,7 @@ export function orderAlertStage(status?: string | null): string {
     return 'out'
   }
   if (current.includes('deliver') || current.includes('complet')) return 'delivered'
+  if (current.includes('heading')) return 'heading'
   if (current.includes('assign')) return 'assigned'
   if (current.includes('ready') || current.includes('pack')) return 'ready'
   if (current.includes('prepar')) return 'preparing'
@@ -88,10 +89,28 @@ export function orderAlertCopy(opts: {
       notifyDriver: false,
     }
   }
+  if (stage === 'heading') {
+    return {
+      title: 'Partner is heading to the kitchen',
+      body: `They will pick up ${mealTitle} next.`,
+      notifyChef: false,
+      notifyCustomer: true,
+      notifyDriver: false,
+    }
+  }
   if (stage === 'assigned') {
     return {
       title: 'Delivery partner assigned',
       body: 'A delivery partner is on the way to the kitchen.',
+      notifyChef: false,
+      notifyCustomer: true,
+      notifyDriver: false,
+    }
+  }
+  if (stage === 'preparing') {
+    return {
+      title: 'Chef started cooking',
+      body: `${mealTitle} is on the stove.`,
       notifyChef: false,
       notifyCustomer: true,
       notifyDriver: false,

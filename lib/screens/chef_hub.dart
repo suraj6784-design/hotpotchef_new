@@ -13,7 +13,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../utils/chef_order_realtime.dart';
 import '../utils/helpers.dart';
-import '../utils/app_flavor.dart';
 import '../utils/fssai_certificate_scan.dart';
 import '../utils/network.dart';
 import '../utils/meal_nutrition.dart';
@@ -55,6 +54,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   String _historyFilter = 'Delivered';
   String _menuFilter = 'Active'; // Active | History
   late int _ordersStage = widget.initialTab == 5 ? 2 : 0; // 0 new, 1 in progress, 2 dispatch, 3 completed
+  late final PageController _ordersPages = PageController(initialPage: _ordersStage);
   final Set<String> _autoArchivedMealIds = {};
   bool _isPlatformOps = false;
 
@@ -74,6 +74,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
 
   /// Stable stream instances so rebuilds do not recreate realtime subscriptions.
   Stream<List<Map<String, dynamic>>>? _ordersStream;
+  Stream<List<Map<String, dynamic>>>? _menuStream;
   Stream<List<Map<String, dynamic>>>? _requestsStream;
   Stream<List<Map<String, dynamic>>>? _myQuotesStream;
   RealtimeChannel? _kitchenChannel;
@@ -96,8 +97,30 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
 
   @override
   void dispose() {
+    _ordersPages.dispose();
     _kitchenChannel?.unsubscribe();
     super.dispose();
+  }
+
+  Future<void> _pullToRefreshKitchen() async {
+    _ordersStream = null;
+    _requestsStream = null;
+    _myQuotesStream = null;
+    _menuStream = null;
+    _ensureHubStreams();
+    _ensureMenuStream();
+    if (mounted) setState(() {});
+    await Future.wait([
+      _loadKitchenStatus(),
+      _loadChefPin(),
+      _loadActiveDishCount(),
+    ]);
+  }
+
+  void _ensureMenuStream() {
+    final uid = _currentUserId;
+    if (uid.isEmpty || _menuStream != null) return;
+    _menuStream = _supabase.from('meals').stream(primaryKey: ['id']).eq('chef_id', uid);
   }
 
   Future<void> _loadOpsAccess() async {
@@ -186,15 +209,23 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     });
   }
 
-  Future<void> _callCustomer(String customerId) async {
-    if (customerId.isEmpty) {
+  String _assignedDriverId(Map<String, dynamic> order) {
+    for (final key in const ['driver_id', 'delivery_partner_id']) {
+      final id = order[key]?.toString().trim() ?? '';
+      if (id.isNotEmpty) return id;
+    }
+    return '';
+  }
+
+  Future<void> _callParty(String userId, {required String missingContact}) async {
+    if (userId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No customer contact on this order.'), backgroundColor: Colors.orange),
+        SnackBar(content: Text(missingContact), backgroundColor: Colors.orange),
       );
       return;
     }
     try {
-      final userDoc = await _supabase.from('users').select('phone').eq('id', customerId).maybeSingle();
+      final userDoc = await _supabase.from('users').select('phone').eq('id', userId).maybeSingle();
       final phoneStr = userDoc?['phone']?.toString() ?? '';
       if (phoneStr.isEmpty) {
         if (mounted) {
@@ -217,6 +248,10 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
       }
     }
+  }
+
+  Future<void> _callCustomer(String customerId) {
+    return _callParty(customerId, missingContact: 'No customer contact on this order.');
   }
 
   void _openOrderChat(Map<String, dynamic> order) {
@@ -247,8 +282,18 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     ));
   }
 
+  void _phoneClosedSnack() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Phone is for active prep/delivery. Prefer Chat for coordination.'),
+        backgroundColor: Colors.orange,
+      ),
+    );
+  }
+
   Widget _orderContactActions(Map<String, dynamic> order) {
     final customerId = order['customer_id']?.toString() ?? '';
+    final driverId = _assignedDriverId(order);
     final status = order['status']?.toString();
     final chatOpen = orderAllowsPartyChat(status);
     final callOpen = orderAllowsPhoneCall(status);
@@ -262,18 +307,17 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         const SizedBox(width: 8),
         AppIconAction(
           icon: Icons.phone_outlined,
-          tooltip: callOpen ? 'Call' : 'Chat preferred',
-          onPressed: callOpen
-              ? () => _callCustomer(customerId)
-              : () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Phone is for active prep/delivery. Prefer Chat for coordination.'),
-                      backgroundColor: Colors.orange,
-                    ),
-                  );
-                },
+          tooltip: callOpen ? 'Call diner' : 'Chat preferred',
+          onPressed: callOpen ? () => _callCustomer(customerId) : _phoneClosedSnack,
         ),
+        if (driverId.isNotEmpty) ...[
+          const SizedBox(width: 8),
+          _CallDriverIconButton(
+            onPressed: callOpen
+                ? () => _callParty(driverId, missingContact: 'No driver contact on this order.')
+                : _phoneClosedSnack,
+          ),
+        ],
       ],
     );
   }
@@ -648,28 +692,11 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-
-        final shouldExit = await showDialog<bool>(
+        await handleHubHardwareBack(
           context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Exit App'),
-            content: const Text('Are you sure you want to exit?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Exit'),
-              ),
-            ],
-          ),
+          selectedIndex: _selectedIndex,
+          goHome: () => setState(() => _selectedIndex = 0),
         );
-
-        if (shouldExit == true) {
-          SystemNavigator.pop();
-        }
       },
       child: StreamBuilder<List<Map<String, dynamic>>>(
         stream: _ordersStream,
@@ -738,7 +765,11 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 _buildHomeTab(orders, pendingCount: pendingCount),
                 _buildOrdersWorkspace(orders),
                 const ChefProfileScreen(embedded: true),
-                const NotificationsInboxScreen(embedded: true, partnerInbox: true),
+                NotificationsInboxScreen(
+                  key: ValueKey('chef-alerts-$_currentUserId'),
+                  embedded: true,
+                  partnerInbox: true,
+                ),
                 _buildMenuTab(),
                 _buildDispatchTab(orders),
                 _buildHistoryTab(orders),
@@ -746,9 +777,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 const PackagingStoreScreen(),
               ];
 
-              return Stack(
-                children: [
-                  Scaffold(
+              return Scaffold(
                 backgroundColor: AppTheme.canvasOf(context),
                 body: Stack(
                   children: [
@@ -785,7 +814,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                             switch (_selectedIndex) {
                               4 => 'Menu',
                               5 => 'Dispatch',
-                              6 => 'Kitchen take-home',
+                              6 => 'Payout & Analytics',
                               7 => openLeadsCount > 0 ? 'Catering leads ($openLeadsCount)' : 'Catering leads',
                               _ => 'Packaging supplies',
                             },
@@ -794,9 +823,12 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                         ),
                       ),
                     Expanded(
-                      child: HubTabSwitcher(
-                        index: _selectedIndex,
-                        children: tabs,
+                      child: Padding(
+                        padding: EdgeInsets.only(bottom: hubDockBodyGap(context)),
+                        child: HubTabSwitcher(
+                          index: _selectedIndex,
+                          children: tabs,
+                        ),
                       ),
                     ),
                   ],
@@ -813,12 +845,6 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                     ),
                   ],
                 ),
-              ),
-                  ChefOnboardingCoach(
-                    onOpenProfile: () => setState(() => _selectedIndex = 2),
-                    onPublish: () => context.push('/chef-publish-meal'),
-                  ),
-                ],
               );
                 },
               );
@@ -848,58 +874,40 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 style: AppTheme.sectionTitleOf(context).copyWith(color: AppTheme.primary, fontSize: 18),
               ),
             ),
-          ] else
+          ] else ...[
+            if (!overflow)
+              IconButton(
+                tooltip: 'Back to home',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => setState(() => _selectedIndex = 0),
+              ),
             Expanded(
               child: Text(
                 overflow ? '' : 'Chef Orders',
                 style: AppTheme.sectionTitleOf(context),
               ),
             ),
-          PopupMenuButton<String>(
-            tooltip: 'More',
-            onSelected: (value) {
-              switch (value) {
-                case 'chats':
-                  context.push('/chats');
-                case 'leads':
-                  setState(() => _selectedIndex = 7);
-                case 'supplies':
-                  setState(() => _selectedIndex = 8);
-                case 'dispatch':
-                  setState(() {
-                    _selectedIndex = 1;
-                    _ordersStage = 2;
-                  });
-                case 'menu':
-                  setState(() => _selectedIndex = 4);
-                case 'history':
-                  setState(() => _selectedIndex = 6);
-                case 'ads':
-                  context.push('/chef-advertise');
-                case 'academy':
-                  context.push('/chef-academy');
-                case 'driver':
-                  AuthSession.switchPartnerPortal(context, AppRole.driver);
-                case 'ops':
-                  context.go('/platform-ops');
-                case 'logout':
-                  AuthSession.confirmSignOut(context);
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'menu', child: Text('Menu')),
-              const PopupMenuItem(value: 'dispatch', child: Text('Dispatch')),
-              const PopupMenuItem(value: 'history', child: Text('Kitchen take-home')),
-              const PopupMenuItem(value: 'chats', child: Text('Order chats')),
-              const PopupMenuItem(value: 'leads', child: Text('Catering leads')),
-              const PopupMenuItem(value: 'supplies', child: Text('Packaging supplies')),
-              const PopupMenuItem(value: 'ads', child: Text('Refer brand')),
-              const PopupMenuItem(value: 'academy', child: Text('Academy')),
-              const PopupMenuItem(value: 'driver', child: Text('Delivery portal')),
-              if (_isPlatformOps) const PopupMenuItem(value: 'ops', child: Text('Admin')),
-              const PopupMenuItem(value: 'logout', child: Text('Log out')),
-            ],
+          ],
+          IconButton(
+            tooltip: 'Order chats',
+            onPressed: () => context.push('/chats'),
+            icon: const Icon(Icons.forum_outlined),
           ),
+          IconButton(
+            tooltip: 'Log out',
+            onPressed: () => AuthSession.confirmSignOut(context),
+            icon: const Icon(Icons.logout_rounded),
+          ),
+          if (_isPlatformOps)
+            PopupMenuButton<String>(
+              tooltip: 'Admin',
+              onSelected: (value) {
+                if (value == 'ops') context.go('/platform-ops');
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem(value: 'ops', child: Text('Admin')),
+              ],
+            ),
         ],
       ),
     );
@@ -928,51 +936,13 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       _chefProfile['local_kitchen_name']?.toString(),
     ].where((v) => v != null && v.trim().isNotEmpty).cast<String>().join(' · ');
 
-    return ListView(
+    return RefreshIndicator(
+      color: AppTheme.primary,
+      onRefresh: _pullToRefreshKitchen,
+      child: ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
       children: [
-        if (kAppStorefront.isPartner) ...[
-          Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: AppTheme.surfaceOf(context),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: AppTheme.hairlineOf(context)),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primary,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: const Text(
-                      'Chef Portal',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13),
-                    ),
-                  ),
-                ),
-                Expanded(
-                    child: GestureDetector(
-                    onTap: () => AuthSession.switchPartnerPortal(context, AppRole.driver),
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 10),
-                      child: Text(
-                        'Delivery Partner',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-        ],
         Row(
           children: [
             Expanded(
@@ -1004,7 +974,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 ),
                 Text(
                   _isKitchenOpen ? 'Go Offline' : 'Go Online',
-                  style: AppTheme.microOf(context).copyWith(fontWeight: FontWeight.w800),
+                  style: AppTheme.microOf(context).copyWith(fontWeight: FontWeight.w700),
                 ),
               ],
             ),
@@ -1029,10 +999,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 'Total Earnings',
                 '₹${profit.toStringAsFixed(0)}',
                 onTap: () {
-                  setState(() {
-                    _selectedIndex = 1;
-                    _ordersStage = 3;
-                  });
+                  setState(() => _selectedIndex = 6);
                 },
               ),
             ),
@@ -1041,48 +1008,83 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         const SizedBox(height: 18),
         Text('Quick Chef Tools', style: AppTheme.homeSectionLabelOf(context)),
         const SizedBox(height: 10),
+        ..._chefToolRows([
+          (
+            icon: Icons.cloud_upload_outlined,
+            label: 'Upload Menu',
+            onTap: () => context.push('/chef-publish-meal'),
+          ),
+          (
+            icon: Icons.restaurant_menu_rounded,
+            label: 'Active Dishes',
+            onTap: () => setState(() {
+              _selectedIndex = 4;
+              _menuFilter = 'Active';
+            }),
+          ),
+          (
+            icon: Icons.celebration_outlined,
+            label: 'Catering leads',
+            onTap: () => setState(() => _selectedIndex = 7),
+          ),
+          (
+            icon: Icons.inventory_2_outlined,
+            label: 'Packaging',
+            onTap: () => setState(() => _selectedIndex = 8),
+          ),
+          (
+            icon: Icons.campaign_outlined,
+            label: 'Refer brand',
+            onTap: () => context.push('/chef-advertise'),
+          ),
+          (
+            icon: Icons.school_outlined,
+            label: 'Academy',
+            onTap: () => context.push('/chef-academy'),
+          ),
+        ]),
+      ],
+    ),
+    );
+  }
+
+  List<Widget> _chefToolRows(List<({IconData icon, String label, VoidCallback onTap})> tools) {
+    final rows = <Widget>[];
+    for (var i = 0; i < tools.length; i += 2) {
+      if (i > 0) rows.add(const SizedBox(height: 10));
+      rows.add(
         Row(
           children: [
-            Expanded(
-              child: _chefToolCard(
-                icon: Icons.cloud_upload_outlined,
-                label: 'Upload Menu',
-                onTap: () => context.push('/chef-publish-meal'),
-              ),
-            ),
+            Expanded(child: _chefToolCard(icon: tools[i].icon, label: tools[i].label, onTap: tools[i].onTap)),
             const SizedBox(width: 10),
             Expanded(
-              child: _chefToolCard(
-                icon: Icons.restaurant_menu_rounded,
-                label: 'Active Dishes',
-                onTap: () => setState(() {
-                  _selectedIndex = 4;
-                  _menuFilter = 'Active';
-                }),
-              ),
+              child: i + 1 < tools.length
+                  ? _chefToolCard(icon: tools[i + 1].icon, label: tools[i + 1].label, onTap: tools[i + 1].onTap)
+                  : const SizedBox.shrink(),
             ),
           ],
         ),
-      ],
-    );
+      );
+    }
+    return rows;
   }
 
   Widget _chefToolCard({required IconData icon, required String label, required VoidCallback onTap}) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
         decoration: BoxDecoration(
           color: AppTheme.surfaceOf(context),
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppTheme.hairlineOf(context)),
         ),
         child: Column(
           children: [
             Icon(icon, color: AppTheme.primary, size: 28),
             const SizedBox(height: 8),
-            Text(label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+            Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
           ],
         ),
       ),
@@ -1092,12 +1094,12 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   Widget _chefStatCard(String label, String value, {VoidCallback? onTap}) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: AppTheme.surfaceOf(context),
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppTheme.hairlineOf(context)),
         ),
         child: Column(
@@ -1109,6 +1111,25 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _ordersStageList(
+    List<Map<String, dynamic>> orders, {
+    required String emptyTitle,
+    required String emptyMessage,
+  }) {
+    if (orders.isEmpty) {
+      return EmptyState(
+        icon: Icons.receipt_long_outlined,
+        title: emptyTitle,
+        message: emptyMessage,
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+      itemCount: orders.length,
+      itemBuilder: (context, index) => _buildOrderCard(orders[index]).entrance(index: index),
     );
   }
 
@@ -1135,77 +1156,43 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               'Completed',
             ],
             index: _ordersStage,
-            onChanged: (index) => setState(() => _ordersStage = index),
+            onChanged: (index) {
+              if (index == _ordersStage) return;
+              setState(() => _ordersStage = index);
+              if (_ordersPages.hasClients) {
+                _ordersPages.animateToPage(
+                  index,
+                  duration: AppTheme.tabDuration,
+                  curve: Curves.easeOutCubic,
+                );
+              }
+            },
           ),
         ),
         Expanded(
-          child: switch (_ordersStage) {
-            2 => _buildDispatchTab(allOrders),
-            3 => _buildHistoryTab(allOrders),
-            _ => ( _ordersStage == 0 ? newOrders : inProgress).isEmpty
-                ? EmptyState(
-                    icon: Icons.receipt_long_outlined,
-                    title: _ordersStage == 0 ? 'No new orders' : 'Nothing in progress',
-                    message: _ordersStage == 0
-                        ? 'New diner plates will land here for Accept or Decline.'
-                        : 'Accepted plates you are cooking show here.',
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
-                    itemCount: (_ordersStage == 0 ? newOrders : inProgress).length,
-                    itemBuilder: (context, index) {
-                      final order = (_ordersStage == 0 ? newOrders : inProgress)[index];
-                      return _buildOrderCard(order).entrance(index: index);
-                    },
-                  ),
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildReadyPickupCard(Map<String, dynamic> order) {
-    final customer = _customerName(order);
-    return AppCard(
-      margin: const EdgeInsets.only(bottom: 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+          child: PageView(
+            controller: _ordersPages,
+            onPageChanged: (index) {
+              if (index == _ordersStage) return;
+              setState(() => _ordersStage = index);
+            },
             children: [
-              Text(
-                formatOrderId(order['order_id']?.toString(), order['id'].toString()),
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: AppTheme.textMuted),
+              _ordersStageList(
+                newOrders,
+                emptyTitle: 'No new orders',
+                emptyMessage: 'New diner plates will land here for Accept or Decline.',
               ),
-              const Spacer(),
-              Text(
-                formatRupees(_orderTotal(order)),
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppTheme.primary),
+              _ordersStageList(
+                inProgress,
+                emptyTitle: 'Nothing in progress',
+                emptyMessage: 'Accepted plates you are cooking show here.',
               ),
+              _buildDispatchTab(allOrders),
+              _buildHistoryTab(allOrders),
             ],
           ),
-          const SizedBox(height: 8),
-          Text(customer, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: AppTheme.onSurfaceOf(context))),
-          const SizedBox(height: 4),
-          Text(
-            '${_orderQuantity(order)} × ${_orderTitle(order)}',
-            style: const TextStyle(color: AppTheme.textMuted, fontSize: 13),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: () => _dispatchOrder(order),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppTheme.live,
-                minimumSize: const Size.fromHeight(46),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              ),
-              child: const Text('Ready for Pickup', style: TextStyle(fontWeight: FontWeight.w800)),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -1258,17 +1245,28 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
           ),
         ),
         Expanded(
-          child: filteredOrders.isEmpty
-              ? const EmptyState(
-                  icon: Icons.receipt_long_outlined,
-                  title: 'No active orders',
-                  message: 'New orders in this queue will appear here in real time.',
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
-                  itemCount: filteredOrders.length,
-                  itemBuilder: (context, index) => _buildOrderCard(filteredOrders[index]).entrance(index: index),
-                ),
+          child: RefreshIndicator(
+            color: AppTheme.primary,
+            onRefresh: _pullToRefreshKitchen,
+            child: filteredOrders.isEmpty
+                ? ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: const [
+                      SizedBox(height: 48),
+                      EmptyState(
+                        icon: Icons.receipt_long_outlined,
+                        title: 'No active orders',
+                        message: 'New orders in this queue will appear here in real time.',
+                      ),
+                    ],
+                  )
+                : ListView.builder(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+                    itemCount: filteredOrders.length,
+                    itemBuilder: (context, index) => _buildOrderCard(filteredOrders[index]).entrance(index: index),
+                  ),
+          ),
         ),
       ],
     );
@@ -1301,7 +1299,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               const Spacer(),
               Text(
                 formatRupees(_orderTotal(order)),
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppTheme.primary),
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: AppTheme.primary),
               ),
             ],
           ),
@@ -1311,7 +1309,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               CircleAvatar(
                 radius: 22,
                 backgroundColor: AppTheme.primary.withValues(alpha: 0.12),
-                child: Text(initial, style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.w800)),
+                child: Text(initial, style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.w700)),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1319,7 +1317,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(customer,
-                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppTheme.onSurfaceOf(context))),
+                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: AppTheme.onSurfaceOf(context))),
                     const SizedBox(height: 2),
                     Text('$quantity × $title', style: const TextStyle(fontSize: 13, color: AppTheme.textMuted)),
                   ],
@@ -1408,25 +1406,44 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     final dispatches = allOrders.where((o) => OrderLifecycle.isDispatchQueue(o['status']?.toString())).toList();
 
     if (dispatches.isEmpty) {
-      return const EmptyState(
-        icon: Icons.local_shipping_outlined,
-        title: 'Nothing to dispatch',
-        message: 'Orders ready for pickup or delivery will show up here.',
+      return RefreshIndicator(
+        color: AppTheme.primary,
+        onRefresh: _pullToRefreshKitchen,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: const [
+            SizedBox(height: 48),
+            EmptyState(
+              icon: Icons.local_shipping_outlined,
+              title: 'Nothing to dispatch',
+              message: 'Orders ready for pickup or delivery will show up here.',
+            ),
+          ],
+        ),
       );
     }
 
-    return ListView.builder(
+    return RefreshIndicator(
+      color: AppTheme.primary,
+      onRefresh: _pullToRefreshKitchen,
+      child: ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
       itemCount: dispatches.length,
       itemBuilder: (context, index) {
         final order = dispatches[index];
         final status = order['status']?.toString() ?? '';
-        final isOut = OrderLifecycle.normalize(status) == 'out for delivery';
-        final driverAssigned = OrderLifecycle.normalize(status).contains('assigned');
+        final isOut = OrderLifecycle.canDriverCompleteRun(status);
+        final driverAssigned = OrderLifecycle.known(status) == OrderStatus.driverAssigned ||
+            OrderLifecycle.isHeadingToPickup(status);
         final svc = _orderService(order);
         final dispatchLabel = () {
           if (isOut) return 'Mark Delivered';
-          if (svc.usesDeliveryPartner) return 'Waiting for a delivery partner';
+          if (svc.usesDeliveryPartner) {
+            if (OrderLifecycle.isHeadingToPickup(status)) return 'Partner on the way to pickup';
+            if (driverAssigned) return 'Partner assigned';
+            return 'Waiting for a delivery partner';
+          }
           if (svc == ServiceType.deliverySelf) return 'Dispatch (Chef-Self)';
           if (svc == ServiceType.dineIn) return 'Mark Dine-In Complete';
           return 'Mark Picked Up';
@@ -1447,7 +1464,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               ),
               const SizedBox(height: 12),
               Text('${_orderTitle(order)} (x${_orderQuantity(order)})',
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
               const SizedBox(height: 4),
               Text(
                 '${_customerName(order)} • diner paid ${formatRupees(_orderTotal(order))} · payout ${formatRupees(chefPayoutForOrder(order).chefPayout)}',
@@ -1513,15 +1530,22 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   ],
                 )
               else if (svc.usesDeliveryPartner)
-                Text(
-                  isOut
-                      ? 'A delivery partner is on the way. They mark this order delivered.'
-                      : driverAssigned
-                          ? 'A delivery partner has this order. They will start and complete the run.'
-                          : ((order['order_type']?.toString() ?? '').trim().isEmpty)
-                              ? 'Drivers only see Delivery Partner jobs. Confirm the service type is Delivery Partner, then mark Ready for Pickup.'
-                              : 'Waiting for a delivery partner. Drivers see this job after you mark it Ready for Pickup.',
-                  style: const TextStyle(fontSize: 13, color: AppTheme.textMuted, height: 1.35),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isOut
+                          ? 'A delivery partner is on the way. They mark this order delivered.'
+                          : OrderLifecycle.isHeadingToPickup(status)
+                              ? 'A delivery partner is on the way to your kitchen for pickup.'
+                              : driverAssigned
+                              ? 'A delivery partner has this order. They will start and complete the run.'
+                              : ((order['order_type']?.toString() ?? '').trim().isEmpty)
+                                  ? 'Drivers only see Delivery Partner jobs. Confirm the service type is Delivery Partner, then mark Ready for Pickup.'
+                                  : 'Waiting for a delivery partner. Drivers see this job after you mark it Ready for Pickup.',
+                      style: const TextStyle(fontSize: 13, color: AppTheme.textMuted, height: 1.35),
+                    ),
+                  ],
                 )
               else
                 GradientButton(
@@ -1536,6 +1560,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
           ),
         ).entrance(index: index);
       },
+    ),
     );
   }
 
@@ -1669,11 +1694,9 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   }
 
   Widget _buildMenuTab() {
+    _ensureMenuStream();
     return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: _supabase
-          .from('meals')
-          .stream(primaryKey: ['id'])
-          .eq('chef_id', _currentUserId),
+      stream: _menuStream,
       builder: (context, snapshot) {
         final all = List<Map<String, dynamic>>.from(snapshot.data ?? const []);
         all.sort((a, b) => (b['updated_at'] ?? b['created_at'] ?? '').toString().compareTo(
@@ -1738,7 +1761,11 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               ),
             ),
             Expanded(
-              child: ListView(
+              child: RefreshIndicator(
+                color: AppTheme.primary,
+                onRefresh: _pullToRefreshKitchen,
+                child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
                 children: [
                   if (_menuFilter == 'Active') ...[
@@ -1757,8 +1784,8 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                         border: Border.all(color: AppTheme.primary.withValues(alpha: 0.25)),
                       ),
                       child: Text(
-                        'Keep HotPotChef diners on the app — in-app pay unlocks refunds, coins, and Support. Moving orders to WhatsApp/UPI can pause boosts.',
-                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, height: 1.35, color: AppTheme.onSurfaceOf(context)),
+                        'Keep HotPotChef diners on the app — in-app pay unlocks refunds, coins, and Support. Moving orders to WhatsApp/UPI can pause sponsored placements.',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, height: 1.35, color: AppTheme.onSurfaceOf(context)),
                       ),
                     ),
                     if (!_isKitchenOpen) ...[
@@ -1802,6 +1829,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                           ),
                         ),
                 ],
+              ),
               ),
             ),
           ],
@@ -1891,13 +1919,13 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                       const SizedBox(height: 4),
                       Text(
                         mealNutritionFacts(meal).compactLine,
-                        style: const TextStyle(fontSize: 11, color: AppTheme.link, fontWeight: FontWeight.w600),
+                        style: const TextStyle(fontSize: 12, color: AppTheme.link, fontWeight: FontWeight.w600),
                       ),
                     ],
                     if (!historyMode && lowStock) ...[
                       const SizedBox(height: 4),
                       const Text('Low stock — restock soon',
-                          style: TextStyle(fontSize: 11, color: AppTheme.warning, fontWeight: FontWeight.w600)),
+                          style: TextStyle(fontSize: 12, color: AppTheme.warning, fontWeight: FontWeight.w600)),
                     ],
                     if (slot.isNotEmpty) ...[
                       const SizedBox(height: 6),
@@ -1998,14 +2026,14 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             if (isMealBoosted(meal))
               Text(
                 mealBoostUntilLabel(meal),
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppTheme.link),
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.link),
               )
             else ...[
               if (canBoost && !isAvailable)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 6),
                   child: Text(
-                    'Stock is back — boost will publish this dish on Home again.',
+                    'Stock is back — this sponsored dish will show on Home again.',
                     style: AppTheme.caption,
                   ),
                 ),
@@ -2022,7 +2050,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   ),
                   icon: const Icon(Icons.auto_awesome, size: 18),
                   label: Text(
-                    'Boost on Home · ₹$kChefBoostRupees',
+                    'Sponsor on Home · ₹$kChefBoostRupees',
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   onPressed: canBoost ? () => showChefBoostSheet(context, meal) : null,
@@ -2063,23 +2091,37 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     final platformPct = (kPlatformMarginRate * 100).toStringAsFixed(0);
 
     if (delivered.isEmpty && cancelled.isEmpty) {
-      return const EmptyState(
-        icon: Icons.account_balance_wallet_outlined,
-        title: 'No completed sales yet',
-        message: 'Delivered and cancelled orders will appear here with a running sales total.',
+      return RefreshIndicator(
+        color: AppTheme.primary,
+        onRefresh: _pullToRefreshKitchen,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: const [
+            SizedBox(height: 48),
+            EmptyState(
+              icon: Icons.account_balance_wallet_outlined,
+              title: 'No completed sales yet',
+              message: 'Delivered and cancelled orders will appear here with a running sales total.',
+            ),
+          ],
+        ),
       );
     }
 
-    return ListView(
+    return RefreshIndicator(
+      color: AppTheme.primary,
+      onRefresh: _pullToRefreshKitchen,
+      child: ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
       children: [
         AppCard(
           child: Column(
             children: [
-              Text('Kitchen take-home', style: AppTheme.metaOf(context).copyWith(fontSize: 13)),
+              Text('Payout & Analytics', style: AppTheme.metaOf(context).copyWith(fontSize: 13)),
               const SizedBox(height: 6),
               Text(formatRupees(revenue),
-                  style: AppTheme.sectionTitleOf(context).copyWith(color: AppTheme.success, fontSize: 28)),
+                  style: AppTheme.sectionTitleOf(context).copyWith(color: AppTheme.success, fontSize: 22)),
               Text(
                   '${delivered.length} completed • Diner GMV ${formatRupees(dinerGmv)} · $platformPct% platform fee on food + pack',
                   textAlign: TextAlign.center,
@@ -2088,7 +2130,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               Text(
                 'Food + packaging after platform fee · delivery fee stays with HotPotChef',
                 textAlign: TextAlign.center,
-                style: AppTheme.metaOf(context).copyWith(fontSize: 11),
+                style: AppTheme.metaOf(context).copyWith(fontSize: 12),
               ),
               const SizedBox(height: 4),
               Text(
@@ -2149,7 +2191,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                       isCancelled
                           ? formatRupees(_orderTotal(h))
                           : formatRupees(chefPayoutForOrder(h).chefPayout),
-                      style: const TextStyle(fontWeight: FontWeight.w800),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                   ),
                   if (!isCancelled)
@@ -2166,6 +2208,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             ).entrance(index: entry.key);
           }),
       ],
+    ),
     );
   }
 
@@ -2257,14 +2300,28 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     Map<String, Map<String, dynamic>> myQuotes = const {},
   }) {
     if (requests.isEmpty) {
-      return const EmptyState(
-        icon: Icons.campaign_outlined,
-        title: 'No catering leads',
-        message: 'Open broadcasts and jobs you have quoted or won will show up here.',
+      return RefreshIndicator(
+        color: AppTheme.primary,
+        onRefresh: _pullToRefreshKitchen,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: const [
+            SizedBox(height: 48),
+            EmptyState(
+              icon: Icons.campaign_outlined,
+              title: 'No catering leads',
+              message: 'Open broadcasts and jobs you have quoted or won will show up here.',
+            ),
+          ],
+        ),
       );
     }
 
-    return ListView.builder(
+    return RefreshIndicator(
+      color: AppTheme.primary,
+      onRefresh: _pullToRefreshKitchen,
+      child: ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
       itemCount: requests.length,
       itemBuilder: (context, index) {
@@ -2288,7 +2345,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                 children: [
                   Expanded(
                     child: Text(req['title'] ?? 'Bulk Catering Lead',
-                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
                   ),
                   Text(
                     hasMyQuote && isOpen
@@ -2296,7 +2353,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                         : (cateringPayableTotal(req) > 0
                             ? '₹${cateringPayableTotal(req).toStringAsFixed(0)}'
                             : '₹${req['budget'] ?? '0'}'),
-                    style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.w800),
+                    style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.w700),
                   ),
                 ],
               ),
@@ -2374,6 +2431,55 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
           ),
         ).entrance(index: index);
       },
+    ),
+    );
+  }
+}
+
+class _CallDriverIconButton extends StatelessWidget {
+  const _CallDriverIconButton({required this.onPressed});
+
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    final fg = enabled ? AppTheme.primary : AppTheme.textMuted;
+    return IconButton(
+      tooltip: 'Call driver',
+      onPressed: onPressed,
+      style: IconButton.styleFrom(
+        foregroundColor: fg,
+        backgroundColor: fg.withValues(alpha: enabled ? 0.10 : 0.06),
+        side: BorderSide(color: fg.withValues(alpha: 0.32)),
+        minimumSize: const Size(44, 44),
+        maximumSize: const Size(48, 48),
+      ),
+      icon: SizedBox(
+        width: 22,
+        height: 22,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            const Icon(Icons.two_wheeler, size: 20),
+            Positioned(
+              right: 0,
+              bottom: 0,
+              child: Container(
+                width: 11,
+                height: 11,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: fg,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 1),
+                ),
+                child: const Icon(Icons.call, size: 7, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

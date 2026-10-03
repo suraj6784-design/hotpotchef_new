@@ -150,7 +150,7 @@ void main() {
       });
       final offers = _offers([promo, expiredBoost, boosted], now: now);
       expect(offers.map((meal) => meal['id']), ['promo', 'boosted']);
-      expect(offerFlashHeadline(boosted, now: now), 'Boosted today');
+      expect(offerFlashHeadline(boosted, now: now), 'Sponsored today');
       expect(isMealBoosted(expiredBoost, now: now), isFalse);
       expect(kChefBoostRupees, 99);
     });
@@ -223,6 +223,30 @@ void main() {
       ]);
       expect(offerFlashSubhead(card), '2 plates · tap to see all Flash Sale deals');
     });
+
+    test('percentage carousel card shows the chef 10% not a blank % Discount', () {
+      final card = buildOfferFlashGroupCard('percentage', [
+        _live({
+          'id': 'biryani',
+          'title': 'Veg Biryani',
+          'chef_name': 'Newchef16',
+          'price': 121,
+          'offer_type': 'percentage',
+          'discount_value': 10,
+          'image_url': 'https://example.com/biryani.jpg',
+        }),
+      ]);
+      expect(offerFlashHeadline(card), '10% OFF');
+      expect(offerFlashSubhead(card), '10% OFF · tap to open');
+      final price = offerFlashPriceBreakup(card);
+      expect(price.title, 'Veg Biryani');
+      expect(price.chefName, 'Newchef16');
+      expect(price.listRupees, 121);
+      expect(price.payRupees, 109);
+      expect(price.badge, '10% OFF');
+      expect(price.showsSplit, isTrue);
+      expect(price.plateCount, 1);
+    });
   });
 
   test('incomplete leftover plates fail current catalog requirements', () {
@@ -239,11 +263,39 @@ void main() {
       mealFailsCurrentCatalogRequirements(_live({
         'title': 'Veg Thali',
         'price': 150,
+        'hosting_address': '',
       })),
+      isTrue,
+    );
+    expect(
+      mealFailsCurrentCatalogRequirements(_live({
+        'title': 'Pin-only thali',
+        'price': 150,
+      })
+        ..remove('hosting_address')
+        ..remove('pickup_lat')
+        ..remove('pickup_lng')),
       isFalse,
     );
     expect(mealHasPlaceholderOrMissingSlot({'time_slot': 'Flexible'}), isTrue);
     expect(mealHasPlaceholderOrMissingSlot({'time_slot': 'Daily (6:30 PM to 9:30 PM)'}), isFalse);
+  });
+
+  test('offer countdown uses the chef published end', () {
+    final now = DateTime(2026, 9, 25, 17, 0);
+    expect(offerExpiryCountdownLabel(null, now: now), isEmpty);
+    expect(
+      offerExpiryCountdownLabel(now.subtract(const Duration(minutes: 1)), now: now),
+      isEmpty,
+    );
+    expect(
+      offerExpiryCountdownLabel(now.add(const Duration(hours: 2, minutes: 5, seconds: 9)), now: now),
+      'Ends in 02:05:09',
+    );
+    expect(
+      offerExpiryCountdownLabel(now.add(const Duration(days: 1, hours: 3)), now: now),
+      'Ends in 1d 03h 00m',
+    );
   });
 
   test('offer strip stays empty until the diner drops a delivery pin', () {

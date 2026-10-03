@@ -63,6 +63,30 @@ void main() {
       expect(unique, hasLength(2));
       expect(unique.map((item) => item['title']), ['Dal', 'Rice']);
     });
+
+    test('ratings from another order of the same meal do not count', () {
+      const thisOrder = 'order-b';
+      const meal = 'meal-thali';
+      final keyed = reviewsForOrderMeals(
+        rows: [
+          {'meal_id': meal, 'order_id': 'order-a', 'rating': 5},
+          {'meal_id': meal, 'order_id': meal, 'rating': 5},
+          {'meal_id': meal, 'order_id': thisOrder, 'rating': 4},
+        ],
+        orderId: thisOrder,
+      );
+      expect(keyed[meal]?['rating'], 4);
+      expect(
+        reviewsForOrderMeals(
+          rows: [
+            {'meal_id': meal, 'order_id': 'order-a', 'rating': 5},
+            {'meal_id': meal, 'rating': 5},
+          ],
+          orderId: thisOrder,
+        ),
+        isEmpty,
+      );
+    });
   });
 
   group('dietSkipReason', () {

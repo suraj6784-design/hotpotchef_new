@@ -4,14 +4,18 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../models/app_role.dart';
 import '../services/alert_service.dart';
 import '../services/auth_session.dart';
 import '../utils/diner_locale.dart';
 import '../utils/helpers.dart';
+import '../utils/kyc_checklist.dart';
 import '../utils/network.dart';
+import '../utils/notification_copy.dart';
 import '../utils/notifications_session.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/diner_storefront.dart';
+import '../widgets/customer_ui_components.dart';
 
 class NotificationsInboxScreen extends StatefulWidget {
   const NotificationsInboxScreen({
@@ -36,6 +40,8 @@ class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
   String _filter = 'all';
   List<Map<String, dynamic>> _rows = const [];
   StreamSubscription<AuthState>? _authSub;
+  bool _kycIncomplete = false;
+  List<String> _kycMissing = const [];
 
   @override
   void initState() {
@@ -130,6 +136,8 @@ class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
         _loading = false;
         _error = signedOut;
         _rows = const [];
+        _kycIncomplete = false;
+        _kycMissing = const [];
       });
       return;
     }
@@ -145,11 +153,36 @@ class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
           .order('created_at', ascending: false)
           .limit(80)
           .withTimeout(NetworkTimeouts.standard);
+      var kycIncomplete = false;
+      var kycMissing = const <String>[];
+      if (widget.partnerInbox) {
+        try {
+          final profile = await Supabase.instance.client
+              .from('users')
+              .select(
+                'role, name, full_name, phone, fssai_number, fssai_proof_url, '
+                'fssai_verification_status, fssai_valid_until, aadhaar_proof_url, '
+                'aadhaar_masked, lat, lng, latitude, longitude, bank_account_number, '
+                'bank_ifsc, ifsc_code, pan_number, driving_license_url, insurance_policy_url, '
+                'vehicle_type, vehicle_reg_no, vehicle_number',
+              )
+              .eq('id', uid)
+              .maybeSingle()
+              .withTimeout(NetworkTimeouts.standard);
+          if (profile != null) {
+            final kyc = kycChecklistFor(profile);
+            kycIncomplete = kyc.incomplete;
+            kycMissing = kyc.missing;
+          }
+        } catch (_) {}
+      }
       if (!mounted || seq != _loadSeq) return;
       setState(() {
         _loadedUserId = uid;
         _settled = true;
         _rows = List<Map<String, dynamic>>.from(raw as List);
+        _kycIncomplete = kycIncomplete;
+        _kycMissing = kycMissing;
         _loading = false;
         _error = null;
       });
@@ -250,8 +283,20 @@ class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
                           icon: Icons.notifications_off_outlined,
                           title: DinerLocaleController.instance.copy.notifications,
                           message: _error,
-                          actionLabel: 'Retry',
-                          onAction: () => unawaited(_load()),
+                          actionLabel: notificationsSignedOutMessage(
+                                    Supabase.instance.client.auth.currentUser?.id,
+                                  ) !=
+                                  null
+                              ? 'Sign In'
+                              : 'Retry',
+                          onAction: notificationsSignedOutMessage(
+                                    Supabase.instance.client.auth.currentUser?.id,
+                                  ) !=
+                                  null
+                              ? () => showAuthBottomSheet(context, () {
+                                    if (mounted) unawaited(_load());
+                                  })
+                              : () => unawaited(_load()),
                         ),
                       ),
                     ],
@@ -265,16 +310,32 @@ class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
                           const SizedBox(width: 8),
                           _filterChip('Orders', 'orders'),
                           const SizedBox(width: 8),
-                          _filterChip(widget.partnerInbox ? 'System' : 'Promotions', widget.partnerInbox ? 'system' : 'promos'),
+                          _filterChip(widget.partnerInbox ? 'System' : 'Offers', widget.partnerInbox ? 'system' : 'promos'),
                         ],
                       ),
                       const SizedBox(height: 16),
                       if (visible.isEmpty)
-                        EmptyState(
-                          icon: Icons.notifications_none_outlined,
-                          title: 'You are up to date',
-                          message: 'Kitchen, delivery, and support notes land here.',
-                        )
+                        Builder(builder: (context) {
+                          final empty = partnerAlertsEmptyCopy(
+                            kycIncomplete: _kycIncomplete,
+                            missing: _kycMissing,
+                          );
+                          return EmptyState(
+                            icon: _kycIncomplete ? Icons.badge_outlined : Icons.notifications_none_outlined,
+                            title: empty.title,
+                            message: empty.message,
+                            actionLabel: _kycIncomplete ? 'Open Profile' : null,
+                            onAction: _kycIncomplete
+                                ? () {
+                                    if (AuthSession.roleFromSession() == AppRole.driver) {
+                                      context.push('/driver-profile');
+                                    } else {
+                                      context.push('/chef-profile');
+                                    }
+                                  }
+                                : null,
+                          );
+                        })
                       else
                         ...visible.map((row) {
                           final unreadRow = row['read_at'] == null;

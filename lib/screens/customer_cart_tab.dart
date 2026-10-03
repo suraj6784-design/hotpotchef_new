@@ -13,10 +13,13 @@ import '../utils/pricing_calculator.dart';
 import '../models/cart_state.dart';
 import '../models/cart_enums.dart';
 import '../providers/cart_provider.dart';
+import '../services/shared_cart_service.dart';
+import '../services/meal_catalog_repository.dart';
 import '../providers/delivery_preference.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/group_order_modal.dart';
+import '../services/reorder_service.dart';
 import 'checkout_screen.dart';
 import 'customer_hub.dart';
 
@@ -49,6 +52,12 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(cartProvider.notifier).fetchUserCoins();
     });
+  }
+
+  Future<void> _pullToRefreshCart() async {
+    final cart = ref.read(cartProvider.notifier);
+    await cart.refreshDeliveryQuote();
+    await cart.fetchUserCoins();
   }
 
   void _maybeShowStockNotice(CartState cartState) {
@@ -104,6 +113,140 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
     return false;
   }
 
+  List<CartItemAddOn> _catalogExtras(CartItemModel item) {
+    return ReorderService.parseMealAddOns(
+      item.rawMealDetails['add_ons'] ?? item.rawMealDetails['addons'],
+    );
+  }
+
+  Future<void> _editCartExtras(CartItemModel item) async {
+    var catalog = _catalogExtras(item);
+    if (catalog.isEmpty) {
+      try {
+        final row = await MealCatalogRepository().addOnsForMeal(item.mealId);
+        catalog = ReorderService.parseMealAddOns(row);
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    if (catalog.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This plate has no extras from the kitchen yet.')),
+      );
+      return;
+    }
+
+    final selectedIds = catalog
+        .where((addon) => item.selectedAddOns.any((picked) => picked.id == addon.id || picked.title == addon.title))
+        .map((addon) => addon.id)
+        .toSet();
+
+    final picked = await showModalBottomSheet<List<CartItemAddOn>>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return Container(
+              decoration: AppTheme.bottomSheetDecoration(
+                isDark: Theme.of(ctx).brightness == Brightness.dark,
+              ),
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 28),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Add extra',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.onSurfaceOf(ctx),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Optional sides for ${item.title}',
+                    style: const TextStyle(fontSize: 13, color: AppTheme.textMuted),
+                  ),
+                  const SizedBox(height: 16),
+                  ...catalog.map((addon) {
+                    final selected = selectedIds.contains(addon.id);
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: InkWell(
+                        onTap: () => setSheetState(() {
+                          if (selected) {
+                            selectedIds.remove(addon.id);
+                          } else {
+                            selectedIds.add(addon.id);
+                          }
+                        }),
+                        borderRadius: AppTheme.radiusMd,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: selected
+                                ? AppTheme.primary.withValues(alpha: 0.1)
+                                : AppTheme.surfaceOf(ctx),
+                            borderRadius: AppTheme.radiusMd,
+                            border: Border.all(
+                              color: selected ? AppTheme.primary : AppTheme.hairlineOf(ctx),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                selected ? Icons.check_circle : Icons.circle_outlined,
+                                color: selected ? AppTheme.primary : AppTheme.textMuted,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  addon.title,
+                                  style: const TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                              Text(
+                                addon.price > 0 ? '+₹${addon.price.toInt()}' : 'Free',
+                                style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.link),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 8),
+                  FilledButton(
+                    onPressed: () {
+                      Navigator.pop(
+                        ctx,
+                        catalog.where((addon) => selectedIds.contains(addon.id)).toList(),
+                      );
+                    },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppTheme.primary,
+                      minimumSize: const Size.fromHeight(46),
+                    ),
+                    child: const Text('Save extras'),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+    if (picked == null || !mounted) return;
+    ref.read(cartProvider.notifier).updateItemAddOns(
+          item.id,
+          picked,
+          catalog: [for (final addon in catalog) addon.toJson()],
+        );
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -118,12 +261,22 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
           title: 'Your Cart',
           onProfile: isLoggedIn ? widget.onProfileTap : null,
         ),
-        body: EmptyState(
-          icon: Icons.shopping_basket_outlined,
-          title: 'Your plate is empty!',
-          message: 'Discover fresh, home-cooked meals from local chefs and add your favourites.',
-          actionLabel: 'Browse Menu',
-          onAction: widget.onAddMoreMeals,
+        body: RefreshIndicator(
+          color: AppTheme.primary,
+          onRefresh: _pullToRefreshCart,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
+              SizedBox(height: MediaQuery.sizeOf(context).height * 0.12),
+              EmptyState(
+                icon: Icons.shopping_basket_outlined,
+                title: 'Your plate is empty!',
+                message: 'Discover fresh, home-cooked meals from local chefs and add your favourites.',
+                actionLabel: 'Browse Menu',
+                onAction: widget.onAddMoreMeals,
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -134,14 +287,18 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
         title: 'Your Cart',
         onProfile: isLoggedIn ? widget.onProfileTap : null,
       ),
-      body: ListView(
+      body: RefreshIndicator(
+        color: AppTheme.primary,
+        onRefresh: _pullToRefreshCart,
+        child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(left: 20, right: 20, top: 20, bottom: 100),
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('Items in cart (${cartState.itemCount})',
-                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppTheme.onSurfaceOf(context))),
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: AppTheme.onSurfaceOf(context))),
               IconButton(
                 tooltip: 'Clear cart',
                 color: Colors.red,
@@ -167,7 +324,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                   Text(
                     '${groupPlaceKindLabel(cartState.sharedPlaceKind)} · ${cartState.sharedRoomCode}',
                     style: TextStyle(
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                       fontSize: 13,
                       color: AppTheme.onSurfaceOf(context),
                     ),
@@ -182,6 +339,17 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                     ].join(' · '),
                     style: const TextStyle(fontSize: 12, color: AppTheme.textMuted, height: 1.35),
                   ),
+                  if (groupCartShareUri(cartState.sharedRoomCode).isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    SelectableText(
+                      groupCartShareUri(cartState.sharedRoomCode),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.linkOf(context),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   Row(
                     children: [
@@ -212,6 +380,19 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                         ),
                       ),
                       const SizedBox(width: 8),
+                      IconButton(
+                        tooltip: 'Copy group link',
+                        onPressed: () async {
+                          final link = groupCartShareUri(cartState.sharedRoomCode);
+                          if (link.isEmpty) return;
+                          await Clipboard.setData(ClipboardData(text: link));
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Group link copied')),
+                          );
+                        },
+                        icon: const Icon(Icons.link, size: 20),
+                      ),
                       TextButton(
                         onPressed: () => ref.read(cartProvider.notifier).detachSharedRoom(),
                         child: const Text('Leave'),
@@ -287,6 +468,19 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
               scheduledDate: item.scheduledDate,
               chefSchedule: rawSchedule,
             );
+            final inGroup = (cartState.sharedRoomCode ?? '').isNotEmpty;
+            final viewerId = Supabase.instance.client.auth.currentUser?.id;
+            final canEdit = !inGroup ||
+                sharedCartLineEditable(
+                  item,
+                  userId: viewerId,
+                  hostId: cartState.sharedHostId,
+                );
+            final ownerLabel = groupPlateOwnerLabel(
+              item,
+              userId: viewerId,
+              hostId: cartState.sharedHostId,
+            );
 
             return AppCard(
               margin: const EdgeInsets.only(bottom: 16),
@@ -313,29 +507,37 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                               item.title.isNotEmpty ? item.title : 'Meal Item',
                               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.onSurfaceOf(context)),
                             ),
+                            if (inGroup) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                'Added by $ownerLabel',
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.textMuted),
+                              ),
+                            ],
                             if (isOfferActive)
                               Container(
                                 margin: const EdgeInsets.only(top: 4),
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
                                   color: Colors.red.shade50,
-                                  borderRadius: BorderRadius.circular(4),
+                                  borderRadius: BorderRadius.circular(12),
                                   border: Border.all(color: Colors.red.shade200),
                                 ),
                                 child: Text(
                                   PricingCalculator.calculateItemSummary(item.rawMealDetails, qty)
                                           .offerDescription ??
                                       'Special Offer Applied',
-                                  style: const TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold),
+                                  style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
                                 ),
                               ),
                           ],
                         ),
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.close, color: AppTheme.textMuted),
-                        onPressed: () => ref.read(cartProvider.notifier).removeItem(cartItemId),
-                      ),
+                      if (canEdit)
+                        IconButton(
+                          icon: const Icon(Icons.close, color: AppTheme.textMuted),
+                          onPressed: () => ref.read(cartProvider.notifier).removeItem(cartItemId),
+                        ),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -348,15 +550,37 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                       children: item.selectedAddOns
                           .map((addon) => Chip(
                                 label: Text('${addon.title} (+₹${addon.price.toStringAsFixed(0)})',
-                                    style: const TextStyle(fontSize: 10)),
+                                    style: const TextStyle(fontSize: 12)),
                                 backgroundColor: AppTheme.primary.withValues(alpha: 0.08),
                                 padding: EdgeInsets.zero,
                                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ))
                           .toList(),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4),
                   ],
+                  if (canEdit)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () => _editCartExtras(item),
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppTheme.primary,
+                          padding: const EdgeInsets.symmetric(horizontal: 0),
+                          minimumSize: const Size(0, 36),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        icon: Icon(
+                          item.selectedAddOns.isEmpty ? Icons.add_circle_outline : Icons.tune,
+                          size: 18,
+                        ),
+                        label: Text(
+                          item.selectedAddOns.isEmpty ? 'Add extra' : 'Change extras',
+                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 8),
 
                   Row(
                     children: [
@@ -391,7 +615,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<ServiceType>(
                         isExpanded: true,
-                        icon: const Icon(Icons.arrow_drop_down, color: AppTheme.primary),
+                        icon: canEdit ? const Icon(Icons.arrow_drop_down, color: AppTheme.primary) : const SizedBox.shrink(),
                         value: currentService,
                         style: const TextStyle(color: AppTheme.link, fontSize: 13, fontWeight: FontWeight.w600),
                         items: availableServices.map((svc) {
@@ -410,14 +634,16 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                             ),
                           );
                         }).toList(),
-                        onChanged: (val) {
-                          if (val != null) {
-                            ref.read(cartProvider.notifier).updateItemServiceType(
-                                  cartItemId,
-                                  val.toDisplayString(),
-                                );
-                          }
-                        },
+                        onChanged: canEdit
+                            ? (val) {
+                                if (val != null) {
+                                  ref.read(cartProvider.notifier).updateItemServiceType(
+                                        cartItemId,
+                                        val.toDisplayString(),
+                                      );
+                                }
+                              }
+                            : null,
                       ),
                     ),
                   ),
@@ -428,7 +654,9 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                     children: [
                       Expanded(
                         child: GestureDetector(
-                          onTap: () async {
+                          onTap: !canEdit
+                              ? null
+                              : () async {
                             final first = chefSlotPickerFirstDate(rawSchedule);
                             final last = chefSlotPickerLastDate(rawSchedule);
                             final initial = chefSlotPickerInitialDate(rawSchedule, item.scheduledDate);
@@ -485,7 +713,9 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                       const SizedBox(width: 12),
                       Expanded(
                         child: GestureDetector(
-                          onTap: () async {
+                          onTap: !canEdit
+                              ? null
+                              : () async {
                             final subSlots =
                                 _futureSlotsForDate(_generateSubSlots(rawSchedule), item.scheduledDate);
                             final pickedSlot = await showDialog<String>(
@@ -580,27 +810,35 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                           borderRadius: AppTheme.radiusXl,
                           border: Border.all(color: AppTheme.hairlineOf(context)),
                         ),
-                        child: Row(
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.remove, color: AppTheme.primary, size: 16),
-                              onPressed: () => ref.read(cartProvider.notifier).updateQuantity(cartItemId, -1),
-                              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                              padding: EdgeInsets.zero,
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 8),
-                              child: Text('${item.quantity}',
-                                  style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.add, color: AppTheme.primary, size: 16),
-                              onPressed: () => ref.read(cartProvider.notifier).updateQuantity(cartItemId, 1),
-                              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                              padding: EdgeInsets.zero,
-                            ),
-                          ],
-                        ),
+                        child: canEdit
+                            ? Row(
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.remove, color: AppTheme.primary, size: 16),
+                                    onPressed: () => ref.read(cartProvider.notifier).updateQuantity(cartItemId, -1),
+                                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                                    padding: EdgeInsets.zero,
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                                    child: Text('${item.quantity}',
+                                        style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.add, color: AppTheme.primary, size: 16),
+                                    onPressed: () => ref.read(cartProvider.notifier).updateQuantity(cartItemId, 1),
+                                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                                    padding: EdgeInsets.zero,
+                                  ),
+                                ],
+                              )
+                            : Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                child: Text(
+                                  'Qty ${item.quantity}',
+                                  style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context)),
+                                ),
+                              ),
                       ),
                     ],
                   ),
@@ -694,7 +932,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                           style: TextStyle(
                             color: Theme.of(context).colorScheme.onSurface,
                             fontSize: 22,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ],
@@ -713,6 +951,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
             ),
           ),
         ],
+      ),
       ),
     );
   }
@@ -756,7 +995,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                   Text(
                     promo.validityLabel(),
                     style: TextStyle(
-                      fontSize: 10,
+                      fontSize: 12,
                       fontWeight: FontWeight.w600,
                       color: promo.isActive ? AppTheme.success : Colors.redAccent,
                     ),
@@ -839,7 +1078,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                   style: TextStyle(
                     color: color ?? ink,
                     fontSize: 13,
-                    fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
+                    fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
                   ),
                 ),
               ],
@@ -856,7 +1095,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Bill breakup', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: ink)),
+              Text('Bill breakup', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: ink)),
               const SizedBox(height: 16),
               row('Items', formatRupees(foodGross)),
               if (promoSavings > 0)
@@ -954,7 +1193,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
           sharedDropoffNote: cartState.sharedDropoffNote,
           sharedTimeSlot: cartState.sharedTimeSlot,
           onOrderPlacedSuccess: () {
-            ref.read(cartProvider.notifier).clearCart();
+            ref.read(cartProvider.notifier).clearCart(closeSharedRoom: true);
             widget.onOrderPlacedSuccess();
           },
         ),

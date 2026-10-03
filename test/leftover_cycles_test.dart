@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hotpotchef_new/models/app_role.dart';
 import 'package:hotpotchef_new/utils/helpers.dart';
+import 'package:hotpotchef_new/widgets/app_widgets.dart';
 
 void main() {
   group('catering lead geo', () {
@@ -101,6 +102,11 @@ void main() {
       expect(AppRole.chef.canUsePackagingStore, isTrue);
       expect(AppRole.customer.canUsePackagingStore, isFalse);
       expect(AppRole.driver.canUsePackagingStore, isFalse);
+    });
+
+    test('phone back from Packaging returns Home instead of exiting', () {
+      expect(hubHardwareBackReturnsHome(8), isTrue);
+      expect(hubHardwareBackReturnsHome(0), isFalse);
     });
 
     test('builds a customer_requests payload, not a packaging_orders row', () {

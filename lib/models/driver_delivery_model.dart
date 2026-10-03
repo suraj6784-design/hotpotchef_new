@@ -4,6 +4,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../models/order_status.dart';
 import '../utils/helpers.dart';
 
 enum DeliveryStatus {
@@ -16,17 +17,22 @@ enum DeliveryStatus {
   cancelled;
 
   static DeliveryStatus fromString(String? val) {
-    final s = val?.toLowerCase().trim() ?? '';
-    if (s.contains('cancel')) return DeliveryStatus.cancelled;
-    if (s.contains('out')) return DeliveryStatus.outForDelivery;
-    if (s.contains('delivered') || s.contains('completed')) return DeliveryStatus.delivered;
-    if (s.contains('assigned') || s == 'accepted') return DeliveryStatus.accepted;
-    if (s.contains('ready')) return DeliveryStatus.readyForPickup;
-    if (s.contains('pickup') || s.contains('picked')) return DeliveryStatus.pickedUp;
-    if (s.contains('pending') || s.contains('confirm') || s.contains('prepar') || s == 'placed' || s == 'new') {
-      return DeliveryStatus.waitingKitchen;
+    switch (OrderStatus.canonical(val)) {
+      case OrderStatus.cancelled:
+        return DeliveryStatus.cancelled;
+      case OrderStatus.outForDelivery:
+        return DeliveryStatus.outForDelivery;
+      case OrderStatus.delivered:
+        return DeliveryStatus.delivered;
+      case OrderStatus.headingToKitchen:
+        return DeliveryStatus.pickedUp;
+      case OrderStatus.driverAssigned:
+        return DeliveryStatus.accepted;
+      case OrderStatus.readyForPickup:
+        return DeliveryStatus.readyForPickup;
+      default:
+        return DeliveryStatus.waitingKitchen;
     }
-    return DeliveryStatus.waitingKitchen;
   }
 
   String toDbValue() {
@@ -38,7 +44,7 @@ enum DeliveryStatus {
       case DeliveryStatus.accepted:
         return 'Driver Assigned';
       case DeliveryStatus.pickedUp:
-        return 'Ready for Pickup';
+        return 'Heading to Kitchen';
       case DeliveryStatus.outForDelivery:
         return 'Out for Delivery';
       case DeliveryStatus.delivered:
@@ -131,7 +137,7 @@ class DriverDeliveryModel {
         if (selectedDate != null && selectedDate!.isNotEmpty) 'selected_date': selectedDate,
       };
 
-  /// After Start Delivery / Out for Delivery → navigate to customer; before that → kitchen.
+  /// After pickup / Out for Delivery → navigate to customer; before that → kitchen.
   bool get navigateToCustomer => driverRunIsOutForDelivery(statusLabel.isEmpty ? status.toDbValue() : statusLabel);
 
   String get navigateLeg => navigateToCustomer ? 'dropoff' : 'pickup';

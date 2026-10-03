@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
+import '../services/meal_catalog_repository.dart';
 import '../utils/meal_plans.dart';
 
 final mealPlansProvider = NotifierProvider<MealPlansNotifier, List<MealPlan>>(MealPlansNotifier.new);
@@ -82,7 +83,7 @@ class MealPlansNotifier extends Notifier<List<MealPlan>> {
   Future<Map<String, dynamic>> resolveMeal(MealPlan plan) async {
     if (plan.mealId.isEmpty) return plan.mealForCart();
     try {
-      final live = await _supabase.from('meals').select().eq('id', plan.mealId).maybeSingle();
+      final live = await MealCatalogRepository(_supabase).mealById(plan.mealId);
       if (live != null) return Map<String, dynamic>.from(live);
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to resolve planned meal');

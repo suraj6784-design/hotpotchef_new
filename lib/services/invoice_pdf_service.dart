@@ -11,7 +11,6 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
-import '../utils/app_theme.dart';
 import '../utils/gst_invoice.dart';
 import '../utils/helpers.dart';
 import '../widgets/app_widgets.dart';

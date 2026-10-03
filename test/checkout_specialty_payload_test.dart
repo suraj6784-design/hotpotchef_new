@@ -121,7 +121,7 @@ void main() {
   });
 
   group('mealInDeliveryRadius', () {
-    test('filters far kitchens and hides unknown pins without a drop', () {
+    test('filters far kitchens; launch-city diner still sees unpinned kitchens', () {
       expect(
         mealInDeliveryRadius(
           {'pickup_lat': 18.52, 'pickup_lng': 73.85},
@@ -144,7 +144,7 @@ void main() {
           destinationLat: 18.52,
           destinationLng: 73.85,
         ),
-        isFalse,
+        isTrue,
       );
       expect(
         mealInDeliveryRadius(

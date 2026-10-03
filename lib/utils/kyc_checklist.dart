@@ -34,6 +34,9 @@ KycChecklist kycChecklistFor(Map<String, dynamic> row) {
       'IFSC': row['bank_ifsc']?.toString() ?? row['ifsc_code']?.toString() ?? '',
       'PAN': row['pan_number']?.toString() ?? '',
       'Aadhaar': row['aadhaar_masked']?.toString() ?? '',
+      'Aadhaar card': row['aadhaar_proof_url']?.toString() ?? '',
+      'Driving licence': row['driving_license_url']?.toString() ?? '',
+      'Insurance policy': row['insurance_policy_url']?.toString() ?? '',
       'Vehicle type': row['vehicle_type']?.toString() ?? '',
       'Vehicle number': row['vehicle_reg_no']?.toString() ?? row['vehicle_number']?.toString() ?? '',
     };
@@ -47,9 +50,12 @@ KycChecklist kycChecklistFor(Map<String, dynamic> row) {
     'FSSAI proof': row['fssai_proof_url']?.toString() ?? '',
     'FSSAI verified':
         (!fssaiLicenceIsExpired(parseStoredFssaiValidUntil(row['fssai_valid_until'])) &&
-                normalizeFssaiVerificationStatus(row['fssai_verification_status']?.toString()) == 'verified')
+                (normalizeFssaiVerificationStatus(row['fssai_verification_status']?.toString()) == 'verified' ||
+                    ((row['fssai_proof_url']?.toString() ?? '').trim().isNotEmpty &&
+                        normalizeFssaiVerificationStatus(row['fssai_verification_status']?.toString()) == 'pending')))
             ? 'yes'
             : '',
+    'Aadhaar card': row['aadhaar_proof_url']?.toString() ?? '',
     'Kitchen pin': hasKitchenPin(row) ? 'yes' : '',
   };
   final payoutMissing = <String>[];

@@ -13,8 +13,12 @@ Future<void> submitMealReview({
   required String comment,
 }) async {
   final mealId = mealIdFromOrderItem(item) ?? item['id']?.toString();
+  final resolvedOrder = (orderId ?? '').trim();
   if (mealId == null || mealId.isEmpty) {
     throw Exception('This plate cannot be rated.');
+  }
+  if (resolvedOrder.isEmpty) {
+    throw Exception('Rate this plate from the order it was delivered on.');
   }
   final row = <String, dynamic>{
     'meal_id': mealId,
@@ -22,7 +26,7 @@ Future<void> submitMealReview({
     'chef_id': chefId ?? item['chef_id'],
     'rating': rating,
     'comment': comment,
-    if ((orderId ?? '').isNotEmpty) 'order_id': orderId,
+    'order_id': resolvedOrder,
   };
   try {
     await Supabase.instance.client.from('reviews').upsert(
@@ -171,30 +175,24 @@ class OrderItemReviewButtons extends StatelessWidget {
         .whereType<String>()
         .where((id) => id.isNotEmpty)
         .toList();
+    final orderKey = (orderId ?? '').trim();
     final uid = Supabase.instance.client.auth.currentUser?.id ?? '';
 
     return FutureBuilder<List<Map<String, dynamic>>>(
-      future: ids.isEmpty || uid.isEmpty
+      future: ids.isEmpty || uid.isEmpty || orderKey.isEmpty
           ? Future.value(const [])
           : Supabase.instance.client
               .from('reviews')
               .select('meal_id, rating, order_id')
               .eq('customer_id', uid)
+              .eq('order_id', orderKey)
               .inFilter('meal_id', ids)
               .then((rows) => List<Map<String, dynamic>>.from(rows as List)),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const SizedBox();
         }
-        final orderKey = (orderId ?? '').trim();
-        final rated = <String, Map<String, dynamic>>{};
-        for (final row in snap.data ?? const <Map<String, dynamic>>[]) {
-          final mealId = row['meal_id']?.toString() ?? '';
-          if (mealId.isEmpty) continue;
-          final rowOrder = row['order_id']?.toString() ?? '';
-          if (orderKey.isNotEmpty && rowOrder.isNotEmpty && rowOrder != orderKey) continue;
-          rated[mealId] = row;
-        }
+        final rated = reviewsForOrderMeals(rows: snap.data ?? const [], orderId: orderKey);
         return Column(
           children: [
             for (final item in meals)

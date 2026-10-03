@@ -83,6 +83,16 @@ class _CustomerSupportTicketsScreenState extends State<CustomerSupportTicketsScr
     return Scaffold(
       backgroundColor: bg,
       appBar: const HubAppBar(title: 'My support tickets'),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () async {
+          await showContactSupportSheet(context);
+          if (mounted) _load();
+        },
+        backgroundColor: AppTheme.primary,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.support_agent_outlined),
+        label: const Text('New ticket'),
+      ),
       body: RefreshIndicator(
         color: AppTheme.primary,
         onRefresh: _load,
@@ -110,17 +120,22 @@ class _CustomerSupportTicketsScreenState extends State<CustomerSupportTicketsScr
                     ? ListView(
                         physics: const AlwaysScrollableScrollPhysics(),
                         padding: const EdgeInsets.all(24),
-                        children: const [
+                        children: [
                           EmptyState(
                             icon: Icons.support_agent_outlined,
                             title: 'No tickets yet',
-                            message: 'Open Contact Us to create a support ticket. Ops replies within 1 business day.',
+                            message: 'Pick a topic, then open a ticket. Ops replies within 1 business day.',
+                            actionLabel: 'Contact support',
+                            onAction: () async {
+                              await showContactSupportSheet(context);
+                              if (mounted) _load();
+                            },
                           ),
                         ],
                       )
                     : ListView.builder(
                         physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
                         itemCount: _tickets.length,
                         itemBuilder: (context, index) {
                           final row = _tickets[index];

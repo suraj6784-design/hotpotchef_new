@@ -15,6 +15,7 @@ import '../screens/chat_inbox_screen.dart';
 import '../screens/meal_link_screen.dart';
 import '../screens/chef_link_screen.dart';
 import '../screens/cart_import_screen.dart';
+import '../screens/group_join_screen.dart';
 import '../screens/live_tracking_screen.dart';
 import '../screens/chef_profile_screen.dart';
 import '../screens/driver_profile_screen.dart';
@@ -149,6 +150,10 @@ class AppRouter {
 
       if (isAuthenticated) {
         if (path == '/auth') {
+          final next = dinerGroupReturnPath(state.uri.queryParameters['next']);
+          if (next != null && role == AppRole.customer && !kAppStorefront.isPartner) {
+            return next;
+          }
           return role.hubPath;
         }
         if (adminShouldSkipCustomerHome(
@@ -199,10 +204,15 @@ class AppRouter {
       ),
       _fadeRoute(
         '/driver-hub',
-        (context, state) => DriverHubScreen(
-          key: ValueKey('driver-${state.uri.query}'),
-          initialTab: driverHubTabIndex(state.uri.queryParameters['tab']),
-        ),
+        (context, state) {
+          final tab = state.uri.queryParameters['tab'];
+          final wallet = tab == 'wallet';
+          return DriverHubScreen(
+            key: ValueKey('driver-${state.uri.query}'),
+            initialTab: wallet ? 1 : driverHubTabIndex(tab),
+            initialOrdersStage: wallet ? 2 : 0,
+          );
+        },
       ),
       _fadeRoute('/chef-publish-meal', (context, state) {
         final extra = state.extra;
@@ -227,6 +237,10 @@ class AppRouter {
           key: state.pageKey,
           child: CartImportScreen(itemsParam: state.uri.queryParameters['items'] ?? ''),
         ),
+      ),
+      _fadeRoute(
+        '/group/:code',
+        (context, state) => GroupJoinScreen(roomCode: state.pathParameters['code'] ?? ''),
       ),
       GoRoute(
         path: '/app/cart',
@@ -276,6 +290,9 @@ class AppRouter {
           driverName: extra['name']?.toString() ?? 'Delivery Partner',
           driverPhone: extra['phone']?.toString() ?? '',
           avatarUrl: extra['avatarUrl']?.toString(),
+          idCardNo: extra['idCardNo']?.toString(),
+          bloodGroup: extra['bloodGroup']?.toString(),
+          emergencyPhone: extra['emergencyPhone']?.toString(),
         );
       }),
       _fadeRoute('/chef-analytics', (context, state) => const ChefAnalyticsScreen()),

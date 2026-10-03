@@ -21,8 +21,8 @@ import '../utils/helpers.dart';
 import 'app_widgets.dart';
 import 'diner_storefront.dart';
 import '../utils/meal_nutrition.dart';
+import '../utils/meal_publish_template.dart';
 import '../utils/app_page.dart';
-import '../utils/app_theme.dart';
 import '../utils/pricing_calculator.dart';
 import '../models/cart_enums.dart';
 import '../providers/cart_provider.dart';
@@ -135,7 +135,7 @@ Future<void> showMealShareSheet(BuildContext context, Map<String, dynamic> meal)
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Share this dish', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.onSurfaceOf(ctx))),
+              Text('Share this dish', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: AppTheme.onSurfaceOf(ctx))),
               const SizedBox(height: 8),
               shareCardPreview(ctx, text),
               const SizedBox(height: 16),
@@ -180,7 +180,7 @@ Future<void> showPlateShareSheet(
             children: [
               Text(
                 'Share your plate',
-                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppTheme.onSurfaceOf(ctx)),
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: AppTheme.onSurfaceOf(ctx)),
               ),
               const SizedBox(height: 4),
               Text(
@@ -238,7 +238,7 @@ class DispatchPackedPhoto extends StatelessWidget {
               ),
               child: Text(
                 caption,
-                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
+                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700),
               ),
             ),
           ),
@@ -309,14 +309,14 @@ class WatermarkedMealImage extends StatelessWidget {
 
 // 2. Status Badge Helper
 Widget buildStatusBadge(String status) {
-  Color color = Colors.orange;
+  Color color = AppTheme.warning;
   final s = status.toLowerCase();
   if (s.contains('out for delivery') || s.contains('ready') || s.contains('assigned')) {
-    color = Colors.teal;
+    color = AppTheme.primary;
   } else if (s.contains('delivered') || s.contains('completed') || s.contains('confirm')) {
-    color = Colors.green;
+    color = AppTheme.success;
   } else if (s.contains('cancel') || s.contains('reject')) {
-    color = Colors.redAccent;
+    color = AppTheme.error;
   }
   return Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -325,8 +325,8 @@ Widget buildStatusBadge(String status) {
       borderRadius: AppTheme.radiusSm,
     ),
     child: Text(
-      status.toUpperCase(),
-      style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold),
+      AppTheme.sentenceLabel(status),
+      style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w700),
     ),
   );
 }
@@ -409,7 +409,7 @@ class _DeliveryCountdownStickerState extends State<DeliveryCountdownSticker> {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(
@@ -420,7 +420,7 @@ class _DeliveryCountdownStickerState extends State<DeliveryCountdownSticker> {
           Flexible(
             child: Text(
               label,
-              style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold),
+              style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -658,7 +658,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
                         ),
                         child: Text(
                           chefCardLocaleLabel(_cardLocale),
-                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.link),
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.link),
                         ),
                       ),
                     ],
@@ -739,7 +739,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
                   Expanded(
                     child: Text(
                       _rating.label,
-                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: ink),
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: ink),
                     ),
                   ),
                 ],
@@ -774,7 +774,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
                         ),
                         child: Text(
                           _liveLabel.isEmpty ? 'Live from the kitchen' : _liveLabel,
-                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
+                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700),
                         ),
                       ),
                     ),
@@ -809,7 +809,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
             ],
             if (_social.hasAny) ...[
               const SizedBox(height: 10),
-              Text('Also on', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: muted)),
+              Text('Also on', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: muted)),
               const SizedBox(height: 6),
               ChefSocialChips(links: _social, compact: true),
             ],
@@ -835,7 +835,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
             ],
             if (_recentReviews.isNotEmpty) ...[
               const SizedBox(height: 14),
-              Text(_copy.recentReviews, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: ink)),
+              Text(_copy.recentReviews, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: ink)),
               const SizedBox(height: 8),
               ..._recentReviews.map((review) {
                 final stars = int.tryParse(review['rating']?.toString() ?? '') ?? 0;
@@ -857,7 +857,7 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
                             ),
                           ),
                           const SizedBox(width: 6),
-                          Text(when, style: TextStyle(fontSize: 10, color: muted)),
+                          Text(when, style: TextStyle(fontSize: 12, color: muted)),
                         ],
                       ),
                       const SizedBox(height: 2),
@@ -898,7 +898,18 @@ class _ChefProfilePeekDialogState extends ConsumerState<ChefProfilePeekDialog> {
 }
 
 // 6. Fully Upgraded Decision-Making Meal Details Modal
-Future<bool> confirmReplaceKitchenCart(BuildContext context) async {
+Future<bool> confirmReplaceKitchenCart(
+  BuildContext context, {
+  String? currentKitchen,
+  String? nextKitchen,
+}) async {
+  final current = (currentKitchen ?? '').trim();
+  final next = (nextKitchen ?? '').trim();
+  final message = current.isEmpty
+      ? 'Your cart already has another kitchen. Clear it and add this dish?'
+      : next.isEmpty
+          ? 'Your cart is from $current. Clear it and add this dish?'
+          : 'Your cart is from $current. Clear it and add this dish from $next?';
   final replace = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
@@ -909,7 +920,7 @@ Future<bool> confirmReplaceKitchenCart(BuildContext context) async {
         style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(ctx)),
       ),
       content: Text(
-        'Your cart has dishes from another kitchen. Clear the cart and add this dish instead?',
+        message,
         style: TextStyle(color: AppTheme.onSurfaceOf(ctx).withValues(alpha: 0.75)),
       ),
       actions: [
@@ -920,7 +931,7 @@ Future<bool> confirmReplaceKitchenCart(BuildContext context) async {
         ElevatedButton(
           style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary, foregroundColor: Colors.white),
           onPressed: () => Navigator.pop(ctx, true),
-          child: const Text('Clear & add'),
+          child: const Text('Replace cart'),
         ),
       ],
     ),
@@ -995,7 +1006,8 @@ Future<bool> addMealToCartWithConflict({
   } catch (_) {}
 
   final cart = ref.read(cartProvider.notifier);
-  final existingChef = ref.read(cartProvider).primaryChefId;
+  final cartState = ref.read(cartProvider);
+  final existingChef = cartState.primaryChefId;
   final chefId = meal['chef_id']?.toString() ?? '';
   final added = cart.addToCart(meal, quantity, addOns: addOns, clearIfVendorConflict: false);
   if (added) return true;
@@ -1003,7 +1015,12 @@ Future<bool> addMealToCartWithConflict({
   final isConflict = existingChef != null && existingChef.isNotEmpty && chefId.isNotEmpty && existingChef != chefId;
   if (!isConflict || !context.mounted) return false;
 
-  final replace = await confirmReplaceKitchenCart(context);
+  final currentKitchen = cartState.items.isEmpty ? null : chefDisplayName(cartState.items.first.rawMealDetails);
+  final replace = await confirmReplaceKitchenCart(
+    context,
+    currentKitchen: currentKitchen,
+    nextKitchen: chefDisplayName(meal),
+  );
   if (!replace || !context.mounted) return false;
   return cart.addToCart(meal, quantity, addOns: addOns, clearIfVendorConflict: true);
 }
@@ -1014,8 +1031,7 @@ void showMealDetailsDialog(
   WidgetRef ref, {
   VoidCallback? onGoToCart,
 }) {
-  Navigator.push(
-    context,
+  Navigator.of(context, rootNavigator: true).push(
     appMaterialRoute(
       Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -1129,7 +1145,7 @@ class MealNutritionStrip extends StatelessWidget {
             padding: EdgeInsets.symmetric(horizontal: compact ? 7 : 10, vertical: compact ? 4 : 8),
             decoration: BoxDecoration(
               color: AppTheme.canvasOf(context),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(12),
               border: Border.all(color: AppTheme.hairlineOf(context)),
             ),
             child: Text.rich(
@@ -1139,7 +1155,7 @@ class MealNutritionStrip extends StatelessWidget {
                     text: '${tile.$1}  ',
                     style: TextStyle(
                       fontSize: compact ? 10 : 11,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                       color: AppTheme.linkOf(context),
                     ),
                   ),
@@ -1219,6 +1235,8 @@ class MealDetailsBody extends StatefulWidget {
 
 class _MealDetailsBodyState extends State<MealDetailsBody> {
   int _quantity = 1;
+  bool _notifyBusy = false;
+  int? _liveStock;
   final Set<String> _selectedAddOnIds = {};
 
   List<CartItemAddOn> get _availableAddOns => ReorderService.parseMealAddOns(
@@ -1238,6 +1256,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
   @override
   void initState() {
     super.initState();
+    unawaited(_refreshLiveStock());
     unawaited(AppAnalytics.logViewMeal(
       mealId: widget.meal['id']?.toString() ?? '',
       chefId: widget.meal['chef_id']?.toString(),
@@ -1245,15 +1264,84 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
     ));
   }
 
+  Future<void> _refreshLiveStock() async {
+    final mealId = widget.meal['id']?.toString() ?? '';
+    if (mealId.isEmpty) return;
+    try {
+      final row = await Supabase.instance.client
+          .from('meals')
+          .select('quantity, status')
+          .eq('id', mealId)
+          .maybeSingle();
+      if (!mounted || row == null) return;
+      final qty = int.tryParse(row['quantity']?.toString() ?? '');
+      setState(() {
+        _liveStock = qty;
+        if (qty != null && qty > 0 && _quantity > qty) _quantity = qty;
+      });
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Meal stock refresh failed');
+    }
+  }
+
+  Future<void> _requestAvailabilityNotify() async {
+    if (_notifyBusy) return;
+    final mealId = widget.meal['id']?.toString() ?? '';
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sign in to get a ping when this plate is back.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    if (mealId.isEmpty) return;
+    setState(() => _notifyBusy = true);
+    try {
+      await Supabase.instance.client.from('meal_notify_requests').upsert(
+        {
+          'diner_id': user.id,
+          'meal_id': mealId,
+        },
+        onConflict: 'diner_id,meal_id',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('We will ping you when this plate is available again.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Meal notify request failed');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not save notify request. Try again.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _notifyBusy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final meal = widget.meal;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final maxStock = int.tryParse(meal['quantity']?.toString() ?? '10') ?? 10;
-    final canAddToCart = isMealAvailableForCart(meal);
-    final cartCta = !mealHasSellableStock(meal)
+    final listedStock = int.tryParse(meal['quantity']?.toString() ?? '');
+    final maxStock = _liveStock ?? listedStock ?? 0;
+    final stockMeal = <String, dynamic>{
+      ...meal,
+      'quantity': maxStock,
+    };
+    final canAddToCart = isMealAvailableForCart(stockMeal);
+    final cartCta = !mealHasSellableStock(stockMeal)
         ? 'Sold out'
-        : (isMealExpired(meal['time_slot']?.toString()) ? 'Slot passed' : 'Add to Cart • ₹${_lineFoodTotal.toInt()}');
+        : (isMealExpired(meal['time_slot']?.toString()) ? 'Slot passed' : 'Add to Cart • ₹${wholeRupees(_lineFoodTotal)}');
     final offerSummary = PricingCalculator.calculateItemSummary(meal, _quantity);
     final price = offerSummary.effectiveUnitPrice;
     final chefName = chefDisplayName(meal);
@@ -1278,19 +1366,16 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
               children: [
                 Stack(
                   children: [
-                    Hero(
-                      tag: 'meal-image-${meal['id']}',
-                      child: WatermarkedMealImage(
-                        imageUrl: meal['image_url'],
-                        height: 300,
-                        borderRadius: BorderRadius.zero,
-                      ),
+                    WatermarkedMealImage(
+                      imageUrl: meal['image_url'],
+                      height: 300,
+                      borderRadius: BorderRadius.zero,
                     ),
                     Positioned(
                       top: MediaQuery.of(context).padding.top + 8,
                       left: 16,
                       child: GestureDetector(
-                        onTap: () => Navigator.pop(context),
+                        onTap: () => Navigator.of(context, rootNavigator: true).maybePop(),
                         child: Container(
                           padding: const EdgeInsets.all(8),
                           decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
@@ -1311,7 +1396,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                           Expanded(
                             child: Text(
                               meal['title']?.toString() ?? 'Home Meal',
-                              style: AppTheme.sectionTitleOf(context).copyWith(fontSize: 26),
+                              style: AppTheme.sectionTitleOf(context).copyWith(fontSize: 22),
                             ),
                           ),
                           AppIconAction(
@@ -1323,88 +1408,14 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                           Container(
                             padding: const EdgeInsets.all(4),
                             decoration: BoxDecoration(
-                              border: Border.all(color: mealIsVegetarian(meal) ? Colors.green : Colors.redAccent),
+                              border: Border.all(color: mealIsVegetarian(meal) ? AppTheme.veg : AppTheme.nonVeg),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Icon(Icons.circle,
-                                color: mealIsVegetarian(meal) ? Colors.green : Colors.redAccent, size: 10),
+                                color: mealIsVegetarian(meal) ? AppTheme.veg : AppTheme.nonVeg, size: 12),
                           ),
                         ],
                       ),
-                      if (isFestivalHamper(meal)) ...[
-                        const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: AppTheme.accent.withValues(alpha: 0.18),
-                            borderRadius: AppTheme.radiusXl,
-                            border: Border.all(color: AppTheme.accent.withValues(alpha: 0.45)),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.card_giftcard_outlined, size: 14, color: AppTheme.primary),
-                              SizedBox(width: 6),
-                              Text(
-                                'Festival hamper',
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppTheme.link),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                      if (isSocietyNight(meal)) ...[
-                        const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primary.withValues(alpha: 0.12),
-                            borderRadius: AppTheme.radiusXl,
-                            border: Border.all(color: AppTheme.primary.withValues(alpha: 0.35)),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.apartment_outlined, size: 14, color: AppTheme.primary),
-                              const SizedBox(width: 6),
-                              Text(
-                                societyNightLabel(meal),
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppTheme.link,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                      if (isShelfItem(meal)) ...[
-                        const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: AppTheme.accent.withValues(alpha: 0.14),
-                            borderRadius: AppTheme.radiusXl,
-                            border: Border.all(color: AppTheme.accent.withValues(alpha: 0.40)),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.kitchen_outlined, size: 14, color: AppTheme.primary),
-                              const SizedBox(width: 6),
-                              Text(
-                                shelfItemKind(meal),
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppTheme.link,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
                       const SizedBox(height: 8),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1414,7 +1425,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                             children: [
                               if (offerSummary.isOfferApplied) ...[
                                 Text(
-                                  '₹${offerSummary.baseUnitPrice.toInt()}',
+                                  '₹${wholeRupees(offerSummary.baseUnitPrice)}',
                                   style: const TextStyle(
                                     fontSize: 14,
                                     color: AppTheme.textMuted,
@@ -1424,8 +1435,16 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                                 ),
                                 const SizedBox(height: 2),
                               ],
-                              Text('₹${price.toInt()}',
-                                  style: AppTheme.priceOf(context).copyWith(fontSize: 24)),
+                              Text('₹${wholeRupees(price)}',
+                                  style: AppTheme.priceOf(context).copyWith(fontSize: 22)),
+                              const SizedBox(height: 2),
+                              Text(
+                                mealPortionsLeftLabel(stockMeal),
+                                style: AppTheme.caption.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: maxStock <= 0 ? AppTheme.error : AppTheme.textMuted,
+                                ),
+                              ),
                               if (offerSummary.isOfferApplied &&
                                   (offerSummary.offerDescription ?? '').isNotEmpty)
                                 Text(
@@ -1551,8 +1570,8 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                                               Text(
                                                 chefCardLocaleLabel(locale),
                                                 style: const TextStyle(
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.w800,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w700,
                                                   color: AppTheme.link,
                                                 ),
                                               ),
@@ -1591,6 +1610,69 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                         ),
                       ),
                       const SizedBox(height: 24),
+                      if (inferMealCuisine(meal).isNotEmpty || inferMealCourse(meal).isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Text(
+                            '${inferMealCuisine(meal)} · ${inferMealCourse(meal)}'
+                            '${mealIsSeasonal(meal) ? ' · Seasonal / limited' : ''}',
+                            style: AppTheme.caption.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      if (mealIngredientsLine(meal).isNotEmpty) ...[
+                        Text('Ingredients', style: AppTheme.homeSectionLabelOf(context).copyWith(fontSize: 16)),
+                        const SizedBox(height: 6),
+                        Text(mealIngredientsLine(meal), style: AppTheme.bodyMuted),
+                        const SizedBox(height: 12),
+                      ],
+                      if (mealAllergenList(meal).isNotEmpty) ...[
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            for (final allergen in mealAllergenList(meal))
+                              Chip(
+                                label: Text('Allergen: $allergen', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      if (mealPrepServingLine(meal).isNotEmpty) ...[
+                        _mealInfoChip(
+                          icon: Icons.soup_kitchen_outlined,
+                          label: 'Prep & serving',
+                          value: mealPrepServingLine(meal),
+                          background: isDark ? Colors.green.shade900.withValues(alpha: 0.3) : Colors.green.shade50,
+                          iconColor: Colors.green,
+                          textColor: isDark ? Colors.green.shade200 : Colors.green.shade800,
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                      if ((meal['delivery_estimate_minutes']?.toString() ?? '').isNotEmpty) ...[
+                        _mealInfoChip(
+                          icon: Icons.timer_outlined,
+                          label: 'Delivery estimate',
+                          value: '${meal['delivery_estimate_minutes']} min',
+                          background: isDark ? Colors.blue.shade900.withValues(alpha: 0.3) : Colors.blue.shade50,
+                          iconColor: Colors.blueAccent,
+                          textColor: isDark ? Colors.blue.shade200 : Colors.blue.shade800,
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                      if ((meal['video_url']?.toString() ?? '').isNotEmpty)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            onPressed: () {
+                              final uri = Uri.tryParse(meal['video_url'].toString());
+                              if (uri != null) launchUrl(uri, mode: LaunchMode.externalApplication);
+                            },
+                            icon: const Icon(Icons.play_circle_outline),
+                            label: const Text('Watch cooking / plating clip'),
+                          ),
+                        ),
                       _mealInfoChip(
                         icon: Icons.delivery_dining,
                         label: 'Delivery option',
@@ -1681,6 +1763,12 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                             'Delicious home-cooked meal prepared with love and high hygiene standards.',
                         style: AppTheme.bodyMuted,
                       ),
+                      if (mealChefTipLine(meal).isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        Text("Chef's tip", style: AppTheme.homeSectionLabelOf(context).copyWith(fontSize: 16)),
+                        const SizedBox(height: 6),
+                        Text(mealChefTipLine(meal), style: AppTheme.bodyMuted),
+                      ],
                     ],
                   ),
                 ),
@@ -1798,7 +1886,7 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                     quantity: _quantity,
                   ),
                   icon: const Icon(Icons.event_repeat, size: 18),
-                  label: const Text('Weekly plan', style: TextStyle(fontWeight: FontWeight.w800)),
+                  label: const Text('Weekly plan', style: TextStyle(fontWeight: FontWeight.w700)),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppTheme.linkOf(context),
                     side: const BorderSide(color: AppTheme.primary),
@@ -1807,6 +1895,17 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                   ),
                 ),
               ),
+              if (!canAddToCart && mealAllowsAvailabilityNotify(meal)) ...[
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton.icon(
+                    onPressed: _notifyBusy ? null : _requestAvailabilityNotify,
+                    icon: const Icon(Icons.notifications_active_outlined, size: 18),
+                    label: const Text('Notify me when available', style: TextStyle(fontWeight: FontWeight.w700)),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
 
 class DinerSectionHeader extends StatelessWidget {
@@ -21,7 +20,7 @@ class DinerSectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 12, 8),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -42,7 +41,7 @@ class DinerSectionHeader extends StatelessWidget {
               onPressed: onSeeAll,
               child: Text(
                 seeAllLabel,
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                style: AppTheme.metaOf(context),
               ),
             ),
         ],
@@ -96,7 +95,7 @@ class DinerCircleModeChip extends StatelessWidget {
               maxLines: 2,
               style: TextStyle(
                 fontSize: 12,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w700,
                 color: selected ? accent : AppTheme.onSurfaceOf(context),
                 height: 1.15,
               ),
@@ -151,7 +150,7 @@ class DinerSegmentBar extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: labels.length >= 4 ? 11 : 12,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                       color: index == i ? Colors.white : AppTheme.onSurfaceOf(context),
                     ),
                   ),
@@ -213,7 +212,7 @@ class DinerSegmentTabs extends StatelessWidget {
             label,
             style: TextStyle(
               fontSize: 13,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w700,
               color: selected ? Colors.white : AppTheme.onSurfaceOf(context),
             ),
           ),
@@ -299,4 +298,27 @@ class ChefSocialChips extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Diner dock is always Home, Orders, Account, Alerts. Cart is the floating bar.
+/// [signedIn] is kept so callers do not change; guests still see all four slots.
+int dinerHubDockIndex(int hubIndex, {bool signedIn = true}) {
+  switch (hubIndex) {
+    case 1:
+      return -1;
+    case 2:
+      return 1;
+    case 3:
+      return 2;
+    case 4:
+      return 3;
+    default:
+      return signedIn ? 0 : 0;
+  }
+}
+
+int dinerHubIndexForDock(int dock, {bool signedIn = true}) {
+  const tabs = [0, 2, 3, 4];
+  if (dock < 0 || dock >= tabs.length) return signedIn ? 0 : 0;
+  return tabs[dock];
 }

@@ -63,7 +63,7 @@ class CheckoutScreen extends StatefulWidget {
   State<CheckoutScreen> createState() => _CheckoutScreenState();
 }
 
-class _CheckoutScreenState extends State<CheckoutScreen> {
+class _CheckoutScreenState extends State<CheckoutScreen> with WidgetsBindingObserver {
   final _supabase = Supabase.instance.client;
 
   bool _isLoading = true;
@@ -87,6 +87,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   String? _heldRazorpayOrderId;
   bool _orderRecorded = false;
   bool _placingOrder = false;
+  bool _leftCheckout = false;
+  int _paymentWatch = 0;
 
   final TextEditingController _phoneController = TextEditingController();
   String? _phoneError;
@@ -128,6 +130,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initRazorpay();
     _loadUserCheckoutData();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -154,7 +157,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_leaveIfOrderAlreadyRecorded());
+    }
+  }
+
+  @override
   void dispose() {
+    _paymentWatch++;
+    WidgetsBinding.instance.removeObserver(this);
     _releaseInventoryHold();
     _razorpay.clear();
     _phoneController.dispose();
@@ -170,6 +182,83 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _supabase.rpc('release_checkout_inventory', params: {
       'p_razorpay_order_id': orderId,
     }).withTimeout(NetworkTimeouts.short);
+  }
+
+  /// UPI often returns to this screen without the Razorpay success callback,
+  /// while the webhook has already saved the order. Leave as soon as that row exists.
+  Future<void> _leaveIfOrderAlreadyRecorded() async {
+    final watch = ++_paymentWatch;
+    for (var attempt = 0; attempt < 8; attempt++) {
+      if (!mounted || watch != _paymentWatch || _leftCheckout) return;
+      if (_placingOrder) {
+        await Future<void>.delayed(const Duration(seconds: 1));
+        continue;
+      }
+      final razorpayOrderId = _heldRazorpayOrderId;
+      if (razorpayOrderId == null || razorpayOrderId.isEmpty) return;
+      try {
+        final rows = await _supabase
+            .from('orders')
+            .select('id, total_price')
+            .eq('razorpay_order_id', razorpayOrderId)
+            .limit(1);
+        if (!mounted || watch != _paymentWatch || _leftCheckout || _placingOrder) return;
+        if (rows.isNotEmpty) {
+          final row = Map<String, dynamic>.from(rows.first as Map);
+          final orderId = row['id']?.toString();
+          final paid = parseMoney(row['total_price']);
+          _exitCheckoutAfterPlacement(
+            orderId: orderId,
+            paidTotal: paid > 0 ? paid : _grandTotal,
+          );
+          return;
+        }
+      } catch (e, stack) {
+        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Checkout resume lookup failed');
+      }
+      await Future<void>.delayed(const Duration(seconds: 2));
+    }
+  }
+
+  void _exitCheckoutAfterPlacement({
+    required String? orderId,
+    required double paidTotal,
+    String? paymentId,
+    String? message,
+  }) {
+    if (_leftCheckout) return;
+    _leftCheckout = true;
+    _orderRecorded = true;
+    _heldRazorpayOrderId = null;
+    _paymentWatch++;
+    unawaited(clearCheckoutRetryJob());
+    unawaited(_persistOrderDropoff(orderId));
+    unawaited(_markSourceRequestOrdered(orderId));
+    unawaited(AppAnalytics.logPurchase(
+      orderId: orderId,
+      value: paidTotal,
+      paymentId: paymentId,
+    ));
+    if (!mounted) return;
+    final label = (orderId == null || orderId.isEmpty) ? '' : formatOrderId(orderId, orderId);
+    final total = formatRupees(paidTotal);
+    final placedCopy = message ??
+        (_membershipOnThisOrder
+            ? 'You are now a Family member. Unlimited free delivery is on.'
+            : label.isEmpty
+                ? 'Order placed. Total $total. It is in Orders, with the receipt.'
+                : 'Order $label placed. Total $total. It is in Orders, with the receipt.');
+    widget.onOrderPlacedSuccess();
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    Navigator.of(context).pop();
+    messenger?.showSnackBar(
+      SnackBar(
+        content: Text(placedCopy),
+        backgroundColor: AppTheme.success,
+        duration: const Duration(seconds: 4),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   // --- Initial Data Load ---
@@ -510,18 +599,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         lng: addressCoordinate(_selectedAddressData, latitude: false),
       );
       if (warning != null) {
-        final proceed = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Outside launch cities'),
-            content: Text(warning),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Change address')),
-              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Continue anyway')),
-            ],
-          ),
-        );
-        if (proceed != true || !mounted) return;
+        _showSnackBar(warning, isError: true);
+        return;
       }
     }
     unawaited(AppAnalytics.logBeginCheckout(itemCount: widget.cartItems.length, value: _grandTotal));
@@ -654,10 +733,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           if (methodOpts['vpa'] != null) 'vpa': methodOpts['vpa'],
         },
         'method': methodOpts['method'],
-        'theme': {'color': '#F4511E'}
+        'config': {
+          'display': {'hide': methodOpts['displayHide']},
+        },
+        'theme': {'color': '#E85A24'}
       };
 
       _razorpay.open(options);
+      unawaited(_leaveIfOrderAlreadyRecorded());
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Payment initialization failed');
       _releaseInventoryHold();
@@ -838,21 +921,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         }
         throw Exception(placed?['error'] ?? 'Could not record the coin-paid order.');
       }
-      _orderRecorded = true;
       final orderId = placed['order_id']?.toString();
-      await _persistOrderDropoff(orderId);
-      await _markSourceRequestOrdered(orderId);
-      unawaited(AppAnalytics.logPurchase(orderId: orderId, value: 0));
-      if (mounted) {
-        widget.onOrderPlacedSuccess();
-        Navigator.pop(context);
-        _showSnackBar(
-          _membershipOnThisOrder
-              ? 'Order placed. You are now a Family member.'
-              : 'Order placed with HotPot Coins.',
-          isError: false,
-        );
-      }
+      _exitCheckoutAfterPlacement(
+        orderId: orderId,
+        paidTotal: 0,
+        message: _membershipOnThisOrder
+            ? 'Order placed. You are now a Family member.'
+            : 'Order placed with HotPot Coins.',
+      );
     } finally {
       _placingOrder = false;
       if (mounted) setState(() => _isCheckingOut = false);
@@ -1048,49 +1124,29 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         signature: response.signature,
       );
 
+      if (_leftCheckout) return;
       if (placed == null || placed['success'] != true) {
         throw Exception(placed?['error'] ?? 'Server failed to record verified order.');
       }
 
-      _orderRecorded = true;
-      _heldRazorpayOrderId = null;
-      await clearCheckoutRetryJob();
       if (placed['membership_only'] == true) {
-        unawaited(AppAnalytics.logPurchase(
+        _exitCheckoutAfterPlacement(
           orderId: 'membership',
-          value: _grandTotal,
+          paidTotal: _grandTotal,
           paymentId: response.paymentId,
-        ));
-        if (mounted) {
-          widget.onOrderPlacedSuccess();
-          Navigator.pop(context);
-          _showSnackBar(
-            'You are now a Family member. Unlimited free delivery is on.',
-            isError: false,
-          );
-        }
+          message: 'You are now a Family member. Unlimited free delivery is on.',
+        );
         return;
       }
       final orderId = placed['order_id']?.toString();
-      await _persistOrderDropoff(orderId);
-      await _markSourceRequestOrdered(orderId);
-      unawaited(AppAnalytics.logPurchase(
+      final recorded = parseMoney(placed['total']);
+      _exitCheckoutAfterPlacement(
         orderId: orderId,
-        value: _grandTotal,
+        paidTotal: recorded > 0 ? recorded : _grandTotal,
         paymentId: response.paymentId,
-      ));
-
-      if (mounted) {
-        widget.onOrderPlacedSuccess();
-        Navigator.pop(context);
-        _showSnackBar(
-          _membershipOnThisOrder
-              ? 'You are now a Family member. Unlimited free delivery is on.'
-              : 'Payment Verified! Order placed successfully.',
-          isError: false,
-        );
-      }
+      );
     } catch (e, stack) {
+      if (_leftCheckout) return;
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Order recording failed post-payment');
       if (mounted) {
         final soldOut = isSoldOutCheckoutError(e);
@@ -1383,7 +1439,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         Text(
                           promo.validityLabel(),
                           style: TextStyle(
-                            fontSize: 10,
+                            fontSize: 12,
                             fontWeight: FontWeight.w600,
                             color: selected
                                 ? Colors.white70
@@ -1477,8 +1533,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 Text(
                   'Your kitchen slot',
                   style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
                     color: AppTheme.onSurfaceOf(context),
                   ),
                 ),
@@ -1522,7 +1578,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(12),
                           child: image.isNotEmpty
                               ? Image.network(
                                   image,
@@ -1561,7 +1617,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                 scheduleLabel,
                                 style: const TextStyle(
                                   fontSize: 15,
-                                  fontWeight: FontWeight.w800,
+                                  fontWeight: FontWeight.w700,
                                   height: 1.25,
                                   color: AppTheme.link,
                                 ),
@@ -1672,7 +1728,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 tilePadding: EdgeInsets.zero,
                 title: Text(
                   DinerLocaleController.instance.copy.adjustBill,
-                  style: const TextStyle(fontWeight: FontWeight.w800),
+                  style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
                 subtitle: const Text('Tip, promo, and Family member'),
                 children: [
@@ -1849,11 +1905,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Grand Total', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                      const Text('Grand Total', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                       Text(
                         '₹${_grandTotal.toStringAsFixed(2)}',
                         style: const TextStyle(
-                          fontWeight: FontWeight.w900,
+                          fontWeight: FontWeight.w700,
                           fontSize: 22,
                           color: AppTheme.link,
                         ),
@@ -1907,7 +1963,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       style: TextStyle(
                           color: Theme.of(context).colorScheme.onSurface,
                           fontSize: 22,
-                          fontWeight: FontWeight.w800)),
+                          fontWeight: FontWeight.w700)),
                 ],
               ),
               const SizedBox(width: 16),
@@ -1924,6 +1980,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'UPI, card, or netbanking. No cash on delivery.',
+            textAlign: TextAlign.center,
+            style: AppTheme.microOf(context),
           ),
           if (razorpayIsTestKey(appEnv('RAZORPAY_KEY_ID'))) ...[
             const SizedBox(height: 6),
@@ -2011,7 +2073,7 @@ class _CheckoutMembershipOfferCard extends StatelessWidget {
             flashing && (label != null && label.isNotEmpty)
                 ? label
                 : 'Become a Family member',
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
           ),
           const SizedBox(height: 6),
           Text(

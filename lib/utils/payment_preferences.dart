@@ -94,7 +94,7 @@ Future<bool> unlockSavedPayInstrument({String reason = 'Confirm it is you to pay
 }
 
 /// Razorpay checkout `prefill.method` + enabled instrument flags.
-/// Card and netbanking stay available even when a UPI ID is saved.
+/// UPI, card, and netbanking stay on; wallets/EMI/paylater stay off (no COD).
 Map<String, dynamic> razorpayMethodOptions(String? preferred, {String? savedVpa}) {
   final method = normalizeCustomerPayMethod(preferred);
   final vpa = method == 'upi' ? normalizeSavedVpa(savedVpa) : null;
@@ -109,6 +109,11 @@ Map<String, dynamic> razorpayMethodOptions(String? preferred, {String? savedVpa}
       'emi': false,
       'paylater': false,
     },
+    'displayHide': const [
+      {'method': 'wallet'},
+      {'method': 'emi'},
+      {'method': 'paylater'},
+    ],
   };
 }
 

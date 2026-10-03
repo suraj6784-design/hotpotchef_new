@@ -136,7 +136,11 @@ class CartNotifier extends Notifier<CartState> {
       }
       if (inSharedRoom && !_applyingSharedCart) {
         try {
-          await _sharedCartService.updateSharedCart(room, state.items);
+          await _sharedCartService.updateSharedCart(
+            room,
+            state.items,
+            hostId: state.sharedHostId,
+          );
         } catch (e, st) {
           _logCartError(e, st, 'Debounced shared cart sync failed');
         }
@@ -190,6 +194,44 @@ class CartNotifier extends Notifier<CartState> {
     }, onError: (e, st) {
       _logCartError(e, st, 'Shared cart stream failed');
     });
+  }
+
+  /// Copies the room's plates into this cart and keeps later adds in sync.
+  Future<SharedCartJoinResult> joinSharedRoom(String rawCode) async {
+    final code = parseGroupRoomCode(rawCode);
+    if (code == null) {
+      throw SharedCartException('Enter a room code like GRP-AB12CD, or paste the group link.');
+    }
+    if (_supabase.auth.currentUser == null) {
+      throw SharedCartException('Sign in to join this group.');
+    }
+    final room = await _sharedCartService.fetchSharedCartRoom(code);
+    if (state.sharedRoomCode == code) {
+      return SharedCartJoinResult(
+        roomCode: code,
+        placeKind: room.placeKind,
+        added: 0,
+        skipped: const [],
+      );
+    }
+    state = state.copyWith(
+      items: room.items,
+      packagingFee: _packagingFor(room.items),
+    );
+    await attachSharedRoom(
+      code,
+      placeKind: room.placeKind,
+      placeLabel: room.placeLabel,
+      dropoffNote: room.dropoffNote,
+      timeSlot: room.timeSlot,
+      hostId: room.hostId,
+    );
+    return SharedCartJoinResult(
+      roomCode: code,
+      placeKind: room.placeKind,
+      added: room.items.length,
+      skipped: const [],
+    );
   }
 
   void detachSharedRoom() {
@@ -273,6 +315,10 @@ class CartNotifier extends Notifier<CartState> {
     int quantity, {
     List<CartItemAddOn> addOns = const [],
     bool clearIfVendorConflict = false,
+    DateTime? scheduledDate,
+    String? timeSlot,
+    String? specialInstructions,
+    ServiceType? serviceType,
   }) {
     final mealId = meal['id'].toString();
     final chefId = meal['chef_id'].toString();
@@ -287,9 +333,10 @@ class CartNotifier extends Notifier<CartState> {
 
     final rawSlot = meal['time_slot']?.toString() ?? '';
     final smartSchedule = chefSlotDefaultSchedule(rawSlot);
-    final serviceType = ServiceType.fromString(
-      (meal['service_type']?.toString() ?? 'Delivery Partner').split(',').first.trim(),
-    );
+    final resolvedService = serviceType ??
+        ServiceType.fromString(
+          (meal['service_type']?.toString() ?? 'Delivery Partner').split(',').first.trim(),
+        );
     final int availableStock = int.tryParse(meal['quantity']?.toString() ?? '99') ?? 99;
     final pricedAddOns = pricedAddOnsFromCatalog(
       catalog: meal['add_ons'] ?? meal['addons'],
@@ -300,10 +347,13 @@ class CartNotifier extends Notifier<CartState> {
     final double? rawDiscount = double.tryParse(meal['discounted_price']?.toString() ?? '');
     final double? validDiscount = (rawDiscount != null && rawDiscount > 0) ? rawDiscount : null;
 
-    final resolvedSlot = (smartSchedule['time'] ?? '').trim().isNotEmpty
-        ? smartSchedule['time']!.trim()
-        : (preferredChefSlotClock(rawSlot) ?? rawSlot);
-    final resolvedDate = chefSlotDefaultDate(smartSchedule);
+    final resolvedSlot = (timeSlot ?? '').trim().isNotEmpty
+        ? timeSlot!.trim()
+        : ((smartSchedule['time'] ?? '').trim().isNotEmpty
+            ? smartSchedule['time']!.trim()
+            : (preferredChefSlotClock(rawSlot) ?? rawSlot));
+    final resolvedDate = scheduledDate ?? chefSlotDefaultDate(smartSchedule);
+    final note = specialInstructions?.trim();
 
     final existingIndex = state.items.indexWhere(
       (i) => i.mealId == mealId && listEquals(i.selectedAddOns, pricedAddOns),
@@ -314,7 +364,16 @@ class CartNotifier extends Notifier<CartState> {
     if (existingIndex >= 0) {
       final existing = updatedItems[existingIndex];
       final targetQty = (existing.quantity + quantity).clamp(1, availableStock);
-      updatedItems[existingIndex] = existing.copyWith(quantity: targetQty);
+      final raw = Map<String, dynamic>.from(existing.rawMealDetails);
+      raw['exact_time'] = resolvedSlot;
+      updatedItems[existingIndex] = existing.copyWith(
+        quantity: targetQty,
+        scheduledDate: resolvedDate,
+        timeSlot: resolvedSlot,
+        serviceType: resolvedService,
+        specialInstructions: (note == null || note.isEmpty) ? existing.specialInstructions : note,
+        rawMealDetails: raw,
+      );
     } else {
       final newItem = CartItemModel(
         id: '${mealId}_${DateTime.now().microsecondsSinceEpoch}',
@@ -326,8 +385,11 @@ class CartNotifier extends Notifier<CartState> {
         quantity: quantity.clamp(1, availableStock),
         scheduledDate: resolvedDate,
         timeSlot: resolvedSlot,
-        serviceType: serviceType,
+        serviceType: resolvedService,
         selectedAddOns: pricedAddOns,
+        specialInstructions: (note == null || note.isEmpty) ? null : note,
+        addedByUserId: _supabase.auth.currentUser?.id,
+        addedByName: _currentDinerName(),
         rawMealDetails: {
           ...meal,
           'exact_time': resolvedSlot,
@@ -347,9 +409,28 @@ class CartNotifier extends Notifier<CartState> {
     return true;
   }
 
+  String? _currentDinerName() {
+    final user = _supabase.auth.currentUser;
+    return dinerDisplayNameFromUser(
+      name: user?.userMetadata?['name']?.toString() ?? user?.userMetadata?['full_name']?.toString(),
+      email: user?.email,
+    );
+  }
+
+  bool _canEditSharedLine(CartItemModel item) {
+    final room = state.sharedRoomCode;
+    if (room == null || room.isEmpty) return true;
+    return sharedCartLineEditable(
+      item,
+      userId: _supabase.auth.currentUser?.id,
+      hostId: state.sharedHostId,
+    );
+  }
+
   void updateQuantity(String cartItemId, int delta) {
     final index = state.items.indexWhere((i) => i.id == cartItemId);
     if (index == -1) return;
+    if (!_canEditSharedLine(state.items[index])) return;
 
     List<CartItemModel> updated = List.from(state.items);
     final item = updated[index];
@@ -371,6 +452,9 @@ class CartNotifier extends Notifier<CartState> {
   }
 
   void removeItem(String cartItemId) {
+    final index = state.items.indexWhere((i) => i.id == cartItemId);
+    if (index == -1) return;
+    if (!_canEditSharedLine(state.items[index])) return;
     final updated = state.items.where((i) => i.id != cartItemId).toList();
     _commitItems(updated);
     if (updated.isEmpty) {
@@ -379,10 +463,10 @@ class CartNotifier extends Notifier<CartState> {
     _scheduleRemoteSync();
   }
 
-  Future<void> clearCart() async {
+  Future<void> clearCart({bool closeSharedRoom = false}) async {
     final room = state.sharedRoomCode;
     _stockChannel?.unsubscribe();
-    if (room != null && room.isNotEmpty) {
+    if (closeSharedRoom && room != null && room.isNotEmpty) {
       try {
         await _sharedCartService.markSharedCartOrdered(room);
       } catch (e, st) {
@@ -564,9 +648,37 @@ class CartNotifier extends Notifier<CartState> {
     }
   }
 
+  void updateItemAddOns(
+    String cartItemId,
+    List<CartItemAddOn> addOns, {
+    dynamic catalog,
+  }) {
+    final index = state.items.indexWhere((i) => i.id == cartItemId);
+    if (index == -1) return;
+    if (!_canEditSharedLine(state.items[index])) return;
+
+    final updated = List<CartItemModel>.from(state.items);
+    final item = updated[index];
+    final nextRaw = Map<String, dynamic>.from(item.rawMealDetails);
+    if (catalog != null) {
+      nextRaw['add_ons'] = catalog;
+    }
+    final priced = pricedAddOnsFromCatalog(
+      catalog: nextRaw['add_ons'] ?? nextRaw['addons'],
+      selected: addOns,
+    );
+    updated[index] = item.copyWith(
+      selectedAddOns: priced,
+      rawMealDetails: Map.unmodifiable(nextRaw),
+    );
+    _commitItems(updated);
+    _scheduleRemoteSync();
+  }
+
   void updateItemServiceType(String cartItemId, String serviceTypeStr) {
     final index = state.items.indexWhere((i) => i.id == cartItemId);
     if (index == -1) return;
+    if (!_canEditSharedLine(state.items[index])) return;
 
     final updated = List<CartItemModel>.from(state.items);
     final item = updated[index];
@@ -580,6 +692,7 @@ class CartNotifier extends Notifier<CartState> {
   void updateItemDate(String cartItemId, DateTime date) {
     final index = state.items.indexWhere((i) => i.id == cartItemId);
     if (index == -1) return;
+    if (!_canEditSharedLine(state.items[index])) return;
 
     final updated = List<CartItemModel>.from(state.items);
     final item = updated[index];
@@ -593,6 +706,7 @@ class CartNotifier extends Notifier<CartState> {
   void updateItemTimeSlot(String cartItemId, String timeSlot) {
     final index = state.items.indexWhere((i) => i.id == cartItemId);
     if (index == -1) return;
+    if (!_canEditSharedLine(state.items[index])) return;
 
     final updated = List<CartItemModel>.from(state.items);
     final item = updated[index];

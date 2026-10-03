@@ -3,7 +3,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/kitchen_media.dart';
-import '../utils/app_theme.dart';
 import '../utils/helpers.dart';
 import '../utils/network.dart';
 import '../widgets/sponsored_placement_banner.dart';

@@ -12,7 +12,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../utils/app_page.dart';
 import '../utils/helpers.dart';
 import '../utils/customer_constants.dart';
-import '../utils/dynamic_ui_engine.dart';
 import '../utils/network.dart';
 import '../utils/pinned_address.dart';
 import '../utils/pricing_calculator.dart';
@@ -22,17 +21,12 @@ import '../providers/delivery_preference.dart';
 import '../providers/kitchen_follows_provider.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
-import '../widgets/weekly_plan_banner.dart';
 import '../widgets/support_replied_banner.dart';
 import '../widgets/live_offers_flash_banner.dart';
-import '../widgets/membership_flash_banner.dart';
-import '../widgets/festival_hampers_banner.dart';
-import '../widgets/rescued_meals_banner.dart';
-import '../widgets/shelf_items_banner.dart';
-import '../widgets/society_nights_banner.dart';
+import '../services/app_analytics.dart';
 import '../services/delivery_estimator_service.dart';
+import '../services/meal_catalog_repository.dart';
 import '../utils/delivery_fee.dart';
-import '../utils/diner_meal_catalog.dart';
 import '../utils/service_area.dart';
 import '../utils/diner_locale.dart';
 import '../utils/fssai_certificate_scan.dart';
@@ -47,6 +41,7 @@ class CustomerFeedTab extends ConsumerStatefulWidget {
   final VoidCallback onLogout;
   final VoidCallback? onGoToCart;
   final VoidCallback? onReorderToOrders;
+  final int homeResetToken;
 
   const CustomerFeedTab({
     super.key,
@@ -56,6 +51,7 @@ class CustomerFeedTab extends ConsumerStatefulWidget {
     required this.onLogout,
     this.onGoToCart,
     this.onReorderToOrders,
+    this.homeResetToken = 0,
   });
 
   @override
@@ -63,12 +59,9 @@ class CustomerFeedTab extends ConsumerStatefulWidget {
 }
 
 class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
-    with AutomaticKeepAliveClientMixin {
-  List<Map<String, dynamic>>? _catalogMeals;
-  Object? _catalogError;
-  bool _catalogLoading = true;
-  int _catalogReq = 0;
-  RealtimeChannel? _catalogChannel;
+    with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
+  List<Map<String, dynamic>>? _mealsRestSnapshot;
+  bool _loadingMealsRest = false;
   String _selectedCategory = 'All';
   String _selectedDiet = 'All';
   String _selectedSort = kFeedSortEta;
@@ -109,6 +102,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   bool _loadingOlderMeals = false;
   bool _olderMealsExhausted = false;
   bool _addressPickerOpen = false;
+  final ScrollController _feedScrollController = ScrollController();
 
   final List<Map<String, dynamic>> _dietFilters = const [
     {'name': 'All', 'icon': Icons.tune},
@@ -126,12 +120,17 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   @override
   void initState() {
     super.initState();
-    _subscribeMealCatalog();
-    unawaited(_reloadMealCatalog());
-    _bootstrapDeliveryPin();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_refreshMealsRestSnapshot());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) unawaited(_bootstrapDeliveryPin());
+      });
+    });
     _fetchDietaryPrefs();
     _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       if (!mounted) return;
+      unawaited(_refreshMealsRestSnapshot());
       if (data.session == null) {
         setState(_resetGuestFeedState);
         _captureDeviceLocation();
@@ -140,60 +139,88 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         _fetchUserAddresses(preserveActivePin: true);
         _fetchDietaryPrefs();
       }
-      unawaited(_reloadMealCatalog());
     });
   }
 
-  void _subscribeMealCatalog() {
-    _catalogChannel = Supabase.instance.client
-        .channel('diner-home-meals-${identityHashCode(this)}')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'meals',
-          callback: (_) {
-            if (!mounted) return;
-            unawaited(_reloadMealCatalog());
-          },
-        )
-        .subscribe();
+  @override
+  void didUpdateWidget(covariant CustomerFeedTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.homeResetToken != oldWidget.homeResetToken) {
+      _clearHomeSearch();
+      unawaited(_refreshMealsRestSnapshot());
+    }
   }
 
-  /// Refetch the guest-safe catalog. Retry and sign-in both call this.
-  /// A later failure keeps the last successful payload on screen.
-  Future<void> _reloadMealCatalog() async {
-    final req = ++_catalogReq;
-    if (mounted && _catalogMeals == null) {
-      setState(() {
-        _catalogLoading = true;
-        _catalogError = null;
-      });
-    }
+  Future<List<Map<String, dynamic>>> _fetchMealsCatalog({String? chefId}) {
+    return MealCatalogRepository().availableMeals(chefId: chefId);
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchHomeMealCatalog() => _fetchMealsCatalog();
+
+  void _scrollFeedHome() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final controller = _feedScrollController;
+      if (!controller.hasClients) return;
+      try {
+        final position = controller.position;
+        if (!position.hasPixels || !position.hasContentDimensions) return;
+        if (position.pixels <= position.minScrollExtent) return;
+        controller.jumpTo(position.minScrollExtent);
+      } catch (_) {}
+    });
+  }
+
+  Future<void> _pullToRefreshHome() async {
+    _loadingMealsRest = false;
+    await _refreshMealsRestSnapshot();
+  }
+
+  Future<void> _refreshMealsRestSnapshot() async {
+    if (_loadingMealsRest) return;
+    _loadingMealsRest = true;
     try {
-      final rows = await fetchDinerMealCatalog(Supabase.instance.client);
-      if (!mounted || req != _catalogReq) return;
+      final rows = await _fetchHomeMealCatalog();
+      if (!mounted) return;
       setState(() {
-        _catalogMeals = rows;
-        _catalogError = null;
-        _catalogLoading = false;
+        _mealsRestSnapshot = rows;
+        _loadingMealsRest = false;
       });
+      unawaited(AppAnalytics.logCatalogLoad(
+        success: true,
+        count: rows.length,
+        signedIn: Supabase.instance.client.auth.currentUser != null,
+      ));
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Home meal catalog failed');
-      if (!mounted || req != _catalogReq) return;
-      setState(() {
-        _catalogLoading = false;
-        if (_catalogMeals == null) _catalogError = e;
-      });
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Home meals REST fallback failed');
+      unawaited(AppAnalytics.logCatalogLoad(
+        success: false,
+        count: 0,
+        signedIn: Supabase.instance.client.auth.currentUser != null,
+      ));
+      if (mounted) setState(() => _loadingMealsRest = false);
     }
+  }
+
+  void _retryMealsFeed() {
+    _loadingMealsRest = false;
+    unawaited(_refreshMealsRestSnapshot());
+    setState(() {});
   }
 
   Future<void> _bootstrapDeliveryPin() async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user != null) {
       await _fetchUserAddresses(preserveActivePin: false);
-      if (_hasDeliveryPin) return;
+      if (_hasDeliveryPin && _deviceLocationPin?['is_launch_city'] != true) return;
     }
     await _captureDeviceLocation();
+    if (!_hasDeliveryPin || _deviceLocationPin?['is_launch_city'] == true) {
+      if (_deviceLocationPin?['is_device_location'] == true) return;
+      if (!_hasDeliveryPin) {
+        _applyDeliveryPin(launchCityDefaultPin(), preferOverSaved: false);
+      }
+    }
   }
 
   void _resetGuestFeedState() {
@@ -222,12 +249,19 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       if (!serviceEnabled) {
         _applyDeviceLocationFallback(
           message: notifyOnFailure ? 'Turn on location to see kitchens near you.' : null,
+          silent: !notifyOnFailure,
         );
         return;
       }
 
       var permission = await Geolocator.checkPermission();
+      // Do not auto-prompt on Home boot — the permission sheet can leave Android
+      // with a zero-size Flutter surface (white screen) on diner.
       if (permission == LocationPermission.denied) {
+        if (!notifyOnFailure) {
+          _applyDeviceLocationFallback(silent: true);
+          return;
+        }
         permission = await Geolocator.requestPermission();
       }
       if (permission == LocationPermission.denied ||
@@ -236,20 +270,33 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           message: notifyOnFailure
               ? 'Allow location access so guest browsing matches kitchens after Sign In.'
               : null,
+          silent: !notifyOnFailure,
         );
         return;
       }
 
       Position position;
       try {
-        position = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-        ).timeout(const Duration(seconds: 8));
+        if (notifyOnFailure) {
+          position = await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
+          ).timeout(const Duration(seconds: 12));
+        } else {
+          final last = await Geolocator.getLastKnownPosition();
+          if (last != null && last.latitude != 0 && last.longitude != 0) {
+            position = last;
+          } else {
+            position = await Geolocator.getCurrentPosition(
+              locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
+            ).timeout(const Duration(seconds: 8));
+          }
+        }
       } catch (_) {
         final last = await Geolocator.getLastKnownPosition();
         if (last == null || (last.latitude == 0 && last.longitude == 0)) {
           _applyDeviceLocationFallback(
             message: 'Turn on location or drop a pin to see kitchens near you.',
+            silent: !notifyOnFailure,
           );
           return;
         }
@@ -267,13 +314,16 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         state = parts.state;
         pincode = parts.pincode;
         street = parts.street;
-        final formatted = parts.formatted.isNotEmpty
-            ? parts.formatted
-            : [parts.street, parts.city, parts.state, parts.pincode]
-                .where((part) => part.isNotEmpty)
-                .join(', ');
-        if (formatted.isNotEmpty) {
-          label = formatted;
+        final localityLabel = formatLocalityPinLabel(
+          street: parts.street,
+          city: parts.city,
+          pincode: parts.pincode,
+          formatted: parts.formatted,
+        );
+        if (localityLabel.isNotEmpty) {
+          label = localityLabel;
+        } else if (city.isNotEmpty && pincode.isNotEmpty) {
+          label = '$city - $pincode';
         } else if (city.isNotEmpty) {
           label = city;
         }
@@ -290,6 +340,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         'city': city,
         'state': state,
         'pincode': pincode,
+        'postal_code': pincode,
         'latitude': position.latitude,
         'longitude': position.longitude,
         'lat': position.latitude,
@@ -298,36 +349,39 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       };
 
       if (!mounted) return;
-      setState(() {
-        _deviceLocationPin = pin;
-        // Do not steal a saved address the diner already picked.
-        final keepSavedSelection = _savedAddresses.any(
-          (addr) => addr['address']?.toString() == _currentAddress,
-        );
-        if (!keepSavedSelection) {
-          _currentAddress = label;
-          ref.read(selectedDeliveryAddressProvider.notifier).setAddress(pin);
-        }
-      });
+      _applyDeliveryPin(pin, preferOverSaved: false);
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Guest delivery location capture failed');
       _applyDeviceLocationFallback(
         message: notifyOnFailure ? 'Could not read your location. Try again.' : null,
+        silent: !notifyOnFailure,
       );
     } finally {
       _resolvingDeviceLocation = false;
     }
   }
 
-  void _applyDeviceLocationFallback({String? message}) {
+  void _applyDeliveryPin(Map<String, dynamic> pin, {required bool preferOverSaved}) {
     if (!mounted) return;
     setState(() {
-      _deviceLocationPin = null;
-      if (_currentAddress == 'Locating...' || _currentAddress.isEmpty) {
-        _currentAddress = 'Select Delivery Address';
+      _deviceLocationPin = pin;
+      final keepSavedSelection = !preferOverSaved &&
+          _savedAddresses.any((addr) => addr['address']?.toString() == _currentAddress);
+      if (!keepSavedSelection) {
+        _currentAddress = pin['address']?.toString() ?? 'Near you';
+        ref.read(selectedDeliveryAddressProvider.notifier).setAddress(pin);
       }
     });
-    final text = message ?? 'Turn on location or drop a pin to see kitchens near you.';
+  }
+
+  void _applyDeviceLocationFallback({String? message, bool silent = false}) {
+    if (_deviceLocationPin?['is_device_location'] == true) {
+      if (silent) return;
+    } else {
+      _applyDeliveryPin(launchCityDefaultPin(), preferOverSaved: false);
+    }
+    if (silent) return;
+    final text = message ?? 'Showing ${kLaunchCities.first.label} kitchens. Tap the pin to use current location.';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(text), backgroundColor: Colors.orange),
     );
@@ -335,15 +389,18 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _authSub?.cancel();
-    final channel = _catalogChannel;
-    _catalogChannel = null;
-    if (channel != null) {
-      unawaited(channel.unsubscribe());
-      unawaited(Supabase.instance.client.removeChannel(channel));
-    }
     _searchController.dispose();
+    _feedScrollController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      unawaited(_refreshMealsRestSnapshot());
+    }
   }
 
   bool _checkIfTimePassed(Map<String, dynamic> meal) {
@@ -362,6 +419,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         _offerBrowseLabel = null;
       _offerBrowseGroupKey = null;
       });
+      _scrollFeedHome();
       return;
     }
 
@@ -394,13 +452,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         }
       }
 
-      final localResponse = await client
-          .from('meals')
-          .select(kDinerMealCatalogColumns)
-          .eq('status', 'Available')
-          .limit(kHomeMealStreamLimit)
-          .withTimeout(NetworkTimeouts.standard);
-      final localMeals = List<Map<String, dynamic>>.from(localResponse);
+      final localMeals = await MealCatalogRepository(client).availableMeals();
       final qClean = trimmed.toLowerCase().replaceAll(' ', '');
       final qLower = trimmed.toLowerCase();
 
@@ -558,41 +610,37 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     final id = chef['id']?.toString() ?? '';
     if (id.isEmpty) return;
     final name = chefDisplayName(chef);
+    final local = (_mealsRestSnapshot ?? [])
+        .where((m) => m['chef_id']?.toString() == id)
+        .toList();
     setState(() {
-      _isAiSearching = true;
+      _isAiSearching = local.isEmpty;
       _hasActiveSearch = true;
       _filteredChefId = id;
       _filteredChefName = name;
       _offerBrowseLabel = null;
       _offerBrowseGroupKey = null;
       _searchController.text = name;
+      _aiSearchResults = local;
+      final others = _chefSearchResults.where((c) => c['id']?.toString() != id).toList();
+      _chefSearchResults = [chef, ...others];
     });
+    _scrollFeedHome();
     try {
-      final rows = await Supabase.instance.client
-          .from('meals')
-          .select(kDinerMealCatalogColumns)
-          .eq('status', 'Available')
-          .eq('chef_id', id)
-          .limit(kHomeMealStreamLimit)
-          .withTimeout(NetworkTimeouts.standard);
-      final meals = List<Map<String, dynamic>>.from(rows as List).where((m) {
+      var meals = (await _fetchMealsCatalog(chefId: id)).where((m) {
         final status = m['status']?.toString().toLowerCase() ?? '';
         final isInventory = (m['customer_name'] == null || m['customer_name'].toString().isEmpty);
         return isInventory && status != 'paused' && status != 'cancelled';
       }).toList();
+      if (meals.isEmpty) meals = local;
       if (!mounted) return;
-      setState(() {
-        _aiSearchResults = meals;
-        // Keep the selected chef first in the strip.
-        final others = _chefSearchResults.where((c) => c['id']?.toString() != id).toList();
-        _chefSearchResults = [chef, ...others];
-      });
+      setState(() => _aiSearchResults = meals);
+      _scrollFeedHome();
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Filter feed to chef failed');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(networkErrorMessage(e)), backgroundColor: Colors.red),
-      );
+      setState(() => _aiSearchResults = local);
+      _scrollFeedHome();
     } finally {
       if (mounted) setState(() => _isAiSearching = false);
     }
@@ -609,6 +657,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       _offerBrowseLabel = null;
       _offerBrowseGroupKey = null;
     });
+    _scrollFeedHome();
+    if (_mealsRestSnapshot == null || _mealsRestSnapshot!.isEmpty) {
+      unawaited(_refreshMealsRestSnapshot());
+    }
   }
 
   Future<void> _showGroupedOfferMeals(String groupKey) async {
@@ -624,17 +676,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       _searchController.clear();
     });
     try {
-      final client = Supabase.instance.client;
-      final rows = await client
-          .from('meals')
-          .select(kDinerMealCatalogColumns)
-          .eq('status', 'Available')
-          .limit(kHomeMealStreamLimit)
-          .withTimeout(NetworkTimeouts.standard);
       final destLat = addressCoordinate(_selectedAddressMap, latitude: true);
       final destLng = addressCoordinate(_selectedAddressMap, latitude: false);
       final meals = <Map<String, dynamic>>[];
-      for (final raw in List<Map<String, dynamic>>.from(rows as List)) {
+      for (final raw in await _fetchMealsCatalog()) {
         if (offerFlashGroupKeyForMeal(raw) != groupKey) continue;
         if (!mealHasFlashableOffer(raw)) continue;
         final chefId = raw['chef_id']?.toString() ?? '';
@@ -657,6 +702,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       });
       if (!mounted) return;
       setState(() => _aiSearchResults = meals);
+      _scrollFeedHome();
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: '$label offer browse failed');
       if (!mounted) return;
@@ -788,14 +834,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     try {
       final from = kHomeMealStreamLimit + _olderMeals.length;
       final to = from + kHomeMealPageSize - 1;
-      final rows = await Supabase.instance.client
-          .from('meals')
-          .select(kDinerMealCatalogColumns)
-          .eq('status', 'Available')
-          .order('created_at', ascending: false)
-          .range(from, to)
-          .withTimeout(NetworkTimeouts.standard);
-      final extra = List<Map<String, dynamic>>.from(rows as List);
+      final extra = await MealCatalogRepository().availableMealsPage(from: from, to: to);
       if (!mounted) return;
       setState(() {
         _olderMeals = [..._olderMeals, ...extra];
@@ -898,19 +937,25 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     _hydratingChefTrust = true;
     try {
       final rows = await Supabase.instance.client
-          .from('users')
-          .select('id, fssai_number, fssai_verification_status, fssai_valid_until')
-          .inFilter('id', missing.toList());
-      for (final row in rows) {
+          .rpc('chef_fssai_public', params: {'p_ids': missing.toList()})
+          .withTimeout(NetworkTimeouts.standard);
+      final list = rows is List ? rows : const [];
+      for (final raw in list) {
+        if (raw is! Map) continue;
+        final row = Map<String, dynamic>.from(raw);
         final id = row['id']?.toString();
         if (id == null || id.isEmpty) continue;
         _chefTrustResolved.add(id);
-        _chefTrust[id] = Map<String, dynamic>.from(row);
+        _chefTrust[id] = row;
       }
       _chefTrustResolved.addAll(missing);
       if (mounted) setState(() {});
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to hydrate chef FSSAI chips');
+      final denied = e.toString().contains('42501') ||
+          e.toString().toLowerCase().contains('permission denied');
+      if (!denied) {
+        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to hydrate chef FSSAI chips');
+      }
       _chefTrustResolved.addAll(missing);
     } finally {
       _hydratingChefTrust = false;
@@ -944,20 +989,19 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     final endLng = addressCoordinate(dest, latitude: false);
     if (endLat == null || endLng == null) return [];
 
+    final dinerPin = dest?['postal_code']?.toString() ?? dest?['pincode']?.toString();
     final inRange = <Map<String, dynamic>>[];
     for (final meal in pinned) {
       final startLat = kitchenCoordinate(meal, latitude: true);
       final startLng = kitchenCoordinate(meal, latitude: false);
-      if (startLat == null || startLng == null) {
-        continue;
-      }
-      final distance = DeliveryEstimatorService.calculateDistanceKm(
-        startLat: startLat,
-        startLng: startLng,
-        endLat: endLat,
-        endLng: endLng,
-      );
-      if (DeliveryEstimatorService.isWithinDeliveryRadius(distance)) {
+      if (kitchenServesDinerPin(
+        kitchenLat: startLat,
+        kitchenLng: startLng,
+        dinerLat: endLat,
+        dinerLng: endLng,
+        dinerPincode: dinerPin,
+        kitchenPincode: meal['pincode']?.toString() ?? meal['postal_code']?.toString(),
+      )) {
         inRange.add(meal);
       }
     }
@@ -980,7 +1024,13 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       endLng: endLng,
     );
     if (distance <= 0) return null;
-    if (!DeliveryEstimatorService.isWithinDeliveryRadius(distance)) {
+    if (!DeliveryEstimatorService.isWithinDeliveryRadius(distance) &&
+        !kitchenServesDinerPin(
+          kitchenLat: startLat,
+          kitchenLng: startLng,
+          dinerLat: endLat,
+          dinerLng: endLng,
+        )) {
       return 'Outside ${DeliveryEstimatorService.maxDeliveryRadiusKm.toInt()} km';
     }
     return '${DeliveryEstimatorService.estimateEtaMinutes(
@@ -1073,11 +1123,19 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                 color: brandPrimary,
               ),
               title: Text(
-                _hasDeliveryPin ? (_deviceLocationPin?['address']?.toString() ?? _currentAddress) : 'Location not set',
+                _hasDeliveryPin
+                    ? (_deviceLocationPin?['is_launch_city'] == true
+                        ? 'Select location'
+                        : (_deviceLocationPin?['address']?.toString() ?? _currentAddress))
+                    : 'Location not set',
                 style: TextStyle(fontWeight: FontWeight.w700, color: AppTheme.onSurfaceOf(context)),
               ),
               subtitle: Text(
-                _resolvingDeviceLocation ? 'Updating…' : 'Current location',
+                _resolvingDeviceLocation
+                    ? 'Updating…'
+                    : (_deviceLocationPin?['is_launch_city'] == true
+                        ? 'Tap to use pin and locality'
+                        : 'Current location'),
                 style: const TextStyle(fontSize: 12),
               ),
             ),
@@ -1130,7 +1188,12 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       followingOnly: _showFollowingOnly,
     );
 
-    return SingleChildScrollView(
+    return RefreshIndicator(
+      color: AppTheme.primary,
+      onRefresh: _pullToRefreshHome,
+      child: SingleChildScrollView(
+      controller: _feedScrollController,
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.only(bottom: 120),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1153,7 +1216,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                           'HotPotChef',
                           style: AppTheme.sectionTitleOf(context).copyWith(
                             color: AppTheme.primary,
-                            fontSize: 20,
+                            fontSize: 18,
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -1217,7 +1280,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                               fontWeight: _isUsingDevicePin ? FontWeight.bold : FontWeight.normal,
                                             ),
                                           ),
-                                          subtitle: const Text('Current location', style: TextStyle(fontSize: 11)),
+                                          subtitle: const Text('Current location', style: TextStyle(fontSize: 12)),
                                           onTap: () {
                                             final label = _deviceLocationPin!['address']?.toString() ?? 'Near you';
                                             setState(() => _currentAddress = label);
@@ -1419,13 +1482,13 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
               children: [
                 _homeModeChip('Pre-order', 'preorder', Icons.calendar_month_outlined, AppTheme.primary),
                 _homeModeChip('Live Order', 'live', Icons.local_fire_department_outlined, AppTheme.live),
-                _homeModeChip('Healthy Options', 'heat', Icons.eco_outlined, AppTheme.primary),
               ],
             ),
           ),
 
           if (!_hasActiveSearch)
             LiveOffersFlashBanner(
+              meals: _mealsRestSnapshot ?? const [],
               excludedChefIds: _closedChefIds,
               destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
               destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
@@ -1477,8 +1540,6 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             const SizedBox(height: 8),
           ],
 
-          if (!_hasActiveSearch) ..._homeTopHighlights(isLoggedIn: isLoggedIn),
-
           if (_hasActiveSearch || showFollowing || showFavorites)
             Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -1486,9 +1547,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                     Text(
                       _hasActiveSearch
                           ? (_filteredChefId != null
@@ -1498,6 +1560,8 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                   : 'Search results'))
                           : (showFollowing ? 'Kitchens you follow' : 'Your favorites'),
                       style: AppTheme.homeSectionLabelOf(context).copyWith(fontSize: 16),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -1513,8 +1577,11 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                               ? 'Live dishes from kitchens you follow'
                               : 'Meals you loved'),
                       style: AppTheme.metaOf(context),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
+                  ),
                 ),
                 if (_hasActiveSearch)
                   IconButton(
@@ -1543,20 +1610,21 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           else if (_hasActiveSearch) ...[
             if (_chefSearchResults.isNotEmpty) _buildChefSearchStrip(_chefSearchResults),
             _buildMealGrid(
-              _applyFeedChips(_mealsForSelectedAddress(_filterFollowedMeals(
-                () {
-                  var meals = showFavorites
-                      ? _aiSearchResults.where((m) => widget.favoriteMeals.contains(m['id'].toString())).toList()
-                      : List<Map<String, dynamic>>.from(_aiSearchResults);
-                  final chefId = _filteredChefId;
-                  if (chefId != null && chefId.isNotEmpty) {
-                    meals = meals.where((m) => m['chef_id']?.toString() == chefId).toList();
-                  }
-                  return meals;
-                }(),
-                followedKitchens,
-                showFollowing,
-              ))),
+              () {
+                var meals = showFavorites
+                    ? _aiSearchResults.where((m) => widget.favoriteMeals.contains(m['id'].toString())).toList()
+                    : List<Map<String, dynamic>>.from(_aiSearchResults);
+                final chefId = _filteredChefId;
+                if (chefId != null && chefId.isNotEmpty) {
+                  meals = meals.where((m) => m['chef_id']?.toString() == chefId).toList();
+                  return _applyFeedChips(meals);
+                }
+                return _applyFeedChips(_mealsForSelectedAddress(_filterFollowedMeals(
+                  meals,
+                  followedKitchens,
+                  showFollowing,
+                )));
+              }(),
               isLoggedIn: isLoggedIn,
               showFavorites: showFavorites,
               showFollowing: showFollowing,
@@ -1566,25 +1634,20 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           else
             Builder(
               builder: (context) {
-                final phase = dinerHomeFeedPhase(
-                  loading: _catalogLoading,
-                  error: _catalogError,
-                  hasPayload: _catalogMeals != null,
-                );
-                if (phase == DinerHomeFeedPhase.loading) {
+                final mealsSource = _mealsRestSnapshot;
+                if (_loadingMealsRest && mealsSource == null) {
                   return const MealListSkeleton(count: 4);
                 }
-                if (dinerHomeFeedIsConnectionFailure(phase)) {
+                if (mealsSource == null) {
                   return EmptyState(
                     icon: Icons.wifi_off_rounded,
                     title: 'Trouble reaching the kitchen',
                     message: 'We couldn\'t load fresh meals right now. Please check your connection and try again.',
                     actionLabel: 'Retry',
-                    onAction: () => unawaited(_reloadMealCatalog()),
+                    onAction: _retryMealsFeed,
                   );
                 }
-                final catalog = _catalogMeals ?? const <Map<String, dynamic>>[];
-                if (catalog.isEmpty) {
+                if (mealsSource.isEmpty) {
                   return const EmptyState(
                     icon: Icons.restaurant_menu_rounded,
                     title: 'No meals published yet',
@@ -1592,7 +1655,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                   );
                 }
 
-                var meals = catalog.where((m) {
+                var meals = mealsSource.where((m) {
                   final status = m['status']?.toString().toLowerCase() ?? '';
                   final isInventory = (m['customer_name'] == null || m['customer_name'].toString().isEmpty);
                   if (!isInventory || status == 'paused' || status == 'cancelled') return false;
@@ -1628,7 +1691,6 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                     if (!_hasActiveSearch && !showFavorites && !showFollowing) ...[
                       DinerSectionHeader(
                         title: DinerLocaleController.instance.copy.socialChefs,
-                        subtitle: DinerLocaleController.instance.copy.socialChefsSub,
                       ),
                       _buildTrendingChefsStrip(meals),
                       DinerSectionHeader(title: 'Popular Dishes'),
@@ -1643,7 +1705,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                       showFollowing: showFollowing,
                       hasFollows: followedKitchens.isNotEmpty,
                     ),
-                    if (!_olderMealsExhausted && catalog.length >= kHomeMealStreamLimit)
+                    if (!_olderMealsExhausted && mealsSource.length >= kHomeMealStreamLimit)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
                         child: TextButton(
@@ -1651,13 +1713,13 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                           child: Text(_loadingOlderMeals ? 'Loading more plates…' : 'Show more plates'),
                         ),
                       ),
-                    ..._homeDiscoveryExtras(isLoggedIn: isLoggedIn),
                   ],
                 );
               },
             ),
         ],
       ),
+    ),
     );
   }
 
@@ -1671,15 +1733,17 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   }
 
   List<Map<String, dynamic>> _applyFeedChips(List<Map<String, dynamic>> meals) {
+    final kitchenBrowse = _filteredChefId != null && _filteredChefId!.isNotEmpty;
     final filtered = meals
         .where((meal) =>
             mealMatchesFeedDiet(meal, _selectedDiet) &&
             mealMatchesCuisine(meal, _selectedCategory) &&
-            mealMatchesHomeMode(
-              meal,
-              mode: _homeMode,
-              chefProfile: _chefKitchenProfiles[meal['chef_id']?.toString()],
-            ))
+            (kitchenBrowse ||
+                mealMatchesHomeMode(
+                  meal,
+                  mode: _homeMode,
+                  chefProfile: _chefKitchenProfiles[meal['chef_id']?.toString()],
+                )))
         .toList();
     WidgetsBinding.instance.addPostFrameCallback((_) => _hydrateChefRatings(filtered));
     return sortFeedMeals(
@@ -1822,7 +1886,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                   name,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
                                 ),
                               ),
                               IconButton(
@@ -1842,7 +1906,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontSize: 11,
+                              fontSize: 12,
                               color: selected ? AppTheme.linkOf(context) : AppTheme.textMuted,
                               height: 1.3,
                               fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
@@ -1898,57 +1962,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       ),
       icon: Badge(
         isLabelVisible: cartCount > 0,
-        label: Text('$cartCount', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800)),
+        label: Text('$cartCount', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
         child: const Icon(Icons.shopping_bag_outlined, size: 18),
       ),
     );
-  }
-
-  List<Widget> _homeTopHighlights({required bool isLoggedIn}) {
-    return [
-      const MembershipFlashBanner(),
-      const SizedBox(height: 4),
-    ];
-  }
-
-  List<Widget> _homeDiscoveryExtras({required bool isLoggedIn}) {
-    return [
-      const SizedBox(height: 8),
-      Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          title: Text('More kitchens', style: AppTheme.homeSectionLabelOf(context).copyWith(fontSize: 16)),
-          subtitle: const Text('Rescued plates, hampers, society nights, shelf'),
-          children: [
-            const RescuedMealsBanner(),
-            FestivalHampersBanner(
-              excludedChefIds: _closedChefIds,
-              destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
-              destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
-              chefKitchenPins: _chefKitchenPins,
-              onHamperTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
-            ),
-            SocietyNightsBanner(
-              excludedChefIds: _closedChefIds,
-              destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
-              destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
-              destinationAddress: _selectedAddressMap,
-              chefKitchenPins: _chefKitchenPins,
-              onNightTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
-            ),
-            ShelfItemsBanner(
-              excludedChefIds: _closedChefIds,
-              destinationLat: addressCoordinate(_selectedAddressMap, latitude: true),
-              destinationLng: addressCoordinate(_selectedAddressMap, latitude: false),
-              chefKitchenPins: _chefKitchenPins,
-              onItemTap: (meal) => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
-            ),
-            if (isLoggedIn) const WeeklyPlanDueBanner(),
-            const DynamicUIEngine(screenName: 'customer_feed'),
-          ],
-        ),
-      ),
-    ];
   }
 
   Widget _filterChipRow({
@@ -2044,12 +2061,12 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       });
     if (chefs.isEmpty) return const SizedBox.shrink();
     return SizedBox(
-      height: 188,
+      height: 52,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
         itemCount: chefs.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 12),
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
           final chef = chefs[index];
           final id = chef['id']?.toString() ?? '';
@@ -2058,43 +2075,50 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
           final social = ChefSocialLinks.fromMap(chef);
           final photos = kitchenPhotosFrom(chef['kitchen_photos']);
           final photo = photos.isNotEmpty ? photos.first : chef['image_url']?.toString();
+          final meta = social.hasAny
+              ? social.platformsLabel
+              : (rating == null || !rating.hasReviews
+                  ? 'New kitchen'
+                  : '${rating.average.toStringAsFixed(1)} (${rating.count})');
           return GestureDetector(
             onTap: id.isEmpty ? null : () => _filterFeedToChef(chef),
             child: Container(
               width: 168,
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               decoration: AppTheme.cardDecoration(isDark: Theme.of(context).brightness == Brightness.dark),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: [
                   CircleAvatar(
-                    radius: 28,
+                    radius: 16,
                     backgroundColor: AppTheme.photoFallback,
                     backgroundImage: (photo != null && photo.isNotEmpty) ? CachedNetworkImageProvider(photo) : null,
                     child: (photo == null || photo.isEmpty)
                         ? Text(
                             name.isEmpty ? 'C' : name[0].toUpperCase(),
-                            style: const TextStyle(fontWeight: FontWeight.w800),
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
                           )
                         : null,
                   ),
-                  const SizedBox(height: 10),
-                  Text(
-                    name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTheme.cardTitleOf(context).copyWith(fontSize: 14),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    social.hasAny
-                        ? social.platformsLabel
-                        : (rating == null || !rating.hasReviews
-                            ? 'New kitchen'
-                            : '${rating.average.toStringAsFixed(1)} (${rating.count})'),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTheme.caption,
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTheme.cardTitleOf(context).copyWith(fontSize: 13, height: 1.1),
+                        ),
+                        Text(
+                          meta,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTheme.caption.copyWith(fontSize: 12, height: 1.1),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -2119,25 +2143,52 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         final meal = meals[index];
         final offerSummary = PricingCalculator.calculateItemSummary(meal, 1);
         final price = offerSummary.effectiveUnitPrice;
+        final showOfferPrice = offerSummary.baseUnitPrice - price > 0.004;
         final chefName = chefDisplayName({...?_chefKitchenProfiles[meal['chef_id']?.toString()], ...meal});
         final image = meal['image_url']?.toString();
         final prep = kitchenPrepMinutes(_chefKitchenProfiles[meal['chef_id']?.toString()], meal);
+        final offerBadge = showOfferPrice ? PricingCalculator.offerBadgeLabel(meal) : '';
         return GestureDetector(
           onTap: () => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
           child: Container(
             padding: const EdgeInsets.all(10),
             decoration: AppTheme.cardDecoration(isDark: Theme.of(context).brightness == Brightness.dark),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: SizedBox(
-                    width: 72,
-                    height: 72,
-                    child: image == null || image.isEmpty
-                        ? ColoredBox(color: AppTheme.photoFallback, child: Icon(Icons.ramen_dining, color: AppTheme.textMuted))
-                        : CachedNetworkImage(imageUrl: image, fit: BoxFit.cover),
-                  ),
+                Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: SizedBox(
+                        width: 72,
+                        height: 72,
+                        child: image == null || image.isEmpty
+                            ? ColoredBox(color: AppTheme.photoFallback, child: Icon(Icons.ramen_dining, color: AppTheme.textMuted))
+                            : CachedNetworkImage(imageUrl: image, fit: BoxFit.cover),
+                      ),
+                    ),
+                    if (showOfferPrice && offerBadge.isNotEmpty)
+                      Positioned(
+                        left: 4,
+                        bottom: 4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade600,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            offerBadge,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -2161,15 +2212,54 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                         const SizedBox(height: 2),
                         Text('Prep: $prep mins', style: AppTheme.caption),
                       ],
+                      const SizedBox(height: 2),
+                      Text(
+                        mealPortionsLeftLabel(meal),
+                        style: AppTheme.caption.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: mealPortionsLeft(meal) <= 0 ? AppTheme.error : AppTheme.textMuted,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 2,
+                        children: [
+                          if (showOfferPrice)
+                            Text(
+                              '₹${wholeRupees(offerSummary.baseUnitPrice)}',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: AppTheme.textMuted,
+                                decoration: TextDecoration.lineThrough,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          Text(
+                            '₹${wholeRupees(price)}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                              color: AppTheme.primary,
+                            ),
+                          ),
+                          if (showOfferPrice && offerBadge.isNotEmpty)
+                            Text(
+                              offerBadge,
+                              style: TextStyle(
+                                color: Colors.red.shade700,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          if (showOfferPrice)
+                            FlashingOfferCountdown(
+                              until: PricingCalculator.parseOfferDate(meal['offer_valid_until']),
+                            ),
+                        ],
+                      ),
                     ],
-                  ),
-                ),
-                Text(
-                  '₹${price.toStringAsFixed(0)}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
-                    color: AppTheme.primary,
                   ),
                 ),
               ],
@@ -2291,25 +2381,22 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                   width: double.infinity,
                                   color: AppTheme.photoFallback,
                                   child: meal['image_url'] != null
-                                      ? Hero(
-                                          tag: 'meal-image-${meal['id']}',
-                                          child: CachedNetworkImage(
-                                            imageUrl: meal['image_url'].toString(),
-                                            fit: BoxFit.cover,
-                                            width: double.infinity,
-                                            height: double.infinity,
-                                            placeholder: (_, _) => const AppShimmer(
-                                              child: ShimmerBox(
-                                                width: double.infinity,
-                                                height: 188,
-                                                borderRadius: BorderRadius.zero,
-                                              ),
+                                      ? CachedNetworkImage(
+                                          imageUrl: meal['image_url'].toString(),
+                                          fit: BoxFit.cover,
+                                          width: double.infinity,
+                                          height: double.infinity,
+                                          placeholder: (_, _) => const AppShimmer(
+                                            child: ShimmerBox(
+                                              width: double.infinity,
+                                              height: 188,
+                                              borderRadius: BorderRadius.zero,
                                             ),
-                                            errorWidget: (_, _, _) => const Icon(
-                                              Icons.soup_kitchen_outlined,
-                                              color: Color(0xFFC4A484),
-                                              size: 40,
-                                            ),
+                                          ),
+                                          errorWidget: (_, _, _) => const Icon(
+                                            Icons.soup_kitchen_outlined,
+                                            color: Color(0xFFC4A484),
+                                            size: 40,
                                           ),
                                         )
                                       : const Icon(
@@ -2357,10 +2444,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                     decoration: BoxDecoration(
-                                        color: Colors.red.shade600, borderRadius: BorderRadius.circular(6)),
+                                        color: Colors.red.shade600, borderRadius: BorderRadius.circular(12)),
                                     child: Text(
                                       PricingCalculator.offerBadgeLabel(meal),
-                                      style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
                                     ),
                                   ),
                                 ),
@@ -2400,7 +2487,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                   padding: const EdgeInsets.all(4),
                                   decoration: BoxDecoration(
                                       color: AppTheme.surfaceOf(context).withValues(alpha: 0.9),
-                                      borderRadius: BorderRadius.circular(4)),
+                                      borderRadius: BorderRadius.circular(12)),
                                   child: Icon(
                                     Icons.circle,
                                     color: mealIsVegetarian(meal) ? AppTheme.veg : AppTheme.nonVeg,
@@ -2465,13 +2552,13 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                           decoration: BoxDecoration(
                                             color: AppTheme.primary.withValues(alpha: 0.12),
-                                            borderRadius: BorderRadius.circular(8),
+                                            borderRadius: BorderRadius.circular(12),
                                           ),
                                           child: Text(
                                             DinerLocaleController.instance.copy.verified,
                                             style: const TextStyle(
-                                              fontSize: 9,
-                                              fontWeight: FontWeight.w800,
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w700,
                                               color: AppTheme.primary,
                                             ),
                                           ),
@@ -2493,7 +2580,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                                         decoration: BoxDecoration(
                                           color: AppTheme.canvasOf(context),
-                                          borderRadius: BorderRadius.circular(8),
+                                          borderRadius: BorderRadius.circular(12),
                                           border: Border.all(color: AppTheme.hairlineOf(context)),
                                         ),
                                         child: Row(
@@ -2509,7 +2596,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                                 feedKitchenSlotLabel(meal['time_slot']?.toString()),
                                                 style: TextStyle(
                                                   color: isExpired ? Colors.red : AppTheme.onSurfaceOf(context),
-                                                  fontSize: 11,
+                                                  fontSize: 12,
                                                   fontWeight: FontWeight.w700,
                                                 ),
                                                 maxLines: 1,
@@ -2526,7 +2613,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                         etaLabel,
                                         style: const TextStyle(
                                           color: AppTheme.link,
-                                          fontSize: 11,
+                                          fontSize: 12,
                                           fontWeight: FontWeight.w700,
                                         ),
                                       ),
@@ -2543,7 +2630,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                         children: [
                                           if (showOfferPrice)
                                             Text(
-                                              '₹${offerSummary.baseUnitPrice.toInt()}',
+                                              '₹${wholeRupees(offerSummary.baseUnitPrice)}',
                                               style: const TextStyle(
                                                 color: AppTheme.textMuted,
                                                 fontSize: 12,
@@ -2552,16 +2639,20 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                               ),
                                             ),
                                           Text(
-                                            '₹${offerSummary.effectiveUnitPrice.toInt()}',
+                                            '₹${wholeRupees(offerSummary.effectiveUnitPrice)}',
                                             style: AppTheme.priceOf(context),
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                           ),
+                                          if (showOfferPrice)
+                                            FlashingOfferCountdown(
+                                              until: PricingCalculator.parseOfferDate(meal['offer_valid_until']),
+                                            ),
                                           if (isAvailable)
                                             Text(
                                               '$availableQty left',
                                               style: const TextStyle(
-                                                  color: brandPrimary, fontSize: 11, fontWeight: FontWeight.bold),
+                                                  color: brandPrimary, fontSize: 12, fontWeight: FontWeight.bold),
                                             ),
                                         ],
                                       ),
@@ -2627,7 +2718,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                                               ),
                                               child: Text(
                                                 DinerLocaleController.instance.copy.pay,
-                                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+                                                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
                                               ),
                                             ),
                                           ),

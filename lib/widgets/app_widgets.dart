@@ -5,6 +5,7 @@
 // friendly empty states, and consistent entrance animations.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:shimmer/shimmer.dart';
 
@@ -43,12 +44,12 @@ extension AppMotion on Widget {
     return Builder(
       builder: (context) {
         if (_reduce(context)) return this;
-        return animate().fadeIn(duration: 300.ms, delay: delay).scaleXY(
-              begin: 0.92,
+        return animate().fadeIn(duration: 240.ms, delay: delay).scaleXY(
+              begin: 0.98,
               end: 1,
-              duration: 380.ms,
+              duration: 240.ms,
               delay: delay,
-              curve: Curves.easeOutBack,
+              curve: Curves.easeOutCubic,
             );
       },
     );
@@ -61,7 +62,7 @@ extension AppMotion on Widget {
         if (_reduce(context)) return this;
         return animate(delay: delay)
             .fadeIn(duration: 240.ms)
-            .scaleXY(begin: 0.96, end: 1, duration: 320.ms, curve: Curves.easeOutBack);
+            .scaleXY(begin: 0.98, end: 1, duration: 240.ms, curve: Curves.easeOutCubic);
       },
     );
   }
@@ -491,7 +492,7 @@ class PillTag extends StatelessWidget {
             label,
             style: TextStyle(
               color: filled ? Colors.white : color,
-              fontSize: 11.5,
+              fontSize: 12,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -722,6 +723,43 @@ class HubTabSwitcher extends StatelessWidget {
   }
 }
 
+/// Space so hub tab content clears the overlaid [HubBottomDock].
+double hubDockBodyGap(BuildContext context) {
+  return 80 + MediaQuery.paddingOf(context).bottom;
+}
+
+/// Hardware back on a hub: nested tabs (Packaging, Orders, …) go Home first.
+bool hubHardwareBackReturnsHome(int selectedIndex) => selectedIndex != 0;
+
+Future<void> handleHubHardwareBack({
+  required BuildContext context,
+  required int selectedIndex,
+  required VoidCallback goHome,
+}) async {
+  if (hubHardwareBackReturnsHome(selectedIndex)) {
+    goHome();
+    return;
+  }
+  final shouldExit = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Exit App'),
+      content: const Text('Are you sure you want to exit?'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('Exit'),
+        ),
+      ],
+    ),
+  );
+  if (shouldExit == true) SystemNavigator.pop();
+}
+
 /// Full-width storefront bar used on diner, chef, and driver hubs.
 ///
 /// Overlay with [Positioned] — never pass as [Scaffold.bottomNavigationBar].
@@ -793,7 +831,7 @@ class _HubDockButton extends StatelessWidget {
           child: AnimatedContainer(
             duration: MediaQuery.disableAnimationsOf(context)
                 ? Duration.zero
-                : const Duration(milliseconds: 280),
+                : AppTheme.tabDuration,
             curve: Curves.easeOutCubic,
             padding: const EdgeInsets.symmetric(vertical: 6),
             decoration: const BoxDecoration(),
@@ -815,10 +853,9 @@ class _HubDockButton extends StatelessWidget {
                   destination.label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: AppTheme.microOf(context).copyWith(
+                  style: AppTheme.captionOf(context).copyWith(
                     color: selected ? AppTheme.primary : AppTheme.textMutedOf(context),
-                    fontWeight: FontWeight.w800,
-                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],

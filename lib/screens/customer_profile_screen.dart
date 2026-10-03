@@ -27,6 +27,7 @@ import '../widgets/loyalty_badge_card.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/change_password_dialog.dart';
 import '../widgets/premium_profile_template.dart';
+import '../widgets/customer_ui_components.dart';
 
 class CustomerProfileScreen extends ConsumerStatefulWidget {
   final VoidCallback? onLogout;
@@ -117,7 +118,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
 
   // --- Data Loading ---
 
-  Future<void> _loadProfileData() async {
+  Future<void> _loadProfileData({bool showSpinner = true}) async {
     final seq = ++_loadSeq;
     try {
       final user = _supabase.auth.currentUser;
@@ -126,7 +127,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
         return;
       }
 
-      if (mounted && seq == _loadSeq) setState(() => _isLoading = true);
+      if (showSpinner && mounted && seq == _loadSeq) setState(() => _isLoading = true);
       _email = user.email ?? '';
 
       final futures = await Future.wait<dynamic>([
@@ -435,7 +436,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
               children: [
                 Text(
                   'Edit profile',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: isDark ? Colors.white : AppTheme.textMain),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : AppTheme.textMain),
                 ),
                 const SizedBox(height: 20),
                 Center(
@@ -709,11 +710,11 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                                       ),
                                       Text(
                                         '${order.orderRef.isEmpty ? 'Order' : 'Order ${order.orderRef}'} · ${formatOrderDate(order.at?.toIso8601String())}',
-                                        style: TextStyle(color: muted, fontSize: 11, fontWeight: FontWeight.w700),
+                                        style: TextStyle(color: muted, fontSize: 12, fontWeight: FontWeight.w700),
                                       ),
                                       Text(
                                         order.statusLabel,
-                                        style: TextStyle(color: muted, fontSize: 11),
+                                        style: TextStyle(color: muted, fontSize: 12),
                                       ),
                                     ],
                                   ),
@@ -733,7 +734,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                                     if (order.coinsApplied > 0)
                                       Text(
                                         '−${order.coinsApplied.toInt()} 🪙',
-                                        style: const TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.w700),
+                                        style: const TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.w700),
                                       ),
                                   ],
                                 ),
@@ -792,18 +793,18 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                                     if ((entry.orderRef ?? '').isNotEmpty)
                                       Text(
                                         coinWalletOrderLine(isDebit: entry.isDebit, orderRef: entry.orderRef),
-                                        style: TextStyle(color: muted, fontSize: 11, fontWeight: FontWeight.w800),
+                                        style: TextStyle(color: muted, fontSize: 12, fontWeight: FontWeight.w700),
                                       ),
                                     if ((entry.detail ?? '').isNotEmpty)
                                       Text(
                                         entry.detail!,
-                                        style: TextStyle(color: muted, fontSize: 11, fontWeight: FontWeight.w600),
+                                        style: TextStyle(color: muted, fontSize: 12, fontWeight: FontWeight.w600),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                     Text(
                                       formatOrderDate(entry.at?.toIso8601String()),
-                                      style: TextStyle(color: isDark ? Colors.grey.shade500 : Colors.grey, fontSize: 11),
+                                      style: TextStyle(color: isDark ? Colors.grey.shade500 : Colors.grey, fontSize: 12),
                                     ),
                                   ],
                                 ),
@@ -976,7 +977,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                     foregroundColor: Colors.white,
                     elevation: 0,
                   ),
-                  child: const Text('Save preference', style: TextStyle(fontWeight: FontWeight.w800)),
+                  child: const Text('Save preference', style: TextStyle(fontWeight: FontWeight.w700)),
                 ),
               ),
             ],
@@ -1103,8 +1104,10 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
           icon: Icons.person_outline_rounded,
           title: 'Sign in to manage your account',
           message: 'Save addresses, track HotPot Coins, and keep your dietary preferences in one place.',
-          actionLabel: 'Go to Login',
-          onAction: () => context.go('/auth'),
+          actionLabel: 'Sign In',
+          onAction: () => showAuthBottomSheet(context, () {
+            if (mounted) setState(() {});
+          }),
         ),
       );
     }
@@ -1126,7 +1129,11 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
         loading: _isLoading,
         onBack: widget.embedded ? null : _handleSafeBack,
         onLogout: null,
-        body: SingleChildScrollView(
+        body: RefreshIndicator(
+          color: AppTheme.primary,
+          onRefresh: () => _loadProfileData(showSpinner: false),
+          child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
             children: [
               PremiumProfileHero(
@@ -1292,6 +1299,7 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
               const PremiumProfileVersionFooter(),
             ],
           ),
+        ),
         ),
       ),
     );

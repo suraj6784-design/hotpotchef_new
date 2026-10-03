@@ -54,6 +54,16 @@ void main() {
     expect(assigned.deliveryLat, 18.51);
     expect(assigned.toTrackingOrderExtra()['navigate_leg'], 'pickup');
 
+    final heading = DriverDeliveryModel.fromJson({
+      'id': 'order-row',
+      'chef_id': 'chef-1',
+      'status': 'Heading to Kitchen',
+      '_chef_pin': {'name': 'Asha', 'address': 'Wakad kitchen', 'lat': 18.60, 'lng': 73.76},
+    });
+    expect(heading.navigateToCustomer, isFalse);
+    expect(heading.activeStepTitle, contains('Pickup'));
+    expect(heading.status, DeliveryStatus.pickedUp);
+
     final out = DriverDeliveryModel.fromJson({
       'id': 'order-row',
       'status': 'Out for Delivery',

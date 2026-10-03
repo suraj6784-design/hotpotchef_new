@@ -21,6 +21,12 @@ AppStorefront storefrontFromFlavorName(String? raw) {
   }
 }
 
+/// `--dart-define=APP_FLAVOR` wins when it is set; otherwise Flutter's `--flavor`.
+AppStorefront parseAppStorefront(String appFlavor, [String flutterAppFlavor = '']) {
+  final raw = appFlavor.trim().isNotEmpty ? appFlavor : flutterAppFlavor;
+  return storefrontFromFlavorName(raw);
+}
+
 AppStorefront get kAppStorefront {
   const fromFlavor = String.fromEnvironment('FLUTTER_APP_FLAVOR');
   const explicit = String.fromEnvironment('APP_FLAVOR');

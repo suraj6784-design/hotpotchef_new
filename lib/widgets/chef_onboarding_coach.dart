@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-import '../utils/app_theme.dart';
 import '../utils/fssai_certificate_scan.dart';
 import '../utils/helpers.dart';
+import '../utils/kyc_checklist.dart';
 
 class ChefSetupStrip extends StatelessWidget {
   const ChefSetupStrip({
@@ -130,113 +129,6 @@ enum ChefSetupTarget { profile, publish, online }
   return null;
 }
 
-class ChefOnboardingCoach extends StatefulWidget {
-  const ChefOnboardingCoach({
-    super.key,
-    required this.onOpenProfile,
-    required this.onPublish,
-  });
-
-  final VoidCallback onOpenProfile;
-  final VoidCallback onPublish;
-
-  @override
-  State<ChefOnboardingCoach> createState() => _ChefOnboardingCoachState();
-}
-
-class _ChefOnboardingCoachState extends State<ChefOnboardingCoach> {
-  static const _key = 'chef_onboarding_v1';
-  int _step = 0;
-  bool _visible = false;
-
-  static const _copy = [
-    (
-      'Licence and pin',
-      'Profile needs a 14-digit FSSAI number, a licence photo, and your kitchen map pin. Ops verifies FSSAI before you can publish.',
-    ),
-    (
-      'Go online, then publish',
-      'Turn Online on the dashboard. Then publish a dish with a real clock window, price, portions, and at least one service type.',
-    ),
-    (
-      'Offers, boosts, and payouts',
-      'Meal offers and ₹99 Home boosts are self-serve. Brand Sponsored ads go through HotPotChef. Bank details save here; Route payouts start after a live acc_ account is linked.',
-    ),
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _boot();
-  }
-
-  Future<void> _boot() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool(_key) == true) return;
-    if (mounted) setState(() => _visible = true);
-  }
-
-  Future<void> _finish() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_key, true);
-    if (mounted) setState(() => _visible = false);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_visible) return const SizedBox.shrink();
-    final item = _copy[_step];
-    return Positioned.fill(
-      child: Material(
-        color: Colors.black54,
-        child: SafeArea(
-          child: Align(
-            alignment: Alignment.bottomCenter,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: AppTheme.surfaceOf(context),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('${_step + 1} of ${_copy.length}', style: AppTheme.caption),
-                      const SizedBox(height: 6),
-                      Text(item.$1, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
-                      const SizedBox(height: 6),
-                      Text(item.$2),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          TextButton(onPressed: _finish, child: const Text('Skip')),
-                          const Spacer(),
-                          FilledButton(
-                            onPressed: () {
-                              if (_step >= _copy.length - 1) {
-                                widget.onPublish();
-                                _finish();
-                              } else {
-                                if (_step == 0) widget.onOpenProfile();
-                                setState(() => _step++);
-                              }
-                            },
-                            child: Text(_step >= _copy.length - 1 ? 'Publish' : 'Next'),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+bool chefKycCoachShouldShow(Map<String, dynamic> profile) {
+  return kycChecklistFor({'role': 'chef', ...profile}).incomplete;
 }
