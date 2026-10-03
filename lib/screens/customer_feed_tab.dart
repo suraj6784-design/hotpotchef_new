@@ -32,6 +32,7 @@ import '../widgets/shelf_items_banner.dart';
 import '../widgets/society_nights_banner.dart';
 import '../services/delivery_estimator_service.dart';
 import '../utils/delivery_fee.dart';
+import '../utils/diner_meal_catalog.dart';
 import '../utils/service_area.dart';
 import '../utils/diner_locale.dart';
 import '../utils/fssai_certificate_scan.dart';
@@ -63,7 +64,11 @@ class CustomerFeedTab extends ConsumerStatefulWidget {
 
 class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     with AutomaticKeepAliveClientMixin {
-  late final Stream<List<Map<String, dynamic>>> _mealsStream;
+  List<Map<String, dynamic>>? _catalogMeals;
+  Object? _catalogError;
+  bool _catalogLoading = true;
+  int _catalogReq = 0;
+  RealtimeChannel? _catalogChannel;
   String _selectedCategory = 'All';
   String _selectedDiet = 'All';
   String _selectedSort = kFeedSortEta;
@@ -121,12 +126,8 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   @override
   void initState() {
     super.initState();
-    _mealsStream = Supabase.instance.client
-        .from('meals')
-        .stream(primaryKey: ['id'])
-        .eq('status', 'Available')
-        .order('created_at', ascending: false)
-        .limit(kHomeMealStreamLimit);
+    _subscribeMealCatalog();
+    unawaited(_reloadMealCatalog());
     _bootstrapDeliveryPin();
     _fetchDietaryPrefs();
     _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
@@ -139,7 +140,51 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         _fetchUserAddresses(preserveActivePin: true);
         _fetchDietaryPrefs();
       }
+      unawaited(_reloadMealCatalog());
     });
+  }
+
+  void _subscribeMealCatalog() {
+    _catalogChannel = Supabase.instance.client
+        .channel('diner-home-meals-${identityHashCode(this)}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'meals',
+          callback: (_) {
+            if (!mounted) return;
+            unawaited(_reloadMealCatalog());
+          },
+        )
+        .subscribe();
+  }
+
+  /// Refetch the guest-safe catalog. Retry and sign-in both call this.
+  /// A later failure keeps the last successful payload on screen.
+  Future<void> _reloadMealCatalog() async {
+    final req = ++_catalogReq;
+    if (mounted && _catalogMeals == null) {
+      setState(() {
+        _catalogLoading = true;
+        _catalogError = null;
+      });
+    }
+    try {
+      final rows = await fetchDinerMealCatalog(Supabase.instance.client);
+      if (!mounted || req != _catalogReq) return;
+      setState(() {
+        _catalogMeals = rows;
+        _catalogError = null;
+        _catalogLoading = false;
+      });
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Home meal catalog failed');
+      if (!mounted || req != _catalogReq) return;
+      setState(() {
+        _catalogLoading = false;
+        if (_catalogMeals == null) _catalogError = e;
+      });
+    }
   }
 
   Future<void> _bootstrapDeliveryPin() async {
@@ -291,6 +336,12 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   @override
   void dispose() {
     _authSub?.cancel();
+    final channel = _catalogChannel;
+    _catalogChannel = null;
+    if (channel != null) {
+      unawaited(channel.unsubscribe());
+      unawaited(Supabase.instance.client.removeChannel(channel));
+    }
     _searchController.dispose();
     super.dispose();
   }
@@ -345,7 +396,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
 
       final localResponse = await client
           .from('meals')
-          .select()
+          .select(kDinerMealCatalogColumns)
           .eq('status', 'Available')
           .limit(kHomeMealStreamLimit)
           .withTimeout(NetworkTimeouts.standard);
@@ -519,7 +570,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     try {
       final rows = await Supabase.instance.client
           .from('meals')
-          .select()
+          .select(kDinerMealCatalogColumns)
           .eq('status', 'Available')
           .eq('chef_id', id)
           .limit(kHomeMealStreamLimit)
@@ -576,7 +627,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       final client = Supabase.instance.client;
       final rows = await client
           .from('meals')
-          .select()
+          .select(kDinerMealCatalogColumns)
           .eq('status', 'Available')
           .limit(kHomeMealStreamLimit)
           .withTimeout(NetworkTimeouts.standard);
@@ -739,7 +790,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       final to = from + kHomeMealPageSize - 1;
       final rows = await Supabase.instance.client
           .from('meals')
-          .select()
+          .select(kDinerMealCatalogColumns)
           .eq('status', 'Available')
           .order('created_at', ascending: false)
           .range(from, to)
@@ -1513,22 +1564,27 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             ),
           ]
           else
-            StreamBuilder<List<Map<String, dynamic>>>(
-              stream: _mealsStream,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
+            Builder(
+              builder: (context) {
+                final phase = dinerHomeFeedPhase(
+                  loading: _catalogLoading,
+                  error: _catalogError,
+                  hasPayload: _catalogMeals != null,
+                );
+                if (phase == DinerHomeFeedPhase.loading) {
                   return const MealListSkeleton(count: 4);
                 }
-                if (snapshot.hasError) {
+                if (dinerHomeFeedIsConnectionFailure(phase)) {
                   return EmptyState(
                     icon: Icons.wifi_off_rounded,
                     title: 'Trouble reaching the kitchen',
                     message: 'We couldn\'t load fresh meals right now. Please check your connection and try again.',
                     actionLabel: 'Retry',
-                    onAction: () => setState(() {}),
+                    onAction: () => unawaited(_reloadMealCatalog()),
                   );
                 }
-                if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                final catalog = _catalogMeals ?? const <Map<String, dynamic>>[];
+                if (catalog.isEmpty) {
                   return const EmptyState(
                     icon: Icons.restaurant_menu_rounded,
                     title: 'No meals published yet',
@@ -1536,7 +1592,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                   );
                 }
 
-                var meals = snapshot.data!.where((m) {
+                var meals = catalog.where((m) {
                   final status = m['status']?.toString().toLowerCase() ?? '';
                   final isInventory = (m['customer_name'] == null || m['customer_name'].toString().isEmpty);
                   if (!isInventory || status == 'paused' || status == 'cancelled') return false;
@@ -1587,7 +1643,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                       showFollowing: showFollowing,
                       hasFollows: followedKitchens.isNotEmpty,
                     ),
-                    if (!_olderMealsExhausted && snapshot.data!.length >= kHomeMealStreamLimit)
+                    if (!_olderMealsExhausted && catalog.length >= kHomeMealStreamLimit)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
                         child: TextButton(

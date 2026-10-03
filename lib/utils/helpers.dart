@@ -1110,11 +1110,15 @@ bool isLiveTrackingStatus(String? status) {
 String mealDietHaystack(Map<String, dynamic> meal) {
   final tags = meal['health_tags'] ?? meal['tags'] ?? meal['ingredients'];
   final tagText = tags is List ? tags.join(' ') : tags?.toString() ?? '';
+  final allergens = meal['allergens'];
+  final allergenText = allergens is List ? allergens.join(' ') : allergens?.toString() ?? '';
   return [
     mealDisplayTitle(meal),
     meal['description']?.toString() ?? '',
     meal['category']?.toString() ?? '',
+    meal['cuisine']?.toString() ?? '',
     tagText,
+    allergenText,
   ].join(' ').toLowerCase();
 }
 
@@ -2384,6 +2388,10 @@ bool mealFailsCurrentCatalogRequirements(Map<String, dynamic> meal) {
       kitchenCoordinate(meal, latitude: false) == null) {
     return true;
   }
+  // Guest catalog reads omit a blank address key rather than inventing one.
+  // A present-but-empty address is still an unpublished placeholder.
+  final addressKnown = meal.containsKey('hosting_address') || meal.containsKey('address');
+  if (!addressKnown) return false;
   final address = (meal['hosting_address'] ?? meal['address'] ?? '').toString().trim();
   if (address.isEmpty) return true;
   return false;
