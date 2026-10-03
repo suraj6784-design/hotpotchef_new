@@ -20,6 +20,7 @@ import '../models/cart_enums.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/app_status_badge.dart';
+import '../widgets/chef_order_handoff.dart';
 import '../widgets/order_slot_banner.dart';
 import '../models/app_role.dart';
 import '../services/order_lifecycle.dart';
@@ -1280,7 +1281,6 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     final orderId = formatOrderId(order['order_id']?.toString(), order['id'].toString());
     final title = _orderTitle(order);
     final quantity = _orderQuantity(order);
-    final instructions = kitchenFacingOrderNotes(order['special_instructions']?.toString());
     final customer = _customerName(order);
     final initial = customer.isNotEmpty ? customer[0].toUpperCase() : 'C';
     final svc = _orderService(order);
@@ -1337,19 +1337,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             isPending: isPending,
             isPreparing: isPreparing,
           ),
-          if (instructions.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppTheme.warning.withValues(alpha: 0.12),
-                borderRadius: AppTheme.radiusSm,
-              ),
-              child: Text('Note: $instructions',
-                  style: TextStyle(color: AppTheme.onSurfaceOf(context), fontSize: 12, fontStyle: FontStyle.italic)),
-            ),
-          ],
+          ChefOrderHandoffDetails(order: order),
           const SizedBox(height: 14),
           _orderContactActions(order),
           const SizedBox(height: 10),
