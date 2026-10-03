@@ -1123,6 +1123,11 @@ String? alertOpenPath(Map<String, String?> data, {String? role}) {
   }
 
   final kind = (data['kind'] ?? data['type'] ?? '').trim().toLowerCase();
+  if (kind == 'group_room') {
+    final room = (data['room_code'] ?? '').trim();
+    if (room.isNotEmpty) return '/group/$room';
+    return '/customer-hub?tab=cart';
+  }
   if (kind == 'kyc_pending' || kind == 'kyc') {
     final fromPayload = (data['role'] ?? '').trim().toLowerCase();
     if (parsedRole.contains('driver') ||

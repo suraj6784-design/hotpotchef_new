@@ -14,6 +14,7 @@ import '../services/cart_service.dart';
 import '../services/shared_cart_service.dart';
 import '../services/app_analytics.dart';
 import '../utils/cart_merge.dart';
+import '../utils/group_room_notices.dart';
 import '../utils/helpers.dart';
 import '../utils/delivery_fee.dart';
 
@@ -797,11 +798,32 @@ class CartNotifier extends Notifier<CartState> {
       ),
     );
     if (patch == null) return false;
+    final before = GroupRoomSettings(
+      placeKind: state.sharedPlaceKind,
+      placeLabel: state.sharedPlaceLabel,
+      dropoffNote: state.sharedDropoffNote,
+      timeSlot: state.sharedTimeSlot,
+      selectedDate: state.sharedSelectedDate,
+    );
+    final after = GroupRoomSettings(
+      placeKind: patch.placeKind,
+      placeLabel: patch.placeLabel,
+      dropoffNote: patch.dropoffNote,
+      timeSlot: patch.timeSlot,
+      selectedDate: patch.selectedDate,
+    );
+    final change = describeGroupRoomChange(
+      actorId: _supabase.auth.currentUser?.id,
+      hostId: state.sharedHostId,
+      before: before,
+      after: after,
+    );
     final items = applySharedScheduleToPlates(
       state.items,
       timeSlot: patch.timeSlot,
       selectedDate: patch.selectedDate,
     );
+    final roomCode = state.sharedRoomCode ?? '';
     state = state.copyWith(
       items: items,
       packagingFee: _packagingFor(items),
@@ -812,6 +834,14 @@ class CartNotifier extends Notifier<CartState> {
       sharedSelectedDate: patch.selectedDate,
     );
     _scheduleRemoteSync();
+    if (change != null) {
+      unawaited(_sharedCartService.notifyGroupRoomChange(
+        roomCode: roomCode,
+        title: change.title,
+        body: change.body,
+        change: change.change,
+      ));
+    }
     return true;
   }
 
