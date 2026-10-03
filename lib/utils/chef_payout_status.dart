@@ -11,7 +11,9 @@ abstract final class ChefPayoutStatus {
   }) {
     final id = accountId.trim();
     final normalizedMode = mode?.trim().toLowerCase();
-    if (mockFlag == true || id.startsWith('acc_mock_') || normalizedMode == 'mock') {
+    if (mockFlag == true ||
+        id.startsWith('acc_mock_') ||
+        normalizedMode == 'mock') {
       return ChefPayoutLinkKind.mock;
     }
     if (id.isEmpty) return ChefPayoutLinkKind.missing;
@@ -20,7 +22,8 @@ abstract final class ChefPayoutStatus {
   }
 
   static bool canRelink(ChefPayoutLinkKind kind) {
-    return kind == ChefPayoutLinkKind.missing || kind == ChefPayoutLinkKind.mock;
+    return kind == ChefPayoutLinkKind.missing ||
+        kind == ChefPayoutLinkKind.mock;
   }
 
   static String title(ChefPayoutLinkKind kind) {
@@ -73,5 +76,58 @@ abstract final class ChefPayoutStatus {
       case ChefPayoutLinkKind.liveLinked:
         return 'Active';
     }
+  }
+
+  static bool bankDetailsOnFile({
+    required String beneficiaryName,
+    required String bankAccountNumber,
+    required String bankIfsc,
+  }) {
+    return beneficiaryName.trim().isNotEmpty &&
+        bankAccountNumber.trim().isNotEmpty &&
+        bankIfsc.trim().isNotEmpty;
+  }
+
+  /// Chef Profile "Direct Settlement Active" and the green Active pill.
+  ///
+  /// The screen used to light this from `users.payout_enabled == true` OR any
+  /// non-empty `users.gateway_account_id`. For the reported chef,
+  /// `payout_enabled` was false. The pill came from a leftover
+  /// `gateway_account_id` that is not a Razorpay Route `acc_*` id, while the
+  /// account holder, account number, and IFSC were still blank.
+  ///
+  /// Blank bank fields never show Active. Once those three values are saved,
+  /// the same gateway-id / payout flag still shows Active.
+  static bool showsDirectSettlementActive({
+    required bool payoutEnabled,
+    required String gatewayAccountId,
+    required String beneficiaryName,
+    required String bankAccountNumber,
+    required String bankIfsc,
+  }) {
+    if (!bankDetailsOnFile(
+      beneficiaryName: beneficiaryName,
+      bankAccountNumber: bankAccountNumber,
+      bankIfsc: bankIfsc,
+    )) {
+      return false;
+    }
+    return payoutEnabled || gatewayAccountId.trim().isNotEmpty;
+  }
+
+  static String profileBannerTitle({required bool active}) {
+    return title(
+      active ? ChefPayoutLinkKind.liveLinked : ChefPayoutLinkKind.missing,
+    );
+  }
+
+  static String profileBannerSubtitle({required bool active}) {
+    return subtitle(
+      active ? ChefPayoutLinkKind.liveLinked : ChefPayoutLinkKind.missing,
+    );
+  }
+
+  static String? profileBannerPill({required bool active}) {
+    return active ? chipLabel(ChefPayoutLinkKind.liveLinked) : null;
   }
 }
