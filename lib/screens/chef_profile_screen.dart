@@ -13,6 +13,7 @@ import '../utils/helpers.dart';
 import '../utils/fssai_certificate_scan.dart';
 import '../utils/pinned_address.dart';
 import '../utils/gst_invoice.dart';
+import '../utils/chef_payout_status.dart';
 import '../utils/kyc_checklist.dart';
 import '../utils/network.dart';
 import '../widgets/app_widgets.dart';
@@ -172,16 +173,25 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
     _panController.text = maskPan(userData?['pan_number']?.toString());
     _gatewayAccountController.text = userData?['gateway_account_id']?.toString() ?? '';
 
-    _beneficiaryNameController.text = userData?['beneficiary_name']?.toString() ?? '';
+    final beneficiaryName = userData?['beneficiary_name']?.toString() ?? '';
+    _beneficiaryNameController.text = beneficiaryName;
     final bankMasked = userData?['bank_account_masked']?.toString().trim() ?? '';
     final bankFull = userData?['bank_account_number']?.toString() ?? '';
     _bankAccountController.text = bankMasked.isNotEmpty
         ? bankMasked
         : maskBankAccount(bankFull);
-    _ifscController.text = userData?['bank_ifsc']?.toString() ?? '';
+    final bankIfsc = userData?['bank_ifsc']?.toString() ?? '';
+    _ifscController.text = bankIfsc;
 
     _avatarUrl = userData?['avatar_url']?.toString();
-    _payoutEnabled = userData?['payout_enabled'] == true || _gatewayAccountController.text.isNotEmpty;
+    final storedAccount = bankFull.trim().isNotEmpty ? bankFull : bankMasked;
+    _payoutEnabled = ChefPayoutStatus.showsDirectSettlementActive(
+      payoutEnabled: userData?['payout_enabled'] == true,
+      gatewayAccountId: _gatewayAccountController.text,
+      beneficiaryName: beneficiaryName,
+      bankAccountNumber: storedAccount,
+      bankIfsc: bankIfsc,
+    );
     _fssaiProofUrl = userData?['fssai_proof_url']?.toString();
     _aadhaarProofUrl = userData?['aadhaar_proof_url']?.toString();
     final rawAadhaar = userData?['aadhaar_masked']?.toString() ?? '';
@@ -483,10 +493,17 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
       if (response.status == 200 && response.data != null && response.data['success'] == true) {
         final pending = response.data['pending'] == true;
         setState(() {
-          _payoutEnabled = response.data['payout_enabled'] == true;
-          if (response.data['account_id'] != null) {
-            _gatewayAccountController.text = response.data['account_id'].toString();
+          final accountId = response.data['account_id']?.toString();
+          if (accountId != null && accountId.isNotEmpty) {
+            _gatewayAccountController.text = accountId;
           }
+          _payoutEnabled = ChefPayoutStatus.showsDirectSettlementActive(
+            payoutEnabled: response.data['payout_enabled'] == true,
+            gatewayAccountId: _gatewayAccountController.text,
+            beneficiaryName: beneficiary,
+            bankAccountNumber: accNum,
+            bankIfsc: ifsc,
+          );
         });
         _showSnackBar(
           pending
@@ -1251,17 +1268,21 @@ class _ChefProfileScreenState extends State<ChefProfileScreen> {
                               color: _payoutEnabled ? Colors.green : Colors.orange,
                             ),
                             title: Text(
-                              _payoutEnabled ? 'Direct Settlement Active' : 'Configure Settlement Account',
+                              ChefPayoutStatus.profileBannerTitle(active: _payoutEnabled),
                               style: TextStyle(color: titleColor, fontSize: 14, fontWeight: FontWeight.bold),
                             ),
                             subtitle: Text(
-                              _payoutEnabled
-                                  ? 'Earnings settle automatically to your registered account.'
-                                  : 'Required for automated split payouts via Razorpay Route.',
+                              ChefPayoutStatus.profileBannerSubtitle(active: _payoutEnabled),
                               style: TextStyle(color: muted, fontSize: 12),
                             ),
                             trailing: _payoutEnabled
-                                ? const Chip(backgroundColor: Colors.green, label: Text('Active', style: TextStyle(color: Colors.white, fontSize: 11)))
+                                ? Chip(
+                                    backgroundColor: Colors.green,
+                                    label: Text(
+                                      ChefPayoutStatus.profileBannerPill(active: true)!,
+                                      style: const TextStyle(color: Colors.white, fontSize: 11),
+                                    ),
+                                  )
                                 : ElevatedButton(
                                     style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
                                     onPressed: _isSettingUpPayout ? null : _setupChefPayout,
