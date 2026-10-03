@@ -86,6 +86,122 @@ void main() {
     );
   });
 
+  test('12:51 AM Sunday does not tell the diner the pin has no kitchens', () {
+    final now = DateTime(2026, 10, 4, 0, 51);
+    expect(now.weekday, DateTime.sunday);
+    final chef = <String, dynamic>{'is_open': true, 'is_live': false};
+    final profiles = <String, Map<String, dynamic>>{'newchef16': chef};
+    Map<String, dynamic> plate(String title, String slot) => {
+          'title': title,
+          'is_veg': true,
+          'status': 'Available',
+          'availability_mode': 'live',
+          'chef_id': 'newchef16',
+          'time_slot': slot,
+        };
+    final meals = [
+      plate('Breakfast', 'Daily (8:00 AM to 11:30 AM)'),
+      plate('Veg Biryani', 'Daily (9:00 AM to 11:00 PM)'),
+      plate('Veg Jumbo Thali', 'Sat, Sun (9:00 AM to 11:00 PM)'),
+      plate('Gulab Jamun', 'Today at 01:00 AM'),
+      plate('SweetDish', 'Today at 01:00 AM'),
+    ];
+
+    for (final meal in meals) {
+      expect(
+        mealMatchesHomeMode(meal, mode: 'live', now: now, chefProfile: chef),
+        isFalse,
+        reason: '${meal['title']} is outside the live window',
+      );
+    }
+    for (final title in ['Breakfast', 'Veg Biryani', 'Veg Jumbo Thali']) {
+      final meal = meals.firstWhere((row) => row['title'] == title);
+      expect(mealMatchesHomeMode(meal, mode: 'preorder', now: now, chefProfile: chef), isTrue, reason: title);
+    }
+
+    final mode = dinerColdStartHomeMode(
+      meals: meals,
+      dinerChoseMode: false,
+      requestedMode: 'live',
+      diet: 'Veg',
+      chefProfiles: profiles,
+      now: now,
+    );
+    expect(mode, 'preorder');
+    final shown = dinerHomeMealsForMode(
+      meals,
+      mode: mode,
+      diet: 'Veg',
+      chefProfiles: profiles,
+      now: now,
+    ).map((meal) => meal['title']).toList();
+    expect(
+      shown,
+      dinerHomeMealsForMode(
+        meals,
+        mode: 'preorder',
+        diet: 'Veg',
+        chefProfiles: profiles,
+        now: now,
+      ).map((meal) => meal['title']).toList(),
+    );
+    expect(shown, containsAll(['Breakfast', 'Veg Biryani', 'Veg Jumbo Thali']));
+
+    final quiet = feedEmptyCopy(
+      signedIn: true,
+      favoritesOnly: false,
+      hasFavorites: false,
+      hasSearch: false,
+      diet: 'Veg',
+      hasDeliveryPin: true,
+      homeMode: 'live',
+      nothingLive: true,
+      hasPreorderMeals: true,
+    );
+    final blob = '${quiet.title} ${quiet.message}'.toLowerCase();
+    expect(quiet.title, 'Nobody is cooking right now');
+    expect(blob, isNot(contains('no meals')));
+    expect(blob, isNot(contains('no veg')));
+    expect(blob, isNot(contains('no kitchens')));
+    expect(blob, isNot(contains('this pin')));
+    expect(quiet.offerPreorder, isTrue);
+    expect(quiet.message, contains('Live Order'));
+    expect(quiet.message, contains('Pre-order'));
+    expect(
+      dinerColdStartHomeMode(
+        meals: meals,
+        dinerChoseMode: true,
+        requestedMode: 'live',
+        diet: 'Veg',
+        chefProfiles: profiles,
+        now: now,
+      ),
+      'live',
+    );
+
+    final evening = DateTime(2026, 10, 4, 19);
+    expect(dinerPinHasAcceptingMeal(meals, chefProfiles: profiles, now: evening), isTrue);
+    expect(
+      dinerColdStartHomeMode(
+        meals: meals,
+        dinerChoseMode: false,
+        diet: 'Veg',
+        chefProfiles: profiles,
+        now: evening,
+      ),
+      'live',
+    );
+    final liveTitles = dinerHomeMealsForMode(
+      meals,
+      mode: 'live',
+      diet: 'Veg',
+      chefProfiles: profiles,
+      now: evening,
+    ).map((meal) => meal['title']).toList();
+    expect(liveTitles, containsAll(['Veg Biryani', 'Veg Jumbo Thali']));
+    expect(liveTitles, isNot(contains('Breakfast')));
+  });
+
   test('a kitchen pin still counts when the address column was not selected', () {
     expect(
       mealFailsCurrentCatalogRequirements({
