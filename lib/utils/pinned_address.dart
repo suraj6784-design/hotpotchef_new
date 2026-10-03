@@ -268,6 +268,65 @@ String formatLocalityPinLabel({
   return pin;
 }
 
+/// Chip text when a guest has not got a device fix. Not a place name.
+const String kGuestLocationUnsetLabel = 'Select location';
+
+/// Guest cold start asks for location only when nobody is signed in.
+/// A saved diner pin (for example Thergaon) is left alone.
+bool guestColdStartShouldRequestLocation({required bool signedIn}) => !signedIn;
+
+/// Delivery pin for a signed-out diner. Coordinates come from the phone fix.
+/// A denied permission or an unreadable position returns null — never a city center.
+Map<String, dynamic>? guestDeviceDeliveryPin({
+  required bool permissionGranted,
+  double? latitude,
+  double? longitude,
+  String street = '',
+  String city = '',
+  String state = '',
+  String pincode = '',
+  String formatted = '',
+}) {
+  if (!permissionGranted) return null;
+  if (latitude == null || longitude == null) return null;
+  if (latitude == 0 || longitude == 0) return null;
+
+  var label = formatLocalityPinLabel(
+    street: street,
+    city: city,
+    pincode: pincode,
+    formatted: formatted,
+  );
+  if (label.isEmpty || label == kGuestLocationUnsetLabel) label = 'Near you';
+
+  return {
+    'id': 'device-location',
+    'title': 'Current location',
+    'landmark': 'Current location',
+    'address': label,
+    'street': street,
+    'city': city,
+    'state': state,
+    'pincode': pincode,
+    'postal_code': pincode,
+    'latitude': latitude,
+    'longitude': longitude,
+    'lat': latitude,
+    'lng': longitude,
+    'is_device_location': true,
+  };
+}
+
+/// Header label for a guest device pin. Unset stays [kGuestLocationUnsetLabel].
+String guestDeliveryChipLabel(Map<String, dynamic>? pin) {
+  if (pin == null || pin['is_device_location'] != true || pin['is_launch_city'] == true) {
+    return kGuestLocationUnsetLabel;
+  }
+  final address = pin['address']?.toString().trim() ?? '';
+  if (address.isEmpty || address == kGuestLocationUnsetLabel) return kGuestLocationUnsetLabel;
+  return address;
+}
+
 String _firstNonEmpty(Iterable<String?> values) {
   for (final value in values) {
     final cleaned = _clean(value);

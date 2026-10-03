@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hotpotchef_new/utils/diner_meal_catalog.dart';
 import 'package:hotpotchef_new/utils/helpers.dart';
+import 'package:hotpotchef_new/utils/pinned_address.dart';
 import 'package:hotpotchef_new/utils/service_area.dart';
 
 void main() {
@@ -228,5 +229,77 @@ void main() {
       }),
       isTrue,
     );
+  });
+
+  test('guest pin follows device location', () {
+    expect(guestColdStartShouldRequestLocation(signedIn: false), isTrue);
+    expect(guestColdStartShouldRequestLocation(signedIn: true), isFalse);
+
+    const deviceLat = 18.5912;
+    const deviceLng = 73.7389;
+    final pin = guestDeviceDeliveryPin(
+      permissionGranted: true,
+      latitude: deviceLat,
+      longitude: deviceLng,
+      street: 'Baner',
+      city: 'Pune',
+      state: 'Maharashtra',
+      pincode: '411045',
+    );
+    expect(pin, isNotNull);
+    expect(pin!['is_device_location'], isTrue);
+    expect(pin['is_launch_city'], isNot(true));
+    expect(pin['latitude'], deviceLat);
+    expect(pin['longitude'], deviceLng);
+    expect(pin['latitude'], isNot(launchCityDefaultPin()['latitude']));
+    expect(pin['longitude'], isNot(launchCityDefaultPin()['longitude']));
+
+    final chip = guestDeliveryChipLabel(pin);
+    expect(chip, 'Baner, Pune - 411045');
+    expect(chip, isNot(kGuestLocationUnsetLabel));
+    expect(chip, isNot('Select location'));
+
+    expect(
+      kitchenServesDinerPin(
+        kitchenLat: 18.60,
+        kitchenLng: 73.74,
+        dinerLat: deviceLat,
+        dinerLng: deviceLng,
+        dinerPincode: pin['pincode']?.toString(),
+        kitchenPincode: '411045',
+      ),
+      isTrue,
+    );
+    expect(
+      kitchenServesDinerPin(
+        kitchenLat: 19.07,
+        kitchenLng: 72.87,
+        dinerLat: deviceLat,
+        dinerLng: deviceLng,
+        dinerPincode: pin['pincode']?.toString(),
+        kitchenPincode: '400001',
+      ),
+      isFalse,
+    );
+
+    expect(
+      guestDeviceDeliveryPin(
+        permissionGranted: false,
+        latitude: launchCityDefaultPin()['latitude'] as double,
+        longitude: launchCityDefaultPin()['longitude'] as double,
+        city: 'Pune',
+        pincode: '411001',
+      ),
+      isNull,
+    );
+    expect(
+      guestDeviceDeliveryPin(permissionGranted: true, latitude: null, longitude: null),
+      isNull,
+    );
+    expect(
+      guestDeviceDeliveryPin(permissionGranted: true, latitude: 0, longitude: 0),
+      isNull,
+    );
+    expect(guestDeliveryChipLabel(null), kGuestLocationUnsetLabel);
   });
 }
