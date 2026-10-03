@@ -1334,9 +1334,10 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             color: AppTheme.info,
           ),
           const SizedBox(height: 10),
-          OrderSlotBanner(
+          ...chefKitchenOrderTiming(
             order: order,
-            hint: isPending || isPreparing ? null : chefPrepGateHint(order),
+            isPending: isPending,
+            isPreparing: isPreparing,
           ),
           if (instructions.isNotEmpty) ...[
             const SizedBox(height: 10),
@@ -1396,11 +1397,6 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                     ),
                   ],
                 ),
-                if (!isPreparing && chefPrepGateHint(order).isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Text(chefPrepGateHint(order), style: AppTheme.caption),
-                  ),
               ],
             ),
         ],
