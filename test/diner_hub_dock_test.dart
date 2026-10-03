@@ -33,7 +33,7 @@ void main() {
     expect(kHomeMealCatalogSelectMinimal.contains('embedding'), isFalse);
     expect(kHomeMealCatalogSelect.contains('id'), isTrue);
     expect(kHomeMealCatalogSelect.contains('chef_id'), isTrue);
-    expect(kHomeMealCatalogSelect.contains('hosting_address'), isFalse);
+    expect(kHomeMealCatalogSelect.contains('hosting_address'), isTrue);
     expect(kHomeMealCatalogSelectMinimal.contains('pickup_lat'), isTrue);
     expect(kHomeMealCatalogSelect.contains('offer_type'), isTrue);
     expect(kHomeMealCatalogSelect.contains('discount_value'), isTrue);

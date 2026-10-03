@@ -622,6 +622,12 @@ bool mealFailsCurrentCatalogRequirements(Map<String, dynamic> meal) {
   if ((meal['service_type'] ?? meal['selected_service_type'] ?? '').toString().trim().isEmpty) {
     return true;
   }
+  // Guest catalog reads omit a blank address key rather than inventing one.
+  // A present-but-empty address is still an unpublished placeholder.
+  final addressKnown = meal.containsKey('hosting_address') || meal.containsKey('address');
+  if (!addressKnown) return false;
+  final address = (meal['hosting_address'] ?? meal['address'] ?? '').toString().trim();
+  if (address.isEmpty) return true;
   return false;
 }
 
@@ -1009,6 +1015,13 @@ String formatDeliverySlotLabel(Map<String, dynamic> order, {DateTime? now}) {
   );
 }
 
+/// Chef/diner slot line on an order card: "Requested 04 Oct 2026, 08:00 AM".
+String orderSlotBannerTitle(Map<String, dynamic> order, {bool diner = false, DateTime? now}) {
+  final slot = formatDeliverySlotLabel(order, now: now);
+  final prefix = diner ? 'Promised' : 'Requested';
+  return slot == 'ASAP' ? '$prefix ASAP' : '$prefix $slot';
+}
+
 /// Start Preparing unlocks [kChefPrepEarliestMinutes] before the requested time,
 /// and stays on through the last hour and after the slot (food must still go out).
 bool canChefStartPreparing(Map<String, dynamic> order, {DateTime? now}) {
@@ -1028,6 +1041,31 @@ String chefPrepGateHint(Map<String, dynamic> order, {DateTime? now}) {
     return 'Opens ${chefPrepEarliestWindowLabel()} before the requested time';
   }
   return 'Opens in $wait (${chefPrepEarliestWindowLabel()} before requested time)';
+}
+
+/// Chef-facing copy when a status write fails. Keeps the server prep-window
+/// sentence; other failures stay short. The 4-hour prepare window is unchanged.
+String chefOrderUpdateMessage(Object error) {
+  final text = error.toString();
+  if (text.contains('delivered_at') || text.contains('PGRST204')) {
+    return 'Could not mark this order delivered. Try again.';
+  }
+  const tooEarly = 'Too early to start preparing.';
+  final tooEarlyAt = text.indexOf(tooEarly);
+  if (tooEarlyAt >= 0) {
+    return _clipServerSentence(text.substring(tooEarlyAt));
+  }
+  final opensAt = text.indexOf('Opens in ');
+  if (opensAt >= 0) {
+    return _clipServerSentence(text.substring(opensAt));
+  }
+  return 'Could not update this order. Try again.';
+}
+
+String _clipServerSentence(String slice) {
+  final codeAt = slice.indexOf(', code:');
+  if (codeAt > 0) slice = slice.substring(0, codeAt);
+  return slice.trim();
 }
 
 String _humanDuration(Duration duration) {

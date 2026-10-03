@@ -5,7 +5,8 @@ void main() {
   test('guest Home select stays on granted catalog columns', () {
     expect(kHomeMealCatalogSelect.contains('*'), isFalse);
     expect(kHomeMealCatalogSelectMinimal.contains('*'), isFalse);
-    expect(kHomeMealCatalogSelect.contains('hosting_address'), isFalse);
+    expect(kHomeMealCatalogSelect.contains('hosting_address'), isTrue);
+    expect(kHomeMealCatalogSelect.contains('allergens'), isTrue);
     expect(kHomeMealCatalogSelectMinimal.contains('hosting_address'), isFalse);
     expect(kHomeMealCatalogSelect.contains('add_ons'), isTrue);
     expect(kHomeMealCatalogSelect.contains('offer_valid_until'), isTrue);

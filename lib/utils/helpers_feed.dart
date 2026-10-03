@@ -3,11 +3,15 @@ part of 'helpers.dart';
 String mealDietHaystack(Map<String, dynamic> meal) {
   final tags = meal['health_tags'] ?? meal['tags'] ?? meal['ingredients'];
   final tagText = tags is List ? tags.join(' ') : tags?.toString() ?? '';
+  final allergens = meal['allergens'];
+  final allergenText = allergens is List ? allergens.join(' ') : allergens?.toString() ?? '';
   return [
     mealDisplayTitle(meal),
     meal['description']?.toString() ?? '',
     meal['category']?.toString() ?? '',
+    meal['cuisine']?.toString() ?? '',
     tagText,
+    allergenText,
   ].join(' ').toLowerCase();
 }
 

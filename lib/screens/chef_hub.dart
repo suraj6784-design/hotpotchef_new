@@ -11,6 +11,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../utils/chef_order_realtime.dart';
 import '../utils/helpers.dart';
 import '../utils/fssai_certificate_scan.dart';
 import '../utils/network.dart';
@@ -31,7 +32,6 @@ import '../widgets/kyc_reminder_banner.dart';
 import '../widgets/chef_onboarding_coach.dart';
 import '../widgets/diner_storefront.dart';
 import 'packaging_store_screen.dart';
-import 'chef_publish_meal_screen.dart';
 import 'chef_profile_screen.dart';
 import 'notifications_inbox_screen.dart';
 
@@ -131,11 +131,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   void _ensureHubStreams() {
     final uid = _currentUserId;
     if (uid.isEmpty || _ordersStream != null) return;
-    _ordersStream = _supabase
-        .from('orders')
-        .stream(primaryKey: ['id'])
-        .eq('chef_id', uid)
-        .map((rows) => rows.map(chefFacingOrderRow).toList());
+    _ordersStream = watchChefOrders(_supabase, uid);
     _requestsStream = _supabase.from('customer_requests').stream(primaryKey: ['id']);
     _myQuotesStream =
         _supabase.from('customer_request_quotes').stream(primaryKey: ['id']).eq('chef_id', uid);
@@ -169,12 +165,16 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   ServiceType _orderService(Map<String, dynamic> order) =>
       ServiceType.fromString(order['order_type']?.toString() ?? order['service_type']?.toString());
 
-  String _orderUpdateError(Object error) {
-    final text = error.toString();
-    if (text.contains('delivered_at') || text.contains('PGRST204')) {
-      return 'Could not mark this order delivered. Try again.';
-    }
-    return 'Could not update this order. Try again.';
+  String _orderUpdateError(Object error) => chefOrderUpdateMessage(error);
+
+  void _showOrderSnack(String text, {bool isError = false, Color? backgroundColor}) {
+    if (!mounted) return;
+    showReplacingSnackBar(
+      context,
+      text,
+      isError: isError,
+      backgroundColor: backgroundColor,
+    );
   }
 
   String _orderTitle(Map<String, dynamic> order) {
@@ -563,19 +563,13 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         reason: 'Cancelled by kitchen',
       );
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Order cancelled, inventory restored, and refund started.'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
+      _showOrderSnack(
+        'Order cancelled, inventory restored, and refund started.',
+        backgroundColor: Colors.orange,
+      );
     } catch (e, st) {
       FirebaseCrashlytics.instance.recordError(e, st, reason: 'Chef order cancellation failure');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
-      }
+      _showOrderSnack('Error: $e', isError: true);
     }
   }
 
@@ -598,14 +592,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       return await capturePackedBoxPhoto(orderId: order['id'].toString());
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Packed box photo upload failed');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not save the packed-box photo. Try again.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      _showOrderSnack('Could not save the packed-box photo. Try again.', isError: true);
       return null;
     }
   }
@@ -623,11 +610,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       if (next == OrderStatus.readyForPickup) {
         packedUrl = await _capturePackedPhoto(order);
         if (packedUrl == null) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Take a packed-box photo to mark this order ready.')),
-            );
-          }
+          _showOrderSnack('Take a packed-box photo to mark this order ready.');
           return;
         }
         final typed = (order['order_type'] ?? order['service_type'] ?? '').toString().trim();
@@ -644,17 +627,9 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         currentStatus: current,
         dispatchPhotoUrl: packedUrl,
       );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Updated to ${AppTheme.sentenceLabel(next ?? 'the next step')}.')),
-        );
-      }
+      _showOrderSnack('Status updated to: $next');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_orderUpdateError(e)), backgroundColor: Colors.red),
-        );
-      }
+      _showOrderSnack(_orderUpdateError(e), isError: true);
     }
   }
 
@@ -666,21 +641,10 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         'dispatch_photo_url': url,
         'dispatch_photo_at': DateTime.now().toUtc().toIso8601String(),
       }).eq('id', order['id'].toString());
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Packed-box photo added. The diner can see it now.')),
-        );
-      }
+      _showOrderSnack('Packed-box photo added. The diner can see it now.');
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to attach dispatch photo');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not attach the packed-box photo. Try again.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      _showOrderSnack('Could not attach the packed-box photo. Try again.', isError: true);
     }
   }
 
@@ -689,13 +653,10 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       final current = order['status']?.toString() ?? '';
       final svc = ServiceType.fromString(order['order_type']?.toString() ?? order['service_type']?.toString());
       if (svc.usesDeliveryPartner) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Waiting for a partner. They pick this up and mark it delivered.'),
-            ),
-          );
-        }
+        _showOrderSnack(
+          'Delivery partners mark partner orders delivered.',
+          backgroundColor: Colors.teal,
+        );
         return;
       }
       final next = OrderLifecycle.nextDispatchStatus(current, svc);
@@ -706,22 +667,15 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       );
       if (!mounted) return;
       if (next == null && svc.usesDeliveryPartner) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Waiting for a partner. Drivers can accept this order now.'),
-          ),
+        _showOrderSnack(
+          'Ready for a delivery partner. Drivers can accept this order now.',
+          backgroundColor: Colors.teal,
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Updated to ${AppTheme.sentenceLabel(next ?? 'the next step')}.')),
-        );
+        _showOrderSnack('Status updated to: $next');
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_orderUpdateError(e)), backgroundColor: Colors.red),
-        );
-      }
+      _showOrderSnack(_orderUpdateError(e), isError: true);
     }
   }
 
@@ -830,7 +784,11 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                     Column(
                   children: [
                     if (_selectedIndex != 2 && _selectedIndex != 3) _buildHeader(),
-                    if (_selectedIndex == 0) const KycReminderBanner(profilePath: '/chef-profile'),
+                    if (_selectedIndex == 0)
+                    KycReminderBanner(
+                      profilePath: '/chef-profile',
+                      onOpenProfile: () => setState(() => _selectedIndex = 2),
+                    ),
                     if (_selectedIndex == 0)
                     ChefSetupStrip(
                       profile: _chefProfile,
@@ -882,29 +840,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                       child: HubBottomDock(
                         selectedIndex: _selectedIndex > 3 ? 0 : _selectedIndex,
                         onSelect: (idx) => setState(() => _selectedIndex = idx),
-                        destinations: [
-                          const HubDockDestination(
-                            icon: Icons.home_outlined,
-                            selectedIcon: Icons.home_rounded,
-                            label: 'Home',
-                          ),
-                          HubDockDestination(
-                            icon: Icons.receipt_long_outlined,
-                            selectedIcon: Icons.receipt_long,
-                            label: 'Orders',
-                            badgeCount: pendingCount,
-                          ),
-                          const HubDockDestination(
-                            icon: Icons.person_outline_rounded,
-                            selectedIcon: Icons.person_rounded,
-                            label: 'Profile',
-                          ),
-                          const HubDockDestination(
-                            icon: Icons.notifications_none_rounded,
-                            selectedIcon: Icons.notifications_rounded,
-                            label: 'Alerts',
-                          ),
-                        ],
+                        destinations: partnerHubDockDestinations(orderBadge: pendingCount),
                       ),
                     ),
                   ],
@@ -1396,9 +1332,10 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             color: AppTheme.info,
           ),
           const SizedBox(height: 10),
-          OrderSlotBanner(
+          ...chefKitchenOrderTiming(
             order: order,
-            hint: isPending || isPreparing ? null : chefPrepGateHint(order),
+            isPending: isPending,
+            isPreparing: isPreparing,
           ),
           if (instructions.isNotEmpty) ...[
             const SizedBox(height: 10),
@@ -1458,11 +1395,6 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                     ),
                   ],
                 ),
-                if (!isPreparing && chefPrepGateHint(order).isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Text(chefPrepGateHint(order), style: AppTheme.caption),
-                  ),
               ],
             ),
         ],
@@ -1633,13 +1565,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   }
 
   void _openMealEditor(Map<String, dynamic> meal) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ChefPublishMealScreen(
-          existingMeal: Map<String, dynamic>.from(meal),
-        ),
-      ),
-    );
+    context.push('/chef-publish-meal', extra: Map<String, dynamic>.from(meal));
   }
 
   Future<void> _quickRestockMeal(Map<String, dynamic> meal) async {

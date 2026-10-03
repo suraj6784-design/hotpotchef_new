@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
@@ -9,6 +8,7 @@ import '../models/app_role.dart';
 import '../services/auth_session.dart';
 import '../utils/app_router.dart';
 import '../utils/helpers.dart';
+import '../utils/in_app_alert.dart';
 import '../utils/network.dart';
 import '../utils/notification_copy.dart';
 
@@ -416,22 +416,20 @@ class AlertService {
   }
 
   static void _show(String id, String title, String body, {String? path}) {
-    if (!_shown.add(id)) return;
-    Future<void>.delayed(const Duration(seconds: 12), () => _shown.remove(id));
+    if (!shouldPresentInAppAlert(shown: _shown, id: id, title: title, body: body)) return;
+    rememberInAppAlert(_shown, id: id, title: title, body: body);
+    final copyKey = inAppAlertCopyKey(title, body);
+    Future<void>.delayed(const Duration(seconds: 12), () {
+      _shown.remove(id);
+      _shown.remove(copyKey);
+    });
 
     final messenger = globalMessengerKey.currentState;
     if (messenger == null) return;
     messenger.showSnackBar(
-      SnackBar(
-        content: Text(body.isEmpty ? title : '$title — $body'),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 4),
-        action: path == null || path.isEmpty
-            ? null
-            : SnackBarAction(
-                label: 'Open',
-                onPressed: () => openAlertRoute(path),
-              ),
+      inAppAlertSnackBar(
+        message: body.isEmpty ? title : '$title — $body',
+        onOpen: path == null || path.isEmpty ? null : () => openAlertRoute(path),
       ),
     );
   }

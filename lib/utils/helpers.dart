@@ -44,6 +44,12 @@ class Validators {
     return null;
   }
 
+  static String? confirmPassword(String? v, String password) {
+    if (v == null || v.isEmpty) return 'Please confirm your password';
+    if (v != password) return 'Passwords do not match';
+    return null;
+  }
+
   static String? requiredField(String? v) {
     if (v == null || v.trim().isEmpty) return 'Required';
     return null;
@@ -1000,6 +1006,55 @@ int chefHubTabIndex(String? tab) {
   }
 }
 
+int driverHubTabIndex(String? tab) {
+  switch (tab?.trim().toLowerCase()) {
+    case 'orders':
+      return 1;
+    case 'profile':
+    case 'account':
+      return 2;
+    case 'alerts':
+    case 'notifications':
+      return 3;
+    default:
+      return 0;
+  }
+}
+
+/// Dock Alerts tab for the signed-in role. `/notifications` is an alias only.
+String roleHubAlertsPath(AppRole role) {
+  switch (role) {
+    case AppRole.chef:
+      return '/chef-hub?tab=alerts';
+    case AppRole.driver:
+      return '/driver-hub?tab=alerts';
+    case AppRole.admin:
+      return '/notifications';
+    case AppRole.customer:
+      return '/customer-hub?tab=alerts';
+  }
+}
+
+/// Dock Profile tab. Standalone `/chef-profile` and `/driver-profile` stay for
+/// deep links opened outside a hub.
+String roleHubProfilePath(AppRole role) {
+  switch (role) {
+    case AppRole.chef:
+      return '/chef-hub?tab=profile';
+    case AppRole.driver:
+      return '/driver-hub?tab=profile';
+    case AppRole.admin:
+      return '/platform-ops';
+    case AppRole.customer:
+      return '/customer-hub?tab=profile';
+  }
+}
+
+/// Diner Orders dock. Past plates live on the same tab (`past=1`), not `/order-history`.
+String dinerOrdersPath({bool past = false}) {
+  return past ? '/customer-hub?tab=orders&past=1' : '/customer-hub?tab=orders';
+}
+
 bool isPastOrderStatus(String? status) {
   final current = (status ?? '').trim().toLowerCase();
   if (current.contains('out for delivery') || current.contains('out_for_delivery')) {
@@ -1070,9 +1125,9 @@ String? alertOpenPath(Map<String, String?> data, {String? role}) {
     if (parsedRole.contains('driver') ||
         parsedRole.contains('delivery') ||
         fromPayload.contains('driver')) {
-      return '/driver-profile';
+      return roleHubProfilePath(AppRole.driver);
     }
-    return '/chef-profile';
+    return roleHubProfilePath(AppRole.chef);
   }
 
   final orderId = (data['order_id'] ?? '').trim();
@@ -1085,7 +1140,7 @@ String? alertOpenPath(Map<String, String?> data, {String? role}) {
   if (!past && isLiveTrackingStatus(data['status'])) {
     return '/tracking?orderId=$orderId';
   }
-  return past ? '/order-history' : '/customer-hub?tab=orders';
+  return dinerOrdersPath(past: past);
 }
 
 bool isLiveTrackingStatus(String? status) {
@@ -1115,8 +1170,6 @@ bool isStackAlertPath(String path) {
       route.startsWith('/meal/') ||
       route.startsWith('/chef/') ||
       route.startsWith('/group/') ||
-      route == '/chef-profile' ||
-      route == '/driver-profile' ||
       route == '/cart' ||
       route.startsWith('/cart?');
 }
@@ -1370,6 +1423,12 @@ String e164IndiaPhone(String? raw) {
   final digits = usableCustomerPhone(raw);
   if (digits.isEmpty) return '';
   return '+91$digits';
+}
+
+/// Why Pay cannot use [raw] as the diner contact, or null when it can.
+String? checkoutContactPhoneError(String? raw) {
+  if (usableCustomerPhone(raw).length == 10) return null;
+  return 'Enter the mobile number we can reach you on';
 }
 
 /// True when the selected slot's start is now or earlier on that calendar day.
@@ -1697,6 +1756,17 @@ bool isKitchenClosedCheckoutError(Object? error, [Map<String, dynamic>? data]) {
       text.contains('kitchen just went offline');
 }
 
+/// Pull JSON from a Supabase FunctionException / Map without importing supabase here.
+Map<String, dynamic>? functionErrorPayload(Object? error) {
+  if (error is Map<String, dynamic>) return error;
+  if (error is Map) return Map<String, dynamic>.from(error);
+  try {
+    final details = (error as dynamic).details;
+    if (details is Map) return Map<String, dynamic>.from(details);
+  } catch (_) {}
+  return null;
+}
+
 String kitchenClosedCheckoutMessage({required bool charged, bool refunded = false}) {
   if (charged && refunded) {
     return 'This kitchen just went offline. ${dinerRefundMoneyCopy(refunded: true)}';
@@ -1708,9 +1778,18 @@ String kitchenClosedCheckoutMessage({required bool charged, bool refunded = fals
 }
 
 String checkoutInitErrorMessage(Object? error, [Map<String, dynamic>? data]) {
-  if (isSoldOutCheckoutError(error, data)) return soldOutCheckoutMessage(charged: false);
-  if (isKitchenClosedCheckoutError(error, data)) {
+  final payload = data ?? functionErrorPayload(error);
+  if (isSoldOutCheckoutError(error, payload)) return soldOutCheckoutMessage(charged: false);
+  if (isKitchenClosedCheckoutError(error, payload)) {
     return kitchenClosedCheckoutMessage(charged: false);
+  }
+  final server = payload?['error']?.toString().trim() ?? '';
+  if (server.isNotEmpty) {
+    final lowered = server.toLowerCase();
+    if (lowered.contains('unauthorized') || lowered.contains('sign in')) {
+      return 'Please sign in to continue.';
+    }
+    return server;
   }
   return 'Initialization Failed: ${networkErrorMessage(error)}';
 }

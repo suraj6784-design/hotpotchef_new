@@ -8,11 +8,14 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../utils/app_page.dart';
+import '../utils/delivery_pin.dart';
+import '../utils/diner_orders_feed.dart';
 import '../utils/helpers.dart';
 import '../utils/network.dart';
 import '../utils/support.dart';
 import '../utils/diner_locale.dart';
 import '../widgets/customer_ui_components.dart';
+import '../widgets/diner_order_list_card.dart';
 import '../widgets/diner_order_progress.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/last_order_banner.dart';
@@ -32,6 +35,7 @@ class CustomerOrdersTab extends ConsumerStatefulWidget {
   final VoidCallback onLogout;
   final VoidCallback? onReorderToCart;
   final int refreshEpoch;
+  final bool initialShowPast;
 
   const CustomerOrdersTab({
     super.key,
@@ -39,6 +43,7 @@ class CustomerOrdersTab extends ConsumerStatefulWidget {
     required this.onLogout,
     this.onReorderToCart,
     this.refreshEpoch = 0,
+    this.initialShowPast = false,
   });
 
   @override
@@ -51,7 +56,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
   List<Map<String, dynamic>> _activeRequests = [];
   Map<String, dynamic>? _savedDropoffAddress;
   bool _isLoading = true;
-  bool _showPast = false;
+  late bool _showPast = widget.initialShowPast;
   final Map<String, List<Map<String, dynamic>>> _quotesByRequest = {};
 
   StreamSubscription? _ordersSub;
@@ -93,24 +98,12 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
     super.dispose();
   }
 
-  bool _isActiveStatus(String? status) {
-    final value = status?.toString().toLowerCase() ?? '';
-    return !value.contains('delivered') &&
-        !value.contains('completed') &&
-        !value.contains('cancelled') &&
-        !value.contains('rejected');
-  }
-
   List<Map<String, dynamic>> _activeRows(Iterable<dynamic> rows) {
-    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).where((row) {
-      return _isActiveStatus(row['status']?.toString());
-    }).toList();
+    return dinerActiveOrders(rows);
   }
 
   List<Map<String, dynamic>> _pastRows(Iterable<dynamic> rows) {
-    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).where((row) {
-      return !_isActiveStatus(row['status']?.toString());
-    }).take(24).toList();
+    return dinerPastOrders(rows);
   }
 
   List<Map<String, dynamic>> _cateringRows(Iterable<dynamic> rows) {
@@ -234,17 +227,16 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
     _ordersSub = supabase
         .from('orders')
         .stream(primaryKey: ['id'])
+        .eq('customer_id', user.id)
         .order('created_at', ascending: false)
         .listen(
       (data) {
         if (!mounted) return;
-        final mine = data.where((order) {
-          final owner = order['customer_id']?.toString() ?? order['user_id']?.toString() ?? '';
-          return owner == user.id;
-        });
+        final mine = data.where((order) => dinerOrderOwnedBy(order, user.id));
+        final merged = mergeDinerOrderSnapshot([..._activeOrders, ..._pastOrders], mine);
         setState(() {
-          _activeOrders = _activeRows(mine);
-          _pastOrders = _pastRows(mine);
+          _activeOrders = _activeRows(merged);
+          _pastOrders = _pastRows(merged);
           _isLoading = false;
         });
       },
@@ -664,7 +656,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                           if (!isDelivered) ...[
                             Builder(
                               builder: (_) {
-                                final pin = items.first['delivery_otp']?.toString().trim() ?? '';
+                                final pin = dinerVisibleDeliveryPin(items.first);
                                 if (pin.isEmpty) return const SizedBox.shrink();
                                 return Padding(
                                   padding: const EdgeInsets.only(top: 12),
@@ -1350,6 +1342,25 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
     );
   }
 
+  List<Widget> _broadcastSection({required bool leadingDivider}) {
+    if (_showPast || _activeRequests.isEmpty) return const [];
+    return [
+      if (leadingDivider) ...[
+        const SizedBox(height: 8),
+        Divider(color: AppTheme.hairlineOf(context), thickness: 1.5),
+        const SizedBox(height: 24),
+      ],
+      Text('My broadcasts & catering', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppTheme.onSurfaceOf(context))),
+      const SizedBox(height: 12),
+      ..._activeRequests.map((req) => _buildBulkRequestCard(req)),
+      if (!leadingDivider) ...[
+        const SizedBox(height: 24),
+        Divider(color: AppTheme.hairlineOf(context), thickness: 1.5),
+        const SizedBox(height: 24),
+      ],
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -1402,6 +1413,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
           'delivery_address': resolvedDropoff.isEmpty ? order['delivery_address'] : resolvedDropoff,
           'driver_id': order['driver_id'] ?? order['delivery_partner_id'],
           'delivery_otp': order['delivery_otp'],
+          'driver_arrived_at': order['driver_arrived_at'],
           'created_at': order['created_at'] ?? DateTime.now().toIso8601String(),
           'updated_at': order['updated_at'],
           'delivered_at': order['delivered_at'],
@@ -1423,6 +1435,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
           'delivery_address': resolvedDropoff.isEmpty ? order['delivery_address'] : resolvedDropoff,
           'driver_id': order['driver_id'] ?? order['delivery_partner_id'],
           'delivery_otp': order['delivery_otp'],
+          'driver_arrived_at': order['driver_arrived_at'],
           'created_at': order['created_at'] ?? DateTime.now().toIso8601String(),
           'updated_at': order['updated_at'],
           'delivered_at': order['delivered_at'],
@@ -1458,32 +1471,31 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
               onChanged: (past) => setState(() => _showPast = past),
             ),
             const SizedBox(height: 16),
-            if (!_showPast)
-              LastOrderReorderBanner(
-                compact: true,
-                onAddedToCart: widget.onReorderToCart,
-              ),
-            if (!_showPast && _activeRequests.isNotEmpty) ...[
-              Text('My broadcasts & catering', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: AppTheme.onSurfaceOf(context))),
-              const SizedBox(height: 12),
-              ..._activeRequests.map((req) => _buildBulkRequestCard(req)),
-              const SizedBox(height: 24),
-              Divider(color: AppTheme.hairlineOf(context), thickness: 1.5),
-              const SizedBox(height: 24),
-            ],
-            if (sortedKeys.isEmpty)
-              EmptyState(
-                icon: Icons.soup_kitchen_outlined,
-                title: _showPast ? 'No past orders yet' : 'No active orders',
-                message: _showPast
-                    ? 'Delivered and cancelled plates will show here.'
-                    : 'Placed meals show up here with live kitchen and delivery status.',
-                actionLabel: _showPast ? 'Refresh' : 'View past orders',
-                onAction: _showPast
-                    ? () => unawaited(_fetchActiveOrders())
-                    : () => setState(() => _showPast = true),
-              )
-            else ...[
+            for (final section in dinerOrdersSections(
+              showPast: _showPast,
+              hasMealOrders: sortedKeys.isNotEmpty,
+              hasBroadcasts: !_showPast && _activeRequests.isNotEmpty,
+            ))
+              if (section == DinerOrdersSection.reorder)
+                LastOrderReorderBanner(
+                  compact: true,
+                  onAddedToCart: widget.onReorderToCart,
+                )
+              else if (section == DinerOrdersSection.empty)
+                EmptyState(
+                  icon: Icons.soup_kitchen_outlined,
+                  title: _showPast ? 'No past orders yet' : 'No active orders',
+                  message: _showPast
+                      ? 'Delivered and cancelled plates will show here.'
+                      : 'Placed meals show up here with live kitchen and delivery status.',
+                  actionLabel: _showPast ? 'Refresh' : 'View past orders',
+                  onAction: _showPast
+                      ? () => unawaited(_fetchActiveOrders())
+                      : () => setState(() => _showPast = true),
+                )
+              else if (section == DinerOrdersSection.broadcasts) ...[
+                ..._broadcastSection(leadingDivider: sortedKeys.isNotEmpty),
+              ] else ...[
               if (_showPast) ...[
                 const Padding(
                   padding: EdgeInsets.only(bottom: 12),
@@ -1543,8 +1555,47 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                     ? _pickupLabel(items.first, items)
                     : _dropoffLabel(items.first, items);
 
-                return GestureDetector(
-                  onTap: () => _showOrderDetailsBottomSheet(
+                final lineLabel = dinerOrderLineLabel({'items': items});
+                final badgeLabel = isDelivered
+                    ? 'Delivered'
+                    : allCancelled
+                        ? 'Cancelled'
+                        : (trackableItem != null ? 'On the way' : groupStatus);
+                final statusLine = hasDispatchPhoto(items.first)
+                    ? dispatchPackedLabel(takenAt: orderDispatchPhotoAt(items.first))
+                    : 'Status: $groupStatus';
+                final pin = dinerVisibleDeliveryPin(items.first);
+                return DinerOrderListCard(
+                  key: ValueKey(rawOrderIdStr),
+                  orderIdLabel: displayOrderIdStr,
+                  chefName: chefDisplayName(items.first),
+                  lineLabel: lineLabel,
+                  moreItemsLabel: items.length > 1 ? '+ ${items.length - 1} more items' : null,
+                  badgeLabel: badgeLabel,
+                  badgeColor: isDelivered ? AppTheme.live : AppTheme.primary,
+                  statusLine: statusLine,
+                  statusColor: statusColor,
+                  priceLabel: '₹${finalGrandTotal.toInt()}',
+                  orderType: orderType,
+                  placedLabel: dateTimeString,
+                  slotLabel: smartTimeSlot,
+                  addressLabel: addressLabel,
+                  addressValue: addressValue,
+                  isPickup: isPickupOrDineIn,
+                  deliveryPin: pin,
+                  dimmed: allCancelled,
+                  showReorder: trackableItem == null && (_showPast || isDelivered),
+                  showTrack: trackableItem != null,
+                  showHelp: !_showPast && trackableItem == null && !isDelivered,
+                  helpTooltip: DinerLocaleController.instance.copy.help,
+                  onReorder: () => _reorderItems(items),
+                  onTrack: trackableItem == null ? null : () => _openTracking(trackableItem!, items),
+                  onHelp: () => showContactSupportSheet(
+                    context,
+                    orderNumber: displayOrderIdStr,
+                    orderUuid: items.first['order_id']?.toString() ?? items.first['id']?.toString(),
+                  ),
+                  onOpenDetails: () => _showOrderDetailsBottomSheet(
                     context,
                     displayOrderIdStr,
                     dateTimeString,
@@ -1557,225 +1608,6 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                     canCancelGroup,
                     isDelivered,
                     trackableItem,
-                  ),
-                  child: AppCard(
-                    margin: const EdgeInsets.only(bottom: 24),
-                    child: Opacity(
-                      opacity: allCancelled ? 0.6 : 1.0,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      displayOrderIdStr,
-                                      style: TextStyle(
-                                        color: AppTheme.textMuted,
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 12,
-                                        letterSpacing: 0.6,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      chefDisplayName(items.first),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w700,
-                                        color: AppTheme.onSurfaceOf(context),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: (isDelivered ? AppTheme.live : AppTheme.primary).withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(999),
-                                ),
-                                child: Text(
-                                  isDelivered
-                                      ? 'Delivered'
-                                      : allCancelled
-                                          ? 'Cancelled'
-                                          : OrderLifecycle.dinerOrderCardBadge(groupStatus),
-                                  style: TextStyle(
-                                    color: isDelivered ? AppTheme.live : AppTheme.primary,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text('${items.first['quantity']}x ${items.first['title']}',
-                                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
-                                    if (items.length > 1) ...[
-                                      const SizedBox(height: 4),
-                                      Text('+ ${items.length - 1} more items', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12, fontStyle: FontStyle.italic)),
-                                    ],
-                                    const SizedBox(height: 4),
-                                    Text(
-                                        hasDispatchPhoto(items.first)
-                                            ? dispatchPackedLabel(takenAt: orderDispatchPhotoAt(items.first))
-                                            : 'Status: $groupStatus',
-                                        style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.w700)),
-                                  ],
-                                ),
-                              ),
-                              Text('₹${bill.displayGrandRupees}',
-                                  style: TextStyle(color: AppTheme.onSurfaceOf(context).withValues(alpha: 0.55), fontSize: 14, fontWeight: FontWeight.bold)),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-
-                          // 🌟 1. Delivery Type Selected
-                          Row(
-                            children: [
-                              const Icon(Icons.local_shipping_outlined, size: 14, color: AppTheme.primary),
-                              const SizedBox(width: 6),
-                              Text('Type: ', style: AppTheme.caption),
-                              Text(orderType, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-
-                          // 🌟 2. Time of the Order Placed
-                          Row(
-                            children: [
-                              const Icon(Icons.access_time, size: 14, color: AppTheme.textMuted),
-                              const SizedBox(width: 6),
-                              Text('Placed: ', style: AppTheme.caption),
-                              Text(dateTimeString, style: AppTheme.caption),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              const Icon(Icons.event_available, size: 14, color: Colors.green),
-                              const SizedBox(width: 6),
-                              Text('Delivery Slot: ', style: AppTheme.caption),
-                              Text(smartTimeSlot, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
-                            ],
-                          ),
-
-                          const SizedBox(height: 12),
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: AppTheme.surfaceOf(context),
-                              borderRadius: AppTheme.radiusSm,
-                              border: Border.all(color: AppTheme.hairlineOf(context)),
-                            ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Icon(isPickupOrDineIn ? Icons.storefront : Icons.location_on,
-                                    size: 14, color: isPickupOrDineIn ? Colors.blue : Colors.red),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text('$addressLabel$addressValue',
-                                      style: TextStyle(fontSize: 12, color: AppTheme.onSurfaceOf(context)),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis),
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (!isDelivered) ...[
-                            Builder(
-                              builder: (_) {
-                                final pin = items.first['delivery_otp']?.toString().trim() ?? '';
-                                if (pin.isEmpty) return const SizedBox.shrink();
-                                return Padding(
-                                  padding: const EdgeInsets.only(top: 12),
-                                  child: Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.primary.withValues(alpha: 0.08),
-                                      borderRadius: AppTheme.radiusMd,
-                                      border: Border.all(color: AppTheme.primary.withValues(alpha: 0.25)),
-                                    ),
-                                    child: Text(
-                                      'Delivery PIN: $pin — share with driver at the door',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w700,
-                                        color: AppTheme.onSurfaceOf(context),
-                                        height: 1.35,
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ],
-                          if (trackableItem != null) ...[
-                            const SizedBox(height: 12),
-                            SizedBox(
-                              width: double.infinity,
-                              child: FilledButton(
-                                onPressed: () => _openTracking(trackableItem!, items),
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: AppTheme.primary,
-                                  minimumSize: const Size.fromHeight(46),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                ),
-                                child: const Text('Track Live Order'),
-                              ),
-                            ),
-                          ] else if (_showPast || isDelivered) ...[
-                            const SizedBox(height: 12),
-                            SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton(
-                                onPressed: () => _reorderItems(items),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: AppTheme.primary,
-                                  side: const BorderSide(color: AppTheme.primary),
-                                  minimumSize: const Size.fromHeight(46),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                ),
-                                child: const Text('Reorder', style: TextStyle(fontWeight: FontWeight.w700)),
-                              ),
-                            ),
-                          ],
-                          if (!_showPast && trackableItem == null && !isDelivered) ...[
-                            const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                AppIconAction(
-                                  icon: Icons.support_agent_outlined,
-                                  tooltip: DinerLocaleController.instance.copy.help,
-                                  onPressed: () => showContactSupportSheet(
-                                    context,
-                                    orderNumber: displayOrderIdStr,
-                                    orderUuid: items.first['order_id']?.toString() ?? items.first['id']?.toString(),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
                   ),
                 );
               }),

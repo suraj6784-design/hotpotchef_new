@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts'
 import { createRouteLinkedAccount } from '../_shared/razorpay.ts'
+import { authorizeChefAccount } from './authorize.mjs'
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return optionsResponse()
@@ -23,12 +24,23 @@ serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}))
-    const chefId = String(body.chef_id ?? userData.user.id)
-    if (chefId !== userData.user.id) {
-      return jsonResponse({ success: false, error: 'You can only link your own payout account' }, 403)
-    }
-
     const admin = createClient(supabaseUrl, serviceKey)
+    const { data: roleRow } = await admin
+      .from('users')
+      .select('role')
+      .eq('id', userData.user.id)
+      .maybeSingle()
+    const authz = authorizeChefAccount({
+      userId: userData.user.id,
+      requestedChefId: body.chef_id,
+      role: roleRow?.role
+        ?? userData.user.app_metadata?.role
+        ?? userData.user.user_metadata?.role,
+    })
+    if (!authz.ok) {
+      return jsonResponse({ success: false, error: authz.error }, authz.status)
+    }
+    const chefId = authz.chefId
     const bankAccount = String(body.bank_account ?? '').replace(/\s+/g, '')
     const ifsc = String(body.ifsc_code ?? '').trim().toUpperCase()
     const beneficiary = String(body.beneficiary_name ?? '').trim()

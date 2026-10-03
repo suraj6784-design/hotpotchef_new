@@ -1,12 +1,17 @@
 import '../models/app_role.dart';
 
 /// Compile-time storefront. `diner` is HotPotChef; `partner` is HotPotChef Partner.
+///
+/// Resolution (first non-empty wins):
+/// 1. Flutter `--flavor` / Android `productFlavors` via `FLUTTER_APP_FLAVOR`
+///    (injected automatically; also mirrored as `APP_FLAVOR` from Gradle)
+/// 2. Explicit `--dart-define=APP_FLAVOR=...` (release scripts, tests)
+/// 3. Default `diner`
 enum AppStorefront { diner, partner }
 
-/// `--dart-define=APP_FLAVOR=partner` wins; otherwise Flutter's `--flavor` (`FLUTTER_APP_FLAVOR`).
-AppStorefront parseAppStorefront(String appFlavor, [String flutterAppFlavor = '']) {
-  final raw = appFlavor.trim().isNotEmpty ? appFlavor : flutterAppFlavor;
-  switch (raw.trim().toLowerCase()) {
+/// Maps a raw flavor / dart-define string to a storefront. Exposed for tests.
+AppStorefront storefrontFromFlavorName(String? raw) {
+  switch ((raw ?? '').trim().toLowerCase()) {
     case 'partner':
     case 'chef':
     case 'driver':
@@ -16,10 +21,16 @@ AppStorefront parseAppStorefront(String appFlavor, [String flutterAppFlavor = ''
   }
 }
 
+/// `--dart-define=APP_FLAVOR` wins when it is set; otherwise Flutter's `--flavor`.
+AppStorefront parseAppStorefront(String appFlavor, [String flutterAppFlavor = '']) {
+  final raw = appFlavor.trim().isNotEmpty ? appFlavor : flutterAppFlavor;
+  return storefrontFromFlavorName(raw);
+}
+
 AppStorefront get kAppStorefront {
-  const app = String.fromEnvironment('APP_FLAVOR');
-  const flutter = String.fromEnvironment('FLUTTER_APP_FLAVOR');
-  return parseAppStorefront(app, flutter);
+  const fromFlavor = String.fromEnvironment('FLUTTER_APP_FLAVOR');
+  const explicit = String.fromEnvironment('APP_FLAVOR');
+  return storefrontFromFlavorName(fromFlavor.isNotEmpty ? fromFlavor : explicit);
 }
 
 extension AppStorefrontX on AppStorefront {

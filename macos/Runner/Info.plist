@@ -28,5 +28,30 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>FlutterDeepLinkingEnabled</key>
+	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>hotpotchef</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>hotpotchef</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>io.supabase.hotpotchef</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>io.supabase.hotpotchef</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

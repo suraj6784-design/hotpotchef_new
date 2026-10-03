@@ -1,0 +1,242 @@
+[
+  {
+    "fn": "ai-craving-matcher",
+    "probe": "options",
+    "status": 200,
+    "ms": 215,
+    "boot_error": false,
+    "preview": "ok"
+  },
+  {
+    "fn": "ai-craving-matcher",
+    "probe": "post_apikey_only",
+    "status": 401,
+    "ms": 95,
+    "boot_error": false,
+    "preview": "{\"success\":false,\"error\":\"Unauthorized\"}"
+  },
+  {
+    "fn": "ai-craving-matcher",
+    "probe": "post_no_auth",
+    "status": 401,
+    "ms": 72,
+    "boot_error": false,
+    "preview": "{\"code\":\"UNAUTHORIZED_NO_AUTH_HEADER\",\"message\":\"Missing authorization header\"}"
+  },
+  {
+    "fn": "send-push-notification",
+    "probe": "options",
+    "status": 200,
+    "ms": 152,
+    "boot_error": false,
+    "preview": "ok"
+  },
+  {
+    "fn": "send-push-notification",
+    "probe": "post_apikey_only",
+    "status": 401,
+    "ms": 142,
+    "boot_error": false,
+    "preview": "{\"success\":false,\"error\":\"Unauthorized\"}"
+  },
+  {
+    "fn": "send-push-notification",
+    "probe": "post_no_auth",
+    "status": 401,
+    "ms": 113,
+    "boot_error": false,
+    "preview": "{\"success\":false,\"error\":\"Unauthorized\"}"
+  },
+  {
+    "fn": "push-notifier",
+    "probe": "options",
+    "status": 200,
+    "ms": 156,
+    "boot_error": false,
+    "preview": "ok"
+  },
+  {
+    "fn": "push-notifier",
+    "probe": "post_apikey_only",
+    "status": 401,
+    "ms": 140,
+    "boot_error": false,
+    "preview": "{\"success\":false,\"error\":\"Unauthorized\"}"
+  },
+  {
+    "fn": "push-notifier",
+    "probe": "post_no_auth",
+    "status": 401,
+    "ms": 124,
+    "boot_error": false,
+    "preview": "{\"success\":false,\"error\":\"Unauthorized\"}"
+  },
+  {
+    "fn": "razorpay-webhook",
+    "probe": "options",
+    "status": 200,
+    "ms": 121,
+    "boot_error": false,
+    "preview": "ok"
+  },
+  {
+    "fn": "razorpay-webhook",
+    "probe": "post_apikey_only",
+    "status": 503,
+    "ms": 117,
+    "boot_error": false,
+    "preview": "{\"error\":\"Webhook secret is not configured\"}"
+  },
+  {
+    "fn": "razorpay-webhook",
+    "probe": "post_no_auth",
+    "status": 503,
+    "ms": 107,
+    "boot_error": false,
+    "preview": "{\"error\":\"Webhook secret is not configured\"}"
+  },
+  {
+    "fn": "create-split-order",
+    "probe": "options",
+    "status": 200,
+    "ms": 191,
+    "boot_error": false,
+    "preview": "ok"
+  },
+  {
+    "fn": "create-split-order",
+    "probe": "post_apikey_only",
+    "status": 401,
+    "ms": 126,
+    "boot_error": false,
+    "preview": "{\"success\":false,\"error\":\"Unauthorized\"}"
+  },
+  {
+    "fn": "create-split-order",
+    "probe": "post_no_auth",
+    "status": 401,
+    "ms": 87,
+    "boot_error": false,
+    "preview": "{\"code\":\"UNAUTHORIZED_NO_AUTH_HEADER\",\"message\":\"Missing authorization header\"}"
+  },
+  {
+    "fn": "create-chef-account",
+    "probe": "options",
+    "status": 200,
+    "ms": 135,
+    "boot_error": false,
+    "preview": "ok"
+  },
+  {
+    "fn": "create-chef-account",
+    "probe": "post_apikey_only",
+    "status": 401,
+    "ms": 107,
+    "boot_error": false,
+    "preview": "{\"success\":false,\"error\":\"Unauthorized\"}"
+  },
+  {
+    "fn": "create-chef-account",
+    "probe": "post_no_auth",
+    "status": 401,
+    "ms": 69,
+    "boot_error": false,
+    "preview": "{\"code\":\"UNAUTHORIZED_NO_AUTH_HEADER\",\"message\":\"Missing authorization header\"}"
+  },
+  {
+    "fn": "ai-search",
+    "probe": "options",
+    "status": 200,
+    "ms": 268,
+    "boot_error": false,
+    "preview": "ok"
+  },
+  {
+    "fn": "ai-search",
+    "probe": "post_apikey_only",
+    "status": 400,
+    "ms": 214,
+    "boot_error": false,
+    "preview": "{\"success\":false,\"error\":\"Search prompt is required\"}"
+  },
+  {
+    "fn": "ai-search",
+    "probe": "post_no_auth",
+    "status": 401,
+    "ms": 94,
+    "boot_error": false,
+    "preview": "{\"code\":\"UNAUTHORIZED_NO_AUTH_HEADER\",\"message\":\"Missing authorization header\"}"
+  },
+  {
+    "fn": "cancel-order",
+    "probe": "options",
+    "status": 200,
+    "ms": 137,
+    "boot_error": false,
+    "preview": "ok"
+  },
+  {
+    "fn": "cancel-order",
+    "probe": "post_apikey_only",
+    "status": 401,
+    "ms": 140,
+    "boot_error": false,
+    "preview": "{\"success\":false,\"error\":\"Unauthorized\"}"
+  },
+  {
+    "fn": "cancel-order",
+    "probe": "post_no_auth",
+    "status": 401,
+    "ms": 67,
+    "boot_error": false,
+    "preview": "{\"code\":\"UNAUTHORIZED_NO_AUTH_HEADER\",\"message\":\"Missing authorization header\"}"
+  },
+  {
+    "fn": "release-chef-payout",
+    "probe": "options",
+    "status": 401,
+    "ms": 143,
+    "boot_error": false,
+    "preview": "{\"success\":false,\"error\":\"Unauthorized\"}"
+  },
+  {
+    "fn": "release-chef-payout",
+    "probe": "post_apikey_only",
+    "status": 401,
+    "ms": 110,
+    "boot_error": false,
+    "preview": "{\"success\":false,\"error\":\"Unauthorized\"}"
+  },
+  {
+    "fn": "release-chef-payout",
+    "probe": "post_no_auth",
+    "status": 401,
+    "ms": 67,
+    "boot_error": false,
+    "preview": "{\"code\":\"UNAUTHORIZED_NO_AUTH_HEADER\",\"message\":\"Missing authorization header\"}"
+  },
+  {
+    "fn": "ops-cron",
+    "probe": "options",
+    "status": 200,
+    "ms": 152,
+    "boot_error": false,
+    "preview": "ok"
+  },
+  {
+    "fn": "ops-cron",
+    "probe": "post_apikey_only",
+    "status": 401,
+    "ms": 121,
+    "boot_error": false,
+    "preview": "{\"success\":false,\"error\":\"Unauthorized\"}"
+  },
+  {
+    "fn": "ops-cron",
+    "probe": "post_no_auth",
+    "status": 401,
+    "ms": 139,
+    "boot_error": false,
+    "preview": "{\"success\":false,\"error\":\"Unauthorized\"}"
+  }
+]

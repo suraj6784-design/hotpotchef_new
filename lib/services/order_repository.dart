@@ -18,6 +18,10 @@ Map<String, dynamic>? _functionData(dynamic data) {
 class OrderRepository {
   final SupabaseClient _supabase = Supabase.instance.client;
 
+  /// Completing a delivery must go through `complete_delivery_order` (PIN/POD).
+  @visibleForTesting
+  static bool allowDirectStatusWrite({required bool completing}) => !completing;
+
   Future<void> updateOrderStatus({
     required String orderId,
     required String newStatus,
@@ -45,6 +49,8 @@ class OrderRepository {
       final completing = lowered == 'delivered' || lowered == 'completed';
 
       if (completing) {
+        // PIN/POD are enforced in complete_delivery_order. Never fall back to a
+        // direct orders.update — that path skipped OTP when the RPC returned false.
         try {
           final params = <String, dynamic>{'p_order_id': orderId};
           if (deliveryOtp != null && deliveryOtp.trim().isNotEmpty) {
@@ -58,10 +64,18 @@ class OrderRepository {
             unawaited(_releaseChefPayout(orderId));
             return;
           }
+          throw Exception('Could not complete delivery. Check PIN and door photo.');
         } catch (e) {
           if (e.toString().contains('DELIVERY_PIN_REQUIRED') ||
-              e.toString().contains('POD_PHOTO_REQUIRED')) rethrow;
+              e.toString().contains('POD_PHOTO_REQUIRED')) {
+            rethrow;
+          }
+          rethrow;
         }
+      }
+
+      if (!allowDirectStatusWrite(completing: completing)) {
+        throw Exception('Could not complete delivery. Check PIN and door photo.');
       }
 
       Future<void> write(Map<String, dynamic> payload) async {
@@ -86,13 +100,6 @@ class OrderRepository {
         } else {
           rethrow;
         }
-      }
-
-      if (completing) {
-        try {
-          await write({'delivered_at': DateTime.now().toUtc().toIso8601String()});
-        } catch (_) {}
-        unawaited(_releaseChefPayout(orderId));
       }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to update order status to $newStatus');

@@ -24,6 +24,7 @@ import '../screens/chef_analytics_screen.dart';
 import '../screens/chef_academy_screen.dart';
 import '../screens/chef_advertise_screen.dart';
 import '../screens/chef_publish_meal_screen.dart';
+import '../screens/legal_document_screen.dart';
 import '../screens/platform_ops_screen.dart';
 import '../screens/ops_invite_screen.dart';
 import '../screens/referral_screen.dart';
@@ -36,6 +37,8 @@ import '../screens/driver_id_card_screen.dart';
 import '../screens/wrong_storefront_screen.dart';
 import '../services/auth_session.dart';
 import '../widgets/not_found_page.dart';
+import '../legal/legal_documents.dart';
+import '../utils/legal_content.dart';
 import 'app_flavor.dart';
 import 'app_page.dart';
 import 'helpers.dart';
@@ -53,8 +56,33 @@ GoRoute _fadeRoute(
   );
 }
 
+LegalDocumentType? _legalTypeForSlug(String slug) {
+  switch (slug.toLowerCase()) {
+    case 'terms':
+      return LegalDocumentType.terms;
+    case 'privacy':
+      return LegalDocumentType.privacy;
+    case 'faq':
+      return LegalDocumentType.faq;
+    case 'cancellation':
+      return LegalDocumentType.cancellation;
+    default:
+      return null;
+  }
+}
+
 class AppRouter {
   static final AuthRefreshNotifier _authRefresh = AuthRefreshNotifier();
+
+  static void go(String location) => router.go(location);
+
+  static String? currentPath() {
+    try {
+      return router.state.uri.path;
+    } catch (_) {
+      return null;
+    }
+  }
 
   static final GoRouter router = GoRouter(
     initialLocation: kAppStorefront.isPartner ? '/auth' : '/customer-hub',
@@ -108,6 +136,12 @@ class AppRouter {
         return '/wrong-app';
       }
 
+      // Dock Alerts is the inbox. `/notifications` is a deep-link alias.
+      if (isAuthenticated && path == '/notifications') {
+        final inbox = roleHubAlertsPath(role);
+        return inbox == '/notifications' ? null : inbox;
+      }
+
       if (!isAuthenticated &&
           kAppStorefront.isPartner &&
           (path == '/customer-hub' || path == '/referral' || path == '/customer-plans')) {
@@ -153,8 +187,9 @@ class AppRouter {
           final userId = Supabase.instance.client.auth.currentUser?.id ?? 'guest';
           final tab = state.uri.queryParameters['tab'];
           return CustomerHubScreen(
-            key: ValueKey('customer-$userId-${tab ?? ''}-${state.uri.queryParameters['preview'] ?? ''}'),
+            key: ValueKey('customer-$userId-${tab ?? ''}-${state.uri.queryParameters['preview'] ?? ''}-${state.uri.queryParameters['past'] ?? ''}'),
             initialTab: userId == 'guest' ? 0 : customerHubTabIndex(tab),
+            initialOrdersPast: state.uri.queryParameters['past'] == '1',
             skipHubRoleGuard:
                 state.uri.queryParameters['preview'] == kCustomerHubAdminPreviewValue,
           );
@@ -170,10 +205,11 @@ class AppRouter {
       _fadeRoute(
         '/driver-hub',
         (context, state) {
-          final wallet = state.uri.queryParameters['tab'] == 'wallet';
+          final tab = state.uri.queryParameters['tab'];
+          final wallet = tab == 'wallet';
           return DriverHubScreen(
             key: ValueKey('driver-${state.uri.query}'),
-            initialTab: wallet ? 1 : 0,
+            initialTab: wallet ? 1 : driverHubTabIndex(tab),
             initialOrdersStage: wallet ? 2 : 0,
           );
         },
@@ -205,6 +241,13 @@ class AppRouter {
       _fadeRoute(
         '/group/:code',
         (context, state) => GroupJoinScreen(roomCode: state.pathParameters['code'] ?? ''),
+      ),
+      GoRoute(
+        path: '/app/cart',
+        pageBuilder: (context, state) => appFadeSlidePage(
+          key: state.pageKey,
+          child: CartImportScreen(itemsParam: state.uri.queryParameters['items'] ?? ''),
+        ),
       ),
       _fadeRoute('/chats', (context, state) => const ChatInboxScreen()),
       _fadeRoute('/chat/:mealId', (context, state) {
@@ -268,6 +311,23 @@ class AppRouter {
       _fadeRoute('/bulk-request', (context, state) => const CustomerBulkRequestScreen()),
       _fadeRoute('/support-tickets', (context, state) => const CustomerSupportTicketsScreen()),
       _fadeRoute('/notifications', (context, state) => const NotificationsInboxScreen()),
+      GoRoute(
+        path: '/legal/:doc',
+        pageBuilder: (context, state) {
+          final slug = state.pathParameters['doc'] ?? '';
+          final creamType = _legalTypeForSlug(slug);
+          final child = creamType != null
+              ? LegalDocumentScreen(type: creamType)
+              : () {
+                  final doc = LegalDocuments.byPath('/legal/$slug');
+                  if (doc == null) {
+                    return const Scaffold(body: Center(child: Text('Document not found')));
+                  }
+                  return LegalDocumentScreen(document: doc);
+                }();
+          return appFadeSlidePage(key: state.pageKey, child: child);
+        },
+      ),
     ],
   );
 }

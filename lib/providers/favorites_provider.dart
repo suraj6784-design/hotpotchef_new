@@ -11,6 +11,14 @@ class FavoritesNotifier extends Notifier<Map<String, dynamic>> {
 
   @override
   Map<String, dynamic> build() {
+    final authSub = _supabase.auth.onAuthStateChange.listen((data) {
+      if (data.event == AuthChangeEvent.signedIn) {
+        fetchFavorites();
+      } else if (data.event == AuthChangeEvent.signedOut) {
+        clear();
+      }
+    });
+    ref.onDispose(authSub.cancel);
     fetchFavorites();
     return {};
   }

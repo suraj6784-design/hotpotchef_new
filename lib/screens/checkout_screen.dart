@@ -10,6 +10,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../services/app_analytics.dart';
 import '../services/auth_session.dart';
+import '../services/create_split_order_contract.dart';
 import '../providers/cart_provider.dart';
 import '../utils/helpers.dart';
 import '../utils/service_area.dart';
@@ -90,6 +91,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> with WidgetsBindingObse
   int _paymentWatch = 0;
 
   final TextEditingController _phoneController = TextEditingController();
+  String? _phoneError;
   final TextEditingController _instructionsController = TextEditingController();
   final TextEditingController _promoController = TextEditingController();
   String? _appliedPromoCode;
@@ -569,14 +571,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> with WidgetsBindingObse
   // --- Razorpay Payment Pipeline ---
 
   Future<void> _startRazorpayPayment() async {
+    if (!mounted) return;
+    // An alert with an action persists and would queue every Pay message behind it.
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    messenger?.clearSnackBars();
+    messenger?.removeCurrentSnackBar();
     if (!await AuthSession.ensureCanPlaceOrders(context)) return;
     if (!mounted) return;
-    final phone = usableCustomerPhone(_phoneController.text);
-
-    if (phone.length != 10) {
-      _showSnackBar('Enter the mobile number we can reach you on', isError: true);
+    final phoneError = checkoutContactPhoneError(_phoneController.text);
+    if (phoneError != null) {
+      setState(() => _phoneError = phoneError);
+      _showSnackBar(phoneError, isError: true);
       return;
     }
+    final phone = usableCustomerPhone(_phoneController.text);
+    if (_phoneError != null) setState(() => _phoneError = null);
     _phoneController.text = phone;
     if (_hasDelivery && _selectedAddressData == null) {
       _showSnackBar('Please select a delivery address', isError: true);
@@ -645,24 +654,33 @@ class _CheckoutScreenState extends State<CheckoutScreen> with WidgetsBindingObse
 
       // Edge function calculates canonical price server-side to prevent tampering
       final response = await _supabase.functions.invoke(
-        'create-split-order',
-        body: {
-          'cart_items': _checkoutCartItems(),
-          'customer_email': user.email,
-          'customer_phone': phone,
-          'delivery_address': _formattedDeliveryAddress(),
-          'instructions': _orderInstructions(),
-          'dropoff_lat': addressCoordinate(_selectedAddressData, latitude: true),
-          'dropoff_lng': addressCoordinate(_selectedAddressData, latitude: false),
-          'tip_amount': clampCheckoutTip(_selectedTip),
-          'apply_coins': _applyCoins && _coinsAccepted,
-          'add_membership': _membershipOnThisOrder,
-          'membership_plan_id': _membershipOnThisOrder ? (_membershipOffer?['plan_id']) : null,
-        },
+        CreateSplitOrderRequest.functionName,
+        body: CreateSplitOrderRequest.toBody(
+          cartItems: _checkoutCartItems(),
+          customerEmail: user.email,
+          customerPhone: phone,
+          deliveryAddress: _formattedDeliveryAddress(),
+          instructions: _orderInstructions(),
+          dropoffLat: addressCoordinate(_selectedAddressData, latitude: true),
+          dropoffLng: addressCoordinate(_selectedAddressData, latitude: false),
+          tipAmount: clampCheckoutTip(_selectedTip),
+          applyCoins: _applyCoins && _coinsAccepted,
+          addMembership: _membershipOnThisOrder,
+          membershipPlanId: _membershipOnThisOrder ? (_membershipOffer?['plan_id']?.toString()) : null,
+        ),
       ).withTimeout(NetworkTimeouts.payment);
 
       if (response.status != 200 || response.data == null) {
-        throw Exception('Could not initialize secure payment order');
+        final payload = functionErrorPayload(response.data);
+        if (isSoldOutCheckoutError(payload?['error'], payload)) {
+          throw Exception(soldOutCheckoutMessage(charged: false));
+        }
+        if (isKitchenClosedCheckoutError(payload?['error'], payload)) {
+          throw Exception(kitchenClosedCheckoutMessage(charged: false));
+        }
+        throw Exception(
+          payload?['error'] ?? 'Could not initialize secure payment order',
+        );
       }
 
       final data = Map<String, dynamic>.from(response.data as Map);
@@ -1148,14 +1166,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> with WidgetsBindingObse
 
   void _showSnackBar(String text, {bool isError = false, Duration duration = const Duration(seconds: 4)}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(text),
-        backgroundColor: isError ? AppTheme.error : AppTheme.success,
-        duration: duration,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    showCheckoutSnackBar(context, text, isError: isError, duration: duration);
   }
 
   // --- Modals & Widgets ---
@@ -1686,10 +1697,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> with WidgetsBindingObse
                 TextField(
                   controller: _phoneController,
                   keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(
+                  onChanged: (_) {
+                    if (_phoneError != null) setState(() => _phoneError = null);
+                  },
+                  decoration: InputDecoration(
                     labelText: 'Mobile number',
                     hintText: '10-digit number we can call',
-                    prefixIcon: Icon(Icons.phone, size: 18),
+                    prefixIcon: const Icon(Icons.phone, size: 18),
+                    errorText: _phoneError,
+                    errorMaxLines: 3,
                   ),
                 ),
                 const SizedBox(height: 12),

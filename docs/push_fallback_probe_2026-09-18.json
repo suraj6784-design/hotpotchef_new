@@ -1,0 +1,66 @@
+[
+  {
+    "fn": "send-push-notification",
+    "probe": "options",
+    "status": 200,
+    "ms": 270,
+    "boot_error": false,
+    "preview": "ok"
+  },
+  {
+    "fn": "send-push-notification",
+    "probe": "post_apikey_only",
+    "status": 401,
+    "ms": 204,
+    "boot_error": false,
+    "preview": "{\"success\":false,\"error\":\"Unauthorized\"}"
+  },
+  {
+    "fn": "send-push-notification",
+    "probe": "post_publishable_bearer",
+    "status": 401,
+    "ms": 875,
+    "boot_error": false,
+    "preview": "{\"success\":false,\"error\":\"Unauthorized\"}"
+  },
+  {
+    "fn": "send-push-notification",
+    "probe": "post_no_auth",
+    "status": 401,
+    "ms": 105,
+    "boot_error": false,
+    "preview": "{\"success\":false,\"error\":\"Unauthorized\"}"
+  },
+  {
+    "fn": "push-notifier",
+    "probe": "options",
+    "status": 200,
+    "ms": 122,
+    "boot_error": false,
+    "preview": "ok"
+  },
+  {
+    "fn": "push-notifier",
+    "probe": "post_apikey_only",
+    "status": 401,
+    "ms": 105,
+    "boot_error": false,
+    "preview": "{\"success\":false,\"error\":\"Unauthorized\"}"
+  },
+  {
+    "fn": "push-notifier",
+    "probe": "post_publishable_bearer",
+    "status": 401,
+    "ms": 117,
+    "boot_error": false,
+    "preview": "{\"success\":false,\"error\":\"Unauthorized\"}"
+  },
+  {
+    "fn": "push-notifier",
+    "probe": "post_no_auth",
+    "status": 401,
+    "ms": 115,
+    "boot_error": false,
+    "preview": "{\"success\":false,\"error\":\"Unauthorized\"}"
+  }
+]

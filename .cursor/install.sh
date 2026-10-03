@@ -33,26 +33,33 @@ git config --global --add safe.directory "$(pwd)" || true
 flutter config --no-analytics >/dev/null 2>&1 || true
 flutter precache --web >/dev/null 2>&1 || true
 
-# 5. Write .env. The app declares `.env` as a required Flutter asset and reads
-#    credentials from it at startup, so builds fail without one, and real data
-#    only loads when the values point at the live backend.
-#
-#    Credentials should be supplied as Cursor Secrets (injected as env vars);
-#    this script writes them into .env so the app picks them up. SUPABASE_URL
-#    defaults to this project's linked Supabase project (the ref is already in
-#    supabase/.temp), so typically only SUPABASE_ANON_KEY needs to be provided.
-#    When no ANON key is available, a placeholder keeps analyze/test/build
-#    working (the UI renders but shows empty / "trouble connecting" states).
+# 5. Write .env on every Cloud Agent boot. The app declares `.env` as a
+#    required Flutter asset and reads credentials from it at startup.
+#    SUPABASE_URL defaults to this project's hosted instance. Cursor Secrets
+#    for SUPABASE_ANON_KEY / RAZORPAY_KEY_ID / GOOGLE_MAPS_API_KEY (and an
+#    optional URL override) are sanitized before write — pasted values often
+#    arrive wrapped in quotes or with a trailing newline and then fail as
+#    "Invalid API key". Placeholders keep analyze/test/build working when
+#    secrets are absent. Do not commit real keys (.env is gitignored).
+_clean_secret() {
+  local v
+  # Drop CR/LF first so a trailing quote is not hidden behind a newline.
+  v="$(printf '%s' "$1" | tr -d '\r\n')"
+  v="${v#"${v%%[![:space:]]*}"}"
+  v="${v%"${v##*[![:space:]]}"}"
+  v="${v#[\"\']}"
+  v="${v%[\"\']}"
+  printf '%s' "$v"
+}
+
 DEFAULT_SUPABASE_URL="https://tpcykyaumvqtwhuiiomg.supabase.co"
-if [ -n "${SUPABASE_ANON_KEY:-}" ] || [ -n "${SUPABASE_URL:-}" ] || [ ! -f .env ]; then
-  echo "Writing .env (credentials sourced from environment / Cursor Secrets when present)."
-  cat > .env <<EOF
-SUPABASE_URL=${SUPABASE_URL:-$DEFAULT_SUPABASE_URL}
-SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-placeholder-anon-key}
-GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY:-}
-RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID:-}
+echo "Writing .env (credentials sourced from environment / Cursor Secrets when present)."
+cat > .env <<EOF
+SUPABASE_URL=$(_clean_secret "${SUPABASE_URL:-$DEFAULT_SUPABASE_URL}")
+SUPABASE_ANON_KEY=$(_clean_secret "${SUPABASE_ANON_KEY:-placeholder-anon-key}")
+GOOGLE_MAPS_API_KEY=$(_clean_secret "${GOOGLE_MAPS_API_KEY:-}")
+RAZORPAY_KEY_ID=$(_clean_secret "${RAZORPAY_KEY_ID:-}")
 EOF
-fi
 
 # 6. Fetch Dart/Flutter package dependencies from the pinned lockfile.
 flutter pub get

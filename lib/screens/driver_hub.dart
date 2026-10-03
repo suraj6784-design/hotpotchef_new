@@ -364,7 +364,11 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
             Column(
               children: [
             if (_selectedIndex != 2 && _selectedIndex != 3) _buildPartnerHeader(),
-                if (_selectedIndex == 0) const KycReminderBanner(profilePath: '/driver-profile'),
+                if (_selectedIndex == 0)
+                  KycReminderBanner(
+                    profilePath: '/driver-profile',
+                    onOpenProfile: () => setState(() => _selectedIndex = 2),
+                  ),
                 Expanded(
                   child: Padding(
                     padding: EdgeInsets.only(bottom: hubDockBodyGap(context)),
@@ -383,29 +387,9 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
               child: HubBottomDock(
                 selectedIndex: _selectedIndex,
                 onSelect: (idx) => setState(() => _selectedIndex = idx),
-                destinations: [
-                  const HubDockDestination(
-                    icon: Icons.home_outlined,
-                    selectedIcon: Icons.home_rounded,
-                    label: 'Home',
-                  ),
-                  HubDockDestination(
-                    icon: Icons.receipt_long_outlined,
-                    selectedIcon: Icons.receipt_long,
-                    label: 'Orders',
-                    badgeCount: dashboardState.availableDeliveries.length,
-                  ),
-                  const HubDockDestination(
-                    icon: Icons.person_outline_rounded,
-                    selectedIcon: Icons.person_rounded,
-                    label: 'Profile',
-                  ),
-                  const HubDockDestination(
-                    icon: Icons.notifications_none_rounded,
-                    selectedIcon: Icons.notifications_rounded,
-                    label: 'Alerts',
-                  ),
-                ],
+                destinations: partnerHubDockDestinations(
+                  orderBadge: dashboardState.availableDeliveries.length,
+                ),
               ),
             ),
           ],

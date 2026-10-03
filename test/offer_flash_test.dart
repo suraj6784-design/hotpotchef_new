@@ -265,7 +265,7 @@ void main() {
         'price': 150,
         'hosting_address': '',
       })),
-      isFalse,
+      isTrue,
     );
     expect(
       mealFailsCurrentCatalogRequirements(_live({

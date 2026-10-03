@@ -1,0 +1,2 @@
+-- Optional local seed. Left empty so `supabase db reset` succeeds.
+-- Do not put live customer or chef data here.

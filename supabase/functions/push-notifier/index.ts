@@ -2,12 +2,17 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts'
 import { adminClient, isServiceRoleRequest, jsonUnauthorized } from '../_shared/guard.ts'
 import { dispatchOrderAlert } from '../_shared/alerts.ts'
+import { authorizeInternalInvoke } from '../_shared/webhook_auth.ts'
+
+// Working FCM fallback if send-push-notification fails to boot. Anon/publishable
+// JWT is not enough — handler returns 401 Unauthorized (X-Webhook-Secret or service_role).
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return optionsResponse()
 
   try {
-    if (!isServiceRoleRequest(req)) return jsonUnauthorized()
+    const internal = authorizeInternalInvoke(req.headers)
+    if (!internal.ok && !isServiceRoleRequest(req)) return jsonUnauthorized()
 
     const payload = await req.json()
     const newRecord = payload.record

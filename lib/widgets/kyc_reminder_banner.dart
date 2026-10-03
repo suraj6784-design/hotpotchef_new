@@ -6,9 +6,16 @@ import '../utils/app_theme.dart';
 
 /// Persistent in-app KYC nudge for chefs and drivers after ops sends a reminder.
 class KycReminderBanner extends StatelessWidget {
-  const KycReminderBanner({super.key, required this.profilePath});
+  const KycReminderBanner({
+    super.key,
+    required this.profilePath,
+    this.onOpenProfile,
+  });
 
   final String profilePath;
+
+  /// Prefer the hub Profile dock tab when the banner sits on a hub.
+  final VoidCallback? onOpenProfile;
 
   Stream<List<Map<String, dynamic>>> _stream() {
     final uid = Supabase.instance.client.auth.currentUser?.id;
@@ -37,7 +44,12 @@ class KycReminderBanner extends StatelessWidget {
         }).eq('id', id);
       } catch (_) {}
     }
-    if (context.mounted) context.push(profilePath);
+    if (!context.mounted) return;
+    if (onOpenProfile != null) {
+      onOpenProfile!();
+      return;
+    }
+    context.push(profilePath);
   }
 
   @override

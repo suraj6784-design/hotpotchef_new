@@ -1082,6 +1082,50 @@ void dismissAppSnackBars(BuildContext context) {
   ScaffoldMessenger.maybeOf(context)?.clearSnackBars();
 }
 
+/// Shows [text] now, replacing a banner that is already on screen.
+///
+/// A snackbar with an action persists, and [ScaffoldMessenger.showSnackBar]
+/// only queues behind it. Checkout Pay errors and chef order updates use this
+/// so the newer message is visible instead of waiting.
+void showReplacingSnackBar(
+  BuildContext context,
+  String text, {
+  bool isError = false,
+  Color? backgroundColor,
+  Duration duration = const Duration(seconds: 4),
+}) {
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  if (messenger == null) return;
+  messenger.clearSnackBars();
+  messenger.removeCurrentSnackBar();
+  final view = View.maybeOf(context);
+  if (view != null) {
+    SemanticsService.sendAnnouncement(view, text, Directionality.of(context));
+  }
+  messenger.showSnackBar(
+    SnackBar(
+      content: Semantics(
+        liveRegion: true,
+        child: Text(text),
+      ),
+      backgroundColor: backgroundColor ?? (isError ? Colors.redAccent : Colors.green),
+      duration: duration,
+      behavior: SnackBarBehavior.floating,
+      persist: false,
+    ),
+  );
+}
+
+/// Checkout copy that must be seen even when an alert snackbar is already up.
+void showCheckoutSnackBar(
+  BuildContext context,
+  String text, {
+  bool isError = false,
+  Duration duration = const Duration(seconds: 4),
+}) {
+  showReplacingSnackBar(context, text, isError: isError, duration: duration);
+}
+
 class MealNutritionStrip extends StatelessWidget {
   const MealNutritionStrip({super.key, required this.meal, this.compact = false});
 

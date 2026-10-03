@@ -12,6 +12,7 @@ import '../utils/helpers.dart';
 import '../utils/kyc_checklist.dart';
 import '../utils/network.dart';
 import '../utils/notification_copy.dart';
+import '../utils/notifications_session.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/diner_storefront.dart';
 import '../widgets/customer_ui_components.dart';
@@ -32,7 +33,10 @@ class NotificationsInboxScreen extends StatefulWidget {
 
 class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
   bool _loading = true;
+  bool _settled = false;
   String? _error;
+  String? _loadedUserId;
+  int _loadSeq = 0;
   String _filter = 'all';
   List<Map<String, dynamic>> _rows = const [];
   StreamSubscription<AuthState>? _authSub;
@@ -42,9 +46,22 @@ class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
-    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((_) {
-      if (mounted) unawaited(_load());
+    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      if (!mounted) return;
+      final sessionUserId = data.session?.user.id;
+      if (!notificationsInboxShouldReload(
+        settled: _settled,
+        loadedUserId: _loadedUserId,
+        sessionUserId: sessionUserId,
+        previousLoadFailed: _error != null && (_loadedUserId ?? '').isNotEmpty,
+      )) {
+        return;
+      }
+      unawaited(_load(sessionUserId: sessionUserId));
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _settled) return;
+      unawaited(_load());
     });
   }
 
@@ -107,18 +124,21 @@ class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
     return formatAppDateTime(local);
   }
 
-  Future<void> _load() async {
-    final uid = Supabase.instance.client.auth.currentUser?.id;
-    if (uid == null) {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _error = 'Sign in to see notifications.';
-          _rows = const [];
-          _kycIncomplete = false;
-          _kycMissing = const [];
-        });
-      }
+  Future<void> _load({String? sessionUserId}) async {
+    final uid = sessionUserId ?? Supabase.instance.client.auth.currentUser?.id;
+    final seq = ++_loadSeq;
+    final signedOut = notificationsSignedOutMessage(uid);
+    if (signedOut != null) {
+      if (!mounted || seq != _loadSeq) return;
+      setState(() {
+        _loadedUserId = null;
+        _settled = true;
+        _loading = false;
+        _error = signedOut;
+        _rows = const [];
+        _kycIncomplete = false;
+        _kycMissing = const [];
+      });
       return;
     }
     setState(() {
@@ -129,7 +149,7 @@ class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
       final raw = await Supabase.instance.client
           .from('user_notifications')
           .select()
-          .eq('user_id', uid)
+          .eq('user_id', uid!)
           .order('created_at', ascending: false)
           .limit(80)
           .withTimeout(NetworkTimeouts.standard);
@@ -156,16 +176,21 @@ class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
           }
         } catch (_) {}
       }
-      if (!mounted) return;
+      if (!mounted || seq != _loadSeq) return;
       setState(() {
+        _loadedUserId = uid;
+        _settled = true;
         _rows = List<Map<String, dynamic>>.from(raw as List);
         _kycIncomplete = kycIncomplete;
         _kycMissing = kycMissing;
         _loading = false;
+        _error = null;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || seq != _loadSeq) return;
       setState(() {
+        _loadedUserId = uid;
+        _settled = true;
         _error = 'Could not load notifications.';
         _loading = false;
       });
@@ -223,7 +248,7 @@ class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
     return Scaffold(
       backgroundColor: AppTheme.canvasOf(context),
       appBar: AppBar(
-        title: const Text('Notifications'),
+        title: Text(DinerLocaleController.instance.copy.notifications),
         automaticallyImplyLeading: !widget.embedded,
         leading: widget.embedded
             ? null
@@ -233,7 +258,7 @@ class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
                   if (context.canPop()) {
                     context.pop();
                   } else {
-                    context.go('/customer-hub');
+                    context.go(AuthSession.roleFromSession().hubPath);
                   }
                 },
               ),
@@ -253,19 +278,25 @@ class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
                 ? ListView(
                     children: [
                       SizedBox(
-                        height: 280,
+                        height: 420,
                         child: EmptyState(
                           icon: Icons.notifications_off_outlined,
                           title: DinerLocaleController.instance.copy.notifications,
                           message: _error,
-                          actionLabel: Supabase.instance.client.auth.currentUser == null
+                          actionLabel: notificationsSignedOutMessage(
+                                    Supabase.instance.client.auth.currentUser?.id,
+                                  ) !=
+                                  null
                               ? 'Sign In'
                               : 'Retry',
-                          onAction: Supabase.instance.client.auth.currentUser == null
+                          onAction: notificationsSignedOutMessage(
+                                    Supabase.instance.client.auth.currentUser?.id,
+                                  ) !=
+                                  null
                               ? () => showAuthBottomSheet(context, () {
                                     if (mounted) unawaited(_load());
                                   })
-                              : _load,
+                              : () => unawaited(_load()),
                         ),
                       ),
                     ],

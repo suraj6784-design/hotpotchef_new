@@ -3,9 +3,11 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../models/driver_delivery_model.dart';
+import '../services/dropoff_arrival.dart';
 import '../services/order_lifecycle.dart';
 import '../utils/helpers.dart';
 import '../utils/kyc_checklist.dart';
@@ -25,11 +27,14 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
   final _supabase = Supabase.instance.client;
   final _lifecycle = OrderLifecycle();
   RealtimeChannel? _dispatchChannel;
+  StreamSubscription<Position>? _arrivalSub;
+  final Set<String> _arrivalMarked = {};
 
   @override
   DriverDashboardState build() {
     ref.onDispose(() {
       _dispatchChannel?.unsubscribe();
+      _arrivalSub?.cancel();
     });
 
     Future.microtask(() {
@@ -158,6 +163,7 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
         activeDeliveries: activeList,
         recentDeliveries: recentList,
       );
+      _syncDropoffWatch();
     } catch (e, st) {
       _logDriverError(e, st, 'Failed loading driver dashboard metrics');
       state = state.copyWith(isLoading: false, errorMessage: 'Failed to synchronize orders.');
@@ -217,6 +223,77 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
     } catch (e, st) {
       _logDriverError(e, st, 'Failed attaching chef kitchen pins for driver runs');
     }
+  }
+
+  List<DriverDeliveryModel> get _pendingDropoffArrivals {
+    return state.activeDeliveries.where((delivery) {
+      if (_arrivalMarked.contains(delivery.orderId)) return false;
+      if ((delivery.driverArrivedAt ?? '').trim().isNotEmpty) return false;
+      final status = delivery.statusLabel.isEmpty ? delivery.status.toDbValue() : delivery.statusLabel;
+      if (!driverRunIsOutForDelivery(status)) return false;
+      return delivery.deliveryLat != null && delivery.deliveryLng != null;
+    }).toList();
+  }
+
+  void _syncDropoffWatch() {
+    if (_pendingDropoffArrivals.isEmpty) {
+      _arrivalSub?.cancel();
+      _arrivalSub = null;
+      return;
+    }
+    if (_arrivalSub != null) return;
+    unawaited(_startDropoffWatch());
+  }
+
+  Future<void> _startDropoffWatch() async {
+    try {
+      final enabled = await Geolocator.isLocationServiceEnabled();
+      if (!enabled) return;
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        return;
+      }
+      if (_pendingDropoffArrivals.isEmpty) return;
+      await _arrivalSub?.cancel();
+      _arrivalSub = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 20,
+        ),
+      ).listen((position) {
+        unawaited(_onDriverPosition(position));
+      });
+    } catch (e, st) {
+      _logDriverError(e, st, 'Could not watch dropoff arrival');
+    }
+  }
+
+  Future<void> _onDriverPosition(Position position) async {
+    final pending = _pendingDropoffArrivals;
+    if (pending.isEmpty) {
+      _syncDropoffWatch();
+      return;
+    }
+    var stamped = false;
+    for (final delivery in pending) {
+      final marked = await DropoffArrival.markIfReached(
+        orderId: delivery.orderId,
+        driverLat: position.latitude,
+        driverLng: position.longitude,
+        dropoffLat: delivery.deliveryLat,
+        dropoffLng: delivery.deliveryLng,
+        status: delivery.statusLabel.isEmpty ? delivery.status.toDbValue() : delivery.statusLabel,
+        arrivedAt: delivery.driverArrivedAt,
+      );
+      if (!marked) continue;
+      stamped = _arrivalMarked.add(delivery.orderId) || stamped;
+    }
+    if (!stamped) return;
+    _syncDropoffWatch();
+    unawaited(loadDashboardData(isSilentRefresh: true));
   }
 
   // --- Atomic Order Acceptance ---
