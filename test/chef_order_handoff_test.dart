@@ -8,8 +8,9 @@ import 'package:hotpotchef_new/widgets/order_slot_banner.dart';
 
 /// Confirmed Breakfast 4D6B2765: Delivery Partner, diner slot 04 Oct 2026 08:00.
 /// The In Progress card already shows the slot and the 4-hour prepare sentence.
-/// It must also show the dropoff, and a phone or delivery note only when the
-/// order has them. The diner delivery PIN stays off this card.
+/// It must also show the dropoff, and a delivery note only when the order has
+/// one. The diner phone stays on the call icon. The delivery PIN stays off
+/// this card.
 void main() {
   const dropoff = '9, Thergaon, Pimpri-Chinchwad, Maharashtra - 411033';
   const phone = '9876543210';
@@ -71,7 +72,7 @@ void main() {
     );
   }
 
-  test('delivery handoff reads the stored dropoff, phone, and note', () {
+  test('delivery handoff reads the stored dropoff and note, not the phone', () {
     final withNote = chefOrderHandoff(breakfast(
       customerPhone: phone,
       specialInstructions: 'Ring the bell\nDelivery PIN: 4821',
@@ -79,15 +80,15 @@ void main() {
       deliveryOtp: '4821',
     ));
     expect(withNote.dropoff, dropoff);
-    expect(withNote.phone, phone);
     expect(withNote.note, contains('Ring the bell'));
     expect(withNote.note, contains('Gate: Tower A'));
     expect(withNote.note, isNot(contains('4821')));
     expect(withNote.note, isNot(contains('Delivery PIN')));
+    expect(withNote.note, isNot(contains(phone)));
+    expect(withNote.dropoff, isNot(contains(phone)));
 
-    final bare = chefOrderHandoff(breakfast(customerPhone: '  ', specialInstructions: ''));
+    final bare = chefOrderHandoff(breakfast(customerPhone: phone, specialInstructions: ''));
     expect(bare.dropoff, dropoff);
-    expect(bare.phone, isEmpty);
     expect(bare.note, isEmpty);
 
     final pickup = chefOrderHandoff(breakfast(
@@ -95,7 +96,7 @@ void main() {
       customerPhone: phone,
     ));
     expect(pickup.dropoff, isEmpty);
-    expect(pickup.phone, phone);
+    expect(pickup.note, isEmpty);
 
     expect(kChefPrepEarliestMinutes, 240);
   });
@@ -112,14 +113,16 @@ void main() {
     expect('Gate: Tower A'.allMatches(handoff.note).length, 1);
   });
 
-  testWidgets('confirmed In Progress card shows the dropoff and a real phone once', (tester) async {
+  testWidgets('confirmed In Progress card shows the dropoff and hides the phone', (tester) async {
     await pumpCard(
       tester,
       breakfast(customerPhone: phone, deliveryOtp: '4821'),
     );
 
     expect(find.text('Dropoff: $dropoff'), findsOneWidget);
-    expect(find.text('Phone: $phone'), findsOneWidget);
+    expect(find.text('Phone: $phone'), findsNothing);
+    expect(find.textContaining(phone), findsNothing);
+    expect(find.textContaining('Phone:'), findsNothing);
     expect(find.textContaining('Note:'), findsNothing);
     expect(find.textContaining('4821'), findsNothing);
     expect(find.textContaining('Delivery PIN'), findsNothing);
@@ -140,7 +143,8 @@ void main() {
     );
 
     expect(find.text('Dropoff: $dropoff'), findsOneWidget);
-    expect(find.text('Phone: $phone'), findsOneWidget);
+    expect(find.textContaining(phone), findsNothing);
+    expect(find.textContaining('Phone:'), findsNothing);
     expect(find.textContaining('Note: Leave with security'), findsOneWidget);
     expect(find.textContaining('8779'), findsNothing);
     expect(find.text('Requested 04 Oct 2026, 08:00 AM'), findsOneWidget);
@@ -149,10 +153,11 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('missing phone and note are not invented', (tester) async {
-    await pumpCard(tester, breakfast());
+  testWidgets('a missing note is not invented and the phone stays hidden', (tester) async {
+    await pumpCard(tester, breakfast(customerPhone: phone));
 
     expect(find.text('Dropoff: $dropoff'), findsOneWidget);
+    expect(find.textContaining(phone), findsNothing);
     expect(find.textContaining('Phone:'), findsNothing);
     expect(find.textContaining('Note:'), findsNothing);
     expect(find.text(sentence), findsOneWidget);

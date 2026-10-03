@@ -5,21 +5,20 @@ import '../utils/helpers.dart';
 
 /// Diner details a kitchen uses on the In Progress card while preparing
 /// and handing off. Name and the requested slot stay on the rest of the card.
+/// Phone and chat stay on the existing contact icons.
 ///
-/// Only fields the order actually has are shown. The diner delivery PIN is
-/// never included.
+/// Only fields the order actually has are shown. The diner delivery PIN and
+/// the diner phone number are never printed on this card.
 class ChefOrderHandoff {
   const ChefOrderHandoff({
     this.dropoff = '',
-    this.phone = '',
     this.note = '',
   });
 
   final String dropoff;
-  final String phone;
   final String note;
 
-  bool get isEmpty => dropoff.isEmpty && phone.isEmpty && note.isEmpty;
+  bool get isEmpty => dropoff.isEmpty && note.isEmpty;
 }
 
 const _nonDropoffLabels = <String>{
@@ -77,8 +76,8 @@ String _deliveryNote(Map<String, dynamic> order) {
   return lines.join('\n').trim();
 }
 
-/// Dropoff, phone, and delivery note copied from the order row.
-/// Pickup and dine-in have no diner dropoff. Empty phone and note stay empty.
+/// Dropoff and delivery note copied from the order row.
+/// Pickup and dine-in have no diner dropoff. An empty note stays empty.
 ChefOrderHandoff chefOrderHandoff(Map<String, dynamic> order) {
   final service = ServiceType.fromString(
     order['order_type']?.toString() ?? order['service_type']?.toString(),
@@ -95,12 +94,11 @@ ChefOrderHandoff chefOrderHandoff(Map<String, dynamic> order) {
   }
   return ChefOrderHandoff(
     dropoff: dropoff,
-    phone: _cleanField(order['customer_phone']),
     note: _deliveryNote(order),
   );
 }
 
-/// Address, phone, and note block under the slot banner on a chef order card.
+/// Address and note block under the slot banner on a chef order card.
 class ChefOrderHandoffDetails extends StatelessWidget {
   const ChefOrderHandoffDetails({super.key, required this.order});
 
@@ -129,21 +127,6 @@ class ChefOrderHandoffDetails extends StatelessWidget {
                 color: onSurface,
               ),
             ),
-          if (handoff.phone.isNotEmpty) ...[
-            if (handoff.dropoff.isNotEmpty) const SizedBox(height: 6),
-            _DetailRow(
-              key: const Key('chef-order-phone'),
-              icon: Icons.phone_outlined,
-              iconColor: AppTheme.linkOf(context),
-              text: 'Phone: ${handoff.phone}',
-              style: TextStyle(
-                fontSize: 13,
-                height: 1.35,
-                fontWeight: FontWeight.w600,
-                color: onSurface,
-              ),
-            ),
-          ],
           if (handoff.note.isNotEmpty) ...[
             const SizedBox(height: 10),
             Container(
