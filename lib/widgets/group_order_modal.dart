@@ -11,14 +11,20 @@ import '../providers/cart_provider.dart';
 import '../services/shared_cart_service.dart';
 
 class GroupOrderModal extends ConsumerStatefulWidget {
-  const GroupOrderModal({super.key});
+  final bool lockRoomSettings;
+  final bool editingExistingRoom;
+
+  const GroupOrderModal({
+    super.key,
+    this.lockRoomSettings = false,
+    this.editingExistingRoom = false,
+  });
 
   @override
   ConsumerState<GroupOrderModal> createState() => _GroupOrderModalState();
 }
 
 class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
-  final _sharedCartService = SharedCartService();
   final _roomCodeController = TextEditingController();
   final _placeLabelController = TextEditingController();
   final _dropoffController = TextEditingController();
@@ -26,6 +32,17 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
   String _placeKind = 'society';
   bool _isLoading = false;
   String? _joinError;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!widget.editingExistingRoom) return;
+    final cart = ref.read(cartProvider);
+    _placeKind = normalizeGroupPlaceKind(cart.sharedPlaceKind);
+    _placeLabelController.text = cart.sharedPlaceLabel ?? '';
+    _dropoffController.text = cart.sharedDropoffNote ?? '';
+    _slotController.text = cart.sharedTimeSlot ?? '';
+  }
 
   @override
   void dispose() {
@@ -37,13 +54,32 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
   }
 
   Future<void> _startGroupOrder() async {
+    if (widget.lockRoomSettings) {
+      _showSnackBar('Only the host can change the time and place.', isError: true);
+      return;
+    }
     setState(() => _isLoading = true);
     try {
       final cartState = ref.read(cartProvider);
+      if (widget.editingExistingRoom) {
+        final saved = ref.read(cartProvider.notifier).updateSharedRoomSettings(
+              placeKind: _placeKind,
+              placeLabel: _placeLabelController.text.trim(),
+              dropoffNote: _dropoffController.text.trim(),
+              timeSlot: _slotController.text.trim(),
+            );
+        if (!mounted) return;
+        if (!saved) {
+          _showSnackBar('Only the host can change the time and place.', isError: true);
+          return;
+        }
+        Navigator.pop(context);
+        return;
+      }
       final placeLabel = _placeLabelController.text.trim();
       final dropoff = _dropoffController.text.trim();
       final slot = _slotController.text.trim();
-      final roomCode = await _sharedCartService.createSharedCart(
+      final roomCode = await SharedCartService().createSharedCart(
         cartState.items,
         placeKind: _placeKind,
         placeLabel: placeLabel,
@@ -269,10 +305,11 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
 
   Widget _kindChip(String kind) {
     final selected = _placeKind == kind;
+    final locked = widget.lockRoomSettings;
     return ChoiceChip(
       label: Text(groupPlaceKindLabel(kind)),
       selected: selected,
-      onSelected: (_) => setState(() => _placeKind = kind),
+      onSelected: locked ? null : (_) => setState(() => _placeKind = kind),
       selectedColor: AppTheme.primary.withValues(alpha: 0.18),
       labelStyle: TextStyle(
         fontWeight: FontWeight.w700,
@@ -300,7 +337,7 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'Society / office lunch',
+              kSocietyOfficeHotpotLabel,
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -309,7 +346,9 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
             ),
             const SizedBox(height: 8),
             Text(
-              'One host, many plates. Neighbours add dishes to your cart — you pay once.',
+              widget.lockRoomSettings
+                  ? 'Only the host can change the time and place. You can still add your own plates.'
+                  : 'One host, many plates. Neighbours add dishes to your cart — you pay once.',
               style: TextStyle(
                 fontSize: 13,
                 color: isDark ? AppTheme.textMuted : AppTheme.textMuted,
@@ -328,6 +367,7 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
             const SizedBox(height: 12),
             TextField(
               controller: _placeLabelController,
+              enabled: !widget.lockRoomSettings,
               onChanged: (_) => setState(() {}),
               decoration: InputDecoration(
                 labelText: groupPlaceKindHint(_placeKind),
@@ -337,6 +377,7 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
             const SizedBox(height: 10),
             TextField(
               controller: _slotController,
+              enabled: !widget.lockRoomSettings,
               onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
                 labelText: 'Shared slot (optional)',
@@ -346,6 +387,7 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
             const SizedBox(height: 10),
             TextField(
               controller: _dropoffController,
+              enabled: !widget.lockRoomSettings,
               onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
                 labelText: 'Drop note (optional)',
@@ -369,10 +411,16 @@ class _GroupOrderModalState extends ConsumerState<GroupOrderModal> {
                     )
                   : const Icon(Icons.apartment_outlined),
               label: Text(
-                _isLoading ? 'Creating…' : 'Start ${groupPlaceKindLabel(_placeKind).toLowerCase()}',
+                _isLoading
+                    ? 'Saving…'
+                    : widget.lockRoomSettings
+                        ? 'Host sets the time and place'
+                        : widget.editingExistingRoom
+                            ? 'Save time & place'
+                            : 'Start ${groupPlaceKindLabel(_placeKind).toLowerCase()}',
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
-              onPressed: _isLoading ? null : _startGroupOrder,
+              onPressed: _isLoading || widget.lockRoomSettings ? null : _startGroupOrder,
             ),
             const SizedBox(height: 8),
             Text(

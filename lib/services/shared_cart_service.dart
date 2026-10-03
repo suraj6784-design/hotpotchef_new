@@ -5,7 +5,10 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../models/cart_state.dart';
+import '../utils/group_cart_permissions.dart';
 import '../utils/helpers.dart';
+
+export '../utils/group_cart_permissions.dart';
 
 String? dinerDisplayNameFromUser({
   String? name,
@@ -16,21 +19,6 @@ String? dinerDisplayNameFromUser({
   final local = email?.split('@').first.trim() ?? '';
   if (local.isNotEmpty) return local;
   return null;
-}
-
-/// A group plate can be changed only by the diner who added it.
-/// Older plates with no owner stay with the host.
-bool sharedCartLineEditable(
-  CartItemModel item, {
-  required String? userId,
-  required String? hostId,
-}) {
-  final uid = userId?.trim() ?? '';
-  if (uid.isEmpty) return false;
-  final owner = item.addedByUserId?.trim() ?? '';
-  if (owner.isNotEmpty) return owner == uid;
-  final host = hostId?.trim() ?? '';
-  return host.isNotEmpty && host == uid;
 }
 
 String groupPlateOwnerLabel(
@@ -87,6 +75,12 @@ List<CartItemModel> mergeSharedCartItems({
   return merged;
 }
 
+String? _blankToNull(String? value) {
+  final trimmed = value?.trim() ?? '';
+  if (trimmed.isEmpty) return null;
+  return trimmed;
+}
+
 class SharedCartException implements Exception {
   SharedCartException(this.message);
 
@@ -129,6 +123,7 @@ class SharedCartRoom {
     this.placeLabel,
     this.dropoffNote,
     this.timeSlot,
+    this.selectedDate,
   });
 
   final String roomCode;
@@ -139,6 +134,7 @@ class SharedCartRoom {
   final String? placeLabel;
   final String? dropoffNote;
   final String? timeSlot;
+  final String? selectedDate;
 }
 
 class SharedCartService {
@@ -223,7 +219,7 @@ class SharedCartService {
       try {
         response = await _supabase
             .from('shared_carts')
-            .select('items, status, host_id, place_kind, place_label, dropoff_note, time_slot')
+            .select('items, status, host_id, place_kind, place_label, dropoff_note, time_slot, selected_date')
             .eq('room_code', code)
             .maybeSingle();
       } on PostgrestException catch (e) {
@@ -268,6 +264,7 @@ class SharedCartService {
         placeLabel: response['place_label']?.toString(),
         dropoffNote: response['dropoff_note']?.toString(),
         timeSlot: response['time_slot']?.toString(),
+        selectedDate: response['selected_date']?.toString(),
       );
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to fetch shared cart');
@@ -296,23 +293,37 @@ class SharedCartService {
   }
 
   /// Streams live updates for a shared cart room (enables multi-user real-time collaboration)
-  Stream<List<CartItemModel>> streamSharedCart(String roomCode) {
-    return _supabase
-        .from('shared_carts')
-        .stream(primaryKey: ['id'])
-        .eq('room_code', roomCode.toUpperCase().trim())
-        .map((data) {
-          if (data.isEmpty) return <CartItemModel>[];
-          final status = data.first['status']?.toString().toLowerCase().trim();
-          if (status == 'ordered' || status == 'closed') return <CartItemModel>[];
-          if (data.first['items'] is List) {
-            final rawList = data.first['items'] as List;
-            return rawList
-                .map((e) => CartItemModel.fromJson(Map<String, dynamic>.from(e)))
-                .toList();
+  Stream<SharedCartRoom> streamSharedCart(String roomCode) {
+    final code = roomCode.toUpperCase().trim();
+    return _supabase.from('shared_carts').stream(primaryKey: ['id']).eq('room_code', code).map((data) {
+      if (data.isEmpty) {
+        return SharedCartRoom(roomCode: code, items: const []);
+      }
+      final row = data.first;
+      final status = row['status']?.toString().toLowerCase().trim();
+      if (status == 'ordered' || status == 'closed') {
+        return SharedCartRoom(roomCode: code, items: const [], status: status, hostId: row['host_id']?.toString());
+      }
+      final items = <CartItemModel>[];
+      if (row['items'] is List) {
+        for (final raw in row['items'] as List) {
+          if (raw is Map) {
+            items.add(CartItemModel.fromJson(Map<String, dynamic>.from(raw)));
           }
-          return <CartItemModel>[];
-        });
+        }
+      }
+      return SharedCartRoom(
+        roomCode: code,
+        items: items,
+        hostId: row['host_id']?.toString(),
+        status: status,
+        placeKind: normalizeGroupPlaceKind(row['place_kind']?.toString()),
+        placeLabel: row['place_label']?.toString(),
+        dropoffNote: row['dropoff_note']?.toString(),
+        timeSlot: row['time_slot']?.toString(),
+        selectedDate: row['selected_date']?.toString(),
+      );
+    });
   }
 
   /// Updates items in the shared room, broadcasting changes to all participants.
@@ -321,6 +332,12 @@ class SharedCartService {
     String roomCode,
     List<CartItemModel> items, {
     String? hostId,
+    bool writeRoomSettings = false,
+    String? placeKind,
+    String? placeLabel,
+    String? dropoffNote,
+    String? timeSlot,
+    DateTime? selectedDate,
   }) async {
     try {
       final code = roomCode.toUpperCase().trim();
@@ -346,18 +363,45 @@ class SharedCartService {
         return;
       }
 
-      final merged = mergeSharedCartItems(
+      final hostWrite = writeRoomSettings && isSharedCartHost(userId: userId, hostId: resolvedHost);
+      var merged = mergeSharedCartItems(
         remote: remote,
         local: items,
         userId: userId,
         hostId: resolvedHost,
       );
-      final jsonList = merged.map((i) => i.toJson()).toList();
-
-      await _supabase.from('shared_carts').update({
-        'items': jsonList,
+      if (hostWrite) {
+        merged = applySharedScheduleToPlates(
+          merged,
+          timeSlot: timeSlot,
+          selectedDate: selectedDate,
+        );
+      }
+      final payload = <String, dynamic>{
+        'items': merged.map((i) => i.toJson()).toList(),
         'updated_at': DateTime.now().toUtc().toIso8601String(),
-      }).eq('room_code', code);
+      };
+      if (hostWrite) {
+        if ((placeKind ?? '').trim().isNotEmpty) {
+          payload['place_kind'] = normalizeGroupPlaceKind(placeKind);
+        }
+        if (placeLabel != null) payload['place_label'] = _blankToNull(placeLabel);
+        if (dropoffNote != null) payload['dropoff_note'] = _blankToNull(dropoffNote);
+        if (timeSlot != null) payload['time_slot'] = _blankToNull(timeSlot);
+        if (selectedDate != null) payload['selected_date'] = selectedDate.toUtc().toIso8601String();
+      }
+
+      try {
+        await _supabase.from('shared_carts').update(payload).eq('room_code', code);
+      } on PostgrestException catch (e) {
+        if (e.code != 'PGRST204') rethrow;
+        payload.remove('place_kind');
+        payload.remove('place_label');
+        payload.remove('dropoff_note');
+        payload.remove('time_slot');
+        payload.remove('selected_date');
+        await _supabase.from('shared_carts').update(payload).eq('room_code', code);
+      }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to update shared cart');
       if (kDebugMode) debugPrint('Update shared cart error: $e');

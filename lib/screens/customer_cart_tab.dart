@@ -18,7 +18,7 @@ import '../services/meal_catalog_repository.dart';
 import '../providers/delivery_preference.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
-import '../widgets/group_order_modal.dart';
+import '../widgets/diner_cart_meal_actions.dart';
 import '../services/reorder_service.dart';
 import 'checkout_screen.dart';
 import 'customer_hub.dart';
@@ -247,12 +247,90 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
         );
   }
 
+  Future<void> _editSharedRoomSettings(CartState cartState) async {
+    final placeController = TextEditingController(text: cartState.sharedPlaceLabel ?? '');
+    final dropController = TextEditingController(text: cartState.sharedDropoffNote ?? '');
+    final slotController = TextEditingController(text: cartState.sharedTimeSlot ?? '');
+    var date = cartState.sharedSelectedDate;
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          backgroundColor: AppTheme.surfaceOf(context),
+          shape: AppTheme.dialogShape,
+          title: const Text('Time & place', style: TextStyle(fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: placeController,
+                decoration: const InputDecoration(labelText: 'Venue / place'),
+              ),
+              TextField(
+                controller: dropController,
+                decoration: const InputDecoration(labelText: 'Drop note'),
+              ),
+              TextField(
+                controller: slotController,
+                decoration: const InputDecoration(labelText: 'Shared time slot'),
+              ),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () async {
+                    final now = DateTime.now();
+                    final initial = date ?? now;
+                    final picked = await showDatePicker(
+                      context: ctx,
+                      initialDate: initial,
+                      firstDate: DateTime(now.year, now.month, now.day),
+                      lastDate: now.add(const Duration(days: 60)),
+                    );
+                    if (picked != null) setLocal(() => date = picked);
+                  },
+                  icon: const Icon(Icons.calendar_today, size: 18),
+                  label: Text(date == null ? 'Set date' : formatFriendlyDate(date!)),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+          ],
+        ),
+      ),
+    );
+    final place = placeController.text.trim();
+    final drop = dropController.text.trim();
+    final slot = slotController.text.trim();
+    placeController.dispose();
+    dropController.dispose();
+    slotController.dispose();
+    if (saved != true || !mounted) return;
+    final ok = ref.read(cartProvider.notifier).updateSharedRoomSettings(
+          placeLabel: place,
+          dropoffNote: drop,
+          timeSlot: slot,
+          selectedDate: date,
+        );
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Only the host can change the time and place.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
     final cartState = ref.watch(cartProvider);
     _maybeShowStockNotice(cartState);
-    final isLoggedIn = Supabase.instance.client.auth.currentUser != null;
+    final viewerId = Supabase.instance.client.auth.currentUser?.id;
+    final isLoggedIn = viewerId != null;
+    final inGroup = (cartState.sharedRoomCode ?? '').isNotEmpty;
+    final isGroupHost = isSharedCartHost(userId: viewerId, hostId: cartState.sharedHostId);
 
     if (cartState.items.isEmpty) {
       return Scaffold(
@@ -335,6 +413,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                       if ((cartState.sharedPlaceLabel ?? '').trim().isNotEmpty) cartState.sharedPlaceLabel!.trim(),
                       if ((cartState.sharedTimeSlot ?? '').trim().isNotEmpty) 'Slot ${cartState.sharedTimeSlot!.trim()}',
                       if ((cartState.sharedDropoffNote ?? '').trim().isNotEmpty) 'Drop ${cartState.sharedDropoffNote!.trim()}',
+                      if (cartState.sharedSelectedDate != null) formatFriendlyDate(cartState.sharedSelectedDate!),
                       'Neighbours add plates — host pays once.',
                     ].join(' · '),
                     style: const TextStyle(fontSize: 12, color: AppTheme.textMuted, height: 1.35),
@@ -399,6 +478,17 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                       ),
                     ],
                   ),
+                  if (isGroupHost) ...[
+                    const SizedBox(height: 4),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () => _editSharedRoomSettings(cartState),
+                        icon: const Icon(Icons.edit_calendar_outlined, size: 18),
+                        label: const Text('Change time & place'),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -463,19 +553,25 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                   orElse: () => '',
                 );
             final displayTimeSlot = dinerSelectedClockLabel(bookedSlot);
-            final slotIssue = cartLineSlotValidationError(
-              selectedSlot: bookedSlot.isEmpty ? (item.timeSlot ?? exactTime ?? '') : bookedSlot,
-              scheduledDate: item.scheduledDate,
-              chefSchedule: rawSchedule,
-            );
-            final inGroup = (cartState.sharedRoomCode ?? '').isNotEmpty;
-            final viewerId = Supabase.instance.client.auth.currentUser?.id;
+            final roomSlot = (cartState.sharedTimeSlot ?? '').trim();
+            final shownSlot = inGroup && roomSlot.isNotEmpty ? roomSlot : bookedSlot;
+            final shownDate = inGroup && cartState.sharedSelectedDate != null
+                ? cartState.sharedSelectedDate!
+                : item.scheduledDate;
+            final slotIssue = inGroup
+                ? null
+                : cartLineSlotValidationError(
+                    selectedSlot: bookedSlot.isEmpty ? (item.timeSlot ?? exactTime ?? '') : bookedSlot,
+                    scheduledDate: item.scheduledDate,
+                    chefSchedule: rawSchedule,
+                  );
             final canEdit = !inGroup ||
                 sharedCartLineEditable(
                   item,
                   userId: viewerId,
                   hostId: cartState.sharedHostId,
                 );
+            final canEditService = canEdit && (!inGroup || isGroupHost);
             final ownerLabel = groupPlateOwnerLabel(
               item,
               userId: viewerId,
@@ -615,7 +711,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<ServiceType>(
                         isExpanded: true,
-                        icon: canEdit ? const Icon(Icons.arrow_drop_down, color: AppTheme.primary) : const SizedBox.shrink(),
+                        icon: canEditService ? const Icon(Icons.arrow_drop_down, color: AppTheme.primary) : const SizedBox.shrink(),
                         value: currentService,
                         style: const TextStyle(color: AppTheme.link, fontSize: 13, fontWeight: FontWeight.w600),
                         items: availableServices.map((svc) {
@@ -634,7 +730,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                             ),
                           );
                         }).toList(),
-                        onChanged: canEdit
+                        onChanged: canEditService
                             ? (val) {
                                 if (val != null) {
                                   ref.read(cartProvider.notifier).updateItemServiceType(
@@ -649,12 +745,12 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                   ),
                   const SizedBox(height: 12),
 
-                  // Schedule Date & Slot pickers
+                  // Schedule Date & Slot pickers. In a group these follow the room.
                   Row(
                     children: [
                       Expanded(
                         child: GestureDetector(
-                          onTap: !canEdit
+                          onTap: inGroup || !canEdit
                               ? null
                               : () async {
                             final first = chefSlotPickerFirstDate(rawSchedule);
@@ -700,7 +796,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                                 const SizedBox(width: 6),
                                 Expanded(
                                   child: Text(
-                                    formatFriendlyDate(item.scheduledDate),
+                                    formatFriendlyDate(shownDate),
                                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context)),
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -713,7 +809,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                       const SizedBox(width: 12),
                       Expanded(
                         child: GestureDetector(
-                          onTap: !canEdit
+                          onTap: inGroup || !canEdit
                               ? null
                               : () async {
                             final subSlots =
@@ -771,7 +867,9 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                                 const SizedBox(width: 6),
                                 Expanded(
                                   child: Text(
-                                    displayTimeSlot, // Reactive UI binding
+                                    inGroup && roomSlot.isNotEmpty
+                                        ? dinerSelectedClockLabel(shownSlot)
+                                        : displayTimeSlot,
                                     style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.bold,
@@ -848,38 +946,11 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
           }),
 
           const SizedBox(height: 4),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.add_circle_outline),
-                  label: const Text('Add more meals'),
-                  onPressed: widget.onAddMoreMeals,
-                ),
-              ),
-              if (isLoggedIn) ...[
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.apartment_outlined),
-                    label: const Text('Society / office'),
-                    onPressed: () {
-                      showModalBottomSheet(
-                        context: context,
-                        isScrollControlled: true,
-                        backgroundColor: Colors.transparent,
-                        builder: (_) => Container(
-                          decoration: AppTheme.bottomSheetDecoration(
-                            isDark: Theme.of(context).brightness == Brightness.dark,
-                          ),
-                          child: const GroupOrderModal(),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ],
+          DinerCartMealActions(
+            onAddMoreMeals: widget.onAddMoreMeals,
+            showGroupOrder: isLoggedIn,
+            lockRoomSettings: inGroup && !isGroupHost,
+            editingExistingRoom: inGroup && isGroupHost,
           ),
           const SizedBox(height: 20),
           if (PricingCalculator.applicablePromosFromCart(
