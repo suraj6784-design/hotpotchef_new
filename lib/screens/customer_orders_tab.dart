@@ -14,6 +14,7 @@ import '../utils/network.dart';
 import '../utils/support.dart';
 import '../utils/diner_locale.dart';
 import '../widgets/customer_ui_components.dart';
+import '../widgets/diner_order_list_card.dart';
 import '../widgets/diner_order_progress.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/last_order_banner.dart';
@@ -1546,8 +1547,47 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                     ? _pickupLabel(items.first, items)
                     : _dropoffLabel(items.first, items);
 
-                return GestureDetector(
-                  onTap: () => _showOrderDetailsBottomSheet(
+                final lineLabel = dinerOrderLineLabel({'items': items});
+                final badgeLabel = isDelivered
+                    ? 'Delivered'
+                    : allCancelled
+                        ? 'Cancelled'
+                        : (trackableItem != null ? 'On the way' : groupStatus);
+                final statusLine = hasDispatchPhoto(items.first)
+                    ? dispatchPackedLabel(takenAt: orderDispatchPhotoAt(items.first))
+                    : 'Status: $groupStatus';
+                final pin = isDelivered ? '' : (items.first['delivery_otp']?.toString().trim() ?? '');
+                return DinerOrderListCard(
+                  key: ValueKey(rawOrderIdStr),
+                  orderIdLabel: displayOrderIdStr,
+                  chefName: chefDisplayName(items.first),
+                  lineLabel: lineLabel,
+                  moreItemsLabel: items.length > 1 ? '+ ${items.length - 1} more items' : null,
+                  badgeLabel: badgeLabel,
+                  badgeColor: isDelivered ? AppTheme.live : AppTheme.primary,
+                  statusLine: statusLine,
+                  statusColor: statusColor,
+                  priceLabel: '₹${finalGrandTotal.toInt()}',
+                  orderType: orderType,
+                  placedLabel: dateTimeString,
+                  slotLabel: smartTimeSlot,
+                  addressLabel: addressLabel,
+                  addressValue: addressValue,
+                  isPickup: isPickupOrDineIn,
+                  deliveryPin: pin,
+                  dimmed: allCancelled,
+                  showReorder: trackableItem == null && (_showPast || isDelivered),
+                  showTrack: trackableItem != null,
+                  showHelp: !_showPast && trackableItem == null && !isDelivered,
+                  helpTooltip: DinerLocaleController.instance.copy.help,
+                  onReorder: () => _reorderItems(items),
+                  onTrack: trackableItem == null ? null : () => _openTracking(trackableItem!, items),
+                  onHelp: () => showContactSupportSheet(
+                    context,
+                    orderNumber: displayOrderIdStr,
+                    orderUuid: items.first['order_id']?.toString() ?? items.first['id']?.toString(),
+                  ),
+                  onOpenDetails: () => _showOrderDetailsBottomSheet(
                     context,
                     displayOrderIdStr,
                     dateTimeString,
@@ -1560,225 +1600,6 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                     canCancelGroup,
                     isDelivered,
                     trackableItem,
-                  ),
-                  child: AppCard(
-                    margin: const EdgeInsets.only(bottom: 24),
-                    child: Opacity(
-                      opacity: allCancelled ? 0.6 : 1.0,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      displayOrderIdStr,
-                                      style: TextStyle(
-                                        color: AppTheme.textMuted,
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 11,
-                                        letterSpacing: 0.6,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      chefDisplayName(items.first),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w800,
-                                        color: AppTheme.onSurfaceOf(context),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: (isDelivered ? AppTheme.live : AppTheme.primary).withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(999),
-                                ),
-                                child: Text(
-                                  isDelivered
-                                      ? 'Delivered'
-                                      : allCancelled
-                                          ? 'Cancelled'
-                                          : (trackableItem != null ? 'On the way' : groupStatus),
-                                  style: TextStyle(
-                                    color: isDelivered ? AppTheme.live : AppTheme.primary,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(dinerOrderLineLabel({'items': items}),
-                                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
-                                    if (items.length > 1) ...[
-                                      const SizedBox(height: 4),
-                                      Text('+ ${items.length - 1} more items', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12, fontStyle: FontStyle.italic)),
-                                    ],
-                                    const SizedBox(height: 4),
-                                    Text(
-                                        hasDispatchPhoto(items.first)
-                                            ? dispatchPackedLabel(takenAt: orderDispatchPhotoAt(items.first))
-                                            : 'Status: $groupStatus',
-                                        style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.w700)),
-                                  ],
-                                ),
-                              ),
-                              Text('₹${finalGrandTotal.toInt()}',
-                                  style: TextStyle(color: AppTheme.onSurfaceOf(context).withValues(alpha: 0.55), fontSize: 14, fontWeight: FontWeight.bold)),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-
-                          // 🌟 1. Delivery Type Selected
-                          Row(
-                            children: [
-                              const Icon(Icons.local_shipping_outlined, size: 14, color: AppTheme.primary),
-                              const SizedBox(width: 6),
-                              Text('Type: ', style: AppTheme.caption),
-                              Text(orderType, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-
-                          // 🌟 2. Time of the Order Placed
-                          Row(
-                            children: [
-                              const Icon(Icons.access_time, size: 14, color: AppTheme.textMuted),
-                              const SizedBox(width: 6),
-                              Text('Placed: ', style: AppTheme.caption),
-                              Text(dateTimeString, style: AppTheme.caption),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              const Icon(Icons.event_available, size: 14, color: Colors.green),
-                              const SizedBox(width: 6),
-                              Text('Delivery Slot: ', style: AppTheme.caption),
-                              Text(smartTimeSlot, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
-                            ],
-                          ),
-
-                          const SizedBox(height: 12),
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: AppTheme.surfaceOf(context),
-                              borderRadius: AppTheme.radiusSm,
-                              border: Border.all(color: AppTheme.hairlineOf(context)),
-                            ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Icon(isPickupOrDineIn ? Icons.storefront : Icons.location_on,
-                                    size: 14, color: isPickupOrDineIn ? Colors.blue : Colors.red),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text('$addressLabel$addressValue',
-                                      style: TextStyle(fontSize: 12, color: AppTheme.onSurfaceOf(context)),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis),
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (!isDelivered) ...[
-                            Builder(
-                              builder: (_) {
-                                final pin = items.first['delivery_otp']?.toString().trim() ?? '';
-                                if (pin.isEmpty) return const SizedBox.shrink();
-                                return Padding(
-                                  padding: const EdgeInsets.only(top: 12),
-                                  child: Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.primary.withValues(alpha: 0.08),
-                                      borderRadius: AppTheme.radiusMd,
-                                      border: Border.all(color: AppTheme.primary.withValues(alpha: 0.25)),
-                                    ),
-                                    child: Text(
-                                      'Delivery PIN: $pin — share with driver at the door',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w800,
-                                        color: AppTheme.onSurfaceOf(context),
-                                        height: 1.35,
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ],
-                          if (trackableItem != null) ...[
-                            const SizedBox(height: 12),
-                            SizedBox(
-                              width: double.infinity,
-                              child: FilledButton(
-                                onPressed: () => _openTracking(trackableItem!, items),
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: AppTheme.primary,
-                                  minimumSize: const Size.fromHeight(46),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                ),
-                                child: const Text('Track Live Order'),
-                              ),
-                            ),
-                          ] else if (_showPast || isDelivered) ...[
-                            const SizedBox(height: 12),
-                            SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton(
-                                onPressed: () => _reorderItems(items),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: AppTheme.primary,
-                                  side: const BorderSide(color: AppTheme.primary),
-                                  minimumSize: const Size.fromHeight(46),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                ),
-                                child: const Text('Reorder', style: TextStyle(fontWeight: FontWeight.w800)),
-                              ),
-                            ),
-                          ],
-                          if (!_showPast && trackableItem == null && !isDelivered) ...[
-                            const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                AppIconAction(
-                                  icon: Icons.support_agent_outlined,
-                                  tooltip: DinerLocaleController.instance.copy.help,
-                                  onPressed: () => showContactSupportSheet(
-                                    context,
-                                    orderNumber: displayOrderIdStr,
-                                    orderUuid: items.first['order_id']?.toString() ?? items.first['id']?.toString(),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
                   ),
                 );
               }),
