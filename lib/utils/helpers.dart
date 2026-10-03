@@ -4661,6 +4661,31 @@ String chefPrepGateHint(Map<String, dynamic> order, {DateTime? now}) {
   return 'Opens in $wait (${chefPrepEarliestWindowLabel()} before requested time)';
 }
 
+/// Chef-facing copy when a status write fails. Keeps the server prep-window
+/// sentence; other failures stay short.
+String chefOrderUpdateMessage(Object error) {
+  final text = error.toString();
+  if (text.contains('delivered_at') || text.contains('PGRST204')) {
+    return 'Could not mark this order delivered. Try again.';
+  }
+  const tooEarly = 'Too early to start preparing.';
+  final tooEarlyAt = text.indexOf(tooEarly);
+  if (tooEarlyAt >= 0) {
+    return _clipServerSentence(text.substring(tooEarlyAt));
+  }
+  final opensAt = text.indexOf('Opens in ');
+  if (opensAt >= 0) {
+    return _clipServerSentence(text.substring(opensAt));
+  }
+  return 'Could not update this order. Try again.';
+}
+
+String _clipServerSentence(String slice) {
+  final codeAt = slice.indexOf(', code:');
+  if (codeAt > 0) slice = slice.substring(0, codeAt);
+  return slice.trim();
+}
+
 String _humanDuration(Duration duration) {
   final minutes = duration.inMinutes;
   if (minutes < 1) return 'under a minute';
