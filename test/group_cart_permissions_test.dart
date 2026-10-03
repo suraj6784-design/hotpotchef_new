@@ -10,6 +10,7 @@ CartItemModel _plate({
   String? ownerName,
   int quantity = 1,
   String? timeSlot = '1:00 PM',
+  DateTime? scheduledDate,
   List<CartItemAddOn> addOns = const [],
 }) {
   return CartItemModel(
@@ -19,7 +20,7 @@ CartItemModel _plate({
     title: 'Veg Jumbo Thali',
     basePrice: 180,
     quantity: quantity,
-    scheduledDate: DateTime.utc(2026, 10, 3),
+    scheduledDate: scheduledDate ?? DateTime.utc(2026, 10, 3),
     serviceType: ServiceType.deliveryPlatform,
     timeSlot: timeSlot,
     selectedAddOns: addOns,
@@ -99,6 +100,144 @@ void main() {
     expect(twice.first.quantity, 1);
     expect(twice.last.addedByUserId, 'arushi');
     expect(twice.last.quantity, 2);
+  });
+
+  test('a guest add keeps the room time and date already on the plates', () {
+    const roomSlot = '3:00 AM to 4:00 AM';
+    const mealSlot = '4:00 AM to 5:00 AM';
+    final roomDate = DateTime.utc(2026, 10, 3);
+    final mealDate = DateTime.utc(2026, 10, 4);
+    final hostLine = _plate(
+      id: 'host-line',
+      mealId: 'thali',
+      ownerId: 'kiranag',
+      ownerName: 'Kiranag',
+      timeSlot: roomSlot,
+      scheduledDate: roomDate,
+    );
+    final saladLine = _plate(
+      id: 'salad-line',
+      mealId: 'thali',
+      ownerId: 'arushi',
+      ownerName: 'Arushi',
+      timeSlot: roomSlot,
+      scheduledDate: roomDate,
+      addOns: const [salad],
+    );
+
+    final added = addOwnedGroupPlate(
+      items: [hostLine, saladLine],
+      plate: _plate(
+        id: 'incoming',
+        mealId: 'thali',
+        ownerId: 'kiranag',
+        timeSlot: mealSlot,
+        scheduledDate: mealDate,
+        quantity: 1,
+      ),
+      userId: 'arushi',
+      userName: 'Arushi',
+      hostId: 'kiranag',
+    );
+
+    expect(added, hasLength(3));
+    expect(added[0], hostLine);
+    expect(added[1], saladLine);
+    expect(added[2].addedByUserId, 'arushi');
+    expect(added[2].addedByName, 'Arushi');
+    expect(added[2].selectedAddOns, isEmpty);
+    expect(added[2].quantity, 1);
+    expect(added[2].timeSlot, roomSlot);
+    expect(added[2].scheduledDate, roomDate);
+    expect(added[2].rawMealDetails['exact_time'], roomSlot);
+    expect(added[2].id, isNot('host-line'));
+    expect(added[2].id, isNot('salad-line'));
+
+    final again = addOwnedGroupPlate(
+      items: added,
+      plate: _plate(
+        id: 'incoming-2',
+        mealId: 'thali',
+        ownerId: 'arushi',
+        timeSlot: mealSlot,
+        scheduledDate: mealDate,
+      ),
+      userId: 'arushi',
+      userName: 'Arushi',
+      hostId: 'kiranag',
+      roomTimeSlot: '   ',
+    );
+    expect(again, hasLength(3));
+    expect(again[0], hostLine);
+    expect(again[1], saladLine);
+    expect(again[2].quantity, 2);
+    expect(again[2].timeSlot, roomSlot);
+    expect(again[2].scheduledDate, roomDate);
+
+    expect(
+      authorizeSharedRoomPatch(
+        userId: 'arushi',
+        hostId: 'kiranag',
+        patch: const SharedRoomPatch(
+          placeLabel: 'Somewhere else',
+          timeSlot: mealSlot,
+        ),
+      ),
+      isNull,
+    );
+  });
+
+  test('a guest add uses another plate clock when the host line has none', () {
+    const roomSlot = '3:00 AM to 4:00 AM';
+    final hostLine = _plate(
+      id: 'host-line',
+      mealId: 'thali',
+      ownerId: 'kiranag',
+      ownerName: 'Kiranag',
+      timeSlot: null,
+    );
+    final earlier = _plate(
+      id: 'salad-line',
+      mealId: 'salad',
+      ownerId: 'arushi',
+      ownerName: 'Arushi',
+      timeSlot: roomSlot,
+    );
+    final added = addOwnedGroupPlate(
+      items: [hostLine, earlier],
+      plate: _plate(
+        id: 'incoming',
+        mealId: 'thali',
+        ownerId: 'arushi',
+        timeSlot: '4:00 AM to 5:00 AM',
+      ),
+      userId: 'arushi',
+      userName: 'Arushi',
+      hostId: 'kiranag',
+    );
+    expect(added[0].timeSlot, isNull);
+    expect(added[1].timeSlot, roomSlot);
+    expect(added[2].timeSlot, roomSlot);
+    expect(added[2].addedByUserId, 'arushi');
+    expect(added[0].quantity, 1);
+  });
+
+  test('the first plate in an empty room keeps the meal slot', () {
+    final added = addOwnedGroupPlate(
+      items: const [],
+      plate: _plate(
+        id: 'incoming',
+        mealId: 'thali',
+        ownerId: 'kiranag',
+        timeSlot: '4:00 AM to 5:00 AM',
+      ),
+      userId: 'kiranag',
+      userName: 'Kiranag',
+      hostId: 'kiranag',
+    );
+    expect(added, hasLength(1));
+    expect(added.single.timeSlot, '4:00 AM to 5:00 AM');
+    expect(added.single.addedByUserId, 'kiranag');
   });
 
   test('a guest cannot change the host quantity, extras, time, or place', () {
