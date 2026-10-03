@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -7,6 +9,7 @@ import '../services/auth_session.dart';
 import '../utils/diner_locale.dart';
 import '../utils/helpers.dart';
 import '../utils/network.dart';
+import '../utils/notifications_session.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/diner_storefront.dart';
 
@@ -26,14 +29,40 @@ class NotificationsInboxScreen extends StatefulWidget {
 
 class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
   bool _loading = true;
+  bool _settled = false;
   String? _error;
+  String? _loadedUserId;
+  int _loadSeq = 0;
   String _filter = 'all';
   List<Map<String, dynamic>> _rows = const [];
+  StreamSubscription<AuthState>? _authSub;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      if (!mounted) return;
+      final sessionUserId = data.session?.user.id;
+      if (!notificationsInboxShouldReload(
+        settled: _settled,
+        loadedUserId: _loadedUserId,
+        sessionUserId: sessionUserId,
+        previousLoadFailed: _error != null && (_loadedUserId ?? '').isNotEmpty,
+      )) {
+        return;
+      }
+      unawaited(_load(sessionUserId: sessionUserId));
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _settled) return;
+      unawaited(_load());
+    });
+  }
+
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    super.dispose();
   }
 
   bool _isOrderKind(Map<String, dynamic> row) {
@@ -89,16 +118,19 @@ class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
     return formatAppDateTime(local);
   }
 
-  Future<void> _load() async {
-    final uid = Supabase.instance.client.auth.currentUser?.id;
-    if (uid == null) {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _error = 'Sign in to see notifications.';
-          _rows = const [];
-        });
-      }
+  Future<void> _load({String? sessionUserId}) async {
+    final uid = sessionUserId ?? Supabase.instance.client.auth.currentUser?.id;
+    final seq = ++_loadSeq;
+    final signedOut = notificationsSignedOutMessage(uid);
+    if (signedOut != null) {
+      if (!mounted || seq != _loadSeq) return;
+      setState(() {
+        _loadedUserId = null;
+        _settled = true;
+        _loading = false;
+        _error = signedOut;
+        _rows = const [];
+      });
       return;
     }
     setState(() {
@@ -109,18 +141,23 @@ class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
       final raw = await Supabase.instance.client
           .from('user_notifications')
           .select()
-          .eq('user_id', uid)
+          .eq('user_id', uid!)
           .order('created_at', ascending: false)
           .limit(80)
           .withTimeout(NetworkTimeouts.standard);
-      if (!mounted) return;
+      if (!mounted || seq != _loadSeq) return;
       setState(() {
+        _loadedUserId = uid;
+        _settled = true;
         _rows = List<Map<String, dynamic>>.from(raw as List);
         _loading = false;
+        _error = null;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || seq != _loadSeq) return;
       setState(() {
+        _loadedUserId = uid;
+        _settled = true;
         _error = 'Could not load notifications.';
         _loading = false;
       });
@@ -208,13 +245,13 @@ class _NotificationsInboxScreenState extends State<NotificationsInboxScreen> {
                 ? ListView(
                     children: [
                       SizedBox(
-                        height: 280,
+                        height: 420,
                         child: EmptyState(
                           icon: Icons.notifications_off_outlined,
                           title: DinerLocaleController.instance.copy.notifications,
                           message: _error,
                           actionLabel: 'Retry',
-                          onAction: _load,
+                          onAction: () => unawaited(_load()),
                         ),
                       ),
                     ],

@@ -142,7 +142,10 @@ class _CustomerHubScreenState extends ConsumerState<CustomerHubScreen> {
           if (mounted) setState(() => _selectedIndex = 0);
         },
       ),
-      const NotificationsInboxScreen(embedded: true),
+      NotificationsInboxScreen(
+        key: ValueKey('alerts-$sessionKey'),
+        embedded: true,
+      ),
     ];
 
     return Scaffold(
