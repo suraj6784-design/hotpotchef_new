@@ -409,6 +409,31 @@ class SharedCartService {
     }
   }
 
+  /// Writes one Alerts row for each other member. The host is skipped in the database.
+  /// A non-host caller inserts nothing.
+  Future<void> notifyGroupRoomChange({
+    required String roomCode,
+    required String title,
+    required String body,
+    required String change,
+  }) async {
+    final code = roomCode.trim().toUpperCase();
+    final alertTitle = title.trim();
+    final alertBody = body.trim();
+    if (code.isEmpty || alertTitle.isEmpty || alertBody.isEmpty) return;
+    try {
+      await _supabase.rpc('notify_group_room_change', params: {
+        'p_room_code': code,
+        'p_title': alertTitle,
+        'p_body': alertBody,
+        'p_change': change.trim(),
+      });
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to notify group room');
+      if (kDebugMode) debugPrint('Group room notify error: $e');
+    }
+  }
+
   /// Closes a room after the paying member checks out so others cannot keep adding.
   Future<void> markSharedCartOrdered(String roomCode) async {
     final code = roomCode.toUpperCase().trim();
