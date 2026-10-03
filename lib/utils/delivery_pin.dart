@@ -31,6 +31,34 @@ bool driverHasReachedDropoff({
   return meters <= radiusMeters;
 }
 
+/// Copy shown when Mark Delivered must not ask for the PIN.
+String markDeliveredTooFarMessage() {
+  final meters = kDropoffArrivalRadiusMeters.round();
+  return 'You need to be near the dropoff (within $meters meters) to mark this order delivered.';
+}
+
+/// Why Mark Delivered must not open the PIN dialog.
+///
+/// Null when the partner is inside [kDropoffArrivalRadiusMeters] of the
+/// dropoff — the same gate that reveals the diner PIN. A missing fix counts
+/// as too far: the emulator and a denied GPS permission are not at the door.
+String? markDeliveredBlockReason({
+  required double? driverLat,
+  required double? driverLng,
+  required double? dropoffLat,
+  required double? dropoffLng,
+}) {
+  if (driverHasReachedDropoff(
+    driverLat: driverLat,
+    driverLng: driverLng,
+    dropoffLat: dropoffLat,
+    dropoffLng: dropoffLng,
+  )) {
+    return null;
+  }
+  return markDeliveredTooFarMessage();
+}
+
 bool _statusHidesDeliveryPin(String? status) {
   final s = (status ?? '').trim().toLowerCase();
   if (s.contains('cancel') || s.contains('reject')) {

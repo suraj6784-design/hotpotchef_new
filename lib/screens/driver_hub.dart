@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../utils/delivery_pin.dart';
 import '../utils/helpers.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
@@ -454,7 +455,8 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
         children: [
-          if (state.errorMessage != null) ...[
+          if (state.errorMessage != null &&
+              !state.errorMessage!.toLowerCase().contains('near the dropoff')) ...[
             EmptyState(
               icon: Icons.wifi_off_rounded,
               title: "Couldn't load jobs",
@@ -614,7 +616,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
           child: _ordersStage == 0
               ? _buildAvailableTab(state.availableDeliveries, notifier)
               : _ordersStage == 1
-                  ? _buildActiveDeliveryTab(state.activeDeliveries, notifier)
+                  ? _buildActiveDeliveryTab(state.activeDeliveries, notifier, state)
                   : _buildCompletedRuns(state),
         ),
       ],
@@ -978,6 +980,21 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
     );
   }
 
+  Future<void> _explainDropoffRequired(String reason) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: AppTheme.dialogShape,
+        title: const Text('Get near the dropoff'),
+        content: Text(reason),
+        actions: [
+          ElevatedButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+        ],
+      ),
+    );
+  }
+
   Future<bool> _confirmMarkDelivered(DriverDeliveryModel delivery) async {
     final expected = delivery.deliveryOtp?.trim() ?? '';
     if (expected.isEmpty) {
@@ -1063,7 +1080,11 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
     return proceed == true;
   }
 
-  Widget _buildActiveDeliveryTab(List<DriverDeliveryModel> active, DriverDashboardNotifier notifier) {
+  Widget _buildActiveDeliveryTab(
+    List<DriverDeliveryModel> active,
+    DriverDashboardNotifier notifier,
+    DriverDashboardState driverFix,
+  ) {
     if (active.isEmpty) {
       return const EmptyState(
         icon: Icons.map_outlined,
@@ -1082,6 +1103,14 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
         final canConfirmPickup = OrderLifecycle.canDriverConfirmPickup(rawStatus);
         final actionLabel = OrderLifecycle.driverHubActionLabel(rawStatus);
         final badgeLabel = OrderLifecycle.driverHubBadge(rawStatus);
+        final proximityReason = isOut
+            ? markDeliveredBlockReason(
+                driverLat: driverFix.driverLat,
+                driverLng: driverFix.driverLng,
+                dropoffLat: delivery.deliveryLat,
+                dropoffLng: delivery.deliveryLng,
+              )
+            : null;
 
         return AppCard(
           margin: const EdgeInsets.only(bottom: 16),
@@ -1175,6 +1204,18 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 ],
               ),
               const SizedBox(height: 10),
+              if (proximityReason != null) ...[
+                Text(
+                  proximityReason,
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.35,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.onSurfaceOf(context),
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
               if (actionLabel.isNotEmpty)
                 Semantics(
                   button: true,
@@ -1194,9 +1235,37 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                     onPressed: _busyOrderId != null
                         ? null
                         : () async {
+                            double? driverLat;
+                            double? driverLng;
                             if (isOut) {
+                              final fix = await notifier.driverFixForMarkDelivered();
+                              if (!mounted) return;
+                              final blocked = markDeliveredBlockReason(
+                                driverLat: fix.lat,
+                                driverLng: fix.lng,
+                                dropoffLat: delivery.deliveryLat,
+                                dropoffLng: delivery.deliveryLng,
+                              );
+                              if (blocked != null) {
+                                await _explainDropoffRequired(blocked);
+                                return;
+                              }
                               final allowed = await _confirmMarkDelivered(delivery);
                               if (!allowed || !mounted) return;
+                              final confirmFix = await notifier.driverFixForMarkDelivered();
+                              if (!mounted) return;
+                              final stillBlocked = markDeliveredBlockReason(
+                                driverLat: confirmFix.lat,
+                                driverLng: confirmFix.lng,
+                                dropoffLat: delivery.deliveryLat,
+                                dropoffLng: delivery.deliveryLng,
+                              );
+                              if (stillBlocked != null) {
+                                await _explainDropoffRequired(stillBlocked);
+                                return;
+                              }
+                              driverLat = confirmFix.lat;
+                              driverLng = confirmFix.lng;
                             }
                             setState(() => _busyOrderId = delivery.orderId);
                             String? podUrl;
@@ -1224,6 +1293,10 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                               rawStatus,
                               deliveryOtp: isOut ? delivery.deliveryOtp : null,
                               podPhotoUrl: podUrl,
+                              driverLat: driverLat,
+                              driverLng: driverLng,
+                              dropoffLat: delivery.deliveryLat,
+                              dropoffLng: delivery.deliveryLng,
                             );
                             if (!mounted) return;
                             setState(() => _busyOrderId = null);

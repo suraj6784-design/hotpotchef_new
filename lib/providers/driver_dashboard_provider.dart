@@ -9,6 +9,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../models/driver_delivery_model.dart';
 import '../services/dropoff_arrival.dart';
 import '../services/order_lifecycle.dart';
+import '../utils/delivery_pin.dart';
 import '../utils/helpers.dart';
 import '../utils/kyc_checklist.dart';
 import '../utils/network.dart';
@@ -225,18 +226,23 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
     }
   }
 
-  List<DriverDeliveryModel> get _pendingDropoffArrivals {
+  List<DriverDeliveryModel> get _outForDeliveryRuns {
     return state.activeDeliveries.where((delivery) {
+      final status = delivery.statusLabel.isEmpty ? delivery.status.toDbValue() : delivery.statusLabel;
+      return driverRunIsOutForDelivery(status);
+    }).toList();
+  }
+
+  List<DriverDeliveryModel> get _pendingDropoffArrivals {
+    return _outForDeliveryRuns.where((delivery) {
       if (_arrivalMarked.contains(delivery.orderId)) return false;
       if ((delivery.driverArrivedAt ?? '').trim().isNotEmpty) return false;
-      final status = delivery.statusLabel.isEmpty ? delivery.status.toDbValue() : delivery.statusLabel;
-      if (!driverRunIsOutForDelivery(status)) return false;
       return delivery.deliveryLat != null && delivery.deliveryLng != null;
     }).toList();
   }
 
   void _syncDropoffWatch() {
-    if (_pendingDropoffArrivals.isEmpty) {
+    if (_outForDeliveryRuns.isEmpty) {
       _arrivalSub?.cancel();
       _arrivalSub = null;
       return;
@@ -245,18 +251,47 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
     unawaited(_startDropoffWatch());
   }
 
-  Future<void> _startDropoffWatch() async {
+  /// Latest GPS fix, or null when the device has no location.
+  /// A missing fix is not treated as arrival at the dropoff.
+  Future<Position?> _readDriverPosition() async {
     try {
       final enabled = await Geolocator.isLocationServiceEnabled();
-      if (!enabled) return;
+      if (!enabled) return null;
       var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
       if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
-        return;
+        return null;
       }
-      if (_pendingDropoffArrivals.isEmpty) return;
+      try {
+        return await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+        ).timeout(const Duration(seconds: 8));
+      } catch (_) {
+        return Geolocator.getLastKnownPosition();
+      }
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Position used to decide whether Mark Delivered may ask for the PIN.
+  Future<({double? lat, double? lng})> driverFixForMarkDelivered() async {
+    final fresh = await _readDriverPosition();
+    if (fresh != null) {
+      await _onDriverPosition(fresh);
+      return (lat: fresh.latitude, lng: fresh.longitude);
+    }
+    return (lat: state.driverLat, lng: state.driverLng);
+  }
+
+  Future<void> _startDropoffWatch() async {
+    try {
+      if (_outForDeliveryRuns.isEmpty) return;
+      final fix = await _readDriverPosition();
+      if (fix != null) await _onDriverPosition(fix);
+      if (_outForDeliveryRuns.isEmpty) return;
       await _arrivalSub?.cancel();
       _arrivalSub = Geolocator.getPositionStream(
         locationSettings: const LocationSettings(
@@ -272,11 +307,13 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
   }
 
   Future<void> _onDriverPosition(Position position) async {
+    state = state.copyWith(
+      driverLat: position.latitude,
+      driverLng: position.longitude,
+      errorMessage: state.errorMessage,
+    );
     final pending = _pendingDropoffArrivals;
-    if (pending.isEmpty) {
-      _syncDropoffWatch();
-      return;
-    }
+    if (pending.isEmpty) return;
     var stamped = false;
     for (final delivery in pending) {
       final marked = await DropoffArrival.markIfReached(
@@ -292,7 +329,6 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
       stamped = _arrivalMarked.add(delivery.orderId) || stamped;
     }
     if (!stamped) return;
-    _syncDropoffWatch();
     unawaited(loadDashboardData(isSilentRefresh: true));
   }
 
@@ -342,6 +378,10 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
     String currentStatus, {
     String? deliveryOtp,
     String? podPhotoUrl,
+    double? driverLat,
+    double? driverLng,
+    double? dropoffLat,
+    double? dropoffLng,
   }) async {
     final user = _supabase.auth.currentUser;
     if (user == null) return false;
@@ -351,18 +391,37 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
         state = state.copyWith(errorMessage: 'This run is not at a delivery step yet.');
         return false;
       }
+      if (OrderLifecycle.canDriverCompleteRun(currentStatus)) {
+        final blocked = markDeliveredBlockReason(
+          driverLat: driverLat,
+          driverLng: driverLng,
+          dropoffLat: dropoffLat,
+          dropoffLng: dropoffLng,
+        );
+        if (blocked != null) {
+          state = state.copyWith(errorMessage: blocked);
+          return false;
+        }
+      }
       await _lifecycle.advanceDriver(
         orderId: orderId,
         currentStatus: currentStatus,
         deliveryOtp: deliveryOtp,
         podPhotoUrl: podPhotoUrl,
+        driverLat: driverLat,
+        driverLng: driverLng,
       );
 
       await loadDashboardData(isSilentRefresh: true);
       return true;
     } catch (e, st) {
       _logDriverError(e, st, 'Failed status update for order: $orderId');
-      state = state.copyWith(errorMessage: 'Could not update this run. Try again.');
+      final raw = e.toString();
+      state = state.copyWith(
+        errorMessage: raw.contains('near the dropoff')
+            ? markDeliveredTooFarMessage()
+            : 'Could not update this run. Try again.',
+      );
       return false;
     }
   }
