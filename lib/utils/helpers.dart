@@ -4612,6 +4612,13 @@ DateTime? orderSlotStart(Map<String, dynamic> order, {DateTime? now}) {
   return parseClockOnDate(slot, date) ?? DateTime(date.year, date.month, date.day);
 }
 
+/// Chef/diner slot line on an order card: "Requested 04 Oct 2026, 08:00 AM".
+String orderSlotBannerTitle(Map<String, dynamic> order, {bool diner = false, DateTime? now}) {
+  final slot = formatDeliverySlotLabel(order, now: now);
+  final prefix = diner ? 'Promised' : 'Requested';
+  return slot == 'ASAP' ? '$prefix ASAP' : '$prefix $slot';
+}
+
 String formatDeliverySlotLabel(Map<String, dynamic> order, {DateTime? now}) {
   final fields = orderSlotFields(order);
   final placed = DateTime.tryParse(fields['created_at']?.toString() ?? '')?.toLocal() ?? now ?? DateTime.now();

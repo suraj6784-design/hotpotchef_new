@@ -11,6 +11,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../utils/chef_order_realtime.dart';
 import '../utils/helpers.dart';
 import '../utils/app_flavor.dart';
 import '../utils/fssai_certificate_scan.dart';
@@ -107,11 +108,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   void _ensureHubStreams() {
     final uid = _currentUserId;
     if (uid.isEmpty || _ordersStream != null) return;
-    _ordersStream = _supabase
-        .from('orders')
-        .stream(primaryKey: ['id'])
-        .eq('chef_id', uid)
-        .map((rows) => rows.map(chefFacingOrderRow).toList());
+    _ordersStream = watchChefOrders(_supabase, uid);
     _requestsStream = _supabase.from('customer_requests').stream(primaryKey: ['id']);
     _myQuotesStream =
         _supabase.from('customer_request_quotes').stream(primaryKey: ['id']).eq('chef_id', uid);

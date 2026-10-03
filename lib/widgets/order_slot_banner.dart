@@ -36,13 +36,10 @@ class _OrderSlotBannerState extends State<OrderSlotBanner> {
   @override
   Widget build(BuildContext context) {
     final start = orderPromisedAt(widget.order) ?? orderSlotStart(widget.order);
-    final slot = formatDeliverySlotLabel(widget.order);
     final left = formatSlotCountdown(start);
     final late = dinerSlotIsLate(widget.order);
     final hint = (widget.hint ?? '').trim();
-    final title = widget.diner
-        ? (slot == 'ASAP' ? 'Promised ASAP' : 'Promised $slot')
-        : (slot == 'ASAP' ? 'Requested ASAP' : 'Requested $slot');
+    final title = orderSlotBannerTitle(widget.order, diner: widget.diner);
 
     return Container(
       width: double.infinity,
