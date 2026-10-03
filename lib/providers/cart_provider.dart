@@ -31,15 +31,9 @@ class CartNotifier extends Notifier<CartState> {
   final _cartService = CartService();
   final _sharedCartService = SharedCartService();
 
-  List<CartItemModel> _applySharedSlotToItems(List<CartItemModel> items, String? slot) {
-    final cleaned = slot?.trim() ?? '';
-    if (cleaned.isEmpty || items.isEmpty) return items;
-    return [for (final item in items) item.copyWith(timeSlot: cleaned)];
-  }
-
   Timer? _debounceTimer;
   RealtimeChannel? _stockChannel;
-  StreamSubscription<List<CartItemModel>>? _sharedCartSub;
+  StreamSubscription<SharedCartRoom>? _sharedCartSub;
   bool _isInitialized = false;
   bool _applyingSharedCart = false;
 
@@ -136,10 +130,18 @@ class CartNotifier extends Notifier<CartState> {
       }
       if (inSharedRoom && !_applyingSharedCart) {
         try {
+          final userId = user?.id;
+          final hostWrite = isSharedCartHost(userId: userId, hostId: state.sharedHostId);
           await _sharedCartService.updateSharedCart(
             room,
             state.items,
             hostId: state.sharedHostId,
+            writeRoomSettings: hostWrite,
+            placeKind: hostWrite ? state.sharedPlaceKind : null,
+            placeLabel: hostWrite ? state.sharedPlaceLabel : null,
+            dropoffNote: hostWrite ? state.sharedDropoffNote : null,
+            timeSlot: hostWrite ? state.sharedTimeSlot : null,
+            selectedDate: hostWrite ? state.sharedSelectedDate : null,
           );
         } catch (e, st) {
           _logCartError(e, st, 'Debounced shared cart sync failed');
@@ -148,6 +150,19 @@ class CartNotifier extends Notifier<CartState> {
     });
   }
 
+  DateTime? _parseRoomDate(String? raw) {
+    final text = raw?.trim() ?? '';
+    if (text.isEmpty) return null;
+    return DateTime.tryParse(text);
+  }
+
+  bool _inSharedRoom() => (state.sharedRoomCode ?? '').trim().isNotEmpty;
+
+  bool _isSharedHost() => isSharedCartHost(
+        userId: _supabase.auth.currentUser?.id,
+        hostId: state.sharedHostId,
+      );
+
   Future<void> attachSharedRoom(
     String roomCode, {
     String? placeKind,
@@ -155,17 +170,18 @@ class CartNotifier extends Notifier<CartState> {
     String? dropoffNote,
     String? timeSlot,
     String? hostId,
+    DateTime? selectedDate,
+    String? selectedDateRaw,
   }) async {
     final code = roomCode.trim().toUpperCase();
     if (code.isEmpty) return;
     final resolvedHost = hostId ?? await _sharedCartService.sharedCartHostId(code);
-    final slot = timeSlot?.trim();
-    var nextItems = state.items;
-    if (slot != null && slot.isNotEmpty && nextItems.isNotEmpty) {
-      nextItems = [
-        for (final item in nextItems) item.copyWith(timeSlot: slot),
-      ];
-    }
+    final date = selectedDate ?? _parseRoomDate(selectedDateRaw);
+    final nextItems = applySharedScheduleToPlates(
+      state.items,
+      timeSlot: timeSlot,
+      selectedDate: date,
+    );
     state = state.copyWith(
       items: nextItems,
       sharedRoomCode: code,
@@ -174,20 +190,29 @@ class CartNotifier extends Notifier<CartState> {
       sharedPlaceLabel: placeLabel,
       sharedDropoffNote: dropoffNote,
       sharedTimeSlot: timeSlot,
+      sharedSelectedDate: date,
     );
     _sharedCartSub?.cancel();
-    _sharedCartSub = _sharedCartService.streamSharedCart(code).listen((items) {
+    _sharedCartSub = _sharedCartService.streamSharedCart(code).listen((room) {
       if (_applyingSharedCart) return;
       _applyingSharedCart = true;
-      final roomClosed = items.isEmpty && state.isNotEmpty && state.sharedRoomCode == code;
+      final roomClosed = room.items.isEmpty && state.isNotEmpty && state.sharedRoomCode == code;
       if (roomClosed) {
         detachSharedRoom();
         _applyingSharedCart = false;
         return;
       }
+      final slot = (room.timeSlot ?? '').trim().isNotEmpty ? room.timeSlot : state.sharedTimeSlot;
+      final roomDate = _parseRoomDate(room.selectedDate) ?? state.sharedSelectedDate;
       state = state.copyWith(
-        items: _applySharedSlotToItems(items, state.sharedTimeSlot),
+        items: applySharedScheduleToPlates(room.items, timeSlot: slot, selectedDate: roomDate),
         sharedRoomCode: code,
+        sharedHostId: (room.hostId ?? '').trim().isNotEmpty ? room.hostId : state.sharedHostId,
+        sharedPlaceKind: room.placeKind,
+        sharedPlaceLabel: room.placeLabel ?? state.sharedPlaceLabel,
+        sharedDropoffNote: room.dropoffNote ?? state.sharedDropoffNote,
+        sharedTimeSlot: slot,
+        sharedSelectedDate: roomDate,
       );
       _persistLocal();
       _applyingSharedCart = false;
@@ -225,6 +250,7 @@ class CartNotifier extends Notifier<CartState> {
       dropoffNote: room.dropoffNote,
       timeSlot: room.timeSlot,
       hostId: room.hostId,
+      selectedDateRaw: room.selectedDate,
     );
     return SharedCartJoinResult(
       roomCode: code,
@@ -354,6 +380,48 @@ class CartNotifier extends Notifier<CartState> {
             : (preferredChefSlotClock(rawSlot) ?? rawSlot));
     final resolvedDate = scheduledDate ?? chefSlotDefaultDate(smartSchedule);
     final note = specialInstructions?.trim();
+
+    if (_inSharedRoom()) {
+      final user = _supabase.auth.currentUser;
+      final userId = user?.id ?? '';
+      if (userId.isEmpty) return false;
+      final incoming = CartItemModel(
+        id: '${mealId}_${DateTime.now().microsecondsSinceEpoch}',
+        mealId: mealId,
+        chefId: chefId,
+        title: mealDisplayTitle(meal, fallback: 'Meal Item'),
+        basePrice: basePriceVal,
+        discountedPrice: validDiscount,
+        quantity: quantity.clamp(1, availableStock),
+        scheduledDate: resolvedDate,
+        timeSlot: resolvedSlot,
+        serviceType: resolvedService,
+        selectedAddOns: pricedAddOns,
+        specialInstructions: (note == null || note.isEmpty) ? null : note,
+        rawMealDetails: {
+          ...meal,
+          'exact_time': resolvedSlot,
+          'max_quantity': availableStock,
+        },
+      );
+      final updatedItems = addOwnedGroupPlate(
+        items: state.items,
+        plate: incoming,
+        userId: userId,
+        hostId: state.sharedHostId,
+        userName: _currentDinerName(),
+        roomTimeSlot: state.sharedTimeSlot,
+        roomDate: state.sharedSelectedDate,
+      );
+      state = state.copyWith(
+        items: updatedItems,
+        packagingFee: _packagingFor(updatedItems),
+      );
+      _resubscribeStockWatcher();
+      _scheduleRemoteSync();
+      unawaited(AppAnalytics.logAddToCart(mealId: mealId, chefId: chefId, quantity: quantity));
+      return true;
+    }
 
     final existingIndex = state.items.indexWhere(
       (i) => i.mealId == mealId && listEquals(i.selectedAddOns, pricedAddOns),
@@ -678,6 +746,7 @@ class CartNotifier extends Notifier<CartState> {
   void updateItemServiceType(String cartItemId, String serviceTypeStr) {
     final index = state.items.indexWhere((i) => i.id == cartItemId);
     if (index == -1) return;
+    if (_inSharedRoom() && !_isSharedHost()) return;
     if (!_canEditSharedLine(state.items[index])) return;
 
     final updated = List<CartItemModel>.from(state.items);
@@ -690,6 +759,10 @@ class CartNotifier extends Notifier<CartState> {
   }
 
   void updateItemDate(String cartItemId, DateTime date) {
+    if (_inSharedRoom()) {
+      updateSharedRoomSettings(selectedDate: date);
+      return;
+    }
     final index = state.items.indexWhere((i) => i.id == cartItemId);
     if (index == -1) return;
     if (!_canEditSharedLine(state.items[index])) return;
@@ -703,7 +776,50 @@ class CartNotifier extends Notifier<CartState> {
   }
 
   // Propagates Time Slot strictly to both properties enforcing state regeneration
+  /// Host-only. Writes the room clock and place onto every plate.
+  bool updateSharedRoomSettings({
+    String? placeKind,
+    String? placeLabel,
+    String? dropoffNote,
+    String? timeSlot,
+    DateTime? selectedDate,
+  }) {
+    if (!_inSharedRoom()) return false;
+    final patch = authorizeSharedRoomPatch(
+      userId: _supabase.auth.currentUser?.id,
+      hostId: state.sharedHostId,
+      patch: SharedRoomPatch(
+        placeKind: placeKind ?? state.sharedPlaceKind,
+        placeLabel: placeLabel ?? state.sharedPlaceLabel,
+        dropoffNote: dropoffNote ?? state.sharedDropoffNote,
+        timeSlot: timeSlot ?? state.sharedTimeSlot,
+        selectedDate: selectedDate ?? state.sharedSelectedDate,
+      ),
+    );
+    if (patch == null) return false;
+    final items = applySharedScheduleToPlates(
+      state.items,
+      timeSlot: patch.timeSlot,
+      selectedDate: patch.selectedDate,
+    );
+    state = state.copyWith(
+      items: items,
+      packagingFee: _packagingFor(items),
+      sharedPlaceKind: patch.placeKind,
+      sharedPlaceLabel: patch.placeLabel,
+      sharedDropoffNote: patch.dropoffNote,
+      sharedTimeSlot: patch.timeSlot,
+      sharedSelectedDate: patch.selectedDate,
+    );
+    _scheduleRemoteSync();
+    return true;
+  }
+
   void updateItemTimeSlot(String cartItemId, String timeSlot) {
+    if (_inSharedRoom()) {
+      updateSharedRoomSettings(timeSlot: timeSlot);
+      return;
+    }
     final index = state.items.indexWhere((i) => i.id == cartItemId);
     if (index == -1) return;
     if (!_canEditSharedLine(state.items[index])) return;

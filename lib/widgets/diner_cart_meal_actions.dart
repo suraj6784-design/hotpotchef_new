@@ -7,11 +7,15 @@ import 'group_order_modal.dart';
 class DinerCartMealActions extends StatelessWidget {
   final VoidCallback onAddMoreMeals;
   final bool showGroupOrder;
+  final bool lockRoomSettings;
+  final bool editingExistingRoom;
 
   const DinerCartMealActions({
     super.key,
     required this.onAddMoreMeals,
     required this.showGroupOrder,
+    this.lockRoomSettings = false,
+    this.editingExistingRoom = false,
   });
 
   @override
@@ -34,7 +38,11 @@ class DinerCartMealActions extends StatelessWidget {
                 kSocietyOfficeHotpotLabel,
                 textAlign: TextAlign.center,
               ),
-              onPressed: () => showSocietyOfficeHotpotSheet(context),
+              onPressed: () => showSocietyOfficeHotpotSheet(
+                context,
+                lockRoomSettings: lockRoomSettings,
+                editingExistingRoom: editingExistingRoom,
+              ),
             ),
           ),
         ],
@@ -43,7 +51,11 @@ class DinerCartMealActions extends StatelessWidget {
   }
 }
 
-void showSocietyOfficeHotpotSheet(BuildContext context) {
+void showSocietyOfficeHotpotSheet(
+  BuildContext context, {
+  bool lockRoomSettings = false,
+  bool editingExistingRoom = false,
+}) {
   showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -52,7 +64,10 @@ void showSocietyOfficeHotpotSheet(BuildContext context) {
       decoration: AppTheme.bottomSheetDecoration(
         isDark: Theme.of(context).brightness == Brightness.dark,
       ),
-      child: const GroupOrderModal(),
+      child: GroupOrderModal(
+        lockRoomSettings: lockRoomSettings,
+        editingExistingRoom: editingExistingRoom,
+      ),
     ),
   );
 }

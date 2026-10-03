@@ -257,6 +257,7 @@ class CartState {
   final String? sharedPlaceLabel;
   final String? sharedDropoffNote;
   final String? sharedTimeSlot;
+  final DateTime? sharedSelectedDate;
   final bool membershipWaivesDelivery;
 
   const CartState({
@@ -275,6 +276,7 @@ class CartState {
     this.sharedPlaceLabel,
     this.sharedDropoffNote,
     this.sharedTimeSlot,
+    this.sharedSelectedDate,
   });
 
   CartState copyWith({
@@ -294,6 +296,7 @@ class CartState {
     String? sharedPlaceLabel,
     String? sharedDropoffNote,
     String? sharedTimeSlot,
+    DateTime? sharedSelectedDate,
     bool clearSharedRoom = false,
   }) {
     return CartState(
@@ -312,6 +315,7 @@ class CartState {
       sharedPlaceLabel: clearSharedRoom ? null : (sharedPlaceLabel ?? this.sharedPlaceLabel),
       sharedDropoffNote: clearSharedRoom ? null : (sharedDropoffNote ?? this.sharedDropoffNote),
       sharedTimeSlot: clearSharedRoom ? null : (sharedTimeSlot ?? this.sharedTimeSlot),
+      sharedSelectedDate: clearSharedRoom ? null : (sharedSelectedDate ?? this.sharedSelectedDate),
     );
   }
 
@@ -421,6 +425,7 @@ class CartState {
           sharedPlaceLabel == other.sharedPlaceLabel &&
           sharedDropoffNote == other.sharedDropoffNote &&
           sharedTimeSlot == other.sharedTimeSlot &&
+          sharedSelectedDate == other.sharedSelectedDate &&
           listEquals(items, other.items);
 
   @override
@@ -439,5 +444,6 @@ class CartState {
       sharedPlaceLabel.hashCode ^
       sharedDropoffNote.hashCode ^
       sharedTimeSlot.hashCode ^
+      sharedSelectedDate.hashCode ^
       Object.hashAll(items);
 }
