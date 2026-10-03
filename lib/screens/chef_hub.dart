@@ -145,12 +145,16 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
   ServiceType _orderService(Map<String, dynamic> order) =>
       ServiceType.fromString(order['order_type']?.toString() ?? order['service_type']?.toString());
 
-  String _orderUpdateError(Object error) {
-    final text = error.toString();
-    if (text.contains('delivered_at') || text.contains('PGRST204')) {
-      return 'Could not mark this order delivered. Try again.';
-    }
-    return 'Could not update this order. Try again.';
+  String _orderUpdateError(Object error) => chefOrderUpdateMessage(error);
+
+  void _showOrderSnack(String text, {bool isError = false, Color? backgroundColor}) {
+    if (!mounted) return;
+    showReplacingSnackBar(
+      context,
+      text,
+      isError: isError,
+      backgroundColor: backgroundColor,
+    );
   }
 
   String _orderTitle(Map<String, dynamic> order) {
@@ -518,19 +522,13 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         reason: 'Cancelled by kitchen',
       );
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Order cancelled, inventory restored, and refund started.'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
+      _showOrderSnack(
+        'Order cancelled, inventory restored, and refund started.',
+        backgroundColor: Colors.orange,
+      );
     } catch (e, st) {
       FirebaseCrashlytics.instance.recordError(e, st, reason: 'Chef order cancellation failure');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
-      }
+      _showOrderSnack('Error: $e', isError: true);
     }
   }
 
@@ -553,14 +551,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       return await capturePackedBoxPhoto(orderId: order['id'].toString());
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Packed box photo upload failed');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not save the packed-box photo. Try again.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      _showOrderSnack('Could not save the packed-box photo. Try again.', isError: true);
       return null;
     }
   }
@@ -578,11 +569,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       if (next == OrderStatus.readyForPickup) {
         packedUrl = await _capturePackedPhoto(order);
         if (packedUrl == null) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Take a packed-box photo to mark this order ready.')),
-            );
-          }
+          _showOrderSnack('Take a packed-box photo to mark this order ready.');
           return;
         }
         final typed = (order['order_type'] ?? order['service_type'] ?? '').toString().trim();
@@ -599,17 +586,9 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         currentStatus: current,
         dispatchPhotoUrl: packedUrl,
       );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Status updated to: $next'), backgroundColor: Colors.green),
-        );
-      }
+      _showOrderSnack('Status updated to: $next');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_orderUpdateError(e)), backgroundColor: Colors.red),
-        );
-      }
+      _showOrderSnack(_orderUpdateError(e), isError: true);
     }
   }
 
@@ -621,21 +600,10 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
         'dispatch_photo_url': url,
         'dispatch_photo_at': DateTime.now().toUtc().toIso8601String(),
       }).eq('id', order['id'].toString());
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Packed-box photo added. The diner can see it now.')),
-        );
-      }
+      _showOrderSnack('Packed-box photo added. The diner can see it now.');
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to attach dispatch photo');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not attach the packed-box photo. Try again.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      _showOrderSnack('Could not attach the packed-box photo. Try again.', isError: true);
     }
   }
 
@@ -644,14 +612,10 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       final current = order['status']?.toString() ?? '';
       final svc = ServiceType.fromString(order['order_type']?.toString() ?? order['service_type']?.toString());
       if (svc.usesDeliveryPartner) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Delivery partners mark partner orders delivered.'),
-              backgroundColor: Colors.teal,
-            ),
-          );
-        }
+        _showOrderSnack(
+          'Delivery partners mark partner orders delivered.',
+          backgroundColor: Colors.teal,
+        );
         return;
       }
       final next = OrderLifecycle.nextDispatchStatus(current, svc);
@@ -662,23 +626,15 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       );
       if (!mounted) return;
       if (next == null && svc.usesDeliveryPartner) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Ready for a delivery partner. Drivers can accept this order now.'),
-            backgroundColor: Colors.teal,
-          ),
+        _showOrderSnack(
+          'Ready for a delivery partner. Drivers can accept this order now.',
+          backgroundColor: Colors.teal,
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Status updated to: $next'), backgroundColor: Colors.green),
-        );
+        _showOrderSnack('Status updated to: $next');
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_orderUpdateError(e)), backgroundColor: Colors.red),
-        );
-      }
+      _showOrderSnack(_orderUpdateError(e), isError: true);
     }
   }
 
