@@ -269,7 +269,7 @@ class DriverDashboardNotifier extends Notifier<DriverDashboardState> {
           locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
         ).timeout(const Duration(seconds: 8));
       } catch (_) {
-        return Geolocator.getLastKnownPosition();
+        return await Geolocator.getLastKnownPosition();
       }
     } catch (_) {
       return null;
