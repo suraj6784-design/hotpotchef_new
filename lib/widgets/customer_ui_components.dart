@@ -1610,6 +1610,17 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                         ),
                       ),
                       const SizedBox(height: 24),
+                      if (occasionTabLabel(mealOccasionId(meal)).isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(
+                            occasionTabLabel(mealOccasionId(meal)),
+                            style: AppTheme.caption.copyWith(
+                              fontWeight: FontWeight.w800,
+                              color: AppTheme.linkOf(context),
+                            ),
+                          ),
+                        ),
                       if (inferMealCuisine(meal).isNotEmpty || inferMealCourse(meal).isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 10),
@@ -1884,9 +1895,13 @@ class _MealDetailsBodyState extends State<MealDetailsBody> {
                     ref: widget.ref,
                     meal: meal,
                     quantity: _quantity,
+                    offerMonthly: mealOccasionId(meal) == kOccasionSpecialty,
                   ),
                   icon: const Icon(Icons.event_repeat, size: 18),
-                  label: const Text('Weekly plan', style: TextStyle(fontWeight: FontWeight.w700)),
+                  label: Text(
+                    mealOccasionId(meal) == kOccasionSpecialty ? 'Subscribe' : 'Weekly plan',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppTheme.linkOf(context),
                     side: const BorderSide(color: AppTheme.primary),

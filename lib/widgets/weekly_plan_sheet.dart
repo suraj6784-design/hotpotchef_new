@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/meal_plans_provider.dart';
 import '../screens/auth_screen.dart';
 import '../utils/app_theme.dart';
+import '../utils/meal_occasions.dart';
 import '../utils/meal_plans.dart';
 
 Future<void> showWeeklyPlanSheet({
@@ -12,6 +13,7 @@ Future<void> showWeeklyPlanSheet({
   required WidgetRef ref,
   required Map<String, dynamic> meal,
   int quantity = 1,
+  bool offerMonthly = false,
 }) async {
   final user = Supabase.instance.client.auth.currentUser;
   if (user == null) {
@@ -21,9 +23,9 @@ Future<void> showWeeklyPlanSheet({
       useSafeArea: true,
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black.withValues(alpha: 0.45),
-      builder: (ctx) => const AuthScreen(
+      builder: (ctx) => AuthScreen(
         asSheet: true,
-        sheetTitle: 'Sign in to save a weekly plan',
+        sheetTitle: offerMonthly ? 'Sign in to subscribe' : 'Sign in to save a weekly plan',
         sheetSubtitle: 'We will not charge you. You add today\'s box when you want it.',
       ),
     );
@@ -43,7 +45,7 @@ Future<void> showWeeklyPlanSheet({
     ),
     builder: (ctx) => Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-      child: WeeklyPlanSheet(meal: meal, quantity: quantity),
+      child: WeeklyPlanSheet(meal: meal, quantity: quantity, offerMonthly: offerMonthly),
     ),
   );
 }
@@ -53,10 +55,12 @@ class WeeklyPlanSheet extends ConsumerStatefulWidget {
     super.key,
     required this.meal,
     this.quantity = 1,
+    this.offerMonthly = false,
   });
 
   final Map<String, dynamic> meal;
   final int quantity;
+  final bool offerMonthly;
 
   @override
   ConsumerState<WeeklyPlanSheet> createState() => _WeeklyPlanSheetState();
@@ -65,6 +69,8 @@ class WeeklyPlanSheet extends ConsumerStatefulWidget {
 class _WeeklyPlanSheetState extends ConsumerState<WeeklyPlanSheet> {
   late Set<int> _days;
   late int _quantity;
+  late String _cadence;
+  late int _monthDay;
   bool _saving = false;
 
   @override
@@ -73,14 +79,19 @@ class _WeeklyPlanSheetState extends ConsumerState<WeeklyPlanSheet> {
     final mealId = widget.meal['id']?.toString() ?? '';
     final existing = activePlanForMeal(ref.read(mealPlansProvider), mealId);
     _days = {
-      ...(existing?.weekdays ?? kWeekdaysMonToFri),
+      ...(existing?.weekdays.isNotEmpty == true ? existing!.weekdays : kWeekdaysMonToFri),
     };
     _quantity = existing?.quantity ?? (widget.quantity < 1 ? 1 : widget.quantity);
+    _cadence = existing?.isMonthly == true ? kPlanCadenceMonthly : kPlanCadenceWeekly;
+    final today = DateTime.now().day.clamp(1, 28);
+    _monthDay = (existing?.monthDay ?? today).clamp(1, 28);
   }
 
   Future<void> _save() async {
     final user = Supabase.instance.client.auth.currentUser;
-    if (user == null || _days.isEmpty || _saving) return;
+    final monthly = widget.offerMonthly && _cadence == kPlanCadenceMonthly;
+    if (user == null || _saving) return;
+    if (!monthly && _days.isEmpty) return;
 
     setState(() => _saving = true);
     final draft = mealPlanDraftFromMeal(
@@ -88,6 +99,8 @@ class _WeeklyPlanSheetState extends ConsumerState<WeeklyPlanSheet> {
       customerId: user.id,
       quantity: _quantity,
       weekdays: _days.toList()..sort(),
+      cadence: monthly ? kPlanCadenceMonthly : kPlanCadenceWeekly,
+      monthDay: monthly ? _monthDay : null,
     );
     final ok = await ref.read(mealPlansProvider.notifier).savePlan(draft);
     if (!mounted) return;
@@ -135,7 +148,9 @@ class _WeeklyPlanSheetState extends ConsumerState<WeeklyPlanSheet> {
           ),
           const SizedBox(height: 16),
           Text(
-            existing == null ? 'Weekly plan' : 'Update weekly plan',
+            widget.offerMonthly
+                ? (existing == null ? 'Subscribe' : 'Update subscription')
+                : (existing == null ? 'Weekly plan' : 'Update weekly plan'),
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w900,
@@ -157,38 +172,89 @@ class _WeeklyPlanSheetState extends ConsumerState<WeeklyPlanSheet> {
             style: TextStyle(fontSize: 13, height: 1.4, color: isDark ? AppTheme.textMuted : AppTheme.textMuted),
           ),
           const SizedBox(height: 16),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _presetChip('Mon–Fri', kWeekdaysMonToFri),
-              _presetChip('Weekends', const [6, 7]),
-              _presetChip('Every day', kWeekdaysMonToSun),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final day in kWeekdaysMonToSun)
-                FilterChip(
-                  label: Text(kWeekdayShort[day] ?? '$day'),
-                  selected: _days.contains(day),
+          if (widget.offerMonthly) ...[
+            Wrap(
+              spacing: 8,
+              children: [
+                ChoiceChip(
+                  label: const Text('Weekly'),
+                  selected: _cadence != kPlanCadenceMonthly,
                   selectedColor: AppTheme.primary.withValues(alpha: 0.18),
-                  checkmarkColor: AppTheme.primary,
-                  onSelected: (selected) {
-                    setState(() {
-                      if (selected) {
-                        _days.add(day);
-                      } else {
-                        _days.remove(day);
-                      }
-                    });
-                  },
+                  onSelected: (_) => setState(() => _cadence = kPlanCadenceWeekly),
                 ),
-            ],
-          ),
+                ChoiceChip(
+                  label: const Text('Monthly'),
+                  selected: _cadence == kPlanCadenceMonthly,
+                  selectedColor: AppTheme.primary.withValues(alpha: 0.18),
+                  onSelected: (_) => setState(() => _cadence = kPlanCadenceMonthly),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (_cadence == kPlanCadenceMonthly && widget.offerMonthly)
+            Row(
+              children: [
+                Text(
+                  'Day of month',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: isDark ? Colors.white : AppTheme.textMain,
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  onPressed: _monthDay > 1 ? () => setState(() => _monthDay--) : null,
+                  icon: const Icon(Icons.remove_circle_outline, color: AppTheme.primary),
+                ),
+                Text(
+                  '$_monthDay',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: isDark ? Colors.white : AppTheme.textMain,
+                  ),
+                ),
+                IconButton(
+                  onPressed: _monthDay < 28 ? () => setState(() => _monthDay++) : null,
+                  icon: const Icon(Icons.add_circle_outline, color: AppTheme.primary),
+                ),
+              ],
+            )
+          else ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _presetChip('Mon–Fri', kWeekdaysMonToFri),
+                _presetChip('Weekends', const [6, 7]),
+                _presetChip('Every day', kWeekdaysMonToSun),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final day in kWeekdaysMonToSun)
+                  FilterChip(
+                    label: Text(kWeekdayShort[day] ?? '$day'),
+                    selected: _days.contains(day),
+                    selectedColor: AppTheme.primary.withValues(alpha: 0.18),
+                    checkmarkColor: AppTheme.primary,
+                    onSelected: (selected) {
+                      setState(() {
+                        if (selected) {
+                          _days.add(day);
+                        } else {
+                          _days.remove(day);
+                        }
+                      });
+                    },
+                  ),
+              ],
+            ),
+          ],
           const SizedBox(height: 16),
           Row(
             children: [
@@ -230,13 +296,15 @@ class _WeeklyPlanSheetState extends ConsumerState<WeeklyPlanSheet> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 elevation: 0,
               ),
-              onPressed: _days.isEmpty || _saving ? null : _save,
+              onPressed: _saving || (_cadence != kPlanCadenceMonthly && _days.isEmpty) ? null : _save,
               child: Text(
                 _saving
                     ? 'Saving…'
-                    : existing == null
-                        ? 'Save weekly plan'
-                        : 'Update weekly plan',
+                    : _cadence == kPlanCadenceMonthly
+                        ? 'Save monthly plan'
+                        : existing == null
+                            ? 'Save weekly plan'
+                            : 'Update weekly plan',
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
             ),

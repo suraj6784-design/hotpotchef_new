@@ -27,7 +27,7 @@ class CustomerMealPlansScreen extends ConsumerWidget {
           ? const EmptyState(
               icon: Icons.event_repeat,
               title: 'No weekly plans yet',
-              message: 'Open any dish and tap Weekly plan. We never auto-charge — you add today\'s box when you want it.',
+              message: 'Open a dish and tap Weekly plan, or Subscribe on a specialty item. We never auto-charge.',
             )
           : ListView.separated(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),

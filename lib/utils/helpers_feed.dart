@@ -446,6 +446,8 @@ FeedEmptyCopy feedEmptyCopy({
   String homeMode = 'live',
   bool nothingLive = false,
   bool hasPreorderMeals = false,
+  String occasion = 'everyday',
+  String occasionSlice = 'all',
 }) {
   if (outOfServiceArea) {
     return FeedEmptyCopy(
@@ -520,6 +522,14 @@ FeedEmptyCopy feedEmptyCopy({
       message: q.isEmpty
           ? 'Try a different search.'
           : 'Nothing matched "$q". Try another dish name or home chef.',
+    );
+  }
+  if (occasionBrowseIsNarrow(occasion: occasion, slice: occasionSlice) && !favorites && !following) {
+    final label = occasionBrowseLabel(occasion: occasion, slice: occasionSlice);
+    return FeedEmptyCopy(
+      title: 'No $label meals',
+      message: 'Nothing in $label is on the menu for this pin. Try All in this tab, or another occasion.',
+      clearCategory: true,
     );
   }
   final mode = normalizeDinerHomeMode(homeMode);

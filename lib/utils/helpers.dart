@@ -16,7 +16,10 @@ import 'notification_copy.dart';
 import 'membership.dart';
 import 'pricing_calculator.dart';
 import 'meal_nutrition.dart';
+import 'meal_occasions.dart';
 import 'service_area.dart';
+
+export 'meal_occasions.dart';
 import '../models/app_role.dart';
 import '../models/order_status.dart';
 import '../models/cart_enums.dart';
@@ -2021,6 +2024,7 @@ List<Map<String, dynamic>> checkoutCartPayload(
       'society_label': nestedMap['society_label'] ?? item['society_label'] ?? item['societyLabel'],
       'is_shelf_item': nestedMap['is_shelf_item'] ?? item['is_shelf_item'] ?? item['isShelfItem'],
       'shelf_kind': nestedMap['shelf_kind'] ?? item['shelf_kind'] ?? item['shelfKind'],
+      'occasion': occasionForCheckoutLine(item, nestedMap),
       if (nestedMap.isNotEmpty ||
           item['is_hamper'] != null ||
           item['is_society_night'] != null ||
@@ -2040,6 +2044,7 @@ List<Map<String, dynamic>> checkoutCartPayload(
             'is_shelf_item': nestedMap['is_shelf_item'] ?? item['is_shelf_item'] ?? item['isShelfItem'],
           if ((nestedMap['shelf_kind'] ?? item['shelf_kind']) != null)
             'shelf_kind': nestedMap['shelf_kind'] ?? item['shelf_kind'] ?? item['shelfKind'],
+          'occasion': occasionForCheckoutLine(item, nestedMap),
         },
     };
   }).toList();
@@ -3683,6 +3688,8 @@ List<Map<String, dynamic>> checkoutItemsFromCateringRequest(Map<String, dynamic>
       'timeSlot': timeSlot,
       'source_request_id': request['id'],
       'specialInstructions': request['description'],
+      if (normalizeOccasionId(request['occasion']?.toString()) != null)
+        'occasion': normalizeOccasionId(request['occasion']?.toString()),
     },
   ];
 }

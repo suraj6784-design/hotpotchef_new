@@ -113,6 +113,9 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
     final displayAddress = addressValue.isEmpty ? 'Unknown Address' : addressValue;
     final resolvedSlot = formatDeliverySlotLabel(orderRecord);
     final slotLabel = resolvedSlot.isEmpty ? deliveryTimeStr : resolvedSlot;
+    final occasionLabel = occasionTabLabel(
+      orderOccasionId(column: orderRecord['occasion'], items: items),
+    );
 
     IconData statusIcon = isDelivered ? Icons.check_circle : Icons.cancel;
     Color statusColor = isDelivered ? Colors.green : Colors.red;
@@ -230,6 +233,20 @@ class CustomerOrderHistoryScreen extends StatelessWidget {
                               Text(slotLabel, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
                             ],
                           ),
+                          if (occasionLabel.isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                const Icon(Icons.celebration_outlined, size: 14, color: AppTheme.primary),
+                                const SizedBox(width: 6),
+                                Text('Occasion: ', style: AppTheme.caption),
+                                Text(
+                                  occasionLabel,
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                                ),
+                              ],
+                            ),
+                          ],
                           const SizedBox(height: 8),
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -671,6 +688,14 @@ class _HistoryOrdersListState extends ConsumerState<_HistoryOrdersList> {
                   Text(title, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                   const SizedBox(height: 4),
                   Text('Ordered on: $dateStr', style: AppTheme.caption),
+                  if (occasionTabLabel(orderOccasionId(column: order['occasion'], items: items)).isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        'Occasion: ${occasionTabLabel(orderOccasionId(column: order['occasion'], items: items))}',
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: AppTheme.link),
+                      ),
+                    ),
                   const SizedBox(height: 12),
                   Divider(height: 1, color: AppTheme.hairlineOf(context)),
                   const SizedBox(height: 10),

@@ -10,5 +10,7 @@ void main() {
     expect(kHomeMealCatalogSelectMinimal.contains('hosting_address'), isFalse);
     expect(kHomeMealCatalogSelect.contains('add_ons'), isTrue);
     expect(kHomeMealCatalogSelect.contains('offer_valid_until'), isTrue);
+    expect(kHomeMealCatalogSelect.contains('occasion'), isTrue);
+    expect(kHomeMealCatalogSelectMinimal.contains('occasion'), isFalse);
   });
 }

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hotpotchef_new/utils/meal_occasions.dart';
 import 'package:hotpotchef_new/utils/meal_plans.dart';
 
 MealPlan _plan({
@@ -54,6 +55,34 @@ void main() {
       isEmpty,
     );
     expect(activePlanForMeal([due, weekend], 'm2')?.id, 'p2');
+  });
+
+  test('a monthly plan is due only on its day of the month', () {
+    final monthly = MealPlan(
+      id: 'p-month',
+      customerId: 'diner-1',
+      chefId: 'chef-1',
+      mealId: 'pickle-1',
+      mealTitle: 'Mango pickle',
+      chefName: 'Asha',
+      quantity: 1,
+      weekdays: const [],
+      timeSlot: '10:00 AM',
+      serviceType: 'Delivery Partner',
+      isActive: true,
+      cadence: kPlanCadenceMonthly,
+      monthDay: 12,
+    );
+    expect(monthly.runsOn(DateTime(2026, 10, 12)), isTrue);
+    expect(monthly.runsOn(DateTime(2026, 11, 12)), isTrue);
+    expect(monthly.runsOn(DateTime(2026, 10, 5)), isFalse);
+    expect(monthly.daysLabel, 'Monthly on day 12');
+    expect(planScheduleIsValid(monthly), isTrue);
+
+    final weekly = _plan();
+    expect(weekly.cadence, kPlanCadenceWeekly);
+    expect(weekly.runsOn(DateTime(2026, 9, 7)), isTrue);
+    expect(weekly.runsOn(DateTime(2026, 9, 5)), isFalse);
   });
 
   test('draft from a meal keeps the kitchen slot and does not invent a charge', () {

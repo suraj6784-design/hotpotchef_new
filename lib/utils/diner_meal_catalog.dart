@@ -21,7 +21,7 @@ const String kDinerMealCatalogColumns =
     'calories_kcal,portion_weight_g,protein_g,carbs_g,fat_g,fiber_g,'
     'hosting_address,cuisine,prep_minutes,allergens,ingredients,video_url,'
     'availability_mode,dish_course,cook_minutes,serving_size,storage_hours,'
-    'delivery_estimate_minutes,chef_tip,is_seasonal,allow_notify_when_available';
+    'delivery_estimate_minutes,chef_tip,is_seasonal,allow_notify_when_available,occasion';
 
 /// Never request these from the diner catalog. They are payout data, FSSAI
 /// numbers, or another customer's order fields stored on older meal rows.

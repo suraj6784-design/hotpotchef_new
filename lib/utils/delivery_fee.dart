@@ -30,7 +30,7 @@ const String kHomeMealCatalogSelect =
     'shelf_kind, society_label, source_meal_id, '
     'hosting_address, cuisine, prep_minutes, allergens, ingredients, video_url, '
     'availability_mode, dish_course, cook_minutes, serving_size, storage_hours, '
-    'delivery_estimate_minutes, chef_tip, is_seasonal, allow_notify_when_available';
+    'delivery_estimate_minutes, chef_tip, is_seasonal, allow_notify_when_available, occasion';
 
 /// Narrower Home select if a catalog column grant is missing.
 const String kHomeMealCatalogSelectMinimal =

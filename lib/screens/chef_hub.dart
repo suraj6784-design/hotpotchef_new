@@ -2410,6 +2410,13 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   color: paid ? AppTheme.success : (awaitingPay ? AppTheme.warning : AppTheme.textMuted),
                 ),
               ),
+              if (broadcastOccasionLabel(req).isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  broadcastOccasionLabel(req),
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: AppTheme.link),
+                ),
+              ],
               const SizedBox(height: 8),
               Text(
                 'Quantity: ${req['quantity']} • Left: $remaining • $distance • Needed by: ${req['target_date_time'] ?? 'ASAP'}',

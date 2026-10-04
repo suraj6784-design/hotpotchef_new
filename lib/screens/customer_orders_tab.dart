@@ -485,6 +485,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
       ...items.first,
       'items': items,
     });
+    final occasionLabel = occasionTabLabel(items.first['occasion']?.toString());
 
     IconData statusIcon = Icons.hourglass_empty;
     Color statusColor = Colors.orange;
@@ -896,6 +897,8 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                                       children: [
                                         Text('${item['quantity']} x ${item['title']}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.onSurfaceOf(context))),
                                         const SizedBox(height: 2),
+                                        if (occasionLabel.isNotEmpty)
+                                          Text('Occasion: $occasionLabel', style: AppTheme.caption),
                                         Text('Slot: $shownSlot', style: AppTheme.caption),
                                       ],
                                     ),
@@ -1183,7 +1186,10 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(color: AppTheme.primary.withValues(alpha: 0.12), borderRadius: AppTheme.radiusSm),
-                    child: const Text('Bulk broadcast', style: TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 12)),
+                    child: Text(
+                      broadcastOccasionLabel(req).isEmpty ? 'Broadcast' : broadcastOccasionLabel(req),
+                      style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 12),
+                    ),
                   ),
                   const SizedBox(width: 8),
                   Text(displayRequestId, style: const TextStyle(color: AppTheme.textMuted, fontWeight: FontWeight.bold, fontSize: 12)),
@@ -1401,10 +1407,12 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
         fallbackAddress: _savedDropoffAddress,
       );
 
+      final occasionId = orderOccasionId(column: order['occasion'], items: parsedMaps);
       List<Map<String, dynamic>> enrichedItems = [];
       for (var item in parsedMaps) {
         enrichedItems.add({
           ...item,
+          if (occasionId != null) 'occasion': occasionId,
           'order_id': order['id'],
           'customer_id': order['customer_id'] ?? order['user_id'],
           'chef_id': order['chef_id'],
@@ -1428,6 +1436,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
       if (enrichedItems.isEmpty) {
         enrichedItems.add({
           'order_id': order['id'],
+          if (occasionId != null) 'occasion': occasionId,
           'customer_id': order['customer_id'] ?? order['user_id'],
           'chef_id': order['chef_id'],
           'status': order['status'] ?? 'New Order',
@@ -1579,6 +1588,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                   orderType: orderType,
                   placedLabel: dateTimeString,
                   slotLabel: smartTimeSlot,
+                  occasionLabel: occasionTabLabel(items.first['occasion']?.toString()),
                   addressLabel: addressLabel,
                   addressValue: addressValue,
                   isPickup: isPickupOrDineIn,

@@ -1,3 +1,5 @@
+import 'meal_occasions.dart';
+
 const List<int> kWeekdaysMonToSun = [1, 2, 3, 4, 5, 6, 7];
 const List<int> kWeekdaysMonToFri = [1, 2, 3, 4, 5];
 
@@ -61,6 +63,8 @@ class MealPlan {
     required this.timeSlot,
     required this.serviceType,
     required this.isActive,
+    this.cadence = kPlanCadenceWeekly,
+    this.monthDay,
     this.mealSnapshot = const {},
   });
 
@@ -75,13 +79,24 @@ class MealPlan {
   final String timeSlot;
   final String serviceType;
   final bool isActive;
+  final String cadence;
+  final int? monthDay;
   final Map<String, dynamic> mealSnapshot;
 
-  bool runsOn(DateTime date) => planRunsOnDate(weekdays, date);
+  bool get isMonthly => cadence == kPlanCadenceMonthly;
+
+  bool runsOn(DateTime date) {
+    if (isMonthly) {
+      final day = monthDay;
+      if (day == null || day < 1) return false;
+      return date.day == day;
+    }
+    return planRunsOnDate(weekdays, date);
+  }
 
   bool get isDueToday => runsOn(DateTime.now());
 
-  String get daysLabel => formatPlanWeekdays(weekdays);
+  String get daysLabel => isMonthly ? monthlyPlanLabel(monthDay) : formatPlanWeekdays(weekdays);
 
   factory MealPlan.fromJson(Map<String, dynamic> json) {
     final snapshot = json['meal_snapshot'];
@@ -97,6 +112,8 @@ class MealPlan {
       timeSlot: json['time_slot']?.toString() ?? 'ASAP',
       serviceType: json['service_type']?.toString() ?? 'Delivery Partner',
       isActive: json['is_active'] != false,
+      cadence: normalizePlanCadence(json['cadence']?.toString()),
+      monthDay: int.tryParse(json['month_day']?.toString() ?? ''),
       mealSnapshot: snapshot is Map ? Map<String, dynamic>.from(snapshot) : const {},
     );
   }
@@ -109,9 +126,11 @@ class MealPlan {
       'meal_title': mealTitle,
       'chef_name': chefName,
       'quantity': quantity,
-      'weekdays': weekdays,
+      'weekdays': isMonthly ? <int>[] : weekdays,
       'time_slot': timeSlot,
       'service_type': serviceType,
+      'cadence': cadence,
+      'month_day': isMonthly ? monthDay : null,
       'meal_snapshot': mealSnapshot,
       'is_active': isActive,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
@@ -130,12 +149,30 @@ class MealPlan {
   }
 }
 
+String monthlyPlanLabel(int? day) {
+  if (day == null || day < 1) return 'Monthly';
+  return 'Monthly on day $day';
+}
+
+bool planScheduleIsValid(MealPlan plan) {
+  if (plan.chefId.isEmpty) return false;
+  if (plan.isMonthly) {
+    final day = plan.monthDay ?? 0;
+    return day >= 1 && day <= 28;
+  }
+  return plan.weekdays.isNotEmpty;
+}
+
 MealPlan mealPlanDraftFromMeal(
   Map<String, dynamic> meal, {
   required String customerId,
   int quantity = 1,
   List<int> weekdays = kWeekdaysMonToFri,
+  String cadence = kPlanCadenceWeekly,
+  int? monthDay,
 }) {
+  final monthly = normalizePlanCadence(cadence) == kPlanCadenceMonthly;
+  final stamped = mealWithBrowseOccasion(Map<String, dynamic>.from(meal));
   return MealPlan(
     id: '',
     customerId: customerId,
@@ -144,11 +181,13 @@ MealPlan mealPlanDraftFromMeal(
     mealTitle: meal['title']?.toString() ?? meal['name']?.toString() ?? 'Home meal',
     chefName: meal['chef_name']?.toString() ?? meal['name']?.toString() ?? 'Home kitchen',
     quantity: quantity < 1 ? 1 : quantity,
-    weekdays: normalizePlanWeekdays(weekdays),
+    weekdays: monthly ? const [] : normalizePlanWeekdays(weekdays),
     timeSlot: meal['time_slot']?.toString() ?? 'ASAP',
     serviceType: meal['service_type']?.toString() ?? 'Delivery Partner',
     isActive: true,
-    mealSnapshot: Map<String, dynamic>.from(meal),
+    cadence: monthly ? kPlanCadenceMonthly : kPlanCadenceWeekly,
+    monthDay: monthly ? monthDay : null,
+    mealSnapshot: stamped,
   );
 }
 
