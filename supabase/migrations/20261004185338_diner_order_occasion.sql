@@ -11,13 +11,16 @@ ALTER TABLE public.orders
 COMMENT ON COLUMN public.orders.occasion IS
   'Why the diner ordered: everyday, festive, party, or specialty. Null on orders placed before this column.';
 
+GRANT SELECT, INSERT, UPDATE, REFERENCES (occasion) ON public.orders TO authenticated, service_role;
+
 ALTER TABLE public.meals
   ADD COLUMN IF NOT EXISTS occasion text;
 
 COMMENT ON COLUMN public.meals.occasion IS
   'Optional browse tag: everyday, festive, party, or specialty. Empty means the app infers from the dish.';
 
-GRANT SELECT (occasion) ON public.meals TO anon, authenticated;
+GRANT SELECT (occasion) ON public.meals TO anon, authenticated, service_role;
+GRANT INSERT, UPDATE, REFERENCES (occasion) ON public.meals TO authenticated, service_role;
 
 CREATE INDEX IF NOT EXISTS meals_occasion_available_idx
   ON public.meals (status, occasion)
@@ -32,6 +35,8 @@ BEGIN
       ADD COLUMN IF NOT EXISTS occasion_slice text;
     COMMENT ON COLUMN public.customer_requests.occasion IS
       'Broadcast occasion: everyday, festive, party, or specialty. Null on older requests.';
+    GRANT SELECT, INSERT, UPDATE, REFERENCES (occasion, occasion_slice)
+      ON public.customer_requests TO anon, authenticated, service_role;
   END IF;
 END $$;
 
@@ -40,6 +45,9 @@ ALTER TABLE public.meal_plans
 
 ALTER TABLE public.meal_plans
   ADD COLUMN IF NOT EXISTS month_day smallint;
+
+GRANT SELECT, INSERT, UPDATE, REFERENCES (cadence, month_day)
+  ON public.meal_plans TO anon, authenticated, service_role;
 
 DO $$
 BEGIN
@@ -63,6 +71,7 @@ CREATE OR REPLACE FUNCTION public.normalize_order_occasion(p_raw text)
 RETURNS text
 LANGUAGE sql
 IMMUTABLE
+SET search_path = public
 AS $$
   SELECT CASE lower(btrim(coalesce(p_raw, '')))
     WHEN 'everyday' THEN 'everyday'
@@ -81,6 +90,7 @@ CREATE OR REPLACE FUNCTION public.order_occasion_from_items(p_items jsonb)
 RETURNS text
 LANGUAGE plpgsql
 IMMUTABLE
+SET search_path = public
 AS $$
 DECLARE
   v_items jsonb := p_items;
@@ -119,13 +129,18 @@ $$;
 CREATE OR REPLACE FUNCTION public.orders_stamp_occasion()
 RETURNS trigger
 LANGUAGE plpgsql
+SET search_path = public
 AS $$
 DECLARE
   v_occasion text;
 BEGIN
   v_occasion := public.normalize_order_occasion(NEW.occasion);
-  IF v_occasion IS NULL THEN
-    v_occasion := public.order_occasion_from_items(NEW.items);
+  IF v_occasion IS NULL AND NEW.items IS NOT NULL AND btrim(NEW.items) <> '' THEN
+    BEGIN
+      v_occasion := public.order_occasion_from_items(NEW.items::jsonb);
+    EXCEPTION WHEN OTHERS THEN
+      v_occasion := NULL;
+    END;
   END IF;
   NEW.occasion := v_occasion;
   RETURN NEW;
