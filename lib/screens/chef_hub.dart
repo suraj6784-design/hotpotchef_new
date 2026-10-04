@@ -920,14 +920,8 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       validUntil: parseStoredFssaiValidUntil(_chefProfile['fssai_valid_until']),
     );
     final today = DateTime.now();
-    final profit = orders.where((order) {
-      final status = order['status']?.toString().toLowerCase() ?? '';
-      if (!status.contains('delivered') && !status.contains('completed')) return false;
-      final at = DateTime.tryParse(order['delivered_at']?.toString() ?? order['updated_at']?.toString() ?? '');
-      if (at == null) return false;
-      final local = at.toLocal();
-      return local.year == today.year && local.month == today.month && local.day == today.day;
-    }).fold<double>(0, (sum, order) => sum + chefPayoutForOrder(order).chefPayout);
+    final todayEarnings = chefEarningsForLocalDay(orders, today);
+    final earningsNote = chefTodayEarningsEstimateNote(orders, today);
     final rawName = _chefProfile['name']?.toString() ??
         _chefProfile['full_name']?.toString() ??
         _currentUserEmail.split('@').first;
@@ -997,8 +991,9 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             const SizedBox(width: 10),
             Expanded(
               child: _chefStatCard(
-                'Total Earnings',
-                '₹${profit.toStringAsFixed(0)}',
+                kChefTodayEarningsLabel,
+                formatChefTodayEarnings(todayEarnings),
+                note: earningsNote,
                 onTap: () {
                   setState(() => _selectedIndex = 6);
                 },
@@ -1092,7 +1087,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     );
   }
 
-  Widget _chefStatCard(String label, String value, {VoidCallback? onTap}) {
+  Widget _chefStatCard(String label, String value, {VoidCallback? onTap, String note = ''}) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
@@ -1109,6 +1104,10 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             Text(label, style: AppTheme.microOf(context)),
             const SizedBox(height: 6),
             Text(value, style: AppTheme.sectionTitleOf(context).copyWith(fontSize: 22)),
+            if (note.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(note, style: AppTheme.microOf(context)),
+            ],
           ],
         ),
       ),
@@ -1331,6 +1330,13 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             icon: svc.isDelivery ? Icons.delivery_dining : Icons.storefront,
             color: AppTheme.info,
           ),
+          if (chefFreeDeliveryShareCaption(order).isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              chefFreeDeliveryShareCaption(order),
+              style: AppTheme.metaOf(context).copyWith(fontSize: 12),
+            ),
+          ],
           const SizedBox(height: 10),
           ...chefKitchenOrderTiming(
             order: order,
@@ -1455,8 +1461,15 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
               const SizedBox(height: 4),
               Text(
-                '${_customerName(order)} • diner paid ${formatRupees(_orderTotal(order))} · payout ${formatRupees(chefPayoutForOrder(order).chefPayout)}',
+                '${_customerName(order)} • diner paid ${formatRupees(_orderTotal(order))} · ${chefOrderPayoutAmountLabel(order)}',
                   style: const TextStyle(fontSize: 13, color: AppTheme.textMuted)),
+              if (chefFreeDeliveryShareCaption(order).isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  chefFreeDeliveryShareCaption(order),
+                  style: AppTheme.metaOf(context).copyWith(fontSize: 12),
+                ),
+              ],
               const SizedBox(height: 10),
               PillTag(
                 label: svc.toDisplayString(),
@@ -2067,6 +2080,26 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     ).entrance(index: index);
   }
 
+  Widget _chefPayoutTrailing(Map<String, dynamic> order) {
+    final tag = chefOrderPayoutEstimateTag(order);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        if (tag != null) ...[
+          Text(
+            tag,
+            style: AppTheme.microOf(context).copyWith(fontWeight: FontWeight.w700),
+          ),
+        ],
+        Text(
+          formatRupees(chefPayoutForOrder(order).chefPayout),
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ],
+    );
+  }
+
   Widget _buildHistoryTab(List<Map<String, dynamic>> orders) {
     final delivered = orders.where((o) => (o['status']?.toString().toLowerCase() ?? '') == 'delivered').toList();
     final cancelled = orders.where((o) {
@@ -2074,7 +2107,8 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       return status.contains('cancel') || status.contains('reject') || status.contains('refund');
     }).toList();
     final history = _historyFilter == 'Cancelled' ? cancelled : delivered;
-    final double revenue = delivered.fold(0.0, (sum, o) => sum + chefPayoutForOrder(o).chefPayout);
+    final ledger = chefPayoutLedger(delivered);
+    final estimatedLine = chefEstimatedPayoutLine(ledger);
     final dinerGmv = delivered.fold(0.0, (sum, o) => sum + _orderTotal(o));
     final platformPct = (kPlatformMarginRate * 100).toStringAsFixed(0);
 
@@ -2108,8 +2142,13 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
             children: [
               Text('Payout & Analytics', style: AppTheme.metaOf(context).copyWith(fontSize: 13)),
               const SizedBox(height: 6),
-              Text(formatRupees(revenue),
+              Text(chefStoredPayoutHeadline(ledger),
                   style: AppTheme.sectionTitleOf(context).copyWith(color: AppTheme.success, fontSize: 22)),
+              Text(kChefStoredPayoutLabel, textAlign: TextAlign.center, style: AppTheme.metaOf(context)),
+              if (estimatedLine.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(estimatedLine, textAlign: TextAlign.center, style: AppTheme.metaOf(context)),
+              ],
               Text(
                   '${delivered.length} completed • Diner GMV ${formatRupees(dinerGmv)} · $platformPct% platform fee on food + pack',
                   textAlign: TextAlign.center,
@@ -2175,13 +2214,24 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                           : '${formatOrderDate(h['created_at']?.toString() ?? '')}\n${chefPayoutStatusLabel(h['payout_status']?.toString())} · diner paid ${formatRupees(_orderTotal(h))}',
                     ),
                     isThreeLine: !isCancelled,
-                    trailing: Text(
-                      isCancelled
-                          ? formatRupees(_orderTotal(h))
-                          : formatRupees(chefPayoutForOrder(h).chefPayout),
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
+                    trailing: isCancelled
+                        ? Text(
+                            formatRupees(_orderTotal(h)),
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          )
+                        : _chefPayoutTrailing(h),
                   ),
+                  if (!isCancelled && chefFreeDeliveryShareCaption(h).isNotEmpty)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text(
+                          chefFreeDeliveryShareCaption(h),
+                          style: AppTheme.metaOf(context).copyWith(fontSize: 12),
+                        ),
+                      ),
+                    ),
                   if (!isCancelled)
                     Align(
                       alignment: Alignment.centerRight,
