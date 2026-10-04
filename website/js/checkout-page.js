@@ -84,7 +84,8 @@
       var meals = await api.supabaseGet(
         'meals?id=eq.' +
           encodeURIComponent(row.id) +
-          '&select=id,title,price,chef_id,chef_name,quantity,status,time_slot,service_type'
+          '&select=id,title,price,chef_id,chef_name,quantity,status,time_slot,service_type,' +
+          (window.HotPotOccasions ? window.HotPotOccasions.OCCASION_COLUMNS : 'occasion')
       );
       if (!meals || !meals[0]) throw new Error('A plate in your cart is no longer available');
       var meal = meals[0];
@@ -105,6 +106,11 @@
         selected_date: new Date().toISOString().slice(0, 10),
         selected_year: new Date().getFullYear(),
         service_type: (meal.service_type || 'Delivery Partner').toString().split(',')[0].trim(),
+        occasion: (function () {
+          if (row.occasion) return row.occasion;
+          if (!window.HotPotOccasions) return undefined;
+          return window.HotPotOccasions.mealOccasionId(meal);
+        })(),
       });
     }
     return out;

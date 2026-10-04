@@ -297,6 +297,43 @@
     writeSession(null);
   }
 
+  async function supabaseAuthedInsert(table, body) {
+    var url = restBase();
+    var key = restKey();
+    var token = accessToken();
+    if (!configReady()) throw new Error('Site config is incomplete.');
+    if (!token) throw new Error('Please sign in first.');
+    var payload = {};
+    var field;
+    for (field in body) {
+      if (Object.prototype.hasOwnProperty.call(body, field) && body[field] !== undefined) {
+        payload[field] = body[field];
+      }
+    }
+    var lastError = null;
+    for (var attempt = 0; attempt < 8; attempt++) {
+      var res = await fetch(url + '/rest/v1/' + table, {
+        method: 'POST',
+        headers: {
+          apikey: key,
+          Authorization: 'Bearer ' + token,
+          'Content-Type': 'application/json',
+          Prefer: 'return=minimal',
+        },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) return;
+      var data = await res.json().catch(function () {
+        return {};
+      });
+      lastError = new Error((data && data.message) || 'Request failed (' + res.status + ')');
+      var missing = data && data.code === 'PGRST204' && /'([^']+)'/.exec(data.message || '');
+      if (!missing || !Object.prototype.hasOwnProperty.call(payload, missing[1])) throw lastError;
+      delete payload[missing[1]];
+    }
+    throw lastError || new Error('Could not save');
+  }
+
   async function invokeFunction(name, body) {
     var token = accessToken();
     if (!token) throw new Error('Please sign in first.');
@@ -329,6 +366,7 @@
     mealTitle: mealTitle,
     supabaseGet: supabaseGet,
     supabaseAuthedGet: supabaseAuthedGet,
+    supabaseAuthedInsert: supabaseAuthedInsert,
     formatSavedAddress: formatSavedAddress,
     playStoreUrl: playStoreUrl,
     wireOpenApp: wireOpenApp,

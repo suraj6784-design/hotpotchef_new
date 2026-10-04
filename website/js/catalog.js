@@ -2,11 +2,14 @@
   var api = window.HotPotApi;
   if (!api) return;
 
+  var occasions = window.HotPotOccasions;
   var LIMIT = 80;
   var allMeals = [];
   var dietFilter = 'all';
   var searchQuery = '';
   var chefFilterId = '';
+  var occasionId = occasions ? occasions.EVERYDAY : 'everyday';
+  var occasionSlice = occasions ? occasions.SLICE_ALL : 'all';
 
   function setStatus(text, isError) {
     var el = document.getElementById('catalog-status');
@@ -33,8 +36,7 @@
       t === 'test' ||
       t.indexOf('test') === 0 ||
       t.indexOf('discount') === 0 ||
-      t.indexOf('promo') === 0 ||
-      t.indexOf('fest') === 0
+      t.indexOf('promo') === 0
     ) {
       return false;
     }
@@ -143,6 +145,7 @@
       var nonVeg = m.is_veg === false || m.is_veg === 'false';
       if (dietFilter === 'veg' && !veg) return false;
       if (dietFilter === 'nonveg' && !nonVeg) return false;
+      if (occasions && !occasions.matchesOccasion(m, occasionId, occasionSlice)) return false;
       return matchesQuery(m, q);
     });
   }
@@ -223,10 +226,15 @@
 
     if (!rows.length) {
       grid.innerHTML = '';
+      var narrow =
+        occasions &&
+        (occasionId !== occasions.EVERYDAY || occasionSlice !== occasions.SLICE_ALL);
       setStatus(
         chefFilterId || q || dietFilter !== 'all'
           ? 'No plates match these filters. Try clearing search or diet.'
-          : 'No Available plates right now. Open the app for kitchens near you.'
+          : narrow
+            ? 'No ' + occasions.browseLabel(occasionId, occasionSlice) + ' meals on the menu right now.'
+            : 'No Available plates right now. Open the app for kitchens near you.'
       );
       return;
     }
@@ -252,7 +260,9 @@
     setStatus('Loading neighbourhood plates…');
     try {
       var rows = await api.supabaseGet(
-        'meals?status=eq.Available&price=gt.0&select=id,title,price,image_url,chef_name,chef_id,is_veg,time_slot,created_at&order=created_at.desc&limit=' +
+        'meals?status=eq.Available&price=gt.0&select=id,title,price,image_url,chef_name,chef_id,is_veg,time_slot,created_at,' +
+          (occasions ? occasions.OCCASION_COLUMNS : 'occasion') +
+          '&order=created_at.desc&limit=' +
           LIMIT
       );
       if (!rows || !rows.length) {
@@ -323,6 +333,108 @@
     }
   }
 
+  function chip(label, selected, attrs) {
+    return (
+      '<button type="button" class="chef-chip' +
+      (selected ? ' chef-chip--active' : '') +
+      '" ' +
+      attrs +
+      '>' +
+      api.escapeHtml(label) +
+      '</button>'
+    );
+  }
+
+  function renderOccasionBar() {
+    if (!occasions) return;
+    var tabs = document.getElementById('occasion-tabs');
+    var slices = document.getElementById('occasion-slices');
+    var hint = document.getElementById('occasion-hint');
+    var tab = occasions.tabById(occasionId);
+    if (tabs) {
+      tabs.innerHTML = occasions.TABS.map(function (item) {
+        return chip(item.label, item.id === tab.id, 'data-occasion="' + item.id + '"');
+      }).join('');
+    }
+    if (slices) {
+      slices.innerHTML = tab.slices
+        .map(function (item) {
+          return chip(item[1], item[0] === occasionSlice, 'data-slice="' + item[0] + '"');
+        })
+        .join('');
+    }
+    if (hint) hint.textContent = tab.hint;
+    var send = document.getElementById('ask-send');
+    if (send) send.textContent = 'Broadcast to kitchens · ' + tab.label;
+  }
+
+  function tomorrowDateValue() {
+    var day = new Date();
+    day.setDate(day.getDate() + 1);
+    var month = String(day.getMonth() + 1).padStart(2, '0');
+    var date = String(day.getDate()).padStart(2, '0');
+    return day.getFullYear() + '-' + month + '-' + date;
+  }
+
+  function setAskStatus(text, isError) {
+    var el = document.getElementById('ask-status');
+    if (!el) return;
+    el.hidden = !text;
+    el.textContent = text || '';
+    el.classList.toggle('is-error', !!isError);
+  }
+
+  async function sendBroadcast(event) {
+    event.preventDefault();
+    if (!occasions) return;
+    if (!api.isSignedIn()) {
+      window.location.href = '/auth?next=' + encodeURIComponent('/#ask');
+      return;
+    }
+    var user = api.currentUser() || {};
+    var note = (document.getElementById('ask-note').value || '').trim();
+    var qty = Number(document.getElementById('ask-qty').value) || 0;
+    var phone = (document.getElementById('ask-phone').value || '').replace(/\D/g, '');
+    var address = (document.getElementById('ask-address').value || '').trim();
+    var dateValue = document.getElementById('ask-date').value;
+    if (!note) {
+      setAskStatus('Say what you want the kitchens to cook.', true);
+      return;
+    }
+    if (qty < 1) {
+      setAskStatus('Enter how many portions you need.', true);
+      return;
+    }
+    if (phone.length < 10 || !address || !dateValue) {
+      setAskStatus('Add a phone, address, and day so kitchens can answer.', true);
+      return;
+    }
+    var when = new Date(dateValue + 'T13:00:00');
+    var body = occasions.broadcastInsert({
+      customerId: user.id,
+      customerEmail: user.email,
+      customerPhone: phone,
+      occasion: occasionId,
+      slice: occasionSlice,
+      note: note,
+      quantity: qty,
+      address: address,
+      targetIso: when.toISOString(),
+    });
+    var button = document.getElementById('ask-send');
+    if (button) button.disabled = true;
+    setAskStatus('Sending this to nearby kitchens…');
+    try {
+      await api.supabaseAuthedInsert('customer_requests', body);
+      setAskStatus('Broadcast sent. Kitchens can quote it from their leads.');
+      document.getElementById('ask-note').value = '';
+    } catch (err) {
+      setAskStatus((err && err.message) || 'Could not send this broadcast.', true);
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
   function wireControls() {
     var search = document.getElementById('catalog-search');
     var diet = document.getElementById('catalog-diet');
@@ -368,7 +480,8 @@
           return (m.id || '').toString() === id;
         });
         if (!meal) return;
-        var result = window.HotPotCart.add(meal, 1);
+        var stamped = occasions ? occasions.withBrowseOccasion(meal, occasionId) : meal;
+        var result = window.HotPotCart.add(stamped, 1);
         if (!result.ok) {
           setStatus('Could not add that plate. Try again.', true);
           return;
@@ -381,8 +494,50 @@
     }
   }
 
-  var play = document.getElementById('play-cta');
-  if (play) play.href = api.playStoreUrl();
-  wireControls();
-  loadCatalog();
+    var tabs = document.getElementById('occasion-tabs');
+    var slices = document.getElementById('occasion-slices');
+    var ask = document.getElementById('occasion-ask');
+    var panel = document.getElementById('ask-panel');
+    var form = document.getElementById('ask-panel');
+    var dateInput = document.getElementById('ask-date');
+    if (dateInput && !dateInput.value) dateInput.value = tomorrowDateValue();
+
+    if (tabs) {
+      tabs.addEventListener('click', function (ev) {
+        var btn = ev.target.closest('[data-occasion]');
+        if (!btn) return;
+        occasionId = btn.getAttribute('data-occasion') || occasionId;
+        occasionSlice = occasions ? occasions.SLICE_ALL : 'all';
+        renderOccasionBar();
+        render();
+      });
+    }
+    if (slices) {
+      slices.addEventListener('click', function (ev) {
+        var btn = ev.target.closest('[data-slice]');
+        if (!btn) return;
+        occasionSlice = btn.getAttribute('data-slice') || occasionSlice;
+        renderOccasionBar();
+        render();
+      });
+    }
+    if (ask && panel) {
+      ask.addEventListener('click', function () {
+        panel.hidden = !panel.hidden;
+        if (!panel.hidden) {
+          panel.scrollIntoView({ block: 'nearest' });
+          if (window.location.hash !== '#ask') history.replaceState(null, '', '#ask');
+        }
+      });
+    }
+    if (form && form.tagName === 'FORM') {
+      form.addEventListener('submit', sendBroadcast);
+    }
+    if (window.location.hash === '#ask' && panel) panel.hidden = false;
+
+    var play = document.getElementById('play-cta');
+    if (play) play.href = api.playStoreUrl();
+    renderOccasionBar();
+    wireControls();
+    loadCatalog();
 })();

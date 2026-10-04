@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Figtree:wght@500;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/css/site.css?v=20260909c" />
+    <link rel="stylesheet" href="/css/site.css?v=20261004a" />
   </head>
   <body>
     <div class="wrap site-top site-top--home">
@@ -43,7 +43,33 @@
     <section class="catalog" id="live-menu" aria-labelledby="catalog-heading">
       <div class="wrap catalog-wrap">
         <h2 class="catalog-heading" id="catalog-heading">On the menu now</h2>
-        <p class="catalog-lead">Same Available plates as the HotPotChef app. Tap a dish to add to the web cart or open the app.</p>
+        <p class="catalog-lead">Same Available plates as the HotPotChef app. Pick an occasion, then add a plate or ask nearby kitchens.</p>
+
+        <div class="occasion-bar" id="occasion-bar">
+          <p class="chef-strip-label">Home-cooked for</p>
+          <div class="chef-strip-list" id="occasion-tabs" role="tablist"></div>
+          <div class="chef-strip-list" id="occasion-slices"></div>
+          <div class="occasion-ask-row">
+            <p class="occasion-hint" id="occasion-hint"></p>
+            <button type="button" class="btn btn-ghost" id="occasion-ask">Ask kitchens</button>
+          </div>
+        </div>
+
+        <form class="ask-panel" id="ask-panel" hidden>
+          <p class="catalog-lead">Broadcast this occasion to nearby kitchens. They quote it. A listed plate still pays through checkout.</p>
+          <label class="ask-label" for="ask-note">What should they cook?</label>
+          <input id="ask-note" class="catalog-search" type="text" maxlength="140" required />
+          <label class="ask-label" for="ask-qty">Portions</label>
+          <input id="ask-qty" class="catalog-search" type="number" min="1" value="1" required />
+          <label class="ask-label" for="ask-phone">Phone</label>
+          <input id="ask-phone" class="catalog-search" type="tel" inputmode="numeric" maxlength="10" required />
+          <label class="ask-label" for="ask-address">Delivery address</label>
+          <textarea id="ask-address" class="catalog-search" rows="2" required></textarea>
+          <label class="ask-label" for="ask-date">When</label>
+          <input id="ask-date" class="catalog-search" type="date" required />
+          <button type="submit" class="btn btn-primary" id="ask-send">Broadcast to kitchens</button>
+          <p class="catalog-status" id="ask-status" hidden></p>
+        </form>
 
         <div class="catalog-controls">
           <label class="catalog-search-label" for="catalog-search">Search</label>
@@ -81,6 +107,7 @@
 
     <script src="/js/config.js"></script>
     <script src="/js/api.js"></script>
+    <script src="/js/occasions.js"></script>
     <script src="/js/cart.js"></script>
     <script src="/js/catalog.js"></script>
   </body>

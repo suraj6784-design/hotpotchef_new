@@ -46,4 +46,4 @@ jobs:
             supabase/functions/create-split-order/handler_test.ts \
             supabase/functions/create-chef-account/handler_test.ts
       - name: Node authorize tests
-        run: node --test supabase/functions/create-chef-account/*.test.mjs
+        run: node --test supabase/functions/create-chef-account/*.test.mjs website/js/occasions.test.mjs

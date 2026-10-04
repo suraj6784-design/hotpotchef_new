@@ -119,7 +119,10 @@
     if (addBtn && window.HotPotCart && meal.status === 'Available') {
       addBtn.hidden = false;
       addBtn.onclick = function () {
-        var result = window.HotPotCart.add(meal, 1);
+        var stamped = window.HotPotOccasions
+          ? window.HotPotOccasions.withBrowseOccasion(meal)
+          : meal;
+        var result = window.HotPotCart.add(stamped, 1);
         if (result && result.ok === false) {
           show('status', true);
           setText('status', 'Could not add that plate. Try again.');
@@ -151,7 +154,8 @@
       var rows = await api.supabaseGet(
         'meals?id=eq.' +
           encodeURIComponent(mealId) +
-          '&select=id,title,price,image_url,chef_name,chef_id,fssai_number,description,quantity,status,is_veg'
+          '&select=id,title,price,image_url,chef_name,chef_id,fssai_number,description,quantity,status,is_veg,' +
+          (window.HotPotOccasions ? window.HotPotOccasions.OCCASION_COLUMNS : 'occasion')
       );
       if (!rows || !rows.length) {
         renderMissing(mealId, 'This dish is no longer on the menu.');

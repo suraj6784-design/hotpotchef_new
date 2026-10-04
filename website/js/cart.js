@@ -63,6 +63,7 @@
       existing.chef_name = meal.local_kitchen_name || meal.chef_name || existing.chef_name;
       existing.image_url = meal.image_url || existing.image_url;
       if (meal.time_slot) existing.time_slot = meal.time_slot;
+      if (meal.occasion) existing.occasion = meal.occasion;
     } else {
       items.push({
         id: id,
@@ -73,6 +74,7 @@
         chef_name: meal.local_kitchen_name || meal.chef_name || '',
         image_url: meal.image_url || '',
         time_slot: meal.time_slot || '',
+        occasion: meal.occasion || '',
       });
     }
     write(items);
