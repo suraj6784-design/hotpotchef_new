@@ -3083,6 +3083,119 @@ ChefPayoutBreakdown chefPayoutForOrder(Map<String, dynamic> order) {
   );
 }
 
+/// Home tile under Today's Summary. Not a lifetime total.
+const String kChefTodayEarningsLabel = "Today's Earnings";
+
+/// Hero on Payout & Analytics. Sum of stored `chef_payout` only.
+const String kChefStoredPayoutLabel = 'Stored payout';
+
+/// Caption when the ₹199+ free-delivery stipend was taken from the chef.
+/// Empty unless that stipend applies, so paid delivery, food under ₹199,
+/// and a stored driver payout that is not the stipend do not grow a ₹20 line.
+String chefFreeDeliveryShareCaption(Map<String, dynamic> order) {
+  final taken = _chefDeductionForFreeDelivery(order);
+  if (taken <= 0) return '';
+  final threshold = kFreeDeliveryMinFood.toStringAsFixed(0);
+  return '${formatRupees(taken)} of your share went to the driver (free delivery on food ₹$threshold+)';
+}
+
+/// A positive stored `chef_payout` is money already recorded. Zero is unset.
+bool chefPayoutIsStored(Map<String, dynamic> order) => parseMoney(order['chef_payout']) > 0;
+
+/// Order-card amount. Stored payouts stay as stored. An unset payout keeps the
+/// 85% estimate and says so, so it does not read as pending earnings.
+String chefOrderPayoutAmountLabel(Map<String, dynamic> order) {
+  final amount = formatRupees(chefPayoutForOrder(order).chefPayout);
+  final tag = chefOrderPayoutEstimateTag(order);
+  if (tag == null) return amount;
+  return '$tag $amount';
+}
+
+/// Tag shown beside an unset payout. Null when `chef_payout` is already stored.
+String? chefOrderPayoutEstimateTag(Map<String, dynamic> order) =>
+    chefPayoutIsStored(order) ? null : 'Estimated';
+
+class ChefPayoutLedger {
+  const ChefPayoutLedger({
+    required this.stored,
+    required this.estimated,
+    required this.storedOrders,
+    required this.estimatedOrders,
+  });
+
+  /// Sum of stored `chef_payout` values. Unset rows are not included.
+  final double stored;
+
+  /// 85% food+pack estimate for rows whose `chef_payout` is still 0.
+  final double estimated;
+  final int storedOrders;
+  final int estimatedOrders;
+
+  /// What the old analytics hero added together. Not a stored payout.
+  double get blended => roundMoney(stored + estimated);
+}
+
+/// Splits delivered orders into stored payout and unlabeled estimate.
+/// Does not rewrite rows and does not change either amount.
+ChefPayoutLedger chefPayoutLedger(Iterable<Map<String, dynamic>> orders) {
+  var stored = 0.0;
+  var estimated = 0.0;
+  var storedOrders = 0;
+  var estimatedOrders = 0;
+  for (final order in orders) {
+    if (chefPayoutIsStored(order)) {
+      stored += parseMoney(order['chef_payout']);
+      storedOrders++;
+    } else {
+      estimated += chefPayoutForOrder(order).chefPayout;
+      estimatedOrders++;
+    }
+  }
+  return ChefPayoutLedger(
+    stored: roundMoney(stored),
+    estimated: roundMoney(estimated),
+    storedOrders: storedOrders,
+    estimatedOrders: estimatedOrders,
+  );
+}
+
+String chefStoredPayoutHeadline(ChefPayoutLedger ledger) => formatRupees(ledger.stored);
+
+String chefEstimatedPayoutLine(ChefPayoutLedger ledger) {
+  if (ledger.estimatedOrders <= 0) return '';
+  final noun = ledger.estimatedOrders == 1 ? 'order still stores' : 'orders still store';
+  return 'Estimated ${formatRupees(ledger.estimated)} · ${ledger.estimatedOrders} $noun ₹0';
+}
+
+bool chefOrderCountsOnLocalDay(Map<String, dynamic> order, DateTime day) {
+  final status = order['status']?.toString().toLowerCase() ?? '';
+  if (!status.contains('delivered') && !status.contains('completed')) return false;
+  final at = DateTime.tryParse(order['delivered_at']?.toString() ?? order['updated_at']?.toString() ?? '');
+  if (at == null) return false;
+  final local = at.toLocal();
+  return local.year == day.year && local.month == day.month && local.day == day.day;
+}
+
+/// Today's delivered take-home, including the 85% estimate where `chef_payout` is 0.
+/// Paise are kept; callers format with [formatChefTodayEarnings].
+double chefEarningsForLocalDay(Iterable<Map<String, dynamic>> orders, DateTime day) {
+  final sum = orders
+      .where((order) => chefOrderCountsOnLocalDay(order, day))
+      .fold<double>(0, (sum, order) => sum + chefPayoutForOrder(order).chefPayout);
+  return roundMoney(sum);
+}
+
+String formatChefTodayEarnings(num amount) => formatRupees(amount);
+
+/// Shown under Today's Earnings when the fold includes unset `chef_payout` rows.
+String chefTodayEarningsEstimateNote(Iterable<Map<String, dynamic>> orders, DateTime day) {
+  final ledger = chefPayoutLedger(
+    orders.where((order) => chefOrderCountsOnLocalDay(order, day)),
+  );
+  if (ledger.estimated <= 0) return '';
+  return 'Includes estimated ${formatRupees(ledger.estimated)}';
+}
+
 bool isPartnerDeliveryOrder(Map<String, dynamic> order) {
   final raw = (order['order_type'] ?? order['service_type'] ?? '').toString().trim();
   if (raw.isNotEmpty) {
