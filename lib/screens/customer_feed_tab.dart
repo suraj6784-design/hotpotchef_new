@@ -3,6 +3,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -32,6 +33,7 @@ import '../utils/diner_locale.dart';
 import '../utils/fssai_certificate_scan.dart';
 import '../screens/checkout_screen.dart';
 import '../widgets/diner_storefront.dart';
+import '../widgets/occasion_home.dart';
 import 'address_form_screen.dart';
 
 class CustomerFeedTab extends ConsumerStatefulWidget {
@@ -661,6 +663,22 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     if (_mealsRestSnapshot == null || _mealsRestSnapshot!.isEmpty) {
       unawaited(_refreshMealsRestSnapshot());
     }
+  }
+
+  void _askKitchensForOccasion(FoodOccasion occasion) {
+    final path = '/bulk-request?occasion=${occasion.id}';
+    if (Supabase.instance.client.auth.currentUser == null) {
+      showAuthBottomSheet(
+        context,
+        () {
+          if (mounted) context.push(path);
+        },
+        title: 'Sign in to ask kitchens',
+        subtitle: 'Your ${occasion.label.toLowerCase()} request stays ready to send.',
+      );
+      return;
+    }
+    context.push(path);
   }
 
   Future<void> _showGroupedOfferMeals(String groupKey) async {
@@ -1537,6 +1555,11 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
               selected: _selectedDiet,
               onSelected: (name) => setState(() => _selectedDiet = name),
             ),
+            OccasionHomeBoard(
+              selectedLabel: _selectedCategory,
+              onSelect: (occasion) => setState(() => _selectedCategory = occasion?.label ?? 'All'),
+              onAskKitchens: _askKitchensForOccasion,
+            ),
             const SizedBox(height: 8),
           ],
 
@@ -1688,14 +1711,14 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (!_hasActiveSearch && !showFavorites && !showFollowing) ...[
+                    if (!_hasActiveSearch && !showFavorites && !showFollowing && _selectedCategory == 'All') ...[
                       DinerSectionHeader(
                         title: DinerLocaleController.instance.copy.socialChefs,
                       ),
                       _buildTrendingChefsStrip(meals),
                       DinerSectionHeader(title: 'Popular Dishes'),
                     ],
-                    if (!_hasActiveSearch && !showFavorites && !showFollowing)
+                    if (!_hasActiveSearch && !showFavorites && !showFollowing && _selectedCategory == 'All')
                       _buildPopularDishList(meals)
                     else
                     _buildMealGrid(

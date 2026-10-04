@@ -17,6 +17,7 @@ import 'membership.dart';
 import 'pricing_calculator.dart';
 import 'meal_nutrition.dart';
 import 'service_area.dart';
+import 'occasion_catalog.dart';
 import '../models/app_role.dart';
 import '../models/order_status.dart';
 import '../models/cart_enums.dart';
@@ -24,6 +25,7 @@ import '../models/pricing_models.dart';
 
 // Export the theme so all screens automatically inherit it
 export 'app_theme.dart';
+export 'occasion_catalog.dart'; 
 export 'kitchen_promise.dart'; 
 part 'helpers_feed.dart';
 part 'helpers_slots.dart';
@@ -1799,7 +1801,7 @@ String boostPaymentErrorMessage(Object error) {
   } catch (_) {}
   final raw = error.toString();
   final match = RegExp(r'error:\s*([^}\]]+)').firstMatch(raw);
-  if (match != null) {
+    if (match != null) {
     final extracted = match.group(1)?.trim() ?? '';
     if (extracted.isNotEmpty && !extracted.toLowerCase().startsWith('false')) {
       return extracted.replaceAll(RegExp(r'[,\s]+$'), '');
@@ -1994,7 +1996,7 @@ bool isOpenPackagingSupplyRequest(Map<String, dynamic>? request) {
       status.contains('fulfilled') ||
       status == 'completed' ||
       status.contains('completed')) {
-    return false;
+  return false;
   }
   return true;
 }

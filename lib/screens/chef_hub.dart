@@ -2418,7 +2418,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: Text(req['title'] ?? 'Bulk Catering Lead',
+                    child: Text(req['title'] ?? 'Kitchen request',
                         style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
                   ),
                   Text(
@@ -2431,6 +2431,13 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                   ),
                 ],
               ),
+              if (foodOccasionById(req['request_type']?.toString()) != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  foodOccasionById(req['request_type']?.toString())!.groupTitle,
+                  style: AppTheme.caption,
+                ),
+              ],
               const SizedBox(height: 6),
               Text(
                 isOpen

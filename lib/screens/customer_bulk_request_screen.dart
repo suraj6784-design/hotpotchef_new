@@ -16,10 +16,13 @@ import '../services/meal_catalog_repository.dart';
 import '../utils/helpers.dart';
 import '../utils/network.dart';
 import '../widgets/app_widgets.dart';
+import '../widgets/customer_ui_components.dart';
 import 'map_picker_screen.dart';
 
 class CustomerBulkRequestScreen extends ConsumerStatefulWidget {
-  const CustomerBulkRequestScreen({super.key});
+  const CustomerBulkRequestScreen({super.key, this.initialOccasionId});
+
+  final String? initialOccasionId;
 
   @override
   ConsumerState<CustomerBulkRequestScreen> createState() => _CustomerBulkRequestScreenState();
@@ -32,6 +35,7 @@ class _CustomerBulkRequestScreenState extends ConsumerState<CustomerBulkRequestS
   final _titleController = TextEditingController();
   final _descController = TextEditingController();
   final _qtyController = TextEditingController(text: '10');
+  final _budgetController = TextEditingController();
   final _addressController = TextEditingController();
   final _chefSearchController = TextEditingController();
 
@@ -39,6 +43,8 @@ class _CustomerBulkRequestScreenState extends ConsumerState<CustomerBulkRequestS
   DateTime _targetDate = DateTime.now().add(const Duration(days: 1));
   TimeOfDay _targetTime = const TimeOfDay(hour: 13, minute: 0);
   bool _isLoading = false;
+  bool _broadcasting = false;
+  late String _occasionId;
   bool _chefsLoading = false;
   bool _mealsLoading = false;
   String? _selectedMealId;
@@ -53,6 +59,7 @@ class _CustomerBulkRequestScreenState extends ConsumerState<CustomerBulkRequestS
   @override
   void initState() {
     super.initState();
+    _occasionId = foodOccasionById(widget.initialOccasionId)?.id ?? kFoodOccasions.first.id;
     _loadChefs();
   }
 
@@ -61,6 +68,7 @@ class _CustomerBulkRequestScreenState extends ConsumerState<CustomerBulkRequestS
     _titleController.dispose();
     _descController.dispose();
     _qtyController.dispose();
+    _budgetController.dispose();
     _addressController.dispose();
     _chefSearchController.dispose();
     super.dispose();
@@ -270,6 +278,90 @@ class _CustomerBulkRequestScreenState extends ConsumerState<CustomerBulkRequestS
     context.go('/customer-hub?tab=cart');
   }
 
+  Future<void> _broadcastRequest() async {
+    if (_broadcasting) return;
+    final occasion = foodOccasionById(_occasionId);
+    if (occasion == null) return;
+    if (!_formKey.currentState!.validate()) return;
+    final quantity = int.tryParse(_qtyController.text.trim()) ?? 0;
+    if (quantity < 1) {
+      _showSnackBar('Say how many portions or jars you need.', isError: true);
+      return;
+    }
+    if (_latitude == null || _longitude == null) {
+      _showSnackBar('Please pin the drop on the map.', isError: true);
+      return;
+    }
+    final user = _supabase.auth.currentUser;
+    if (user == null) {
+      showAuthBottomSheet(context, () {
+        if (mounted) unawaited(_broadcastRequest());
+      }, title: 'Sign in to ask kitchens', subtitle: 'Nearby chefs will see this ${occasion.label.toLowerCase()} request.');
+      return;
+    }
+
+    final note = _titleController.text.trim();
+    final details = _descController.text.trim();
+    final budget = double.tryParse(_budgetController.text.trim());
+    final when = DateTime(
+      _targetDate.year,
+      _targetDate.month,
+      _targetDate.day,
+      _targetTime.hour,
+      _targetTime.minute,
+    );
+    final meta = user.userMetadata ?? const <String, dynamic>{};
+    final name = (meta['name'] ?? meta['full_name'] ?? user.email?.split('@').first ?? 'Diner').toString();
+    final payload = <String, dynamic>{
+      'customer_id': user.id,
+      'customer_name': name,
+      'customer_email': user.email,
+      'title': note.isEmpty ? occasion.label : note,
+      'description': [
+        '${occasion.groupTitle}: ${occasion.label}',
+        if (details.isNotEmpty) details,
+      ].join('\n'),
+      'quantity': quantity,
+      'remaining_quantity': quantity,
+      if (budget != null && budget > 0) 'budget': budget,
+      'service_type': _selectedServiceType,
+      'request_type': occasion.id,
+      'category': occasion.label,
+      'delivery_address': _addressController.text.trim(),
+      'latitude': _latitude,
+      'longitude': _longitude,
+      'target_date_time': when.toUtc().toIso8601String(),
+      'status': 'Open',
+      'created_at': DateTime.now().toUtc().toIso8601String(),
+      if (_selectedChefIds.isNotEmpty) 'target_chef_ids': _selectedChefIds.toList(),
+    };
+
+    setState(() => _broadcasting = true);
+    try {
+      final body = Map<String, dynamic>.from(payload);
+      for (var attempt = 0; attempt < 8; attempt++) {
+        try {
+          await _supabase.from('customer_requests').insert(body).withTimeout(NetworkTimeouts.standard);
+          break;
+        } on PostgrestException catch (e) {
+          if (e.code != 'PGRST204') rethrow;
+          final missing = RegExp(r"'([^']+)'").firstMatch(e.message)?.group(1);
+          if (missing == null || !body.containsKey(missing)) rethrow;
+          body.remove(missing);
+          if (body.isEmpty) rethrow;
+        }
+      }
+      if (!mounted) return;
+      _showSnackBar('Kitchens can now quote this ${occasion.label.toLowerCase()} request.');
+      context.go('/customer-hub?tab=orders');
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Occasion broadcast failed');
+      if (mounted) _showSnackBar('Could not send this request. Try again.', isError: true);
+    } finally {
+      if (mounted) setState(() => _broadcasting = false);
+    }
+  }
+
   void _showSnackBar(String text, {bool isError = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -290,7 +382,7 @@ class _CustomerBulkRequestScreenState extends ConsumerState<CustomerBulkRequestS
           children: [
             const AppLogo(size: 24),
             const SizedBox(width: 8),
-            Text('Bulk pre-order', style: TextStyle(color: AppTheme.onSurfaceOf(context), fontWeight: FontWeight.bold)),
+            Text('Ask kitchens', style: TextStyle(color: AppTheme.onSurfaceOf(context), fontWeight: FontWeight.bold)),
           ],
         ),
         backgroundColor: Colors.transparent,
@@ -303,10 +395,30 @@ class _CustomerBulkRequestScreenState extends ConsumerState<CustomerBulkRequestS
           padding: const EdgeInsets.all(20),
           children: [
             const Text(
-              'Pick one kitchen and a plate. Quantity and lead time go on the same cart, then you pay. The chef sees it with other orders.',
+              'Tell nearby kitchens what you need. They quote, you pick one, then pay. Or add a listed plate straight to the cart.',
               style: TextStyle(color: AppTheme.textMuted, fontSize: 13, height: 1.4),
             ),
             const SizedBox(height: 24),
+            DropdownButtonFormField<String>(
+              initialValue: _occasionId,
+              dropdownColor: AppTheme.surfaceOf(context),
+              style: TextStyle(fontSize: 14, color: AppTheme.onSurfaceOf(context)),
+              decoration: _inputStyle('Occasion'),
+              items: [
+                for (final occasion in kFoodOccasions)
+                  DropdownMenuItem(
+                    value: occasion.id,
+                    child: Text('${occasion.groupTitle} · ${occasion.label}', style: const TextStyle(fontSize: 14)),
+                  ),
+              ],
+              onChanged: (id) {
+                if (id == null) return;
+                setState(() => _occasionId = id);
+              },
+            ),
+            const SizedBox(height: 8),
+            Text(foodOccasionById(_occasionId)?.hint ?? '', style: AppTheme.caption),
+            const SizedBox(height: 14),
 
             TextFormField(
               controller: _titleController,
@@ -330,10 +442,10 @@ class _CustomerBulkRequestScreenState extends ConsumerState<CustomerBulkRequestS
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     validator: (v) {
                       final val = int.tryParse(v ?? '') ?? 0;
-                      if (val < 5) return 'Minimum 5 portions';
+                      if (val < 1) return 'Enter at least 1';
                       return null;
                     },
-                    decoration: _inputStyle('Total Portions *'),
+                    decoration: _inputStyle('Portions or jars *'),
                   ),
                 ),
               ],
@@ -539,7 +651,26 @@ class _CustomerBulkRequestScreenState extends ConsumerState<CustomerBulkRequestS
                     onChanged: (id) => setState(() => _selectedMealId = id),
                   ),
                 ),
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: _budgetController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: _inputStyle('Budget in ₹ (optional)'),
+            ),
             const SizedBox(height: 32),
+
+            OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppTheme.primary,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              onPressed: _broadcasting ? null : _broadcastRequest,
+              child: _broadcasting
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Broadcast to kitchens', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ),
+            const SizedBox(height: 12),
 
             ElevatedButton(
               style: ElevatedButton.styleFrom(

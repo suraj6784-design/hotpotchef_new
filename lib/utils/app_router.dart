@@ -265,7 +265,12 @@ class AppRouter {
       ),
       _fadeRoute('/referral', (context, state) => const ReferralScreen()),
       _fadeRoute('/order-history', (context, state) => const CustomerOrderHistoryScreen()),
-      _fadeRoute('/bulk-request', (context, state) => const CustomerBulkRequestScreen()),
+      _fadeRoute(
+        '/bulk-request',
+        (context, state) => CustomerBulkRequestScreen(
+          initialOccasionId: state.uri.queryParameters['occasion'],
+        ),
+      ),
       _fadeRoute('/support-tickets', (context, state) => const CustomerSupportTicketsScreen()),
       _fadeRoute('/notifications', (context, state) => const NotificationsInboxScreen()),
     ],

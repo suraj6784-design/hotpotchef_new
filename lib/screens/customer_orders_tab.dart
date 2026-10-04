@@ -1191,7 +1191,10 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(color: AppTheme.primary.withValues(alpha: 0.12), borderRadius: AppTheme.radiusSm),
-                    child: const Text('Bulk broadcast', style: TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 12)),
+                    child: Text(
+                      foodOccasionById(req['request_type']?.toString())?.label ?? 'Broadcast',
+                      style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 12),
+                    ),
                   ),
                   const SizedBox(width: 8),
                   Text(displayRequestId, style: const TextStyle(color: AppTheme.textMuted, fontWeight: FontWeight.bold, fontSize: 12)),

@@ -293,6 +293,8 @@ List<String> cuisineAliases(String cuisine) {
 bool mealMatchesCuisine(Map<String, dynamic> meal, String? cuisine) {
   final selected = (cuisine ?? '').trim();
   if (selected.isEmpty || selected == 'All') return true;
+  final occasion = foodOccasionByLabel(selected);
+  if (occasion != null) return plateMatchesFoodOccasion(meal, occasion);
   if (selected.toLowerCase() == 'festival hamper') {
     return isFestivalHamper(meal);
   }
@@ -461,4 +463,312 @@ FeedEmptyCopy feedEmptyCopy({
         ? 'No kitchens are delivering to this pin right now. Try another address or category.'
         : 'Turn on location or choose an address. We do not guess a city for you.',
   );
+}
+
+/// Diner journey: daily plates, festive and family, parties, then pantry jars.
+const String kMealOccasionTagPrefix = 'occasion:';
+
+class MealOccasion {
+  const MealOccasion({
+    required this.id,
+    required this.label,
+    required this.stage,
+    required this.blurb,
+  });
+
+  final String id;
+  final String label;
+  final String stage;
+  final String blurb;
+}
+
+const List<MealOccasion> kMealOccasions = [
+  MealOccasion(
+    id: 'daily',
+    label: 'Everyday plates',
+    stage: 'daily',
+    blurb: 'Lunch and dinner from home kitchens, ready to reorder.',
+  ),
+  MealOccasion(
+    id: 'healthy',
+    label: 'Healthy plans',
+    stage: 'daily',
+    blurb: 'Balanced, low-oil, and low-sugar plates.',
+  ),
+  MealOccasion(
+    id: 'dietary',
+    label: 'Dietary needs',
+    stage: 'daily',
+    blurb: 'Diabetic-friendly, gluten-free, vegan, Jain, and Ayurvedic plates.',
+  ),
+  MealOccasion(
+    id: 'seasonal',
+    label: 'Seasonal',
+    stage: 'daily',
+    blurb: 'Winter snacks and soups, or summer coolers and light meals.',
+  ),
+  MealOccasion(
+    id: 'festive',
+    label: 'Festivals',
+    stage: 'festive',
+    blurb: 'Diwali sweets, Holi snacks, Eid biryani, Christmas cakes, and Ganesh modaks.',
+  ),
+  MealOccasion(
+    id: 'family',
+    label: 'Family gatherings',
+    stage: 'festive',
+    blurb: 'Thalis, combos, and bulk plates for relatives visiting.',
+  ),
+  MealOccasion(
+    id: 'ceremony',
+    label: 'Ceremonies',
+    stage: 'festive',
+    blurb: 'Prasad, sattvic meals, fasting plates, and housewarming spreads.',
+  ),
+  MealOccasion(
+    id: 'party',
+    label: 'Parties',
+    stage: 'party',
+    blurb: 'Birthday, anniversary, and office orders. Schedule the slot for the event day.',
+  ),
+  MealOccasion(
+    id: 'specialty',
+    label: 'Pickles & sweets',
+    stage: 'specialty',
+    blurb: 'Pickles, chakli, laddus, and jars you can reorder through the season.',
+  ),
+];
+
+const List<MealOccasion> kMealJourneyStages = [
+  MealOccasion(
+    id: 'daily',
+    label: 'Daily meals',
+    stage: 'daily',
+    blurb: 'Everyday plates, healthy plans, dietary needs, and the season.',
+  ),
+  MealOccasion(
+    id: 'festive',
+    label: 'Festive & family',
+    stage: 'festive',
+    blurb: 'Festival boxes, family thalis, and ceremony meals. Book the slot ahead.',
+  ),
+  MealOccasion(
+    id: 'party',
+    label: 'Parties',
+    stage: 'party',
+    blurb: 'Snacks and sweets for a birthday, anniversary, or office party.',
+  ),
+  MealOccasion(
+    id: 'specialty',
+    label: 'Specialty',
+    stage: 'specialty',
+    blurb: 'Pickles, preserves, and traditional sweets you order again.',
+  ),
+];
+
+MealOccasion? mealOccasionById(String? id) {
+  final key = (id ?? '').trim().toLowerCase();
+  if (key.isEmpty || key == 'all') return null;
+  for (final occasion in kMealOccasions) {
+    if (occasion.id == key) return occasion;
+  }
+  for (final stage in kMealJourneyStages) {
+    if (stage.id == key) return stage;
+  }
+  return null;
+}
+
+String? mealStoredOccasionId(Map<String, dynamic> meal) {
+  final tags = meal['health_tags'] ?? meal['tags'];
+  final values = tags is List ? tags : [tags];
+  for (final tag in values) {
+    final text = tag?.toString().trim().toLowerCase() ?? '';
+    if (!text.startsWith(kMealOccasionTagPrefix)) continue;
+    final id = text.substring(kMealOccasionTagPrefix.length);
+    if (mealOccasionById(id) != null && kMealOccasions.any((item) => item.id == id)) {
+      return id;
+    }
+  }
+  return null;
+}
+
+String mealOccasionTag(String id) => '$kMealOccasionTagPrefix$id';
+
+bool _occasionHay(String hay, List<String> words) => _haystackHasAny(hay, words);
+
+bool mealMatchesOccasion(Map<String, dynamic> meal, String occasionId, {DateTime? now}) {
+  final id = occasionId.trim().toLowerCase();
+  if (id.isEmpty || id == 'all') return true;
+  final stored = mealStoredOccasionId(meal);
+  if (stored != null) return stored == id;
+  final hay = mealDietHaystack(meal);
+  switch (id) {
+    case 'daily':
+      return !isFestivalHamper(meal) &&
+          !isShelfItem(meal) &&
+          !isSocietyNight(meal) &&
+          !_occasionHay(hay, const [
+            'birthday',
+            'anniversary',
+            'office party',
+            'prasad',
+            'housewarming',
+            'naming ceremony',
+          ]);
+    case 'healthy':
+      return mealMatchesFeedDiet(meal, 'High-protein') ||
+          mealMatchesFeedDiet(meal, 'Millet') ||
+          _occasionHay(hay, const [
+            'healthy',
+            'low-oil',
+            'low oil',
+            'low-sugar',
+            'low sugar',
+            'balanced',
+            'salad',
+            'diet plan',
+          ]);
+    case 'dietary':
+      return mealMatchesFeedDiet(meal, 'Diabetic') ||
+          mealMatchesFeedDiet(meal, 'Vegan') ||
+          mealMatchesFeedDiet(meal, 'Jain') ||
+          _occasionHay(hay, const [
+            'diabetic',
+            'gluten-free',
+            'gluten free',
+            'vegan',
+            'ayurvedic',
+            'jain',
+          ]);
+    case 'seasonal':
+      if (_occasionHay(hay, const [
+        'seasonal',
+        'soup',
+        'bhaji',
+        'buttermilk',
+        'chaas',
+        'cooler',
+        'til laddu',
+        'light meal',
+      ])) {
+        return true;
+      }
+      final month = (now ?? DateTime.now()).month;
+      if (month == 12 || month <= 2) {
+        return _occasionHay(hay, const ['soup', 'bhaji', 'til']);
+      }
+      if (month >= 3 && month <= 5) {
+        return _occasionHay(hay, const ['buttermilk', 'chaas', 'cooler']);
+      }
+      return false;
+    case 'festive':
+      return isFestivalHamper(meal) ||
+          _occasionHay(hay, const [
+            'diwali',
+            'holi',
+            'eid',
+            'christmas',
+            'ganesh',
+            'modak',
+            'gujiya',
+            'barfi',
+            'laddu',
+            'laddoo',
+            'festival',
+            'hamper',
+          ]);
+    case 'family':
+      return isSocietyNight(meal) ||
+          _truthyFlag(meal['is_hosting'] ?? meal['isHosting']) ||
+          _occasionHay(hay, const ['thali', 'combo', 'bulk', 'family gathering']);
+    case 'ceremony':
+      return _occasionHay(hay, const [
+        'prasad',
+        'sattvic',
+        'satvik',
+        'fasting',
+        'vrat',
+        'upvas',
+        'housewarming',
+        'naming ceremony',
+      ]);
+    case 'party':
+      return _occasionHay(hay, const [
+        'birthday',
+        'anniversary',
+        'office party',
+        'party platter',
+        'finger food',
+        'cake',
+      ]);
+    case 'specialty':
+      return isShelfItem(meal) ||
+          _occasionHay(hay, const [
+            'pickle',
+            'achar',
+            'preserve',
+            'chakli',
+            'sev',
+            'laddu',
+            'laddoo',
+            'peda',
+            'halwa',
+            'motichoor',
+          ]);
+    default:
+      return false;
+  }
+}
+
+bool mealMatchesJourney(Map<String, dynamic> meal, String stage, {String leaf = 'all', DateTime? now}) {
+  final selected = stage.trim().toLowerCase();
+  if (selected.isEmpty || selected == 'all') return true;
+  final narrow = leaf.trim().toLowerCase();
+  if (narrow.isNotEmpty && narrow != 'all') {
+    return mealMatchesOccasion(meal, narrow, now: now);
+  }
+  switch (selected) {
+    case 'daily':
+      return mealMatchesOccasion(meal, 'daily', now: now) ||
+          mealMatchesOccasion(meal, 'healthy', now: now) ||
+          mealMatchesOccasion(meal, 'dietary', now: now) ||
+          mealMatchesOccasion(meal, 'seasonal', now: now);
+    case 'festive':
+      return mealMatchesOccasion(meal, 'festive', now: now) ||
+          mealMatchesOccasion(meal, 'family', now: now) ||
+          mealMatchesOccasion(meal, 'ceremony', now: now);
+    case 'party':
+      return mealMatchesOccasion(meal, 'party', now: now);
+    case 'specialty':
+      return mealMatchesOccasion(meal, 'specialty', now: now);
+    default:
+      return true;
+  }
+}
+
+String mealJourneyBlurb({String stage = 'all', String leaf = 'all'}) {
+  final narrow = mealOccasionById(leaf);
+  if (narrow != null && kMealOccasions.any((item) => item.id == narrow.id)) {
+    return narrow.blurb;
+  }
+  final broad = mealOccasionById(stage);
+  if (broad != null) return broad.blurb;
+  return 'Daily meals, festive boxes, party orders, then pickles and sweets you buy again.';
+}
+
+String orderOccasionLabel(Iterable<Map<String, dynamic>> items, {DateTime? now}) {
+  String? best;
+  for (final item in items) {
+    final stored = mealStoredOccasionId(item);
+    if (stored != null && stored != 'daily') {
+      return mealOccasionById(stored)?.label ?? 'Daily meal';
+    }
+    for (final occasion in kMealOccasions) {
+      if (occasion.id == 'daily') continue;
+      if (mealMatchesOccasion(item, occasion.id, now: now)) {
+        best ??= occasion.label;
+      }
+    }
+  }
+  return best ?? 'Daily meal';
 }
