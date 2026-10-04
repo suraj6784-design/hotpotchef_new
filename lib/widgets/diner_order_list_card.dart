@@ -20,6 +20,7 @@ class DinerOrderListCard extends StatefulWidget {
     required this.orderType,
     required this.placedLabel,
     required this.slotLabel,
+    this.occasionLabel = '',
     required this.addressLabel,
     required this.addressValue,
     required this.isPickup,
@@ -48,6 +49,7 @@ class DinerOrderListCard extends StatefulWidget {
   final String orderType;
   final String placedLabel;
   final String slotLabel;
+  final String occasionLabel;
   final String addressLabel;
   final String addressValue;
   final bool isPickup;
@@ -246,6 +248,31 @@ class _DinerOrderListCardState extends State<DinerOrderListCard> {
                   ),
                 ],
               ),
+              if (widget.occasionLabel.trim().isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.celebration_outlined,
+                      size: 14,
+                      color: AppTheme.primary,
+                    ),
+                    const SizedBox(width: 6),
+                    Text('Occasion: ', style: AppTheme.caption),
+                    Flexible(
+                      child: Text(
+                        widget.occasionLabel,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: onSurface,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 4),
               Row(
                 children: [

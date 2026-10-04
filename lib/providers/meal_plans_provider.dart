@@ -42,24 +42,55 @@ class MealPlansNotifier extends Notifier<List<MealPlan>> {
   Future<bool> savePlan(MealPlan plan) async {
     final user = _supabase.auth.currentUser;
     if (user == null) return false;
-    if (plan.weekdays.isEmpty || plan.chefId.isEmpty) return false;
+    if (!planScheduleIsValid(plan)) return false;
 
     final payload = plan.toInsertPayload()..['customer_id'] = user.id;
     final existing = activePlanForMeal(state, plan.mealId);
 
     try {
-      if (existing != null && existing.id.isNotEmpty) {
-        await _supabase.from('meal_plans').update(payload).eq('id', existing.id).eq('customer_id', user.id);
-      } else {
-        await _supabase.from('meal_plans').insert(payload);
-      }
+      await _writePlan(payload, existingId: existing?.id, customerId: user.id);
       await fetchPlans();
       return true;
+    } on PostgrestException catch (e, stack) {
+      final missingCadence = e.code == 'PGRST204' &&
+          (e.message.contains('cadence') || e.message.contains('month_day'));
+      if (missingCadence && !plan.isMonthly) {
+        payload.remove('cadence');
+        payload.remove('month_day');
+        try {
+          await _writePlan(payload, existingId: existing?.id, customerId: user.id);
+          await fetchPlans();
+          return true;
+        } catch (retryError, retryStack) {
+          FirebaseCrashlytics.instance.recordError(
+            retryError,
+            retryStack,
+            reason: 'Failed to save meal plan',
+          );
+          await fetchPlans();
+          return false;
+        }
+      }
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to save meal plan');
+      await fetchPlans();
+      return false;
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Failed to save meal plan');
       await fetchPlans();
       return false;
     }
+  }
+
+  Future<void> _writePlan(
+    Map<String, dynamic> payload, {
+    required String? existingId,
+    required String customerId,
+  }) async {
+    if (existingId != null && existingId.isNotEmpty) {
+      await _supabase.from('meal_plans').update(payload).eq('id', existingId).eq('customer_id', customerId);
+      return;
+    }
+    await _supabase.from('meal_plans').insert(payload);
   }
 
   Future<bool> pausePlan(String planId) async {

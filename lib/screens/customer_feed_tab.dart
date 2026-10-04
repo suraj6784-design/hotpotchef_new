@@ -3,6 +3,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -32,6 +33,7 @@ import '../utils/diner_locale.dart';
 import '../utils/fssai_certificate_scan.dart';
 import '../screens/checkout_screen.dart';
 import '../widgets/diner_storefront.dart';
+import '../widgets/home_occasion_bar.dart';
 import 'address_form_screen.dart';
 
 class CustomerFeedTab extends ConsumerStatefulWidget {
@@ -66,6 +68,8 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   String _selectedDiet = 'All';
   String _selectedSort = kFeedSortEta;
   String _homeMode = 'live';
+  String _occasion = kOccasionEveryday;
+  String _occasionSlice = kOccasionSliceAll;
   bool _dinerChoseHomeMode = false;
   String _renderedHomeMode = 'live';
   bool _renderedNothingLive = false;
@@ -232,6 +236,8 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     _allergies = '';
     _selectedDiet = 'All';
     _selectedCategory = 'All';
+    _occasion = kOccasionEveryday;
+    _occasionSlice = kOccasionSliceAll;
     _savedAddresses = [];
     _deviceLocationPin = null;
     _currentAddress = 'Locating...';
@@ -1525,6 +1531,18 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
               ],
             ),
           ),
+          HomeOccasionBar(
+            occasion: _occasion,
+            slice: _occasionSlice,
+            onOccasion: (id) => setState(() {
+              _occasion = id;
+              _occasionSlice = kOccasionSliceAll;
+            }),
+            onSlice: (id) => setState(() => _occasionSlice = id),
+            onBroadcast: () => context.push(
+              '/bulk-request?occasion=$_occasion&slice=$_occasionSlice',
+            ),
+          ),
 
           if (!_hasActiveSearch)
             LiveOffersFlashBanner(
@@ -1790,13 +1808,31 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   List<Map<String, dynamic>> _applyFeedChips(List<Map<String, dynamic>> meals) {
     final kitchenBrowse = _filteredChefId != null && _filteredChefId!.isNotEmpty;
     final mode = _renderedHomeMode;
+    final occasionMeals = <Map<String, dynamic>>[];
+    for (final meal in meals) {
+      final profile = _chefKitchenProfiles[meal['chef_id']?.toString()];
+      final listed = mealListedForOccasion(
+        meal: meal,
+        occasion: _occasion,
+        slice: _occasionSlice,
+        matchesHomeMode: mealMatchesHomeMode(
+          meal,
+          mode: mode,
+          chefProfile: profile,
+        ),
+        hasFutureSlot: mealHasPreOrderSlot(meal),
+        ignoreHomeMode: kitchenBrowse,
+      );
+      if (!listed) continue;
+      occasionMeals.add(mealWithBrowseOccasion(meal, occasion: _occasion));
+    }
     final filtered = dinerHomeMealsForMode(
-      meals,
+      occasionMeals,
       mode: mode,
       diet: _selectedDiet,
       category: _selectedCategory,
       chefProfiles: _chefKitchenProfiles,
-      ignoreHomeMode: kitchenBrowse,
+      ignoreHomeMode: true,
     );
     WidgetsBinding.instance.addPostFrameCallback((_) => _hydrateChefRatings(filtered));
     final sort = !_dinerChoseHomeMode && mode == 'preorder' ? kFeedSortNearby : _selectedSort;
@@ -2349,6 +2385,8 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         homeMode: _renderedHomeMode,
         nothingLive: _renderedNothingLive,
         hasPreorderMeals: _renderedHasPreorderMeals,
+        occasion: _occasion,
+        occasionSlice: _occasionSlice,
       );
       return EmptyState(
         icon: copy.offerPreorder
@@ -2379,6 +2417,8 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                     ? () => setState(() {
                           _selectedCategory = 'All';
                           _selectedDiet = 'All';
+                          _occasion = kOccasionEveryday;
+                          _occasionSlice = kOccasionSliceAll;
                         })
                     : null,
       );

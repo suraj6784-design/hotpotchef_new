@@ -19,7 +19,14 @@ import '../widgets/app_widgets.dart';
 import 'map_picker_screen.dart';
 
 class CustomerBulkRequestScreen extends ConsumerStatefulWidget {
-  const CustomerBulkRequestScreen({super.key});
+  const CustomerBulkRequestScreen({
+    super.key,
+    this.initialOccasion,
+    this.initialSlice,
+  });
+
+  final String? initialOccasion;
+  final String? initialSlice;
 
   @override
   ConsumerState<CustomerBulkRequestScreen> createState() => _CustomerBulkRequestScreenState();
@@ -32,6 +39,7 @@ class _CustomerBulkRequestScreenState extends ConsumerState<CustomerBulkRequestS
   final _titleController = TextEditingController();
   final _descController = TextEditingController();
   final _qtyController = TextEditingController(text: '10');
+  final _budgetController = TextEditingController();
   final _addressController = TextEditingController();
   final _chefSearchController = TextEditingController();
 
@@ -49,10 +57,15 @@ class _CustomerBulkRequestScreenState extends ConsumerState<CustomerBulkRequestS
 
   double? _latitude;
   double? _longitude;
+  late String _occasion;
+  late String _occasionSlice;
 
   @override
   void initState() {
     super.initState();
+    final tab = occasionTabById(widget.initialOccasion);
+    _occasion = tab.id;
+    _occasionSlice = tab.sliceById(widget.initialSlice)?.id ?? kOccasionSliceAll;
     _loadChefs();
   }
 
@@ -61,6 +74,7 @@ class _CustomerBulkRequestScreenState extends ConsumerState<CustomerBulkRequestS
     _titleController.dispose();
     _descController.dispose();
     _qtyController.dispose();
+    _budgetController.dispose();
     _addressController.dispose();
     _chefSearchController.dispose();
     super.dispose();
@@ -251,7 +265,7 @@ class _CustomerBulkRequestScreenState extends ConsumerState<CustomerBulkRequestS
     ].where((part) => part.isNotEmpty).join('\n');
 
     final added = ref.read(cartProvider.notifier).addToCart(
-          meal,
+          mealWithBrowseOccasion(meal, occasion: _occasion),
           quantity,
           clearIfVendorConflict: true,
           scheduledDate: scheduled,
@@ -268,6 +282,86 @@ class _CustomerBulkRequestScreenState extends ConsumerState<CustomerBulkRequestS
       quantity: quantity,
     ));
     context.go('/customer-hub?tab=cart');
+  }
+
+  Future<void> _broadcastRequest() async {
+    final title = _titleController.text.trim();
+    final details = _descController.text.trim();
+    if (title.isEmpty && details.isEmpty) {
+      _showSnackBar('Say what you want the kitchens to cook.', isError: true);
+      return;
+    }
+    final quantity = int.tryParse(_qtyController.text.trim()) ?? 0;
+    if (quantity < 1) {
+      _showSnackBar('Enter how many portions you need.', isError: true);
+      return;
+    }
+    if (_addressController.text.trim().isEmpty || _latitude == null || _longitude == null) {
+      _showSnackBar('Pin the drop on the map so nearby kitchens can see this.', isError: true);
+      return;
+    }
+    final user = _supabase.auth.currentUser;
+    if (user == null) {
+      _showSnackBar('Sign in to broadcast this request.', isError: true);
+      return;
+    }
+    final budget = double.tryParse(_budgetController.text.trim());
+    final scheduled = DateTime(
+      _targetDate.year,
+      _targetDate.month,
+      _targetDate.day,
+      _targetTime.hour,
+      _targetTime.minute,
+    );
+    final payload = occasionBroadcastInsert(
+      customerId: user.id,
+      occasion: _occasion,
+      slice: _occasionSlice,
+      note: title,
+      details: details,
+      quantity: quantity,
+      address: _addressController.text.trim(),
+      targetLocal: scheduled,
+      serviceType: _selectedServiceType,
+      budget: budget,
+      latitude: _latitude,
+      longitude: _longitude,
+      customerName: user.userMetadata?['name']?.toString() ?? user.userMetadata?['full_name']?.toString(),
+      customerEmail: user.email,
+      customerPhone: user.phone,
+    );
+    setState(() => _isLoading = true);
+    try {
+      await _insertBroadcast(payload);
+      if (!mounted) return;
+      _showSnackBar('Broadcast sent. Kitchens can quote it from their leads.');
+      context.go('/customer-hub?tab=orders');
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Occasion broadcast failed');
+      if (!mounted) return;
+      _showSnackBar('Could not send this broadcast. Try again.', isError: true);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _insertBroadcast(Map<String, dynamic> payload) async {
+    final body = Map<String, dynamic>.from(payload);
+    Object? lastError;
+    for (var attempt = 0; attempt < 8; attempt++) {
+      try {
+        await _supabase.from('customer_requests').insert(body);
+        return;
+      } on PostgrestException catch (e) {
+        lastError = e;
+        if (e.code != 'PGRST204') rethrow;
+        final missing = RegExp(r"Could not find the '([^']+)' column").firstMatch(e.message)?.group(1);
+        if (missing == null || !body.containsKey(missing)) rethrow;
+        body.remove(missing);
+        continue;
+      }
+    }
+    throw lastError ?? Exception('Could not send this broadcast');
   }
 
   void _showSnackBar(String text, {bool isError = false}) {
@@ -290,7 +384,7 @@ class _CustomerBulkRequestScreenState extends ConsumerState<CustomerBulkRequestS
           children: [
             const AppLogo(size: 24),
             const SizedBox(width: 8),
-            Text('Bulk pre-order', style: TextStyle(color: AppTheme.onSurfaceOf(context), fontWeight: FontWeight.bold)),
+            Text('Ask kitchens', style: TextStyle(color: AppTheme.onSurfaceOf(context), fontWeight: FontWeight.bold)),
           ],
         ),
         backgroundColor: Colors.transparent,
@@ -303,14 +397,44 @@ class _CustomerBulkRequestScreenState extends ConsumerState<CustomerBulkRequestS
           padding: const EdgeInsets.all(20),
           children: [
             const Text(
-              'Pick one kitchen and a plate. Quantity and lead time go on the same cart, then you pay. The chef sees it with other orders.',
+              'Broadcast what you need for this occasion, or add a listed plate to the same cart. Kitchens quote a broadcast. A listed plate still pays through checkout.',
               style: TextStyle(color: AppTheme.textMuted, fontSize: 13, height: 1.4),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              initialValue: _occasion,
+              decoration: _inputStyle('Occasion'),
+              items: [
+                for (final tab in kOccasionTabs)
+                  DropdownMenuItem(value: tab.id, child: Text(tab.label)),
+              ],
+              onChanged: (id) {
+                if (id == null) return;
+                setState(() {
+                  _occasion = id;
+                  _occasionSlice = kOccasionSliceAll;
+                });
+              },
+            ),
+            const SizedBox(height: 14),
+            DropdownButtonFormField<String>(
+              key: ValueKey('occasion-slice-$_occasion'),
+              initialValue: _occasionSlice,
+              decoration: _inputStyle('What kind'),
+              items: [
+                for (final slice in occasionTabById(_occasion).slices)
+                  DropdownMenuItem(value: slice.id, child: Text(slice.label)),
+              ],
+              onChanged: (id) {
+                if (id == null) return;
+                setState(() => _occasionSlice = id);
+              },
+            ),
+            const SizedBox(height: 14),
 
             TextFormField(
               controller: _titleController,
-              decoration: _inputStyle('Note for the kitchen (optional)'),
+              decoration: _inputStyle('What should they cook?'),
             ),
             const SizedBox(height: 14),
 
@@ -318,6 +442,12 @@ class _CustomerBulkRequestScreenState extends ConsumerState<CustomerBulkRequestS
               controller: _descController,
               maxLines: 3,
               decoration: _inputStyle('Dietary notes, spice levels, or packaging preferences'),
+            ),
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: _budgetController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: _inputStyle('Budget (optional, kitchens can quote)'),
             ),
             const SizedBox(height: 14),
 
@@ -548,10 +678,26 @@ class _CustomerBulkRequestScreenState extends ConsumerState<CustomerBulkRequestS
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
               ),
-              onPressed: _isLoading ? null : _addBulkToCart,
+              onPressed: _isLoading ? null : _broadcastRequest,
               child: _isLoading
                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Text('Add to cart', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  : Text(
+                      'Broadcast to kitchens · ${occasionTabById(_occasion).label}',
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppTheme.linkOf(context),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              onPressed: _isLoading ? null : _addBulkToCart,
+              child: const Text(
+                'Add a listed plate to cart',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              ),
             ),
           ],
         ),

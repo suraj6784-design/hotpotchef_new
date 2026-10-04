@@ -1199,8 +1199,8 @@ class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
                   ),
                   PremiumProfileTile(
                     icon: Icons.campaign_outlined,
-                    title: 'Bulk / catering',
-                    subtitle: 'Broadcast a larger order nearby',
+                    title: 'Ask kitchens',
+                    subtitle: 'Broadcast everyday, festive, party, or specialty',
                     onTap: () => context.push('/bulk-request'),
                   ),
                   PremiumProfileTile(

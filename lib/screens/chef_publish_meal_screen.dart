@@ -101,6 +101,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
   String _availabilityMode = 'live';
   String _chefDisplayName = 'Home kitchen';
   bool _isSeasonal = false;
+  String _occasionChoice = '';
   bool _allowNotifyWhenAvailable = true;
   String _activeTimeSlot = '';
 
@@ -147,6 +148,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
     _dishCourse = inferMealCourse(meal);
     _availabilityMode = inferMealAvailabilityMode(meal, isLiveSlot: isImmediateDeliverySlot);
     _isSeasonal = mealIsSeasonal(meal);
+    _occasionChoice = normalizeOccasionId(meal['occasion']?.toString()) ?? '';
     _allowNotifyWhenAvailable = mealAllowsAvailabilityNotify(meal);
     _ingredientsController.text = mealIngredientsLine(meal);
     _servingSizeController.text = meal['serving_size']?.toString() ?? '';
@@ -559,6 +561,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
         'availability_mode': _availabilityMode,
         'chef_tip': _chefTipController.text.trim(),
         'is_seasonal': _isSeasonal,
+        'occasion': _occasionChoice.isEmpty ? null : _occasionChoice,
         'allow_notify_when_available': _allowNotifyWhenAvailable,
         'is_veg': _isVeg,
         'is_hamper': false,
@@ -649,6 +652,7 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
         'availability_mode',
         'chef_tip',
         'is_seasonal',
+        'occasion',
         'allow_notify_when_available',
       ])
         if (payload.containsKey(key)) key,
@@ -899,6 +903,20 @@ class _ChefPublishMealScreenState extends State<ChefPublishMealScreen> {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value: _occasionChoice,
+              dropdownColor: surface,
+              decoration: _inputStyle('Occasion'),
+              items: const [
+                DropdownMenuItem(value: '', child: Text('Match the dish', style: TextStyle(fontSize: 14))),
+                DropdownMenuItem(value: kOccasionEveryday, child: Text('Everyday', style: TextStyle(fontSize: 14))),
+                DropdownMenuItem(value: kOccasionFestive, child: Text('Festivals', style: TextStyle(fontSize: 14))),
+                DropdownMenuItem(value: kOccasionParty, child: Text('Parties', style: TextStyle(fontSize: 14))),
+                DropdownMenuItem(value: kOccasionSpecialty, child: Text('Specialty', style: TextStyle(fontSize: 14))),
+              ],
+              onChanged: (value) => setState(() => _occasionChoice = value ?? ''),
             ),
             const SizedBox(height: 12),
             Container(
