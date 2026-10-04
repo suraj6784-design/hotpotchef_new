@@ -338,6 +338,41 @@ void main() {
       expect(payout.chefPayout, 145.35);
     });
 
+    test('free delivery above ₹199 deducts the driver stipend from the chef', () {
+      final gross = chefPayoutBreakdown(itemsTotal: 220, packagingFee: 20);
+      final payout = chefPayoutForOrder({
+        'order_type': 'Delivery Partner',
+        'delivery_fee': 0,
+        'packaging_fee': 20,
+        'items': [
+          {'title': 'Thali', 'quantity': 1, 'price': 220, 'line_net': 220},
+        ],
+      });
+      expect(freeDeliveryDriverStipend({
+        'order_type': 'Delivery Partner',
+        'delivery_fee': 0,
+        'items': [
+          {'title': 'Thali', 'quantity': 1, 'price': 220, 'line_net': 220},
+        ],
+      }), 20);
+      expect(payout.chefPayout, roundMoney(gross.chefPayout - 20));
+      expect(payout.margin, gross.margin);
+    });
+
+    test('a stored ₹40 fallback is not deducted from the chef again', () {
+      final gross = chefPayoutBreakdown(itemsTotal: 220, packagingFee: 20);
+      final payout = chefPayoutForOrder({
+        'order_type': 'Delivery Partner',
+        'delivery_fee': 0,
+        'driver_payout': 40,
+        'packaging_fee': 20,
+        'items': [
+          {'title': 'Thali', 'quantity': 1, 'price': 220, 'line_net': 220},
+        ],
+      });
+      expect(payout.chefPayout, gross.chefPayout);
+    });
+
     test('estimates platform margin from GMV minus delivery fees', () {
       expect(
         estimatedPlatformMargin(gmv: 9174, deliveryFeeSum: 710),

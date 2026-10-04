@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hotpotchef_new/models/driver_delivery_model.dart';
+import 'package:hotpotchef_new/utils/delivery_fee.dart';
 import 'package:hotpotchef_new/utils/helpers.dart';
 
 void main() {
@@ -148,8 +149,10 @@ void main() {
     expect(briefDriverAddress('Customer address pending'), isEmpty);
   });
 
-  test('driver payout ignores a stored zero and uses the default', () {
-    expect(driverPayoutFromOrder({'delivery_fee': 0, 'driver_payout': 0}), 40);
+  test('driver payout uses the fee when the diner paid, and does not invent ₹40', () {
+    expect(kFreeDeliveryDriverPayout, kPackagingFeeAtFreeDelivery);
+    expect(kFreeDeliveryDriverPayout, inInclusiveRange(15, 20));
+    expect(driverPayoutFromOrder({'delivery_fee': 0, 'driver_payout': 0}), 0);
     expect(driverPayoutFromOrder({'delivery_fee': 35}), 35);
     expect(driverPayoutFromOrder({'driver_payout': 55, 'delivery_fee': 35}), 55);
     expect(
@@ -157,6 +160,75 @@ void main() {
       55,
     );
     expect(driverPayoutFromOrder({'delivery_fee': 30, 'tip_amount': 15}), 45);
+  });
+
+  test('free delivery above ₹199 stores the same payout the driver card shows', () {
+    final open = <String, dynamic>{
+      'order_type': 'Delivery Partner',
+      'delivery_fee': 0,
+      'driver_payout': 0,
+      'tip_amount': 0,
+      'packaging_fee': 20,
+      'items': [
+        {'title': 'Thali', 'quantity': 1, 'price': 220, 'line_net': 220},
+      ],
+    };
+
+    final shown = driverPayoutFromOrder(open);
+    final stored = driverPayoutStoredAtCompletion(open);
+    final walletCredit = stored > 0 ? stored : 0.0;
+    final chefDeduction = freeDeliveryDriverStipend(open);
+
+    expect(shown, kFreeDeliveryDriverPayout);
+    expect(stored, shown);
+    expect(walletCredit, shown);
+    expect(chefDeduction, shown);
+
+    final completed = DriverDeliveryModel.fromJson({
+      ...open,
+      'driver_payout': stored,
+      'id': 'free-delivery-order',
+      'status': 'Delivered',
+    });
+    expect(completed.payout, stored);
+
+    final underThreshold = <String, dynamic>{
+      'order_type': 'Delivery Partner',
+      'delivery_fee': 0,
+      'driver_payout': 0,
+      'items': [
+        {'title': 'Breakfast', 'quantity': 1, 'price': 90, 'line_net': 90},
+      ],
+    };
+    expect(driverPayoutFromOrder(underThreshold), 0);
+    expect(driverPayoutStoredAtCompletion(underThreshold), 0);
+    expect(freeDeliveryDriverStipend(underThreshold), 0);
+
+    final paid = <String, dynamic>{
+      'order_type': 'Delivery Partner',
+      'delivery_fee': 30,
+      'driver_payout': 0,
+      'tip_amount': 0,
+      'items': [
+        {'title': 'Breakfast', 'quantity': 1, 'price': 90, 'line_net': 90},
+      ],
+    };
+    expect(driverPayoutFromOrder(paid), 30);
+    expect(driverPayoutStoredAtCompletion(paid), 30);
+    expect(freeDeliveryDriverStipend(paid), 0);
+
+    final withTip = <String, dynamic>{...open, 'tip_amount': 10};
+    expect(driverPayoutFromOrder(withTip), 30);
+    expect(driverPayoutStoredAtCompletion(withTip), 30);
+    expect(freeDeliveryDriverStipend(withTip), kFreeDeliveryDriverPayout);
+
+    expect(freeDeliveryDriverStipend({
+      'order_type': 'Chef-Self',
+      'delivery_fee': 0,
+      'items': [
+        {'title': 'Thali', 'quantity': 1, 'price': 220, 'line_net': 220},
+      ],
+    }), 0);
   });
 
   test('fleet earnings prefer a real wallet and otherwise sum run payouts', () {
