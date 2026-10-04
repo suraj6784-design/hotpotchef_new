@@ -8,6 +8,12 @@ const double kCheckoutDeliveryPerExtraKm = 10;
 const double kFreeDeliveryMinFood = 199;
 const double kPackagingFeeBelowFreeDelivery = 10;
 const double kPackagingFeeAtFreeDelivery = 20;
+
+/// Partner payout when food is at least [kFreeDeliveryMinFood] and the diner
+/// delivery fee stays ₹0. ₹20 is the product amount already defined for that
+/// threshold (same figure as [kPackagingFeeAtFreeDelivery]). It is deducted
+/// from the chef and is not added to the diner bill.
+const double kFreeDeliveryDriverPayout = 20;
 const int kHomeMealStreamLimit = 150;
 const int kHomeMealPageSize = 80;
 

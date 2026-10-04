@@ -3,10 +3,15 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts'
 import { createPaymentTransfer } from '../_shared/razorpay.ts'
 import {
+  chargedFoodTotal,
   chefPayoutBreakdown,
+  chefTakeHomeAfterDriverStipend,
   DEFAULT_PLATFORM_MARGIN_RATE,
+  freeDeliveryDriverStipend,
   itemsTotalFromLines,
+  orderUsesDeliveryPartner,
   parseOrderItems,
+  roundMoney,
 } from '../_shared/payout.ts'
 import { authorizeInternalInvoke } from '../_shared/webhook_auth.ts'
 
@@ -83,9 +88,33 @@ serve(async (req) => {
 
     const items = parseOrderItems(order.items ?? order.cart_items)
     const itemsTotal = itemsTotalFromLines(items)
+    const chargedFood = chargedFoodTotal(items)
     const packagingFee = asNumber(order.packaging_fee, 0)
     const marginRate = asNumber(Deno.env.get('PLATFORM_MARGIN_RATE'), DEFAULT_PLATFORM_MARGIN_RATE)
-    const payout = chefPayoutBreakdown(itemsTotal, packagingFee, marginRate)
+    const deliveryFee = asNumber(order.delivery_fee, 0)
+    const tipAmount = asNumber(order.tip_amount, 0)
+    const storedDriverPayout = asNumber(order.driver_payout, 0)
+    const foodTotal = chargedFood > 0 ? chargedFood : itemsTotal
+    const stipend = freeDeliveryDriverStipend({
+      foodTotal,
+      deliveryFee,
+      partnerDelivery: orderUsesDeliveryPartner(String(order.order_type ?? order.service_type ?? ''), items),
+    })
+    // Paid delivery keeps the existing food total. Free delivery uses the
+    // charged line total so the chef deduction matches completion.
+    const gross = chefPayoutBreakdown(
+      stipend > 0 && chargedFood > 0 ? chargedFood : itemsTotal,
+      packagingFee,
+      marginRate,
+    )
+    const expectedDriverPayout = roundMoney(stipend + tipAmount)
+    const stipendWasStored = stipend > 0 && (
+      storedDriverPayout <= 0 || Math.abs(storedDriverPayout - expectedDriverPayout) < 0.01
+    )
+    const payout = {
+      ...gross,
+      chefPayout: chefTakeHomeAfterDriverStipend(gross.chefPayout, stipendWasStored ? stipend : 0),
+    }
     const amountPaise = Math.round(payout.chefPayout * 100)
 
     const claimed = await admin.from('orders').update({

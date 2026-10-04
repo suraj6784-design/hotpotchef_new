@@ -2153,7 +2153,6 @@ Map<String, dynamic> packagingSupplyRequestPayload({
 
 const double kDefaultPackagingFee = 20;
 const double kDefaultDeliveryEstimate = 30;
-const double kDefaultDriverPayout = 40;
 
 double packagingFeeForLoyaltyTier(String? tier) {
   // Packaging is a disclosed per-order charge, not a loyalty perk.
@@ -2335,7 +2334,61 @@ String? dietSkipReason(
   return '$name does not match your dietary preference';
 }
 
-/// Partner payout for a run. A stored 0 is treated as missing, not as "earned nothing".
+/// Food the diner was charged, used to decide the ₹199+ free-delivery stipend.
+double orderFoodTotal(Map<String, dynamic> order) {
+  final items = parseOrderItemsList(order['items'] ?? order['cart_items'] ?? order['order_items']);
+  if (items.isNotEmpty) {
+    return orderBillBreakdown(items: items, order: order).itemsTotal;
+  }
+  final total = parseMoney(order['total_price'] ?? order['total_amount'] ?? order['grand_total']);
+  if (total <= 0) return 0;
+  return (total -
+          parseMoney(order['packaging_fee']) -
+          parseMoney(order['delivery_fee']) -
+          parseMoney(order['tip_amount'] ?? order['tip']) -
+          parseMoney(order['membership_fee']) +
+          parseMoney(order['coins_applied']))
+      .clamp(0, double.infinity)
+      .toDouble();
+}
+
+/// Chef deduction for a free-delivery run.
+/// Unset payouts will be stored as the stipend. A stored stipend matches.
+/// A different stored payout (the old ₹40 fallback, or a custom amount) is left alone.
+double _chefDeductionForFreeDelivery(Map<String, dynamic> order) {
+  final stipend = freeDeliveryDriverStipend(order);
+  if (stipend <= 0) return 0;
+  final explicit = parseMoney(order['driver_payout']);
+  if (explicit <= 0) return stipend;
+  final tip = parseMoney(order['tip_amount'] ?? order['tip']);
+  if ((explicit - roundMoney(stipend + tip)).abs() < 0.01) return stipend;
+  return 0;
+}
+
+/// ₹20 taken from the chef when a partner run is free because food is ₹199+.
+/// Paid delivery (a customer delivery fee) and orders at or under ₹199 return 0.
+double freeDeliveryDriverStipend(Map<String, dynamic> order) {
+  if (parseMoney(order['delivery_fee']) > 0) return 0;
+  if (!isPartnerDeliveryOrder(order)) return 0;
+  if (orderFoodTotal(order) + 0.001 < kFreeDeliveryMinFood) return 0;
+  return kFreeDeliveryDriverPayout;
+}
+
+/// Amount `complete_delivery_order` writes to `orders.driver_payout` and credits
+/// to the driver wallet. Matches [driverPayoutFromOrder] for an unset payout.
+double driverPayoutStoredAtCompletion(Map<String, dynamic> order) {
+  final tip = parseMoney(order['tip_amount'] ?? order['tip']);
+  final fee = parseMoney(order['delivery_fee']);
+  final explicit = parseMoney(order['driver_payout']);
+  if (explicit > 0 && (explicit - fee).abs() >= 0.01) return explicit;
+  if (fee > 0) return roundMoney(fee + tip);
+  return roundMoney(freeDeliveryDriverStipend(order) + tip);
+}
+
+/// Partner payout shown on the driver card.
+/// A stored 0 is unset. Paid delivery uses the customer delivery fee plus tip.
+/// Free delivery because food is at least ₹199 uses [kFreeDeliveryDriverPayout]
+/// plus tip. Orders at or under ₹199 with a ₹0 fee do not invent a ₹40 fallback.
 double driverPayoutFromOrder(Map<String, dynamic> order) {
   final tip = parseMoney(order['tip_amount'] ?? order['tip']);
   final fee = parseMoney(order['delivery_fee']);
@@ -2348,7 +2401,7 @@ double driverPayoutFromOrder(Map<String, dynamic> order) {
     return explicit;
   }
   if (fee > 0) return fee + tip;
-  return kDefaultDriverPayout + tip;
+  return freeDeliveryDriverStipend(order) + tip;
 }
 
 double fleetEarningsFrom({
@@ -3005,11 +3058,14 @@ ChefPayoutBreakdown chefPayoutBreakdown({
   );
 }
 
-/// Kitchen take-home: stored `chef_payout` when released, else 85% of food+pack (not diner GMV).
+/// Kitchen take-home: stored `chef_payout` when released, else 85% of food+pack
+/// (not diner GMV), minus the free-delivery driver stipend when that applies.
 ChefPayoutBreakdown chefPayoutForOrder(Map<String, dynamic> order) {
   final items = parseOrderItemsList(order['items'] ?? order['cart_items']);
   final bill = orderBillBreakdown(items: items, order: order);
   final computed = chefPayoutBreakdown(itemsTotal: bill.itemsTotal, packagingFee: bill.packagingFee);
+  final stipend = _chefDeductionForFreeDelivery(order);
+  final net = roundMoney((computed.chefPayout - stipend).clamp(0, double.infinity).toDouble());
   final settled = parseMoney(order['chef_payout']);
   if (settled > 0) {
     return ChefPayoutBreakdown(
@@ -3019,7 +3075,12 @@ ChefPayoutBreakdown chefPayoutForOrder(Map<String, dynamic> order) {
       chefPayout: settled,
     );
   }
-  return computed;
+  return ChefPayoutBreakdown(
+    foodAndPackaging: computed.foodAndPackaging,
+    marginRate: computed.marginRate,
+    margin: computed.margin,
+    chefPayout: net,
+  );
 }
 
 bool isPartnerDeliveryOrder(Map<String, dynamic> order) {

@@ -38,6 +38,7 @@ jobs:
             supabase/functions/_shared/webhook_auth_test.ts \
             supabase/functions/_shared/meal_catalog_test.ts \
             supabase/functions/_shared/app_role_test.ts \
+            supabase/functions/_shared/payout_test.ts \
             supabase/functions/razorpay-webhook/signature_test.ts \
             supabase/functions/release-chef-payout/handler_test.ts \
             supabase/functions/create-split-order/pricing_test.ts \
