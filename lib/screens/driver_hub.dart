@@ -3,7 +3,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -12,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../utils/delivery_pin.dart';
 import '../utils/helpers.dart';
 import '../widgets/customer_ui_components.dart';
+import '../widgets/delivery_pin_dialog.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/app_status_badge.dart';
 import '../widgets/order_slot_banner.dart';
@@ -1015,69 +1015,7 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
       return false;
     }
 
-    final controller = TextEditingController();
-    final matched = await showDialog<bool>(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          shape: AppTheme.dialogShape,
-          title: const Text('Enter delivery PIN'),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            keyboardType: TextInputType.number,
-            maxLength: 4,
-            obscureText: true,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration: const InputDecoration(
-              labelText: '4-digit PIN from customer',
-              counterText: '',
-            ),
-            onSubmitted: (_) {
-              final ok = deliveryOtpMatches(expected, controller.text);
-              Navigator.pop(ctx, ok);
-            },
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            ElevatedButton(
-              onPressed: () {
-                final ok = deliveryOtpMatches(expected, controller.text);
-                if (!ok) {
-                  ScaffoldMessenger.of(ctx).showSnackBar(
-                    const SnackBar(
-                      content: Text('PIN does not match. Ask the customer for the delivery PIN.'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                  return;
-                }
-                Navigator.pop(ctx, true);
-              },
-              child: const Text('Confirm'),
-            ),
-          ],
-        );
-      },
-    );
-    controller.dispose();
-    if (matched != true) return false;
-    if (!mounted) return false;
-    final proceed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: AppTheme.dialogShape,
-        title: const Text('Door photo'),
-        content: const Text(
-          'Take a timestamped photo at the door. Ops uses this with the PIN if a refund is raised.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Open camera')),
-        ],
-      ),
-    );
-    return proceed == true;
+    return promptDeliveryPinAndDoorPhoto(context: context, expectedPin: expected);
   }
 
   Widget _buildActiveDeliveryTab(
