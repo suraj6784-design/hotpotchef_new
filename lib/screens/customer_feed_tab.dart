@@ -3,7 +3,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -32,6 +31,7 @@ import '../utils/service_area.dart';
 import '../utils/diner_locale.dart';
 import '../utils/fssai_certificate_scan.dart';
 import '../screens/checkout_screen.dart';
+import '../widgets/diner_feed_empty.dart';
 import '../widgets/diner_home_plate_card.dart';
 import '../widgets/diner_storefront.dart';
 import '../widgets/home_occasion_bar.dart';
@@ -1545,9 +1545,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
               _occasionSlice = kOccasionSliceAll;
             }),
             onSlice: (id) => setState(() => _occasionSlice = id),
-            onBroadcast: () => context.push(
-              '/bulk-request?occasion=$_occasion&slice=$_occasionSlice',
-            ),
+            onBroadcast: _openAskKitchens,
           ),
 
           if (!_hasActiveSearch)
@@ -1720,6 +1718,15 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                 }
 
                 if (inventory == null || inventory.isEmpty) {
+                  if (occasionEmptyAsksKitchens(_occasion) && !showFavorites && !showFollowing) {
+                    return _buildMealGrid(
+                      const [],
+                      isLoggedIn: isLoggedIn,
+                      showFavorites: showFavorites,
+                      showFollowing: showFollowing,
+                      hasFollows: followedKitchens.isNotEmpty,
+                    );
+                  }
                   return const EmptyState(
                     icon: Icons.restaurant_menu_rounded,
                     title: 'No plates on your slot right now',
@@ -2247,6 +2254,10 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
     );
   }
 
+  void _openAskKitchens() {
+    pushAskKitchens(context, occasion: _occasion, slice: _occasionSlice);
+  }
+
   Widget _buildMealGrid(
     List<Map<String, dynamic>> meals, {
     required bool isLoggedIn,
@@ -2274,39 +2285,23 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         occasion: _occasion,
         occasionSlice: _occasionSlice,
       );
-      return EmptyState(
-        icon: copy.offerPreorder
-            ? Icons.local_fire_department_outlined
-            : copy.promptSignIn || showFollowing
-                ? Icons.storefront_outlined
-                : showFavorites
-                    ? Icons.favorite_border
-                    : Icons.search_off_rounded,
-        title: copy.title,
-        message: copy.message,
-        actionLabel: copy.offerPreorder
-            ? 'Pre-order'
-            : copy.promptSignIn
-                ? 'Sign In'
-                : copy.clearCategory
-                    ? 'Show all meals'
-                    : null,
-        onAction: copy.offerPreorder
-            ? () => setState(() {
-                  _dinerChoseHomeMode = true;
-                  _homeMode = 'preorder';
-                  _selectedSort = kFeedSortNearby;
-                })
-            : copy.promptSignIn
-                ? () => showAuthBottomSheet(context, () => setState(() {}))
-                : copy.clearCategory
-                    ? () => setState(() {
-                          _selectedCategory = 'All';
-                          _selectedDiet = 'All';
-                          _occasion = kOccasionEveryday;
-                          _occasionSlice = kOccasionSliceAll;
-                        })
-                    : null,
+      return DinerFeedEmpty(
+        copy: copy,
+        showFollowing: showFollowing,
+        showFavorites: showFavorites,
+        onAskKitchens: _openAskKitchens,
+        onSignIn: () => showAuthBottomSheet(context, () => setState(() {})),
+        onClearFilters: () => setState(() {
+          _selectedCategory = 'All';
+          _selectedDiet = 'All';
+          _occasion = kOccasionEveryday;
+          _occasionSlice = kOccasionSliceAll;
+        }),
+        onPreorder: () => setState(() {
+          _dinerChoseHomeMode = true;
+          _homeMode = 'preorder';
+          _selectedSort = kFeedSortNearby;
+        }),
       );
     }
 

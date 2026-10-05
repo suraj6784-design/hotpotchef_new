@@ -63,9 +63,12 @@ class _CustomerBulkRequestScreenState extends ConsumerState<CustomerBulkRequestS
   @override
   void initState() {
     super.initState();
-    final tab = occasionTabById(widget.initialOccasion);
-    _occasion = tab.id;
-    _occasionSlice = tab.sliceById(widget.initialSlice)?.id ?? kOccasionSliceAll;
+    final selected = resolvedOccasionSelection(
+      occasion: widget.initialOccasion,
+      slice: widget.initialSlice,
+    );
+    _occasion = selected.occasion;
+    _occasionSlice = selected.slice;
     _loadChefs();
   }
 
