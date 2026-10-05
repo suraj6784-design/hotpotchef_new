@@ -923,6 +923,13 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 Text(delivery.itemsSummary,
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.onSurfaceOf(context))),
               ],
+              if (delivery.occasionCaption.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  delivery.occasionCaption,
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.link),
+                ),
+              ],
               const SizedBox(height: 4),
               Text(delivery.pickupAddress, style: AppTheme.caption),
               if (delivery.pickupCoordLabel.isNotEmpty) ...[
@@ -1070,6 +1077,13 @@ class _DriverHubScreenState extends ConsumerState<DriverHubScreen> {
                 Text(
                   'Order #${delivery.displayOrderNumber} · ${delivery.itemsSummary}',
                   style: AppTheme.caption,
+                ),
+              ],
+              if (delivery.occasionCaption.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  delivery.occasionCaption,
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.link),
                 ),
               ],
               const SizedBox(height: 10),

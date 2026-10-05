@@ -98,6 +98,48 @@ ChefOrderHandoff chefOrderHandoff(Map<String, dynamic> order) {
   );
 }
 
+/// "Occasion: Festivals" when the order remembers a diner tab. Empty for
+/// orders placed before the occasion column existed.
+String chefOrderOccasionCaption(Map<String, dynamic> order) {
+  final label = occasionTabLabel(
+    orderOccasionId(
+      column: order['occasion'],
+      items: parseOrderItemsList(order['items'] ?? order['cart_items']),
+    ),
+  );
+  if (label.isEmpty) return '';
+  return 'Occasion: $label';
+}
+
+/// One line on a chef order card. Hidden when the order has no occasion.
+class ChefOrderOccasionLine extends StatelessWidget {
+  const ChefOrderOccasionLine({
+    super.key,
+    required this.order,
+    this.padding = const EdgeInsets.only(top: 6),
+  });
+
+  final Map<String, dynamic> order;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final caption = chefOrderOccasionCaption(order);
+    if (caption.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: padding,
+      child: Text(
+        caption,
+        style: const TextStyle(
+          fontWeight: FontWeight.w700,
+          fontSize: 13,
+          color: AppTheme.link,
+        ),
+      ),
+    );
+  }
+}
+
 /// Address and note block under the slot banner on a chef order card.
 class ChefOrderHandoffDetails extends StatelessWidget {
   const ChefOrderHandoffDetails({super.key, required this.order});
@@ -107,13 +149,18 @@ class ChefOrderHandoffDetails extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final handoff = chefOrderHandoff(order);
-    if (handoff.isEmpty) return const SizedBox.shrink();
+    final occasion = chefOrderOccasionCaption(order);
+    if (handoff.isEmpty && occasion.isEmpty) return const SizedBox.shrink();
     final onSurface = AppTheme.onSurfaceOf(context);
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (occasion.isNotEmpty) ...[
+            ChefOrderOccasionLine(order: order, padding: EdgeInsets.zero),
+            if (handoff.dropoff.isNotEmpty || handoff.note.isNotEmpty) const SizedBox(height: 10),
+          ],
           if (handoff.dropoff.isNotEmpty)
             _DetailRow(
               key: const Key('chef-order-dropoff'),

@@ -153,6 +153,91 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  test('chef cards label the diner occasion and hide it on older orders', () {
+    expect(
+      chefOrderOccasionCaption({'occasion': 'festive', 'items': const []}),
+      'Occasion: Festivals',
+    );
+    expect(
+      chefOrderOccasionCaption({'occasion': 'everyday'}),
+      'Occasion: Everyday',
+    );
+    expect(
+      chefOrderOccasionCaption({'occasion': 'party'}),
+      'Occasion: Parties',
+    );
+    expect(
+      chefOrderOccasionCaption({'occasion': 'specialty'}),
+      'Occasion: Specialty',
+    );
+    expect(chefOrderOccasionCaption({'occasion': null, 'items': const []}), isEmpty);
+    expect(
+      chefOrderOccasionCaption({
+        'items': [
+          {'title': 'Old dal'},
+        ],
+      }),
+      isEmpty,
+    );
+    expect(
+      chefOrderOccasionCaption({
+        'items': jsonEncode([
+          {
+            'title': 'Mango pickle',
+            'rawMealDetails': {'occasion': 'specialty'},
+          },
+        ]),
+      }),
+      'Occasion: Specialty',
+    );
+    expect(
+      chefOrderOccasionCaption({
+        'occasion': 'party',
+        'items': [
+          {'occasion': 'everyday'},
+        ],
+      }),
+      'Occasion: Parties',
+    );
+  });
+
+  testWidgets('the order card handoff shows Occasion and hides it when unset', (tester) async {
+    await pumpCard(
+      tester,
+      {
+        ...breakfast(customerPhone: phone),
+        'occasion': 'festive',
+      },
+    );
+    expect(find.text('Occasion: Festivals'), findsOneWidget);
+    expect(find.text('Dropoff: $dropoff'), findsOneWidget);
+
+    await pumpCard(tester, breakfast(customerPhone: phone));
+    expect(find.textContaining('Occasion:'), findsNothing);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              ChefOrderOccasionLine(order: const {'occasion': 'specialty'}),
+              ChefOrderHandoffDetails(order: {
+                'order_type': 'Customer Pickup',
+                'occasion': 'party',
+                'items': const [],
+              }),
+            ],
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Occasion: Specialty'), findsOneWidget);
+    expect(find.text('Occasion: Parties'), findsOneWidget);
+    expect(find.textContaining('Dropoff:'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('a missing note is not invented and the phone stays hidden', (tester) async {
     await pumpCard(tester, breakfast(customerPhone: phone));
 

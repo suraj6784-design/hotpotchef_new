@@ -111,6 +111,38 @@ void main() {
     expect(isPartnerDeliveryOrder({'order_type': 'Delivery Partner'}), isTrue);
   });
 
+  test('DriverDeliveryModel reads occasion from the order row already loaded', () {
+    final festive = DriverDeliveryModel.fromJson({
+      'id': 'order-row',
+      'status': 'Ready for Pickup',
+      'occasion': 'festive',
+      'items': [
+        {'title': 'Thali', 'occasion': 'everyday'},
+      ],
+    });
+    expect(festive.occasionLabel, 'Festivals');
+    expect(festive.occasionCaption, 'Occasion: Festivals');
+
+    final fromItem = DriverDeliveryModel.fromJson({
+      'id': 'order-row',
+      'status': 'Out for Delivery',
+      'items': [
+        {'title': 'Mango pickle', 'occasion': 'specialty'},
+      ],
+    });
+    expect(fromItem.occasionCaption, 'Occasion: Specialty');
+
+    final older = DriverDeliveryModel.fromJson({
+      'id': 'order-row',
+      'status': 'Driver Assigned',
+      'items': [
+        {'title': 'Dal'},
+      ],
+    });
+    expect(older.occasionLabel, isEmpty);
+    expect(older.occasionCaption, isEmpty);
+  });
+
   test('DriverDeliveryModel reads the meal time slot', () {
     final delivery = DriverDeliveryModel.fromJson({
       'id': 'order-row',

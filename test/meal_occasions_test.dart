@@ -321,6 +321,120 @@ void main() {
       }
     });
 
+    test('email login uses the profile phone so both required columns are set', () {
+      final contact = resolveBroadcastDinerContact(
+        authName: 'Arushi',
+        authEmail: 'diner@test.com',
+        authPhone: '',
+        profilePhone: '+91 98765 43210',
+        profileName: 'Profile name',
+      );
+      expect(contact.canInsert, isTrue);
+      expect(contact.blockMessage, isNull);
+      expect(contact.phone, '9876543210');
+      expect(contact.email, 'diner@test.com');
+      expect(contact.name, 'Arushi');
+
+      final body = occasionBroadcastInsert(
+        customerId: 'diner-1',
+        occasion: kOccasionSpecialty,
+        slice: 'pickle',
+        quantity: 10,
+        address: 'Thergaon, Pimpri-Chinchwad',
+        targetLocal: DateTime(2026, 10, 6, 13),
+        serviceType: 'Delivery Partner',
+        customerName: contact.name,
+        customerEmail: contact.email,
+        customerPhone: contact.phone,
+      );
+      expect(body['customer_email'], 'diner@test.com');
+      expect(body['customer_phone'], '9876543210');
+      expect(body['customer_name'], 'Arushi');
+      expect(body.containsKey('customer_email'), isTrue);
+      expect(body.containsKey('customer_phone'), isTrue);
+    });
+
+    test('a blank auth phone falls through metadata then the profile row', () {
+      final fromMetadata = resolveBroadcastDinerContact(
+        authEmail: 'diner@test.com',
+        authPhone: null,
+        metadataPhone: '9123456780',
+        profilePhone: '9988776655',
+      );
+      expect(fromMetadata.phone, '9123456780');
+      expect(fromMetadata.canInsert, isTrue);
+
+      final fromProfile = resolveBroadcastDinerContact(
+        authEmail: 'diner@test.com',
+        authPhone: '0000000000',
+        metadataPhone: '1234567890',
+        profilePhone: '9988776655',
+      );
+      expect(fromProfile.phone, '9988776655');
+    });
+
+    test('auth phone and email win when they are already usable', () {
+      final contact = resolveBroadcastDinerContact(
+        authEmail: 'auth@test.com',
+        authPhone: '+919876543210',
+        profileEmail: 'profile@test.com',
+        profilePhone: '9123456780',
+      );
+      expect(contact.email, 'auth@test.com');
+      expect(contact.phone, '9876543210');
+      expect(contact.canInsert, isTrue);
+    });
+
+    test('a phone login can use an email saved on the account or profile', () {
+      final fromMetadata = resolveBroadcastDinerContact(
+        authPhone: '9876543210',
+        metadataEmail: 'diner@test.com',
+      );
+      expect(fromMetadata.canInsert, isTrue);
+      expect(fromMetadata.email, 'diner@test.com');
+
+      final fromProfile = resolveBroadcastDinerContact(
+        authPhone: '9876543210',
+        profileEmail: 'kitchen@test.com',
+      );
+      expect(fromProfile.email, 'kitchen@test.com');
+      expect(fromProfile.canInsert, isTrue);
+    });
+
+    test('a phone-only profile still needs an email before insert', () {
+      final contact = resolveBroadcastDinerContact(
+        authPhone: '9876543210',
+        profilePhone: '9876543210',
+      );
+      expect(contact.canInsert, isFalse);
+      expect(contact.blockMessage, kBroadcastMissingEmailMessage);
+      expect(contact.phone, '9876543210');
+      expect(contact.email, isEmpty);
+    });
+
+    test('an email with no phone anywhere asks for a profile number', () {
+      final contact = resolveBroadcastDinerContact(
+        authEmail: 'diner@test.com',
+        authPhone: null,
+        profilePhone: '   ',
+      );
+      expect(contact.canInsert, isFalse);
+      expect(contact.blockMessage, kBroadcastMissingPhoneMessage);
+    });
+
+    test('neither phone nor email blocks the broadcast with a clear message', () {
+      final contact = resolveBroadcastDinerContact(
+        authEmail: '',
+        authPhone: null,
+        profileEmail: 'not-an-email',
+        profilePhone: '1111111111',
+      );
+      expect(contact.canInsert, isFalse);
+      expect(contact.blockMessage, kBroadcastMissingContactMessage);
+      expect(contact.email, isEmpty);
+      expect(contact.phone, isEmpty);
+    });
+
     test('chefs still see the occasion when the new columns are absent', () {
       expect(
         broadcastOccasionLabel({

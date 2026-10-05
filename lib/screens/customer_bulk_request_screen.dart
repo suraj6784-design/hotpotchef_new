@@ -313,6 +313,22 @@ class _CustomerBulkRequestScreenState extends ConsumerState<CustomerBulkRequestS
       _targetTime.hour,
       _targetTime.minute,
     );
+    final profile = await _dinerBroadcastProfile(user.id);
+    final contact = resolveBroadcastDinerContact(
+      authName: user.userMetadata?['name']?.toString() ?? user.userMetadata?['full_name']?.toString(),
+      authEmail: user.email,
+      authPhone: user.phone,
+      metadataEmail: user.userMetadata?['email']?.toString(),
+      metadataPhone: user.userMetadata?['phone']?.toString(),
+      profileName: profile?['name']?.toString(),
+      profileFullName: profile?['full_name']?.toString(),
+      profileEmail: profile?['email']?.toString(),
+      profilePhone: profile?['phone']?.toString(),
+    );
+    if (!contact.canInsert) {
+      _showSnackBar(contact.blockMessage ?? kBroadcastMissingContactMessage, isError: true);
+      return;
+    }
     final payload = occasionBroadcastInsert(
       customerId: user.id,
       occasion: _occasion,
@@ -326,9 +342,9 @@ class _CustomerBulkRequestScreenState extends ConsumerState<CustomerBulkRequestS
       budget: budget,
       latitude: _latitude,
       longitude: _longitude,
-      customerName: user.userMetadata?['name']?.toString() ?? user.userMetadata?['full_name']?.toString(),
-      customerEmail: user.email,
-      customerPhone: user.phone,
+      customerName: contact.name,
+      customerEmail: contact.email,
+      customerPhone: contact.phone,
     );
     setState(() => _isLoading = true);
     try {
@@ -342,6 +358,23 @@ class _CustomerBulkRequestScreenState extends ConsumerState<CustomerBulkRequestS
       _showSnackBar('Could not send this broadcast. Try again.', isError: true);
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  /// Email login does not set auth.phone. The profile row still has it.
+  Future<Map<String, dynamic>?> _dinerBroadcastProfile(String userId) async {
+    try {
+      final row = await _supabase
+          .from('users')
+          .select('name, full_name, email, phone')
+          .eq('id', userId)
+          .maybeSingle()
+          .withTimeout(NetworkTimeouts.short);
+      if (row == null) return null;
+      return Map<String, dynamic>.from(row);
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Broadcast diner profile');
+      return null;
     }
   }
 
