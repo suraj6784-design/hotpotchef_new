@@ -50,57 +50,104 @@ class DinerSectionHeader extends StatelessWidget {
   }
 }
 
-class DinerCircleModeChip extends StatelessWidget {
-  const DinerCircleModeChip({
+/// When the plate is cooked. Visually a two-way switch, separate from occasion buttons.
+class HomeOrderModeBar extends StatelessWidget {
+  const HomeOrderModeBar({
     super.key,
-    required this.icon,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-    this.accent = AppTheme.primary,
+    required this.mode,
+    required this.onChanged,
   });
 
-  final IconData icon;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-  final Color accent;
+  /// `preorder` or `live`.
+  final String mode;
+  final ValueChanged<String> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: SizedBox(
-        width: 92,
-        child: Column(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 2, 20, 4),
+      child: Container(
+        height: 48,
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceMutedOf(context),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: AppTheme.hairlineOf(context)),
+        ),
+        child: Row(
           children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              width: 58,
-              height: 58,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: selected ? accent : AppTheme.surfaceOf(context),
-                border: Border.all(
-                  color: selected ? accent : AppTheme.hairlineOf(context),
-                ),
-                boxShadow: selected ? AppTheme.softShadow : const [],
-              ),
-              child: Icon(icon, color: selected ? Colors.white : accent, size: 26),
+            _segment(
+              context,
+              key: const Key('home-order-mode-preorder'),
+              label: 'Pre-order',
+              value: 'preorder',
+              icon: Icons.calendar_month_outlined,
+              accent: AppTheme.primary,
             ),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: selected ? accent : AppTheme.onSurfaceOf(context),
-                height: 1.15,
-              ),
+            const SizedBox(width: 4),
+            _segment(
+              context,
+              key: const Key('home-order-mode-live'),
+              label: 'Live Order',
+              value: 'live',
+              icon: Icons.local_fire_department_outlined,
+              accent: AppTheme.live,
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _segment(
+    BuildContext context, {
+    required Key key,
+    required String label,
+    required String value,
+    required IconData icon,
+    required Color accent,
+  }) {
+    final selected = mode == value;
+    final foreground = selected ? Colors.white : AppTheme.onSurfaceOf(context);
+    return Expanded(
+      child: Semantics(
+        button: true,
+        selected: selected,
+        label: label,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            key: key,
+            onTap: () => onChanged(value),
+            borderRadius: BorderRadius.circular(999),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: selected ? accent : Colors.transparent,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 18, color: foreground),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: foreground,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );

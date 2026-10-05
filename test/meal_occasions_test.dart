@@ -169,7 +169,7 @@ void main() {
       );
     });
 
-    test('narrow tabs name the empty state and everyday all stays the old copy', () {
+    test('a narrow occasion names the empty state and everyday all stays the old copy', () {
       final everyday = feedEmptyCopy(
         signedIn: true,
         favoritesOnly: false,
@@ -189,7 +189,22 @@ void main() {
         occasionSlice: 'diwali',
       );
       expect(diwali.title, 'No Diwali meals');
+      expect(diwali.message, 'Nothing in Diwali is on the menu for this pin. Try All for this occasion, or switch occasion.');
+      expect(diwali.message.toLowerCase(), isNot(contains('tab')));
       expect(diwali.clearCategory, isTrue);
+
+      final festivals = feedEmptyCopy(
+        signedIn: true,
+        favoritesOnly: false,
+        hasFavorites: false,
+        hasSearch: false,
+        hasDeliveryPin: true,
+        occasion: kOccasionFestive,
+        occasionSlice: kOccasionSliceAll,
+      );
+      expect(festivals.title, 'No Festivals meals');
+      expect(festivals.message, 'Nothing in Festivals is on the menu for this pin. Try another occasion.');
+      expect(festivals.message.toLowerCase(), isNot(contains('tab')));
     });
   });
 

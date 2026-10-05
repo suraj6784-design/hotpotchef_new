@@ -357,6 +357,14 @@ class FeedEmptyCopy {
   final bool offerPreorder;
 }
 
+/// Time-of-day line on the diner home. Location stays a separate control.
+String dinerHomeGreeting(DateTime now) {
+  final hour = now.hour;
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
 String normalizeDinerHomeMode(String mode) {
   final value = mode.trim().toLowerCase();
   if (value == 'preorder' || value == 'pre-order') return 'preorder';
@@ -526,9 +534,12 @@ FeedEmptyCopy feedEmptyCopy({
   }
   if (occasionBrowseIsNarrow(occasion: occasion, slice: occasionSlice) && !favorites && !following) {
     final label = occasionBrowseLabel(occasion: occasion, slice: occasionSlice);
+    final onAllSlice = occasionSliceLabel(occasion, occasionSlice).isEmpty;
     return FeedEmptyCopy(
       title: 'No $label meals',
-      message: 'Nothing in $label is on the menu for this pin. Try All in this tab, or another occasion.',
+      message: onAllSlice
+          ? 'Nothing in $label is on the menu for this pin. Try another occasion.'
+          : 'Nothing in $label is on the menu for this pin. Try All for this occasion, or switch occasion.',
       clearCategory: true,
     );
   }
