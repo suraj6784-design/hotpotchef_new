@@ -5,6 +5,12 @@ import 'package:hotpotchef_new/utils/pinned_address.dart';
 import 'package:hotpotchef_new/utils/service_area.dart';
 
 void main() {
+  test('diner home greeting follows the time of day', () {
+    expect(dinerHomeGreeting(DateTime(2026, 10, 5, 8)), 'Good morning');
+    expect(dinerHomeGreeting(DateTime(2026, 10, 5, 14)), 'Good afternoon');
+    expect(dinerHomeGreeting(DateTime(2026, 10, 5, 19)), 'Good evening');
+  });
+
   test('diner catalog select skips payout, FSSAI, and order columns', () {
     final columns = dinerMealCatalogColumnSet();
     expect(columns, containsAll(['id', 'title', 'status', 'pickup_lat', 'pickup_lng', 'hosting_address', 'prep_minutes']));

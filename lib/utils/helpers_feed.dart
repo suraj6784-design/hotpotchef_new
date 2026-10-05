@@ -357,6 +357,14 @@ class FeedEmptyCopy {
   final bool offerPreorder;
 }
 
+/// Time-of-day line on the diner home. Location stays a separate control.
+String dinerHomeGreeting(DateTime now) {
+  final hour = now.hour;
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
 String normalizeDinerHomeMode(String mode) {
   final value = mode.trim().toLowerCase();
   if (value == 'preorder' || value == 'pre-order') return 'preorder';

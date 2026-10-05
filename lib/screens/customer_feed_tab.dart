@@ -32,6 +32,7 @@ import '../utils/service_area.dart';
 import '../utils/diner_locale.dart';
 import '../utils/fssai_certificate_scan.dart';
 import '../screens/checkout_screen.dart';
+import '../widgets/diner_home_plate_card.dart';
 import '../widgets/diner_storefront.dart';
 import '../widgets/home_occasion_bar.dart';
 import 'address_form_screen.dart';
@@ -112,14 +113,14 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   bool _addressPickerOpen = false;
   final ScrollController _feedScrollController = ScrollController();
 
-  final List<Map<String, dynamic>> _dietFilters = const [
-    {'name': 'All', 'icon': Icons.tune},
-    {'name': 'Veg', 'icon': Icons.eco_outlined},
-    {'name': 'Vegan', 'icon': Icons.spa_outlined},
-    {'name': 'Jain', 'icon': Icons.filter_vintage_outlined},
-    {'name': 'High-protein', 'icon': Icons.fitness_center_outlined},
-    {'name': 'Millet', 'icon': Icons.grain},
-    {'name': 'Diabetic', 'icon': Icons.monitor_heart_outlined},
+  final List<String> _dietFilters = const [
+    'All',
+    'Veg',
+    'Vegan',
+    'Jain',
+    'High-protein',
+    'Millet',
+    'Diabetic',
   ];
 
   @override
@@ -1253,21 +1254,94 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                 child: SafeArea(
                   bottom: false,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                    child: Row(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 12, 4),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const AppLogo(size: 28),
-                        const SizedBox(width: 8),
-                        Text(
-                          'HotPotChef',
-                          style: AppTheme.sectionTitleOf(context).copyWith(
-                            color: AppTheme.primary,
-                            fontSize: 18,
-                          ),
+                        Row(
+                          children: [
+                            const AppLogo(size: 28),
+                            const SizedBox(width: 8),
+                            Text(
+                              'HotPotChef',
+                              style: AppTheme.sectionTitleOf(context).copyWith(
+                                color: AppTheme.primary,
+                                fontSize: 18,
+                              ),
+                            ),
+                            const Spacer(),
+                            if (isLoggedIn) ...[
+                              _homeHeaderToggle(
+                                tooltip: 'Following',
+                                icon: Icons.storefront_outlined,
+                                selectedIcon: Icons.storefront,
+                                selected: _showFollowingOnly,
+                                onSelected: (selected) {
+                                  setState(() {
+                                    _showFollowingOnly = selected;
+                                    if (selected) _showFavoritesOnly = false;
+                                  });
+                                  if (selected && followedKitchens.isEmpty) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Follow a kitchen from the chef card to see it here.'),
+                                        duration: Duration(seconds: 2),
+                                      ),
+                                    );
+                                  }
+                                },
+                              ),
+                              _homeHeaderToggle(
+                                tooltip: 'Favorites',
+                                icon: Icons.favorite_border,
+                                selectedIcon: Icons.favorite,
+                                selected: _showFavoritesOnly,
+                                onSelected: (selected) {
+                                  setState(() {
+                                    _showFavoritesOnly = selected;
+                                    if (selected) _showFollowingOnly = false;
+                                  });
+                                  if (selected && widget.favoriteMeals.isEmpty) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Save a meal with the heart icon to see it here.'),
+                                        duration: Duration(seconds: 2),
+                                      ),
+                                    );
+                                  }
+                                },
+                              ),
+                            ] else ...[
+                              Semantics(
+                                button: true,
+                                label: 'Sign In',
+                                child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.white,
+                                  foregroundColor: brandPrimary,
+                                  elevation: 0,
+                                  minimumSize: const Size(0, 36),
+                                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                                  shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusXl),
+                                ),
+                                onPressed: () => showAuthBottomSheet(context, () {
+                                  setState(() {});
+                                  _fetchUserAddresses(preserveActivePin: true);
+                                }),
+                                child: const Text('Sign In', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                              ),
+                              ),
+                            ],
+                            _homeCartButton(cartCount),
+                          ],
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Semantics(
+                        const SizedBox(height: 14),
+                        Text(
+                          dinerHomeGreeting(DateTime.now()),
+                          style: AppTheme.sectionTitleOf(context),
+                        ),
+                        const SizedBox(height: 4),
+                          Semantics(
                             button: true,
                             label: 'Delivering to $_currentAddress. Tap to change delivery location.',
                             child: GestureDetector(
@@ -1419,75 +1493,6 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
                           ),
                         ),
                         ),
-                        ),
-                        const SizedBox(width: 8),
-                        Row(
-                          children: [
-                            if (isLoggedIn) ...[
-                              _homeHeaderToggle(
-                                tooltip: 'Following',
-                                icon: Icons.storefront_outlined,
-                                selectedIcon: Icons.storefront,
-                                selected: _showFollowingOnly,
-                                onSelected: (selected) {
-                                  setState(() {
-                                    _showFollowingOnly = selected;
-                                    if (selected) _showFavoritesOnly = false;
-                                  });
-                                  if (selected && followedKitchens.isEmpty) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Follow a kitchen from the chef card to see it here.'),
-                                        duration: Duration(seconds: 2),
-                                      ),
-                                    );
-                                  }
-                                },
-                              ),
-                              _homeHeaderToggle(
-                                tooltip: 'Favorites',
-                                icon: Icons.favorite_border,
-                                selectedIcon: Icons.favorite,
-                                selected: _showFavoritesOnly,
-                                onSelected: (selected) {
-                                  setState(() {
-                                    _showFavoritesOnly = selected;
-                                    if (selected) _showFollowingOnly = false;
-                                  });
-                                  if (selected && widget.favoriteMeals.isEmpty) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Save a meal with the heart icon to see it here.'),
-                                        duration: Duration(seconds: 2),
-                                      ),
-                                    );
-                                  }
-                                },
-                              ),
-                            ] else ...[
-                              Semantics(
-                                button: true,
-                                label: 'Sign In',
-                                child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.white,
-                                  foregroundColor: brandPrimary,
-                                  elevation: 0,
-                                  minimumSize: const Size(0, 36),
-                                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                                  shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusXl),
-                                ),
-                                onPressed: () => showAuthBottomSheet(context, () {
-                                  setState(() {});
-                                  _fetchUserAddresses(preserveActivePin: true);
-                                }),
-                                child: const Text('Sign In', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                              ),
-                              ),
-                            ],
-                            _homeCartButton(cartCount),
-                          ],
-                        ),
                       ],
                     ),
                   ),
@@ -1496,7 +1501,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             ],
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
             child: Container(
               height: 52,
               decoration: BoxDecoration(
@@ -1521,15 +1526,16 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _homeModeChip('Pre-order', 'preorder', Icons.calendar_month_outlined, AppTheme.primary),
-                _homeModeChip('Live Order', 'live', Icons.local_fire_department_outlined, AppTheme.live),
-              ],
-            ),
+          HomeOrderModeBar(
+            mode: _renderedHomeMode,
+            onChanged: (mode) {
+              setState(() {
+                _dinerChoseHomeMode = true;
+                _homeMode = mode;
+                if (mode == 'live') _selectedSort = kFeedSortEta;
+                if (mode == 'preorder') _selectedSort = kFeedSortNearby;
+              });
+            },
           ),
           HomeOccasionBar(
             occasion: _occasion,
@@ -1589,7 +1595,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
             ),
 
           if (!_hasActiveSearch) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: 8),
             _filterChipRow(
               chips: _dietFilters,
               selected: _selectedDiet,
@@ -2059,62 +2065,42 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
   }
 
   Widget _filterChipRow({
-    required List<Map<String, dynamic>> chips,
+    required List<String> chips,
     required String selected,
     required ValueChanged<String> onSelected,
   }) {
     return SizedBox(
       height: 40,
-      child: ListView.builder(
+      child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         itemCount: chips.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 2),
         itemBuilder: (context, index) {
-          final chip = chips[index];
-          final name = chip['name']?.toString() ?? '';
+          final name = chips[index];
           final isSelected = selected == name;
-          return GestureDetector(
-            onTap: () => onSelected(name),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              margin: const EdgeInsets.only(right: 12),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: AppTheme.filterChipDecoration(context, selected: isSelected),
-              child: Row(
-                children: [
-                  Icon(chip['icon'] as IconData, color: isSelected ? Colors.white : AppTheme.textMuted, size: 16),
-                  const SizedBox(width: 6),
-                  Text(
-                    name,
-                    style: TextStyle(
-                      color: isSelected ? Colors.white : AppTheme.onSurfaceOf(context),
-                      fontSize: 13,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                    ),
-                  ),
-                ],
+          return TextButton(
+            onPressed: () => onSelected(name),
+            style: TextButton.styleFrom(
+              foregroundColor: isSelected ? AppTheme.linkOf(context) : AppTheme.textMutedOf(context),
+              visualDensity: VisualDensity.compact,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              minimumSize: const Size(0, 32),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+            ),
+            child: Text(
+              name,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                decoration: isSelected ? TextDecoration.underline : TextDecoration.none,
+                decorationColor: AppTheme.linkOf(context),
+                color: isSelected ? AppTheme.linkOf(context) : AppTheme.textMutedOf(context),
               ),
             ),
           );
         },
       ),
-    );
-  }
-
-  Widget _homeModeChip(String label, String mode, IconData icon, Color accent) {
-    return DinerCircleModeChip(
-      icon: icon,
-      label: label,
-      selected: _renderedHomeMode == mode,
-      accent: accent,
-      onTap: () {
-        setState(() {
-          _dinerChoseHomeMode = true;
-          _homeMode = mode;
-          if (mode == 'live') _selectedSort = kFeedSortEta;
-          if (mode == 'preorder') _selectedSort = kFeedSortNearby;
-        });
-      },
     );
   }
 
@@ -2229,7 +2215,7 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
       physics: const NeverScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
       itemCount: meals.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 12),
+      separatorBuilder: (_, _) => const SizedBox(height: 14),
       itemBuilder: (context, index) {
         final meal = meals[index];
         final offerSummary = PricingCalculator.calculateItemSummary(meal, 1);
@@ -2239,123 +2225,23 @@ class _CustomerFeedTabState extends ConsumerState<CustomerFeedTab>
         final image = meal['image_url']?.toString();
         final prep = kitchenPrepMinutes(_chefKitchenProfiles[meal['chef_id']?.toString()], meal);
         final offerBadge = showOfferPrice ? PricingCalculator.offerBadgeLabel(meal) : '';
-        return GestureDetector(
+        final portions = mealPortionsLeftLabel(meal);
+        return DinerHomePlateCard(
+          title: meal['title']?.toString() ?? 'Home plate',
+          chefName: 'by $chefName',
+          priceLabel: '₹${wholeRupees(price)}',
+          strikePriceLabel: showOfferPrice ? '₹${wholeRupees(offerSummary.baseUnitPrice)}' : null,
+          prepMinutes: prep,
+          portionsLabel: portions,
+          portionsUrgent: mealPortionsLeft(meal) <= 0,
+          imageUrl: image,
+          offerBadge: offerBadge,
+          footer: showOfferPrice
+              ? FlashingOfferCountdown(
+                  until: PricingCalculator.parseOfferDate(meal['offer_valid_until']),
+                )
+              : null,
           onTap: () => showMealDetailsDialog(context, meal, ref, onGoToCart: widget.onGoToCart),
-          child: Container(
-            padding: const EdgeInsets.all(10),
-            decoration: AppTheme.cardDecoration(isDark: Theme.of(context).brightness == Brightness.dark),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Stack(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: SizedBox(
-                        width: 72,
-                        height: 72,
-                        child: image == null || image.isEmpty
-                            ? ColoredBox(color: AppTheme.photoFallback, child: Icon(Icons.ramen_dining, color: AppTheme.textMuted))
-                            : CachedNetworkImage(imageUrl: image, fit: BoxFit.cover),
-                      ),
-                    ),
-                    if (showOfferPrice && offerBadge.isNotEmpty)
-                      Positioned(
-                        left: 4,
-                        bottom: 4,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Colors.red.shade600,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            offerBadge,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        meal['title']?.toString() ?? 'Home plate',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTheme.cardTitleOf(context).copyWith(fontSize: 15),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'by $chefName',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTheme.caption,
-                      ),
-                      if (prep > 0) ...[
-                        const SizedBox(height: 2),
-                        Text('Prep: $prep mins', style: AppTheme.caption),
-                      ],
-                      const SizedBox(height: 2),
-                      Text(
-                        mealPortionsLeftLabel(meal),
-                        style: AppTheme.caption.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: mealPortionsLeft(meal) <= 0 ? AppTheme.error : AppTheme.textMuted,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Wrap(
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        spacing: 8,
-                        runSpacing: 2,
-                        children: [
-                          if (showOfferPrice)
-                            Text(
-                              '₹${wholeRupees(offerSummary.baseUnitPrice)}',
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: AppTheme.textMuted,
-                                decoration: TextDecoration.lineThrough,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          Text(
-                            '₹${wholeRupees(price)}',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 16,
-                              color: AppTheme.primary,
-                            ),
-                          ),
-                          if (showOfferPrice && offerBadge.isNotEmpty)
-                            Text(
-                              offerBadge,
-                              style: TextStyle(
-                                color: Colors.red.shade700,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          if (showOfferPrice)
-                            FlashingOfferCountdown(
-                              until: PricingCalculator.parseOfferDate(meal['offer_valid_until']),
-                            ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
         );
       },
     );
