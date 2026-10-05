@@ -1213,7 +1213,7 @@ class _CustomerOrdersTabState extends ConsumerState<CustomerOrdersTab> with Auto
             style: const TextStyle(color: AppTheme.link, fontWeight: FontWeight.bold, fontSize: 14),
           ),
           const SizedBox(height: 8),
-          Row(children: [const Icon(Icons.calendar_today, size: 14, color: AppTheme.textMuted), const SizedBox(width: 6), Text('Needed By: ${req['target_date_time']}', style: AppTheme.caption)]),
+          Row(children: [const Icon(Icons.calendar_today, size: 14, color: AppTheme.textMuted), const SizedBox(width: 6), Text('Needed By: ${formatCateringNeededBy(req['target_date_time'])}', style: AppTheme.caption)]),
           if ((isOpen || isAccepted) && !isCancelled) ...[
             Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: AppTheme.hairlineOf(context))),
             Text(
