@@ -159,6 +159,22 @@ class CartNotifier extends Notifier<CartState> {
 
   bool _inSharedRoom() => (state.sharedRoomCode ?? '').trim().isNotEmpty;
 
+  /// True when this room's shared date and slot can no longer take plates.
+  bool _sharedRoomClockPassed() {
+    final plate = state.items.isEmpty ? null : state.items.first;
+    return sharedRoomBlocksNewPlates(
+      inGroup: _inSharedRoom(),
+      timeSlot: state.sharedTimeSlot,
+      selectedDate: state.sharedSelectedDate,
+      plateTimeSlot: plate?.timeSlot,
+      plateDate: plate?.scheduledDate,
+    );
+  }
+
+  void _refuseDeadRoomGrowth() {
+    state = state.copyWith(stockNotice: kPastGroupRoomJoinMessage);
+  }
+
   bool _isSharedHost() => isSharedCartHost(
         userId: _supabase.auth.currentUser?.id,
         hostId: state.sharedHostId,
@@ -232,6 +248,13 @@ class CartNotifier extends Notifier<CartState> {
       throw SharedCartException('Sign in to join this group.');
     }
     final room = await _sharedCartService.fetchSharedCartRoom(code);
+    final joinRefusal = sharedRoomJoinRefusal(
+      timeSlot: room.timeSlot,
+      selectedDate: parseFlexibleDate(room.selectedDate),
+    );
+    if (joinRefusal != null) {
+      throw SharedCartException(joinRefusal);
+    }
     if (state.sharedRoomCode == code) {
       return SharedCartJoinResult(
         roomCode: code,
@@ -383,6 +406,10 @@ class CartNotifier extends Notifier<CartState> {
     final note = specialInstructions?.trim();
 
     if (_inSharedRoom()) {
+      if (_sharedRoomClockPassed()) {
+        _refuseDeadRoomGrowth();
+        return false;
+      }
       final user = _supabase.auth.currentUser;
       final userId = user?.id ?? '';
       if (userId.isEmpty) return false;
@@ -500,6 +527,10 @@ class CartNotifier extends Notifier<CartState> {
     final index = state.items.indexWhere((i) => i.id == cartItemId);
     if (index == -1) return;
     if (!_canEditSharedLine(state.items[index])) return;
+    if (delta > 0 && _sharedRoomClockPassed()) {
+      _refuseDeadRoomGrowth();
+      return;
+    }
 
     List<CartItemModel> updated = List.from(state.items);
     final item = updated[index];

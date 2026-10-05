@@ -408,6 +408,99 @@ bool isCartSlotWithinChefWindow(String selectedSlot, String chefSchedule) {
   return selectedStart >= start && selectedStart < end;
 }
 
+/// Solo-cart copy when [isCartSlotPassed] is true. Group rooms reuse it.
+const String kPastSlotCartMessage =
+    'That time slot has passed. Pick a later slot inside the chef\'s window.';
+
+/// Join, reopen, and add-plate refusal. A host already in the room can still move the clock.
+const String kPastGroupRoomJoinMessage =
+    'That time slot has passed. This group is no longer accepting new plates.';
+
+/// Shared `selected_date` + `time_slot` using the same clock as a solo plate.
+/// A missing date is not past. A past calendar day is past even when the slot text is blank.
+bool isSharedRoomClockPassed({
+  String? timeSlot,
+  DateTime? selectedDate,
+  DateTime? now,
+}) {
+  if (selectedDate == null) return false;
+  final slot = (timeSlot ?? '').trim();
+  if (slot.isEmpty) {
+    final n = (now ?? DateTime.now()).toLocal();
+    return calendarDay(selectedDate).isBefore(calendarDay(n));
+  }
+  return isCartSlotPassed(slot, selectedDate, now: now);
+}
+
+/// Null while the room can still take a new diner. Otherwise a diner-facing refusal.
+String? sharedRoomJoinRefusal({
+  String? timeSlot,
+  DateTime? selectedDate,
+  DateTime? now,
+}) {
+  if (!isSharedRoomClockPassed(timeSlot: timeSlot, selectedDate: selectedDate, now: now)) {
+    return null;
+  }
+  return kPastGroupRoomJoinMessage;
+}
+
+/// True when a new plate or a higher quantity would grow a room whose clock has passed.
+/// A blank room clock falls back to the plate already in the cart.
+bool sharedRoomBlocksNewPlates({
+  required bool inGroup,
+  String? timeSlot,
+  DateTime? selectedDate,
+  String? plateTimeSlot,
+  DateTime? plateDate,
+  DateTime? now,
+}) {
+  if (!inGroup) return false;
+  final roomSlot = (timeSlot ?? '').trim();
+  if (selectedDate != null && roomSlot.isNotEmpty) {
+    return isSharedRoomClockPassed(timeSlot: roomSlot, selectedDate: selectedDate, now: now);
+  }
+  final slot = roomSlot.isNotEmpty ? roomSlot : plateTimeSlot;
+  final date = selectedDate ?? plateDate;
+  return isSharedRoomClockPassed(timeSlot: slot, selectedDate: date, now: now);
+}
+
+/// Line warning inside the cart.
+/// Solo plates keep [cartLineSlotValidationError]. Group plates only surface a passed room clock,
+/// so a future room the host can still edit does not pick up chef-window errors.
+String? groupCartDisplayedSlotIssue({
+  required bool inGroup,
+  String? roomTimeSlot,
+  DateTime? roomDate,
+  required String? selectedSlot,
+  required DateTime scheduledDate,
+  required String? chefSchedule,
+  DateTime? now,
+}) {
+  if (!inGroup) {
+    return cartLineSlotValidationError(
+      selectedSlot: selectedSlot,
+      scheduledDate: scheduledDate,
+      chefSchedule: chefSchedule,
+      now: now,
+    );
+  }
+  final roomSlot = (roomTimeSlot ?? '').trim();
+  if (roomDate != null && roomSlot.isNotEmpty) {
+    if (isSharedRoomClockPassed(timeSlot: roomSlot, selectedDate: roomDate, now: now)) {
+      return kPastSlotCartMessage;
+    }
+    return null;
+  }
+  final plate = cartLineSlotValidationError(
+    selectedSlot: roomSlot.isNotEmpty ? roomSlot : selectedSlot,
+    scheduledDate: roomDate ?? scheduledDate,
+    chefSchedule: '',
+    now: now,
+  );
+  if (plate == kPastSlotCartMessage) return plate;
+  return null;
+}
+
 String? cartLineSlotValidationError({
   required String? selectedSlot,
   required DateTime scheduledDate,
@@ -423,7 +516,7 @@ String? cartLineSlotValidationError({
     return 'Choose a clock time inside the chef\'s serving window.';
   }
   if (isCartSlotPassed(selected, scheduledDate, now: now)) {
-    return 'That time slot has passed. Pick a later slot inside the chef\'s window.';
+    return kPastSlotCartMessage;
   }
   if (schedule.isNotEmpty && !chefSlotAllowsDate(schedule, scheduledDate, now: now)) {
     return 'Pick a day inside the chef\'s published slot.';
