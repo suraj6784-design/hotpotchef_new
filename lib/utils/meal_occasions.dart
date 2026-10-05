@@ -152,6 +152,35 @@ bool occasionBrowseIsNarrow({required String occasion, required String slice}) {
       ((slice).trim().isNotEmpty && slice != kOccasionSliceAll);
 }
 
+/// Festivals, Parties, and Specialty can be empty for a pin. Everyday stays
+/// on the existing pin-empty path so the home row does not grow a second CTA.
+bool occasionEmptyAsksKitchens(String? occasion) {
+  switch (normalizeOccasionId(occasion)) {
+    case kOccasionFestive:
+    case kOccasionParty:
+    case kOccasionSpecialty:
+      return true;
+    default:
+      return false;
+  }
+}
+
+/// Occasion and slice the Ask kitchens screen should open on.
+({String occasion, String slice}) resolvedOccasionSelection({
+  String? occasion,
+  String? slice,
+}) {
+  final tab = occasionTabById(occasion);
+  final sliceId = tab.sliceById(slice)?.id ?? kOccasionSliceAll;
+  return (occasion: tab.id, slice: sliceId);
+}
+
+/// Same query the home occasion bar sends when it opens Ask kitchens.
+String askKitchensLocation({required String occasion, required String slice}) {
+  final selected = resolvedOccasionSelection(occasion: occasion, slice: slice);
+  return '/bulk-request?occasion=${selected.occasion}&slice=${selected.slice}';
+}
+
 /// Festivals and parties are booked for a later day on the existing slot.
 bool occasionKeepsFutureSlot(String? occasion) {
   final id = normalizeOccasionId(occasion);

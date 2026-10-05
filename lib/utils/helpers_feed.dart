@@ -346,6 +346,7 @@ class FeedEmptyCopy {
     this.promptSignIn = false,
     this.clearCategory = false,
     this.offerPreorder = false,
+    this.askKitchens = false,
   });
 
   final String title;
@@ -355,6 +356,9 @@ class FeedEmptyCopy {
 
   /// Live Order is empty because nobody is cooking, and Pre-order can be opened.
   final bool offerPreorder;
+
+  /// Festivals, Parties, or Specialty (including a slice) has no plates for this pin.
+  final bool askKitchens;
 }
 
 /// Time-of-day line on the diner home. Location stays a separate control.
@@ -535,12 +539,16 @@ FeedEmptyCopy feedEmptyCopy({
   if (occasionBrowseIsNarrow(occasion: occasion, slice: occasionSlice) && !favorites && !following) {
     final label = occasionBrowseLabel(occasion: occasion, slice: occasionSlice);
     final onAllSlice = occasionSliceLabel(occasion, occasionSlice).isEmpty;
+    final askKitchens = occasionEmptyAsksKitchens(occasion);
     return FeedEmptyCopy(
       title: 'No $label meals',
       message: onAllSlice
           ? 'Nothing in $label is on the menu for this pin. Try another occasion.'
           : 'Nothing in $label is on the menu for this pin. Try All for this occasion, or switch occasion.',
-      clearCategory: true,
+      // Everyday slices still offer "Show all meals". The other occasions
+      // keep their buttons on screen and ask kitchens for this selection.
+      clearCategory: !askKitchens,
+      askKitchens: askKitchens,
     );
   }
   final mode = normalizeDinerHomeMode(homeMode);

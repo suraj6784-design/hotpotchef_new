@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:hotpotchef_new/utils/app_theme.dart';
-import 'package:hotpotchef_new/utils/meal_occasions.dart';
+import 'package:hotpotchef_new/utils/helpers.dart';
+import 'package:hotpotchef_new/widgets/diner_feed_empty.dart';
 import 'package:hotpotchef_new/widgets/diner_home_plate_card.dart';
 import 'package:hotpotchef_new/widgets/diner_storefront.dart';
 import 'package:hotpotchef_new/widgets/home_occasion_bar.dart';
@@ -141,5 +142,147 @@ void main() {
     await tester.pump();
     expect(mode, 'live');
     expect(occasion, kOccasionEveryday);
+  });
+
+  testWidgets('empty Festivals keeps the four buttons and asks kitchens for that selection', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final copy = feedEmptyCopy(
+      signedIn: true,
+      favoritesOnly: false,
+      hasFavorites: false,
+      hasSearch: false,
+      hasDeliveryPin: true,
+      occasion: kOccasionFestive,
+      occasionSlice: kOccasionSliceAll,
+    );
+    expect(dinerFeedEmptyAction(copy), DinerFeedEmptyAction.askKitchens);
+    expect(dinerFeedEmptyActionLabel(DinerFeedEmptyAction.askKitchens), 'Ask kitchens');
+
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (context, _) => Scaffold(
+            backgroundColor: AppTheme.background,
+            body: ListView(
+              children: [
+                HomeOccasionBar(
+                  occasion: kOccasionFestive,
+                  slice: kOccasionSliceAll,
+                  onOccasion: (_) {},
+                  onSlice: (_) {},
+                  onBroadcast: () => pushAskKitchens(
+                    context,
+                    occasion: kOccasionFestive,
+                    slice: kOccasionSliceAll,
+                  ),
+                ),
+                DinerFeedEmpty(
+                  copy: copy,
+                  showFollowing: false,
+                  showFavorites: false,
+                  onAskKitchens: () => pushAskKitchens(
+                    context,
+                    occasion: kOccasionFestive,
+                    slice: kOccasionSliceAll,
+                  ),
+                  onSignIn: () {},
+                  onClearFilters: () {},
+                  onPreorder: () {},
+                ),
+              ],
+            ),
+          ),
+        ),
+        GoRoute(
+          path: '/bulk-request',
+          builder: (_, state) {
+            final occasion = state.uri.queryParameters['occasion'];
+            final slice = state.uri.queryParameters['slice'];
+            return Scaffold(body: Text('ask:$occasion:$slice'));
+          },
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp.router(
+        theme: AppTheme.lightTheme,
+        routerConfig: router,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Everyday'), findsOneWidget);
+    expect(find.text('Festivals'), findsOneWidget);
+    expect(find.text('Parties'), findsOneWidget);
+    expect(find.text('Specialty'), findsOneWidget);
+    expect(find.text('No Festivals meals'), findsOneWidget);
+    expect(find.textContaining('tab'), findsNothing);
+    expect(find.text('Nothing in Festivals is on the menu for this pin. Try another occasion.'), findsOneWidget);
+    expect(find.byKey(const Key('home-occasion-empty-ask')), findsOneWidget);
+
+    final everyday = tester.getRect(find.byKey(const Key('home-occasion-everyday')));
+    final festivals = tester.getRect(find.byKey(const Key('home-occasion-festive')));
+    expect(everyday.top, festivals.top);
+
+    await tester.tap(find.byKey(const Key('home-occasion-empty-ask')));
+    await tester.pumpAndSettle();
+    expect(find.text('ask:festive:all'), findsOneWidget);
+  });
+
+  testWidgets('an empty party slice prefills Ask kitchens with that slice', (tester) async {
+    final copy = feedEmptyCopy(
+      signedIn: true,
+      favoritesOnly: false,
+      hasFavorites: false,
+      hasSearch: false,
+      hasDeliveryPin: true,
+      occasion: kOccasionParty,
+      occasionSlice: 'birthday',
+    );
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (context, _) => Scaffold(
+            body: DinerFeedEmpty(
+              copy: copy,
+              showFollowing: false,
+              showFavorites: false,
+              onAskKitchens: () => pushAskKitchens(
+                context,
+                occasion: kOccasionParty,
+                slice: 'birthday',
+              ),
+              onSignIn: () {},
+              onClearFilters: () {},
+              onPreorder: () {},
+            ),
+          ),
+        ),
+        GoRoute(
+          path: '/bulk-request',
+          builder: (_, state) => Scaffold(
+            body: Text('ask:${state.uri.queryParameters['occasion']}:${state.uri.queryParameters['slice']}'),
+          ),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(find.text('No Birthday meals'), findsOneWidget);
+    expect(find.textContaining('tab'), findsNothing);
+    await tester.tap(find.byKey(const Key('home-occasion-empty-ask')));
+    await tester.pumpAndSettle();
+    expect(find.text('ask:party:birthday'), findsOneWidget);
   });
 }

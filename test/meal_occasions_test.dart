@@ -191,7 +191,12 @@ void main() {
       expect(diwali.title, 'No Diwali meals');
       expect(diwali.message, 'Nothing in Diwali is on the menu for this pin. Try All for this occasion, or switch occasion.');
       expect(diwali.message.toLowerCase(), isNot(contains('tab')));
-      expect(diwali.clearCategory, isTrue);
+      expect(diwali.askKitchens, isTrue);
+      expect(diwali.clearCategory, isFalse);
+      expect(
+        askKitchensLocation(occasion: kOccasionFestive, slice: 'diwali'),
+        '/bulk-request?occasion=festive&slice=diwali',
+      );
 
       final festivals = feedEmptyCopy(
         signedIn: true,
@@ -205,6 +210,63 @@ void main() {
       expect(festivals.title, 'No Festivals meals');
       expect(festivals.message, 'Nothing in Festivals is on the menu for this pin. Try another occasion.');
       expect(festivals.message.toLowerCase(), isNot(contains('tab')));
+      expect(festivals.askKitchens, isTrue);
+      expect(
+        askKitchensLocation(occasion: kOccasionFestive, slice: kOccasionSliceAll),
+        '/bulk-request?occasion=festive&slice=all',
+      );
+
+      for (final occasion in [kOccasionParty, kOccasionSpecialty]) {
+        final copy = feedEmptyCopy(
+          signedIn: true,
+          favoritesOnly: false,
+          hasFavorites: false,
+          hasSearch: false,
+          hasDeliveryPin: true,
+          occasion: occasion,
+          occasionSlice: kOccasionSliceAll,
+        );
+        expect(copy.askKitchens, isTrue, reason: occasion);
+        expect(copy.clearCategory, isFalse, reason: occasion);
+        expect(copy.message.toLowerCase(), isNot(contains('tab')), reason: occasion);
+      }
+
+      final birthday = feedEmptyCopy(
+        signedIn: true,
+        favoritesOnly: false,
+        hasFavorites: false,
+        hasSearch: false,
+        hasDeliveryPin: true,
+        occasion: kOccasionParty,
+        occasionSlice: 'birthday',
+      );
+      expect(birthday.title, 'No Birthday meals');
+      expect(birthday.askKitchens, isTrue);
+      final birthdayRoute = Uri.parse(askKitchensLocation(occasion: kOccasionParty, slice: 'birthday'));
+      final birthdaySelection = resolvedOccasionSelection(occasion: kOccasionParty, slice: 'birthday');
+      expect(birthdayRoute.queryParameters['occasion'], birthdaySelection.occasion);
+      expect(birthdayRoute.queryParameters['slice'], birthdaySelection.slice);
+      expect(birthdaySelection.slice, 'birthday');
+
+      final pickle = resolvedOccasionSelection(occasion: kOccasionSpecialty, slice: 'pickle');
+      expect(askKitchensLocation(occasion: pickle.occasion, slice: pickle.slice), '/bulk-request?occasion=specialty&slice=pickle');
+      expect(
+        resolvedOccasionSelection(occasion: kOccasionSpecialty, slice: 'missing').slice,
+        kOccasionSliceAll,
+      );
+
+      final lunch = feedEmptyCopy(
+        signedIn: true,
+        favoritesOnly: false,
+        hasFavorites: false,
+        hasSearch: false,
+        hasDeliveryPin: true,
+        occasion: kOccasionEveryday,
+        occasionSlice: 'lunch',
+      );
+      expect(lunch.askKitchens, isFalse);
+      expect(lunch.clearCategory, isTrue);
+      expect(everyday.askKitchens, isFalse);
     });
   });
 

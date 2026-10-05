@@ -240,6 +240,7 @@ class EmptyState extends StatelessWidget {
   final String? message;
   final String? actionLabel;
   final VoidCallback? onAction;
+  final Key? actionKey;
 
   const EmptyState({
     super.key,
@@ -248,6 +249,7 @@ class EmptyState extends StatelessWidget {
     this.message,
     this.actionLabel,
     this.onAction,
+    this.actionKey,
   });
 
   @override
@@ -289,7 +291,7 @@ class EmptyState extends StatelessWidget {
             ],
             if (actionLabel != null && onAction != null) ...[
               const SizedBox(height: 24),
-              GradientButton(label: actionLabel!, onPressed: onAction, expand: false),
+              GradientButton(key: actionKey, label: actionLabel!, onPressed: onAction, expand: false),
             ],
           ],
         ).entrance(),
