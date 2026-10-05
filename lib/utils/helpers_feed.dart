@@ -534,9 +534,12 @@ FeedEmptyCopy feedEmptyCopy({
   }
   if (occasionBrowseIsNarrow(occasion: occasion, slice: occasionSlice) && !favorites && !following) {
     final label = occasionBrowseLabel(occasion: occasion, slice: occasionSlice);
+    final onAllSlice = occasionSliceLabel(occasion, occasionSlice).isEmpty;
     return FeedEmptyCopy(
       title: 'No $label meals',
-      message: 'Nothing in $label is on the menu for this pin. Try All in this tab, or another occasion.',
+      message: onAllSlice
+          ? 'Nothing in $label is on the menu for this pin. Try another occasion.'
+          : 'Nothing in $label is on the menu for this pin. Try All for this occasion, or switch occasion.',
       clearCategory: true,
     );
   }
