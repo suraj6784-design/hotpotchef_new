@@ -242,6 +242,10 @@ class EmptyState extends StatelessWidget {
   final VoidCallback? onAction;
   final Key? actionKey;
 
+  /// Tighter mark and gaps so a primary action can sit on a phone home
+  /// without a second button. Everyday and other empties leave this false.
+  final bool compact;
+
   const EmptyState({
     super.key,
     required this.icon,
@@ -250,32 +254,35 @@ class EmptyState extends StatelessWidget {
     this.actionLabel,
     this.onAction,
     this.actionKey,
+    this.compact = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final markExtent = compact ? 56.0 : 72.0;
+    final markSize = compact ? 44.0 : 56.0;
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: compact ? const EdgeInsets.fromLTRB(24, 8, 24, 16) : const EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(
-              width: 72,
-              height: 72,
+              width: markExtent,
+              height: markExtent,
               child: Stack(
                 alignment: Alignment.bottomRight,
                 children: [
-                  const AppLogo(size: 56, elevated: true),
+                  AppLogo(size: markSize, elevated: true),
                   Container(
-                    padding: const EdgeInsets.all(5),
+                    padding: EdgeInsets.all(compact ? 4 : 5),
                     decoration: const BoxDecoration(color: AppTheme.primary, shape: BoxShape.circle),
-                    child: Icon(icon, size: 14, color: Colors.white),
+                    child: Icon(icon, size: compact ? 12 : 14, color: Colors.white),
                   ),
                 ],
               ),
             ).popIn(),
-            const SizedBox(height: 20),
+            SizedBox(height: compact ? 10 : 20),
             Text(
               title,
               textAlign: TextAlign.center,
@@ -290,7 +297,7 @@ class EmptyState extends StatelessWidget {
               ),
             ],
             if (actionLabel != null && onAction != null) ...[
-              const SizedBox(height: 24),
+              SizedBox(height: compact ? 12 : 24),
               GradientButton(key: actionKey, label: actionLabel!, onPressed: onAction, expand: false),
             ],
           ],

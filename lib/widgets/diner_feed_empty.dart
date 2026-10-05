@@ -62,6 +62,10 @@ class DinerFeedEmpty extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final action = dinerFeedEmptyAction(copy);
+    // Festivals, Parties, and Specialty sit under the occasion row, slices,
+    // and diet chips. The roomy empty column pushes this primary button
+    // below a phone fold. Everyday keeps the standard empty spacing.
+    final askKitchens = action == DinerFeedEmptyAction.askKitchens;
     return EmptyState(
       icon: copy.offerPreorder
           ? Icons.local_fire_department_outlined
@@ -72,10 +76,9 @@ class DinerFeedEmpty extends StatelessWidget {
                   : Icons.search_off_rounded,
       title: copy.title,
       message: copy.message,
+      compact: askKitchens,
       actionLabel: action == null ? null : dinerFeedEmptyActionLabel(action),
-      actionKey: action == DinerFeedEmptyAction.askKitchens
-          ? const Key('home-occasion-empty-ask')
-          : null,
+      actionKey: askKitchens ? const Key('home-occasion-empty-ask') : null,
       onAction: switch (action) {
         DinerFeedEmptyAction.preorder => onPreorder,
         DinerFeedEmptyAction.signIn => onSignIn,
