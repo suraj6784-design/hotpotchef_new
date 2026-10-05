@@ -75,6 +75,36 @@ List<CartItemModel> mergeSharedCartItems({
   return merged;
 }
 
+String? _roomClockSlot(Map<String, dynamic> row) {
+  final slot = row['time_slot']?.toString().trim() ?? '';
+  if (slot.isNotEmpty) return slot;
+  final items = row['items'];
+  if (items is! List) return null;
+  for (final raw in items) {
+    if (raw is! Map) continue;
+    final map = Map<String, dynamic>.from(raw);
+    final plate = (map['timeSlot'] ?? map['time_slot'])?.toString().trim() ?? '';
+    if (plate.isNotEmpty) return plate;
+  }
+  return null;
+}
+
+DateTime? _roomClockDate(Map<String, dynamic> row) {
+  final room = parseFlexibleDate(row['selected_date']?.toString());
+  if (room != null) return room;
+  final items = row['items'];
+  if (items is! List) return null;
+  for (final raw in items) {
+    if (raw is! Map) continue;
+    final map = Map<String, dynamic>.from(raw);
+    final plate = parseFlexibleDate(
+      (map['selectedDate'] ?? map['scheduled_date'] ?? map['selected_date'])?.toString(),
+    );
+    if (plate != null) return plate;
+  }
+  return null;
+}
+
 String? _blankToNull(String? value) {
   final trimmed = value?.trim() ?? '';
   if (trimmed.isEmpty) return null;
@@ -238,6 +268,14 @@ class SharedCartService {
 
       if (response == null) {
         throw SharedCartException('No open group lunch for that code.');
+      }
+
+      final joinRefusal = sharedRoomJoinRefusal(
+        timeSlot: _roomClockSlot(response),
+        selectedDate: _roomClockDate(response),
+      );
+      if (joinRefusal != null) {
+        throw SharedCartException(joinRefusal);
       }
 
       try {

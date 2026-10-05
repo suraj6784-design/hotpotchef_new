@@ -1009,6 +1009,21 @@ Future<bool> addMealToCartWithConflict({
   final cartState = ref.read(cartProvider);
   final existingChef = cartState.primaryChefId;
   final chefId = meal['chef_id']?.toString() ?? '';
+  final plate = cartState.items.isEmpty ? null : cartState.items.first;
+  if (sharedRoomBlocksNewPlates(
+    inGroup: (cartState.sharedRoomCode ?? '').trim().isNotEmpty,
+    timeSlot: cartState.sharedTimeSlot,
+    selectedDate: cartState.sharedSelectedDate,
+    plateTimeSlot: plate?.timeSlot,
+    plateDate: plate?.scheduledDate,
+  )) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text(kPastGroupRoomJoinMessage), backgroundColor: Colors.redAccent),
+      );
+    }
+    return false;
+  }
   final added = cart.addToCart(meal, quantity, addOns: addOns, clearIfVendorConflict: false);
   if (added) return true;
 

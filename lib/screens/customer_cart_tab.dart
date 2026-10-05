@@ -18,6 +18,7 @@ import '../services/meal_catalog_repository.dart';
 import '../providers/delivery_preference.dart';
 import '../widgets/customer_ui_components.dart';
 import '../widgets/app_widgets.dart';
+import '../widgets/cart_slot_issue_notice.dart';
 import '../widgets/diner_cart_meal_actions.dart';
 import '../services/reorder_service.dart';
 import 'checkout_screen.dart';
@@ -418,6 +419,16 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                     ].join(' · '),
                     style: const TextStyle(fontSize: 12, color: AppTheme.textMuted, height: 1.35),
                   ),
+                  CartSlotIssueNotice(
+                    message: groupCartDisplayedSlotIssue(
+                      inGroup: true,
+                      roomTimeSlot: cartState.sharedTimeSlot,
+                      roomDate: cartState.sharedSelectedDate,
+                      selectedSlot: cartState.sharedTimeSlot,
+                      scheduledDate: cartState.sharedSelectedDate ?? DateTime.now(),
+                      chefSchedule: '',
+                    ),
+                  ),
                   if (groupCartShareUri(cartState.sharedRoomCode).isNotEmpty) ...[
                     const SizedBox(height: 8),
                     SelectableText(
@@ -558,13 +569,14 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
             final shownDate = inGroup && cartState.sharedSelectedDate != null
                 ? cartState.sharedSelectedDate!
                 : item.scheduledDate;
-            final slotIssue = inGroup
-                ? null
-                : cartLineSlotValidationError(
-                    selectedSlot: bookedSlot.isEmpty ? (item.timeSlot ?? exactTime ?? '') : bookedSlot,
-                    scheduledDate: item.scheduledDate,
-                    chefSchedule: rawSchedule,
-                  );
+            final slotIssue = groupCartDisplayedSlotIssue(
+              inGroup: inGroup,
+              roomTimeSlot: roomSlot,
+              roomDate: cartState.sharedSelectedDate,
+              selectedSlot: bookedSlot.isEmpty ? (item.timeSlot ?? exactTime ?? '') : bookedSlot,
+              scheduledDate: shownDate,
+              chefSchedule: rawSchedule,
+            );
             final canEdit = !inGroup ||
                 sharedCartLineEditable(
                   item,
@@ -885,13 +897,7 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
                       ),
                     ],
                   ),
-                  if (slotIssue != null) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      slotIssue,
-                      style: const TextStyle(fontSize: 12, color: Colors.redAccent, fontWeight: FontWeight.w600),
-                    ),
-                  ],
+                  CartSlotIssueNotice(message: slotIssue),
                   const SizedBox(height: 16),
 
                   // Subtotal and Quantity Stepper
@@ -1235,6 +1241,26 @@ class _CustomerCartTabState extends ConsumerState<CustomerCartTab>
     // Validate single-vendor requirement
     final canProceed = await _verifySingleVendorOrPrompt(cartState);
     if (!canProceed || !mounted) return;
+
+    final inGroup = (cartState.sharedRoomCode ?? '').isNotEmpty;
+    if (inGroup) {
+      final roomIssue = groupCartDisplayedSlotIssue(
+        inGroup: true,
+        roomTimeSlot: cartState.sharedTimeSlot,
+        roomDate: cartState.sharedSelectedDate,
+        selectedSlot: cartState.sharedTimeSlot,
+        scheduledDate: cartState.sharedSelectedDate ??
+            (cartState.items.isEmpty ? DateTime.now() : cartState.items.first.scheduledDate),
+        chefSchedule: '',
+      );
+      if (roomIssue != null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(roomIssue), backgroundColor: Colors.redAccent),
+        );
+        return;
+      }
+    }
 
     final checkoutItems = cartState.items.map((i) => i.toCheckoutPayload()).toList();
     final slotIssue = cartItemsSlotValidationError(checkoutCartPayload(checkoutItems));
