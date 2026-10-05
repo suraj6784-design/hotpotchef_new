@@ -1459,6 +1459,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               const SizedBox(height: 12),
               Text('${_orderTitle(order)} (x${_orderQuantity(order)})',
                   style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+              ChefOrderOccasionLine(order: order),
               const SizedBox(height: 4),
               Text(
                 '${_customerName(order)} • diner paid ${formatRupees(_orderTotal(order))} · ${chefOrderPayoutAmountLabel(order)}',
@@ -2220,6 +2221,10 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                             style: const TextStyle(fontWeight: FontWeight.w700),
                           )
                         : _chefPayoutTrailing(h),
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: ChefOrderOccasionLine(order: h, padding: const EdgeInsets.only(bottom: 4)),
                   ),
                   if (!isCancelled && chefFreeDeliveryShareCaption(h).isNotEmpty)
                     Align(

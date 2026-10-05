@@ -82,6 +82,7 @@ class DriverDeliveryModel {
   final String? deliveryOtp;
   final String? driverArrivedAt;
   final String? specialInstructions;
+  final String occasionLabel;
 
   const DriverDeliveryModel({
     required this.orderId,
@@ -109,6 +110,7 @@ class DriverDeliveryModel {
     this.deliveryOtp,
     this.driverArrivedAt,
     this.specialInstructions,
+    this.occasionLabel = '',
   });
 
   bool get hasDropoffNotes {
@@ -122,6 +124,9 @@ class DriverDeliveryModel {
       orderNumber.isNotEmpty ? orderNumber : formatOrderId(null, orderId);
 
   String get dropoffBrief => briefDriverAddress(customerAddress);
+
+  /// Empty when the order has no occasion. Older runs stay unlabeled.
+  String get occasionCaption => occasionLabel.isEmpty ? '' : 'Occasion: $occasionLabel';
 
   /// One-line reference under the kitchen name on Home history.
   String get driverHistoryDetail {
@@ -261,6 +266,9 @@ class DriverDeliveryModel {
       deliveryOtp: otp,
       driverArrivedAt: json['driver_arrived_at']?.toString(),
       specialInstructions: kitchenFacingOrderNotes(special),
+      occasionLabel: occasionTabLabel(
+        orderOccasionId(column: json['occasion'], items: items),
+      ),
     );
   }
 

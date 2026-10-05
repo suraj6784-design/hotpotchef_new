@@ -560,3 +560,123 @@ Map<String, dynamic> occasionBroadcastInsert({
     'created_at': DateTime.now().toUtc().toIso8601String(),
   };
 }
+
+/// customer_requests.customer_email and customer_phone are both NOT NULL.
+/// Email login leaves auth.phone empty even when public.users has a number.
+const String kBroadcastMissingContactMessage =
+    'Add a phone number and email on your profile before broadcasting to kitchens.';
+const String kBroadcastMissingPhoneMessage =
+    'Add a phone number on your profile so kitchens can reach you, then try again.';
+const String kBroadcastMissingEmailMessage =
+    'Add an email on your profile so kitchens can reach you, then try again.';
+
+class BroadcastDinerContact {
+  const BroadcastDinerContact({
+    this.name = '',
+    this.email = '',
+    this.phone = '',
+    this.blockMessage,
+  });
+
+  final String name;
+  final String email;
+  final String phone;
+  final String? blockMessage;
+
+  bool get canInsert => blockMessage == null;
+}
+
+String? _broadcastText(String? raw) {
+  final text = (raw ?? '').trim();
+  if (text.isEmpty || text.toLowerCase() == 'null') return null;
+  return text;
+}
+
+String? _broadcastEmail(String? raw) {
+  final text = _broadcastText(raw);
+  if (text == null || !text.contains('@')) return null;
+  return text;
+}
+
+/// First real phone. Indian mobiles are stored as 10 digits, matching
+/// rows that already inserted. Dummy numbers are skipped so the profile
+/// phone can fill an empty auth phone.
+String? _broadcastPhone(String? raw) {
+  final text = _broadcastText(raw);
+  if (text == null) return null;
+  var digits = text.replaceAll(RegExp(r'\D'), '');
+  if (digits.startsWith('91') && digits.length >= 12) {
+    digits = digits.substring(digits.length - 10);
+  } else if (digits.length > 10) {
+    digits = digits.substring(digits.length - 10);
+  }
+  final placeholder = digits.isEmpty ||
+      digits == '1234567890' ||
+      digits == '0123456789' ||
+      (digits.length >= 10 && RegExp(r'^(\d)\1+$').hasMatch(digits));
+  if (!placeholder && digits.length == 10 && RegExp(r'^[6-9]').hasMatch(digits)) {
+    return digits;
+  }
+  if (placeholder) return null;
+  return text;
+}
+
+String? _firstPhone(List<String?> values) {
+  for (final value in values) {
+    final phone = _broadcastPhone(value);
+    if (phone != null) return phone;
+  }
+  return null;
+}
+
+String? _firstEmail(List<String?> values) {
+  for (final value in values) {
+    final email = _broadcastEmail(value);
+    if (email != null) return email;
+  }
+  return null;
+}
+
+String _firstName(List<String?> values) {
+  for (final value in values) {
+    final name = _broadcastText(value);
+    if (name != null) return name;
+  }
+  return '';
+}
+
+/// Auth account first, then the diner row in public.users.
+/// [blockMessage] is set when the insert would still write a null contact.
+BroadcastDinerContact resolveBroadcastDinerContact({
+  String? authName,
+  String? authEmail,
+  String? authPhone,
+  String? metadataEmail,
+  String? metadataPhone,
+  String? profileName,
+  String? profileFullName,
+  String? profileEmail,
+  String? profilePhone,
+}) {
+  final email = _firstEmail([authEmail, metadataEmail, profileEmail]) ?? '';
+  final phone = _firstPhone([authPhone, metadataPhone, profilePhone]) ?? '';
+  final name = _firstName([authName, profileName, profileFullName]);
+  if (email.isEmpty && phone.isEmpty) {
+    return BroadcastDinerContact(name: name, blockMessage: kBroadcastMissingContactMessage);
+  }
+  if (phone.isEmpty) {
+    return BroadcastDinerContact(
+      name: name,
+      email: email,
+      blockMessage: kBroadcastMissingPhoneMessage,
+    );
+  }
+  if (email.isEmpty) {
+    return BroadcastDinerContact(
+      name: name,
+      phone: phone,
+      blockMessage: kBroadcastMissingEmailMessage,
+    );
+  }
+  return BroadcastDinerContact(name: name, email: email, phone: phone);
+}
