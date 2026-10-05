@@ -2209,10 +2209,18 @@ double packagingFeeForCartItems(
   return kPackagingFeeBelowFreeDelivery;
 }
 
+const Duration kIndiaStandardTimeOffset = Duration(hours: 5, minutes: 30);
+
+/// Asia/Kolkata wall clock for [instant]. India has no daylight saving,
+/// so catering times stay readable on any device timezone.
+DateTime istWallClock(DateTime instant) {
+  final ist = instant.toUtc().add(kIndiaStandardTimeOffset);
+  return DateTime(ist.year, ist.month, ist.day, ist.hour, ist.minute, ist.second);
+}
+
 DateTime istCalendarDate([DateTime? now]) {
-  final utc = (now ?? DateTime.now()).toUtc();
-  final ist = utc.add(const Duration(hours: 5, minutes: 30));
-  return DateTime(ist.year, ist.month, ist.day);
+  final wall = istWallClock(now ?? DateTime.now());
+  return DateTime(wall.year, wall.month, wall.day);
 }
 
 bool claimedStreakOnIstDate(String? lastCheckInDate, {DateTime? now}) {
@@ -3544,6 +3552,96 @@ List<String> cateringLeadTargetChefIds(Map<String, dynamic>? request) {
 
 bool isCateringLeadTargeted(Map<String, dynamic>? request) =>
     cateringLeadTargetChefIds(request).isNotEmpty;
+
+String cateringLeadStatus(Map<String, dynamic> request) =>
+    request['status']?.toString().toLowerCase().trim() ?? '';
+
+/// Same rows the chef Catering leads list renders.
+/// Open broadcasts still use [isCateringLeadVisibleToChef].
+/// Accepted, ordered, and paid stay only for the kitchen that won them.
+bool cateringLeadBelongsOnChefList(
+  Map<String, dynamic> request, {
+  required String chefId,
+  Map<String, dynamic>? chefPin,
+}) {
+  if (isPackagingSupplyRequest(request)) return false;
+  final status = cateringLeadStatus(request);
+  if (status == 'open') {
+    return isCateringLeadVisibleToChef(request, chefId: chefId, chefPin: chefPin);
+  }
+  final mine = request['accepted_chef_id']?.toString() == chefId;
+  return mine && (status == 'accepted' || status == 'ordered' || status == 'paid');
+}
+
+List<Map<String, dynamic>> cateringLeadsShownToChef(
+  Iterable<Map<String, dynamic>> requests, {
+  required String chefId,
+  Map<String, dynamic>? chefPin,
+}) {
+  final visible = requests
+      .where(
+        (req) => cateringLeadBelongsOnChefList(
+          req,
+          chefId: chefId,
+          chefPin: chefPin,
+        ),
+      )
+      .toList();
+  visible.sort((a, b) {
+    final da = cateringLeadDistanceKm(a, chefPin) ?? 9999;
+    final db = cateringLeadDistanceKm(b, chefPin) ?? 9999;
+    return da.compareTo(db);
+  });
+  return visible;
+}
+
+/// Header count is the number of cards [cateringLeadsShownToChef] returns.
+String cateringLeadsHeaderTitle(int shownCount) =>
+    shownCount > 0 ? 'Catering leads ($shownCount)' : 'Catering leads';
+
+final RegExp _machineTimestampPattern = RegExp(r'^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}');
+final RegExp _machineDateOnlyPattern = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$');
+
+String _formatIstWall(DateTime wall, {required bool withTime}) {
+  final local = DateTime(wall.year, wall.month, wall.day, wall.hour, wall.minute);
+  if (!withTime) return DateFormat(kAppDatePattern).format(local);
+  return DateFormat(kAppDateTimePattern).format(local);
+}
+
+/// Needed-by label for a catering lead. Machine timestamps become the shared
+/// diner pattern in IST. Labels that are already human-readable stay on that
+/// same pattern. Blank values stay "ASAP".
+String formatCateringNeededBy(dynamic raw) {
+  if (raw is DateTime) return _formatIstWall(istWallClock(raw), withTime: true);
+  final text = raw?.toString().trim() ?? '';
+  if (text.isEmpty || text.toLowerCase() == 'asap') return 'ASAP';
+
+  final dateOnly = _machineDateOnlyPattern.firstMatch(text);
+  if (dateOnly != null) {
+    final year = int.parse(dateOnly.group(1)!);
+    final month = int.parse(dateOnly.group(2)!);
+    final day = int.parse(dateOnly.group(3)!);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return _formatIstWall(DateTime(year, month, day), withTime: false);
+    }
+  }
+
+  if (_machineTimestampPattern.hasMatch(text)) {
+    final parsed = DateTime.tryParse(text);
+    if (parsed == null) return 'ASAP';
+    return _formatIstWall(istWallClock(parsed), withTime: true);
+  }
+
+  final clock = extractSlotTime(text);
+  final day = parseSlotDate(text, DateTime.now().year);
+  if (day != null && clock != null) {
+    final at = parseClockOnDate(clock, day);
+    if (at != null) return _formatIstWall(at, withTime: true);
+  }
+  if (day != null) return _formatIstWall(day, withTime: false);
+  if (text.contains('T') && text.contains('-')) return 'ASAP';
+  return text;
+}
 
 /// Targeted invites skip the 25 km radius so a chosen kitchen always sees the lead.
 bool isCateringLeadVisibleToChef(

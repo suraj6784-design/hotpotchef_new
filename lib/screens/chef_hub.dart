@@ -734,21 +734,11 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
           return StreamBuilder<List<Map<String, dynamic>>>(
             stream: _requestsStream,
             builder: (context, reqSnapshot) {
-              final visibleLeads = (reqSnapshot.data ?? []).where((req) {
-                if (!_isVisibleLead(req)) return false;
-                if (_leadStatus(req) != 'open') return true;
-                return isCateringLeadVisibleToChef(
-                  req,
-                  chefId: _currentUserId,
-                  chefPin: _chefPin,
-                );
-              }).toList()
-                ..sort((a, b) {
-                  final da = cateringLeadDistanceKm(a, _chefPin) ?? 9999;
-                  final db = cateringLeadDistanceKm(b, _chefPin) ?? 9999;
-                  return da.compareTo(db);
-                });
-              final openLeadsCount = visibleLeads.where((req) => _leadStatus(req) == 'open').length;
+              final visibleLeads = cateringLeadsShownToChef(
+                reqSnapshot.data ?? const <Map<String, dynamic>>[],
+                chefId: _currentUserId,
+                chefPin: _chefPin,
+              );
 
               return StreamBuilder<List<Map<String, dynamic>>>(
                 stream: _myQuotesStream ?? Stream.value(const <Map<String, dynamic>>[]),
@@ -816,7 +806,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
                               4 => 'Menu',
                               5 => 'Dispatch',
                               6 => 'Payout & Analytics',
-                              7 => openLeadsCount > 0 ? 'Catering leads ($openLeadsCount)' : 'Catering leads',
+                              7 => cateringLeadsHeaderTitle(visibleLeads.length),
                               _ => 'Packaging supplies',
                             },
                             style: AppTheme.listTitleOf(context),
@@ -2255,17 +2245,6 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
     );
   }
 
-  String _leadStatus(Map<String, dynamic> request) =>
-      request['status']?.toString().toLowerCase().trim() ?? '';
-
-  bool _isVisibleLead(Map<String, dynamic> request) {
-    if (isPackagingSupplyRequest(request)) return false;
-    final status = _leadStatus(request);
-    if (status == 'open') return true;
-    final mine = request['accepted_chef_id']?.toString() == _currentUserId;
-    return mine && (status == 'accepted' || status == 'ordered' || status == 'paid');
-  }
-
   Future<double?> _askCateringQuote(Map<String, dynamic> request, {double? existingQuote}) async {
     final budget = parseMoney(request['budget']);
     final seed = existingQuote != null && existingQuote > 0
@@ -2369,7 +2348,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
       itemCount: requests.length,
       itemBuilder: (context, index) {
         final req = requests[index];
-        final status = _leadStatus(req);
+        final status = cateringLeadStatus(req);
         final isOpen = status == 'open';
         final awaitingPay = status == 'accepted';
         final paid = status == 'ordered' || status == 'paid';
@@ -2424,7 +2403,7 @@ class _ChefDashboardScreenState extends State<ChefDashboardScreen> {
               ],
               const SizedBox(height: 8),
               Text(
-                'Quantity: ${req['quantity']} • Left: $remaining • $distance • Needed by: ${req['target_date_time'] ?? 'ASAP'}',
+                'Quantity: ${req['quantity']} • Left: $remaining • $distance • Needed by: ${formatCateringNeededBy(req['target_date_time'])}',
                 style: AppTheme.caption,
               ),
               const SizedBox(height: 14),
